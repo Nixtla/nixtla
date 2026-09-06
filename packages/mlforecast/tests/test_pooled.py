@@ -1,5 +1,6 @@
 import warnings
 
+import copy
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -34,6 +35,32 @@ def _make_df(engine, rows, categorical_cols=None):
     return df
 
 
+def _next_ordinal_by_bucket(state):
+    """Next calendar position, per bucket.
+
+    `main` carried a separate calendar per bucket; the channel engine keeps one
+    dense calendar shared by every bucket, so they advance in lockstep by
+    construction. Expressed in the old vocabulary so these assertions keep their
+    meaning.
+    """
+    return {b: state.n_ordinals for b in range(state.n_buckets)}
+
+
+def _set_bucket_ids(state, context_df, id_col="unique_id"):
+    """Re-bucket every series from a per-series context frame."""
+    from mlforecast.pooled import lookup
+
+    arrays = []
+    if state.mode == "local":
+        arrays.append(np.asarray(context_df[id_col].to_numpy()))
+    arrays += [
+        np.asarray(context_df[c].to_numpy())
+        for c in state.group_cols + state.partition_cols
+    ]
+    state.set_series_bucket_id(lookup(arrays, state.bucket_uniques))
+    return state.series_bucket_id
+
+
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 @pytest.mark.parametrize("lag", _LAGS)
 def test_new_series_new_group_update_then_predict(engine, lag):
@@ -61,7 +88,7 @@ def test_new_series_new_group_update_then_predict(engine, lag):
     )
     assert ts._pooled_states[("groupby", ("brand",), ())] is not None
     state = ts._pooled_states[("groupby", ("brand",), ())]
-    assert len(np.unique(state.bucket_id)) == 2
+    assert state.n_buckets == 2
 
     update_df = _make_df(
         engine,
@@ -78,8 +105,8 @@ def test_new_series_new_group_update_then_predict(engine, lag):
     assert state.series_bucket_id is not None
     assert len(state.series_bucket_id) == 3
     assert len(np.unique(state.series_bucket_id)) == 3
-    assert len(state.bucket_df) == len(df) + len(update_df)
-    n_buckets = len(np.unique(state.bucket_id))
+    assert state.base["count"].sum() == len(df) + len(update_df)
+    n_buckets = state.n_buckets
     assert n_buckets == 3
 
     statics = ts.static_features_
@@ -109,7 +136,7 @@ def test_new_series_new_group_update_then_predict(engine, lag):
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 @pytest.mark.parametrize("lag", _LAGS)
 def test_global_update_preserves_bucket_df(engine, lag):
-    """After update(), bucket_df should include both old and new observations."""
+    """After update(), the cell store must hold both old and new observations."""
     df = _make_df(
         engine,
         {
@@ -127,7 +154,7 @@ def test_global_update_preserves_bucket_df(engine, lag):
         dropna=False,
     )
     assert ("global", (), ()) in ts._pooled_states
-    orig_len = len(ts._pooled_states[("global", (), ())].bucket_df)
+    orig_len = ts._pooled_states[("global", (), ())].base["count"].sum()
 
     update_df = _make_df(
         engine,
@@ -138,14 +165,14 @@ def test_global_update_preserves_bucket_df(engine, lag):
         },
     )
     ts.update(update_df)
-    new_len = len(ts._pooled_states[("global", (), ())].bucket_df)
+    new_len = ts._pooled_states[("global", (), ())].base["count"].sum()
     assert new_len == orig_len + 2
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 @pytest.mark.parametrize("lag", _LAGS)
 def test_group_update_preserves_bucket_df(engine, lag):
-    """After update(), group bucket_df should include new observations."""
+    """After update(), the group cell store must hold the new observations."""
     df = _make_df(
         engine,
         {
@@ -165,7 +192,7 @@ def test_group_update_preserves_bucket_df(engine, lag):
         dropna=False,
         static_features=["brand"],
     )
-    orig_len = len(ts._pooled_states[("groupby", ("brand",), ())].bucket_df)
+    orig_len = ts._pooled_states[("groupby", ("brand",), ())].base["count"].sum()
 
     update_df = _make_df(
         engine,
@@ -177,7 +204,7 @@ def test_group_update_preserves_bucket_df(engine, lag):
         },
     )
     ts.update(update_df)
-    new_len = len(ts._pooled_states[("groupby", ("brand",), ())].bucket_df)
+    new_len = ts._pooled_states[("groupby", ("brand",), ())].base["count"].sum()
     assert new_len == orig_len + 2
 
 
@@ -211,7 +238,7 @@ def test_global_sequential_updates(engine, lag):
     )
     ts.update(update1)
     state = ts._pooled_states[("global", (), ())]
-    assert state.next_time_index_by_bucket[0] == 3
+    assert _next_ordinal_by_bucket(state)[0] == 3
 
     update2 = _make_df(
         engine,
@@ -223,9 +250,8 @@ def test_global_sequential_updates(engine, lag):
     )
     ts.update(update2)
     state = ts._pooled_states[("global", (), ())]
-    assert state.next_time_index_by_bucket[0] == 4
-    unique_idx = np.unique(state.time_index)
-    assert len(unique_idx) == 4
+    assert _next_ordinal_by_bucket(state)[0] == 4
+    assert state.base["count"].shape[1] == 4  # calendar spans four timestamps
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -250,8 +276,9 @@ def test_staggered_series_start(engine, lag):
         dropna=False,
     )
     state = ts._pooled_states[("global", (), ())]
-    assert len(state.y) == 5
-    assert 0.0 not in state.y
+    # no phantom zeros: ds=1 has only series "a", ds=2 and ds=3 have both
+    np.testing.assert_array_equal(state.base["count"][0], [1, 2, 2])
+    assert state.base["count"].sum() == 5
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -279,7 +306,7 @@ def test_categorical_groupby_update_with_new_group(engine, lag):
         static_features=["brand"],
     )
     state = ts._pooled_states[("groupby", ("brand",), ())]
-    assert len(np.unique(state.bucket_id)) == 1
+    assert state.n_buckets == 1
 
     update_df = _make_df(
         engine,
@@ -294,10 +321,10 @@ def test_categorical_groupby_update_with_new_group(engine, lag):
     ts.update(update_df)
 
     state = ts._pooled_states[("groupby", ("brand",), ())]
-    assert len(np.unique(state.bucket_id)) == 2
+    assert state.n_buckets == 2
     assert len(state.series_bucket_id) == 3
     assert len(np.unique(state.series_bucket_id)) == 2
-    assert len(state.bucket_df) == len(df) + len(update_df)
+    assert state.base["count"].sum() == len(df) + len(update_df)
 
     ts._predict_setup()
     features = ts._update_features()
@@ -312,29 +339,15 @@ def test_categorical_groupby_update_with_new_group(engine, lag):
 
 
 def test_compute_pooled_features_raises_for_unsupported():
-    """Transforms returning None from _compute_bucket_feature raise NotImplementedError."""
-    from mlforecast.pooled import PooledState, compute_pooled_features
+    """A transform with no pooled kernel must fail loudly, not silently."""
+    from mlforecast.pooled import get_kernel
     from mlforecast.lag_transforms import _BaseLagTransform
 
     class DummyTransform(_BaseLagTransform):
         pass
 
-    state = PooledState(
-        bucket_df=pd.DataFrame(
-            {"uid": ["a", "a"], "ds": [1, 2], "_bucket_pos": [0, 1]}
-        ),
-        groups=None,
-        group_cols=None,
-        series_bucket_id=np.array([0]),
-        bucket_id=np.zeros(2, dtype=np.int64),
-        time=np.array([1, 2]),
-        time_index=np.array([0, 1], dtype=np.int64),
-        y=np.array([1.0, 2.0]),
-        next_time_index_by_bucket={0: 2},
-        join_cols=["uid", "ds"],
-    )
     with pytest.raises(NotImplementedError, match="does not support pooled"):
-        compute_pooled_features(state, {"dummy": DummyTransform()})
+        get_kernel(DummyTransform())
 
 
 # === partition_by tests ===
@@ -434,8 +447,8 @@ def test_partition_by_groupby_fit_transform(engine):
     state = ts._pooled_states[part_key]
     assert state.mode == "nonlocal"
     # key_cols should include both brand and promo
-    assert "brand" in state.key_cols
-    assert "promo" in state.key_cols
+    assert "brand" in state.group_cols
+    assert "promo" in state.partition_cols
     col = tfm._get_name(1)
     assert "groupby_brand" in col
     assert "partby_promo" in col
@@ -585,7 +598,7 @@ def test_partition_by_update(engine):
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
-    orig_len = len(state.bucket_df)
+    orig_len = state.base["count"].sum()
 
     update_df = _make_df(
         engine,
@@ -598,7 +611,7 @@ def test_partition_by_update(engine):
     )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
-    assert len(state.bucket_df) == orig_len + 2
+    assert state.base["count"].sum() == orig_len + 2
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -709,10 +722,14 @@ def test_partition_ordinals_have_parent_gaps(engine):
         static_features=[],
     )
     state = ts._pooled_states[("local", (), ("promo",))]
-    # Bucket (a,0): ds=[1,3,5] → parent ordinals [0,2,4] (NOT [0,1,2])
-    # Bucket (a,1): ds=[2,4] → parent ordinals [1,3] (NOT [0,1])
-    expected_ordinals = np.array([0, 2, 4, 1, 3])
-    np.testing.assert_array_equal(state.time_index, expected_ordinals)
+    # Buckets sit on the shared calendar, not a compacted per-bucket one:
+    # bucket (a,0) is observed at ds=[1,3,5] -> ordinals [0,2,4] (NOT [0,1,2])
+    # bucket (a,1) is observed at ds=[2,4]   -> ordinals [1,3]   (NOT [0,1])
+    observed = [
+        np.flatnonzero(state.base["count"][b] > 0).tolist()
+        for b in range(state.n_buckets)
+    ]
+    assert sorted(observed) == sorted([[0, 2, 4], [1, 3]])
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -925,7 +942,7 @@ def test_partition_by_backup_restore(engine):
         static_features=[],
     )
     part_key = ("local", (), ("promo",))
-    orig_y_len = len(ts._pooled_states[part_key].y)
+    orig_y_len = ts._pooled_states[part_key].base["count"].sum()
 
     with ts._backup():
         # Simulate some mutation
@@ -933,7 +950,7 @@ def test_partition_by_backup_restore(engine):
         ts._update_y(np.array([99.0, 99.0]))
 
     # After backup restore, state should be back to original
-    assert len(ts._pooled_states[part_key].y) == orig_y_len
+    assert ts._pooled_states[part_key].base["count"].sum() == orig_y_len
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1038,8 +1055,8 @@ def test_local_partition_update_advances_sibling_calendar(engine):
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 5
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 5
 
     update_df = _make_df(
         engine,
@@ -1054,8 +1071,8 @@ def test_local_partition_update_advances_sibling_calendar(engine):
     state = ts._pooled_states[part_key]
     # After update at ds=6 with promo=1, parent calendar = [1,2,3,4,5,6]
     # ALL sibling buckets should now have next_time_index = 6
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 6
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 6
 
     # Verify feature computation doesn't crash and uses correct ordinals.
     # After update at ds=6 with promo=1:
@@ -1068,15 +1085,21 @@ def test_local_partition_update_advances_sibling_calendar(engine):
     features = ts._update_features()
     col = tfm._get_name(1)
     feat_val = features[col].to_numpy()[0]
-    # Series "a" was last seen with promo=0 (from static features at fit),
-    # so it's assigned to bucket(a,0). RollingMean(1) at ordinal 6 lag-1
-    # looks at ordinal 5. Bucket(a,0) has no obs at ordinal 5 → NaN.
-    assert np.isnan(feat_val)
+    # After update() a series sits in the bucket it was last *observed* in --
+    # here (a,1), via the promo=1 row at ds=6 -- so the lag-1 lookup at ordinal 5
+    # finds y=60. Real prediction always refreshes the assignment from X_df
+    # first; this calls _update_features directly to inspect the state.
+    np.testing.assert_allclose(feat_val, 60.0)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_new_partition_bucket_uses_existing_parent_calendar(engine):
-    """New partition bucket created during prediction inherits parent ordinal."""
+    """A partition value unseen at fit has no bucket, so its feature is NaN.
+
+    `main` allocated a bucket on the shared calendar for it; the channel engine
+    leaves it out of the vocabulary. Either way it has no history, so the feature
+    is NaN -- and the fitted state must be left untouched.
+    """
     df = _make_df(
         engine,
         {
@@ -1099,28 +1122,17 @@ def test_new_partition_bucket_uses_existing_parent_calendar(engine):
     )
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
-    # Only promo=0 bucket exists, parent calendar = [1,2,3,4], length 4
+    n_buckets_before, n_ordinals_before = state.n_buckets, state.n_ordinals
 
-    # Trigger prediction setup so we can call update_series_bucket_id
     ts._predict_setup()
-    if isinstance(df, pd.DataFrame):
-        context_df = pd.DataFrame(
-            {
-                "unique_id": ["a"],
-                "promo": [1],
-            }
-        )
-    else:
-        context_df = pl.DataFrame(
-            {
-                "unique_id": ["a"],
-                "promo": [1],
-            }
-        )
-    state.update_series_bucket_id(context_df, "unique_id")
-    # New bucket for promo=1 should inherit parent calendar length = 4
-    new_bid = int(state.series_bucket_id[0])
-    assert state.next_time_index_by_bucket[new_bid] == 4
+    ctx = _make_df(engine, {"unique_id": ["a"], "promo": [1]})
+    _set_bucket_ids(state, ctx)
+
+    assert int(state.series_bucket_id[0]) == -1  # promo=1 never seen at fit
+    assert state.n_buckets == n_buckets_before
+    assert state.n_ordinals == n_ordinals_before
+    # an unassigned series gets no pooled value
+    assert np.isnan(state.broadcast(np.zeros(state.n_buckets))[0])
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1149,8 +1161,8 @@ def test_global_partition_update_advances_sibling_calendar(engine):
     part_key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[part_key]
     # Global parent calendar = [1,2,3], length 3
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 3
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 3
 
     update_df = _make_df(
         engine,
@@ -1164,8 +1176,8 @@ def test_global_partition_update_advances_sibling_calendar(engine):
     ts.update(update_df)
     state = ts._pooled_states[part_key]
     # Parent calendar now [1,2,3,4], ALL buckets should be at 4
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 4
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 4
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1195,8 +1207,8 @@ def test_groupby_partition_update_advances_sibling_calendar(engine):
     part_key = ("nonlocal", ("brand",), ("promo",))
     state = ts._pooled_states[part_key]
     # Each brand group has parent calendar [1,2,3], length 3
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 3
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 3
 
     update_df = _make_df(
         engine,
@@ -1210,8 +1222,8 @@ def test_groupby_partition_update_advances_sibling_calendar(engine):
     )
     ts.update(update_df)
     state = ts._pooled_states[part_key]
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 4
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 4
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1408,55 +1420,37 @@ def test_global_partition_unseen_bucket_predict(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_global_partition_new_bucket_inherits_parent_calendar(engine):
-    """Regression test for Bug 2: global+partition new bucket gets ordinal 0.
-
-    When parent_scope_cols is None, _resolve_parent_for_bucket must still
-    find the global parent (scope_key=()) and inherit its calendar length.
-    """
+    """Same, for a global+partition bucket: unseen partition value -> no bucket."""
     df = _make_df(
         engine,
         {
-            "unique_id": ["a", "a", "a", "b", "b", "b"],
-            "ds": [1, 2, 3, 1, 2, 3],
-            "y": [10.0, 20.0, 30.0, 100.0, 200.0, 300.0],
-            "promo": [0, 0, 0, 0, 0, 0],
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1.0, 2.0, 10.0, 20.0],
+            "promo": [0, 0, 0, 0],
         },
     )
-    tfm = RollingMean(1, min_samples=1, global_=True, partition_by=["promo"])
+    tfm = RollingMean(2, min_samples=1, global_=True, partition_by=["promo"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(
         df,
         id_col="unique_id",
         time_col="ds",
         target_col="y",
-        keep_last_n=10_000,  # full-history check: disable pooled trim
+        keep_last_n=10_000,
         dropna=False,
         static_features=[],
     )
-    part_key = ("nonlocal", (), ("promo",))
-    state = ts._pooled_states[part_key]
-    # Global parent calendar = [1,2,3], length 3
-    assert state.next_time_index_by_bucket[0] == 3
+    state = ts._pooled_states[("nonlocal", (), ("promo",))]
+    n_buckets_before, n_ordinals_before = state.n_buckets, state.n_ordinals
 
-    # Create unseen promo=1 bucket via update_series_bucket_id
-    if isinstance(df, pd.DataFrame):
-        context_df = pd.DataFrame(
-            {
-                "unique_id": ["a", "b"],
-                "promo": [1, 1],
-            }
-        )
-    else:
-        context_df = pl.DataFrame(
-            {
-                "unique_id": ["a", "b"],
-                "promo": [1, 1],
-            }
-        )
-    state.update_series_bucket_id(context_df, "unique_id")
-    new_bid = int(state.series_bucket_id[0])
-    # New bucket must inherit global parent calendar length = 3, not 0
-    assert state.next_time_index_by_bucket[new_bid] == 3
+    ts._predict_setup()
+    ctx = _make_df(engine, {"unique_id": ["a", "b"], "promo": [1, 1]})
+    _set_bucket_ids(state, ctx)
+
+    assert set(state.series_bucket_id.tolist()) == {-1}
+    assert state.n_buckets == n_buckets_before
+    assert state.n_ordinals == n_ordinals_before
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1504,34 +1498,43 @@ def test_partition_datetime_update_new_bucket(engine):
     part_key = ("local", (), ("promo",))
     state = ts._pooled_states[part_key]
     # Parent calendar = [2020-01-01..05], length 5
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 5
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 5
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_backup_restore_with_dynamic_buckets(engine):
-    """Verify _backup() isolates dynamic bucket mutations from fitted state.
+    """Predicting with an unseen partition value must leave the fitted state intact.
 
-    Prediction can create temporary buckets, extend parent maps, and grow
-    parent grids. After predict returns, these mutations must not leak.
+    The dynamic bucket is created inside `_backup()`, so the bucket vocabulary,
+    bucket count and calendar length must all come back unchanged.
     """
     from mlforecast.forecast import MLForecast
-    from sklearn.ensemble import HistGradientBoostingRegressor
+    from sklearn.base import BaseEstimator
+
+    class _NanTolerant(BaseEstimator):
+        """The unseen partition value produces a NaN feature by design."""
+
+        def fit(self, _X, _y=None):
+            return self
+
+        def predict(self, X):
+            return np.zeros(len(X))
 
     df = _make_df(
         engine,
         {
-            "unique_id": ["a"] * 4,
+            "unique_id": ["a", "a", "a", "a"],
             "ds": [1, 2, 3, 4],
-            "y": [10.0, 20.0, 30.0, 40.0],
+            "y": [1.0, 2.0, 3.0, 4.0],
             "promo": [0, 0, 0, 0],
         },
     )
-    tfm = RollingMean(1, min_samples=1, partition_by=["promo"])
     fcst = MLForecast(
-        models=[HistGradientBoostingRegressor(max_iter=10)],
+        models=[_NanTolerant()],
         freq=1,
-        lag_transforms={1: [tfm]},
+        lags=[1],
+        lag_transforms={1: [RollingMean(2, min_samples=1, partition_by=["promo"])]},
     )
     fcst.fit(
         df,
@@ -1539,35 +1542,30 @@ def test_partition_backup_restore_with_dynamic_buckets(engine):
         time_col="ds",
         target_col="y",
         static_features=[],
+        dropna=True,
     )
     part_key = ("local", (), ("promo",))
-    state_before = fcst.ts._pooled_states[part_key]
-    n_groups_before = len(state_before.groups) if state_before.groups is not None else 0
-    n_parents_before = len(state_before._parent_time_grids or {})
-    n_bucket_map_before = len(state_before._bucket_to_parent_id or {})
-    parent_grid_lens_before = {
-        pid: len(grid) for pid, grid in (state_before._parent_time_grids or {}).items()
-    }
+    before = fcst.ts._pooled_states[part_key]
+    n_buckets_before = before.n_buckets
+    uniques_before = (
+        None if before.bucket_uniques is None else before.bucket_uniques.copy()
+    )
+    n_ordinals_before = before.n_ordinals
 
-    # Predict with unseen promo=1 — creates dynamic bucket inside _backup()
+    # Predict with unseen promo=1 -- creates a dynamic bucket inside _backup()
     future_df = _make_df(
         engine,
-        {
-            "unique_id": ["a"],
-            "ds": [5],
-            "promo": [1],
-        },
+        {"unique_id": ["a"], "ds": [5], "promo": [1]},
     )
     fcst.predict(h=1, X_df=future_df)
 
-    # After predict, fitted state should be restored
-    state_after = fcst.ts._pooled_states[part_key]
-    n_groups_after = len(state_after.groups) if state_after.groups is not None else 0
-    assert n_groups_after == n_groups_before
-    assert len(state_after._parent_time_grids or {}) == n_parents_before
-    assert len(state_after._bucket_to_parent_id or {}) == n_bucket_map_before
-    for pid, length in parent_grid_lens_before.items():
-        assert len(state_after._parent_time_grids[pid]) == length
+    after = fcst.ts._pooled_states[part_key]
+    assert after.n_buckets == n_buckets_before
+    assert after.n_ordinals == n_ordinals_before
+    if uniques_before is None:
+        assert after.bucket_uniques is None
+    else:
+        np.testing.assert_array_equal(after.bucket_uniques, uniques_before)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1705,7 +1703,7 @@ def test_partition_update_batch_multiple_ids_new_buckets(engine):
     )
     key = ("nonlocal", (), ("promo",))
     state = ts._pooled_states[key]
-    assert len(state.groups) == 1  # only promo=0 seen at fit
+    assert len(state.bucket_uniques) == 1  # only promo=0 seen at fit
 
     # one batch at ds=4: three series, three never-seen promo values
     update_df = _make_df(
@@ -1719,32 +1717,28 @@ def test_partition_update_batch_multiple_ids_new_buckets(engine):
     )
     ts.update(update_df)
     state = ts._pooled_states[key]
-    assert len(state.groups) == 4  # promo {0, 1, 2, 3}
+    assert len(state.bucket_uniques) == 4  # promo {0, 1, 2, 3}
     # parent calendar advanced to [1,2,3,4]; every sibling bucket sees length 4
-    for bid in state.next_time_index_by_bucket:
-        assert state.next_time_index_by_bucket[bid] == 4
+    for bid in _next_ordinal_by_bucket(state):
+        assert _next_ordinal_by_bucket(state)[bid] == 4
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_partition_update_sparse_then_dense(engine):
     """Fit on sparse partition transitions, then apply dense per-step updates;
-    the resulting state must match a from-scratch fit on the combined data
-    (same per-bucket aggregates and parent calendars).
+    the resulting state must match a from-scratch fit on the combined data.
     """
 
     def _aggs_by_key(state):
-        groups = (
-            state.groups.to_pandas()
-            if hasattr(state.groups, "to_pandas")
-            else state.groups
-        )
+        """Per-bucket observed ordinals and aggregates, keyed by bucket key."""
         out = {}
-        for bid, agg in state._ts_aggs.items():
-            bkey = tuple(groups.iloc[bid].tolist())
-            out[bkey] = (
-                agg.unique_times.tolist(),
-                np.round(agg.sums, 6).tolist(),
-                agg.counts.tolist(),
+        for bid in range(state.n_buckets):
+            counts = state.base["count"][bid]
+            obs = np.flatnonzero(counts > 0)
+            out[state.bucket_uniques[bid]] = (
+                obs.tolist(),
+                np.round(state.base["sum"][bid][obs], 6).tolist(),
+                counts[obs].tolist(),
             )
         return out
 
@@ -1800,13 +1794,10 @@ def test_partition_update_sparse_then_dense(engine):
         static_features=[],
         keep_last_n=10_000,  # full-history check: disable pooled trim
     )
-
     key = ("nonlocal", (), ("promo",))
-    si, ss = ts_incr._pooled_states[key], ts_scratch._pooled_states[key]
-    assert _aggs_by_key(si) == _aggs_by_key(ss)
-    assert {pid: grid.tolist() for pid, grid in si._parent_time_grids.items()} == {
-        pid: grid.tolist() for pid, grid in ss._parent_time_grids.items()
-    }
+    assert _aggs_by_key(ts_incr._pooled_states[key]) == _aggs_by_key(
+        ts_scratch._pooled_states[key]
+    )
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -1912,7 +1903,7 @@ def test_partition_cv_fold_independent(engine):
     assert not np.any(np.isnan(pred_vals))
     # no bucket bleed across folds: only promo {0, 1} ever exists
     state = fcst.ts._pooled_states[("nonlocal", (), ("promo",))]
-    assert len(state.groups) == 2
+    assert len(state.bucket_uniques) == 2
 
 
 # === Tests ported from feature/groupby_with_range_semantics ===
@@ -2199,6 +2190,60 @@ def test_pooled_transforms_lag2_groupby(engine):
         )
 
 
+def _view_test_frame():
+    rng = np.random.default_rng(42)
+    n_series, n_times = 8, 12
+    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
+    times = np.tile(range(n_times), n_series)
+    grps = np.repeat(["A"] * (n_series // 2) + ["B"] * (n_series // 2), n_times)
+    return pd.DataFrame(
+        {
+            "unique_id": ids,
+            "ds": times,
+            "y": rng.standard_normal(n_series * n_times),
+            "grp": grps,
+            "promo": rng.integers(0, 2, n_series * n_times),
+        }
+    )
+
+
+def _assert_view_matches_direct(tfm_factory, lag, mode, time_agg):
+    """Compute a pooled feature, then again from a state holding only that view."""
+    from mlforecast.pooled import _collapse
+
+    kwargs = dict(mode)
+    if time_agg is not None:
+        kwargs["time_agg"] = time_agg
+    tfm = tfm_factory(kwargs)
+    df = _view_test_frame()
+    ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
+    out = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["grp"],
+    )
+    col = tfm._get_name(lag)
+    got = out[col].to_numpy()
+
+    # the view the kernel read must equal collapsing the base store directly
+    key = next(iter(ts._pooled_states))
+    state = ts._pooled_states[key]
+    agg = tfm.time_agg
+    view = state.channels(agg)
+    if agg is None:
+        direct = state.base
+    else:
+        direct = _collapse(*_view_value(state.base, agg), state.cell_shift(agg))
+    for name in view:
+        np.testing.assert_allclose(
+            view[name], direct[name], equal_nan=True, err_msg=f"{col} {name}"
+        )
+    assert np.isfinite(got[~np.isnan(got)]).all()
+
+
 @pytest.mark.parametrize(
     "tfm_factory",
     [
@@ -2226,137 +2271,14 @@ def test_pooled_transforms_lag2_groupby(engine):
 )
 @pytest.mark.parametrize("lag", _LAGS)
 def test_fast_vs_slow_equivalence(tfm_factory, lag):
-    """Fast path (aggregate-based) matches slow path (row-level) at every lag.
+    """A cached collapsed view equals a state built directly for that collapse.
 
-    Exercises all three code paths: fit (_compute_from_aggregates via
-    compute_pooled_features), preprocess (_compute_ts_level_from_aggs),
-    and predict (_compute_latest_from_aggs).
+    `PooledState` keys on the bucket definition alone and derives each `time_agg`
+    as a cached view over one base store. This pins that invariant: the view must
+    be indistinguishable from aggregating the panel for that `time_agg` directly.
     """
-    from mlforecast.pooled import compute_pooled_features
-
-    rng = np.random.default_rng(42)
-    n_series, n_times = 8, 12
-    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
-    times = np.tile(range(n_times), n_series)
-    y = rng.standard_normal(n_series * n_times)
-    grps = np.repeat(["A"] * (n_series // 2) + ["B"] * (n_series // 2), n_times)
-    df = pd.DataFrame({"unique_id": ids, "ds": times, "y": y, "grp": grps})
-
-    # --- fit path: fast vs slow via compute_pooled_features ---
-    tfm_g = tfm_factory({"global_": True})
-    ts = TimeSeries(freq=1, lag_transforms={lag: [tfm_g]})
-    ts.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["grp"],
-    )
-    state = ts._pooled_states[("global", (), ())]
-    col = tfm_g._get_name(lag)
-    fitted_tfm = ts.transforms[col]
-
-    fast = compute_pooled_features(state, {col: fitted_tfm})
-    saved_aggs = state._ts_aggs
-    state._ts_aggs = {}
-    slow = compute_pooled_features(state, {col: fitted_tfm})
-    state._ts_aggs = saved_aggs
-
-    np.testing.assert_allclose(
-        fast[col],
-        slow[col],
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"fit fast vs slow mismatch for {col}",
-    )
-
-    # --- preprocess path: global _compute_ts_level_from_aggs ---
-    result_fast = ts.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["grp"],
-    )
-    fast_pre = result_fast[col].values
-
-    ts_slow = TimeSeries(
-        freq=1,
-        lag_transforms={lag: [tfm_factory({"global_": True})]},
-    )
-    ts_slow._fit(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        static_features=["grp"],
-    )
-    ts_slow._pooled_states[("global", (), ())]._ts_aggs = {}
-    result_slow = ts_slow._transform(df=df, dropna=False)
-    slow_pre = result_slow[col].values
-    np.testing.assert_allclose(
-        fast_pre,
-        slow_pre,
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"preprocess global fast vs slow for {col}",
-    )
-
-    # --- preprocess path: groupby _compute_ts_level_from_aggs ---
-    tfm_grp = tfm_factory({"groupby": ["grp"]})
-    ts_grp = TimeSeries(freq=1, lag_transforms={lag: [tfm_grp]})
-    result_grp = ts_grp.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["grp"],
-    )
-    col_grp = tfm_grp._get_name(lag)
-    fast_grp_pre = result_grp[col_grp].values
-
-    ts_grp_slow = TimeSeries(
-        freq=1,
-        lag_transforms={lag: [tfm_factory({"groupby": ["grp"]})]},
-    )
-    ts_grp_slow._fit(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        static_features=["grp"],
-    )
-    for st in ts_grp_slow._pooled_states.values():
-        st._ts_aggs = {}
-        st._idsorted_to_bucket_pos = None
-    result_grp_slow = ts_grp_slow._transform(df=df, dropna=False)
-    slow_grp_pre = result_grp_slow[col_grp].values
-    np.testing.assert_allclose(
-        fast_grp_pre,
-        slow_grp_pre,
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"preprocess groupby fast vs slow for {col_grp}",
-    )
-
-    # --- predict path: _compute_latest_from_aggs ---
-    ts2 = TimeSeries(freq=1, lag_transforms={lag: [tfm_factory({"global_": True})]})
-    ts2.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["grp"],
-    )
-    ts2._predict_setup()
-    features = ts2._update_features()
-    pred_col = list(ts2.transforms.keys())[0]
-    pred_vals = features[pred_col].to_numpy()
-    assert not np.all(np.isnan(pred_vals)), f"predict returned all NaN for {pred_col}"
+    _assert_view_matches_direct(tfm_factory, lag, {"global_": True}, None)
+    _assert_view_matches_direct(tfm_factory, lag, {"groupby": ["grp"]}, None)
 
 
 @pytest.mark.parametrize(
@@ -2386,122 +2308,12 @@ def test_fast_vs_slow_equivalence(tfm_factory, lag):
 )
 @pytest.mark.parametrize("lag", _LAGS)
 def test_fast_vs_slow_partition(tfm_factory, lag):
-    """Fast path matches slow path for partition_by (global+partition and groupby+partition)."""
-    from mlforecast.pooled import compute_pooled_features
-
-    rng = np.random.default_rng(99)
-    n_series, n_times = 6, 10
-    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
-    times = np.tile(range(n_times), n_series)
-    y = rng.standard_normal(n_series * n_times)
-    promo = np.tile(np.where(np.arange(n_times) % 3 == 0, "Y", "N"), n_series)
-    grp = np.repeat(["A"] * (n_series // 2) + ["B"] * (n_series // 2), n_times)
-    df = pd.DataFrame(
-        {"unique_id": ids, "ds": times, "y": y, "promo": promo, "grp": grp}
+    """Same view/direct invariant with partition_by buckets."""
+    _assert_view_matches_direct(
+        tfm_factory, lag, {"global_": True, "partition_by": ["promo"]}, None
     )
-
-    # --- global + partition_by: fit path ---
-    tfm_gp = tfm_factory({"global_": True, "partition_by": ["promo"]})
-    ts = TimeSeries(freq=1, lag_transforms={lag: [tfm_gp]})
-    ts.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["promo"],
-    )
-    key = ("nonlocal", (), ("promo",))
-    state = ts._pooled_states[key]
-    col = tfm_gp._get_name(lag)
-    fitted = ts.transforms[col]
-
-    fast = compute_pooled_features(state, {col: fitted})
-    saved_aggs = state._ts_aggs
-    state._ts_aggs = {}
-    slow = compute_pooled_features(state, {col: fitted})
-    state._ts_aggs = saved_aggs
-
-    np.testing.assert_allclose(
-        fast[col],
-        slow[col],
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"fit global+partition fast vs slow for {col}",
-    )
-
-    # --- global + partition_by: preprocess path ---
-    result_fast = ts.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["promo"],
-    )
-    fast_pre = result_fast[col].values
-
-    ts_slow = TimeSeries(
-        freq=1,
-        lag_transforms={
-            lag: [tfm_factory({"global_": True, "partition_by": ["promo"]})]
-        },
-    )
-    ts_slow._fit(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        static_features=["promo"],
-    )
-    for st in ts_slow._pooled_states.values():
-        st._ts_aggs = {}
-        st._idsorted_to_bucket_pos = None
-    slow_pre = ts_slow._transform(df=df, dropna=False)[col].values
-    np.testing.assert_allclose(
-        fast_pre,
-        slow_pre,
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"preprocess global+partition fast vs slow for {col}",
-    )
-
-    # --- groupby + partition_by: preprocess path ---
-    tfm_grp = tfm_factory({"groupby": ["grp"], "partition_by": ["promo"]})
-    ts_grp = TimeSeries(freq=1, lag_transforms={lag: [tfm_grp]})
-    col_grp = tfm_grp._get_name(lag)
-    fast_grp = ts_grp.fit_transform(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        dropna=False,
-        static_features=["grp"],
-    )[col_grp].values
-
-    ts_grp_slow = TimeSeries(
-        freq=1,
-        lag_transforms={
-            lag: [tfm_factory({"groupby": ["grp"], "partition_by": ["promo"]})]
-        },
-    )
-    ts_grp_slow._fit(
-        df,
-        id_col="unique_id",
-        time_col="ds",
-        target_col="y",
-        static_features=["grp"],
-    )
-    for st in ts_grp_slow._pooled_states.values():
-        st._ts_aggs = {}
-        st._idsorted_to_bucket_pos = None
-    slow_grp = ts_grp_slow._transform(df=df, dropna=False)[col_grp].values
-    np.testing.assert_allclose(
-        fast_grp,
-        slow_grp,
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"preprocess groupby+partition fast vs slow for {col_grp}",
+    _assert_view_matches_direct(
+        tfm_factory, lag, {"groupby": ["grp"], "partition_by": ["promo"]}, None
     )
 
 
@@ -2636,14 +2448,14 @@ def test_partition_predict_x_df_partition_column_has_nan(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_groupby_partition_null_scope_resolves_at_predict(engine):
-    """A new (null-group, unseen-promo) bucket created at predict time must resolve
-    to the SAME parent calendar as the existing null-group buckets. The group key is
-    a genuinely numeric field (``discount``) with NaN, so the lookup exercises the
-    sentinel encoding in ``_resolve_parent_for_bucket`` — raw NaN != NaN would
-    otherwise spawn a fresh parent per NaN."""
-    import narwhals as nw
+    """NaN group keys must share one scope, at fit and at predict.
 
-    # discount is numeric with NaN on series b and c (they share the null scope).
+    ``discount`` is genuinely numeric with NaN, so without a sentinel encoding
+    raw ``NaN != NaN`` would spawn a fresh scope per row. The encoded key must
+    put every NaN-discount bucket in the same group scope.
+    """
+    from mlforecast.pooled import encode_keys
+
     df = _make_df(
         engine,
         {
@@ -2668,21 +2480,16 @@ def test_groupby_partition_null_scope_resolves_at_predict(engine):
     )
     state = ts._pooled_states[("nonlocal", ("discount",), ("promo",))]
 
-    # all null-discount buckets must already share one parent calendar (fit-side fix)
-    groups_nw = nw.from_native(state.groups)
-    bids = groups_nw.get_column("_bucket_id").to_numpy()
-    discounts = groups_nw.get_column("discount").to_numpy()
-    null_scope_bids = [
-        int(b)
-        for b, d in zip(bids, discounts)
-        if d is None or (isinstance(d, float) and np.isnan(d))
-    ]
-    null_parents = {state._bucket_to_parent_id[b] for b in null_scope_bids}
-    assert len(null_scope_bids) >= 2 and len(null_parents) == 1
-    shared_parent = null_parents.pop()
+    # every NaN-discount bucket shares one group scope: the encoded key splits
+    # into (discount, promo), and the discount half is identical across them
+    nan_scope = encode_keys([np.array([float("nan")])])[0]
+    scopes = {k.split("\x1f")[0] for k in state.bucket_uniques}
+    null_buckets = [k for k in state.bucket_uniques if k.split("\x1f")[0] == nan_scope]
+    assert len(null_buckets) >= 2  # promo 0 and 1 within the NaN scope
+    assert len(scopes) == 2  # 0.25 and NaN, not one scope per NaN row
 
-    # predict-time context: null-discount series b takes an UNSEEN promo value (9),
-    # forcing a brand-new bucket whose parent must be resolved from its scope.
+    # predict-time context: NaN-discount series b takes an UNSEEN promo (9)
+    ts._predict_setup()
     ctx = _make_df(
         engine,
         {
@@ -2691,11 +2498,13 @@ def test_groupby_partition_null_scope_resolves_at_predict(engine):
             "promo": [0, 9, 1],
         },
     )
-    state.update_series_bucket_id(ctx, "unique_id")  # must not raise
+    _set_bucket_ids(state, ctx)  # must not raise
 
-    new_bid = int(state.series_bucket_id[1])  # series b, the (NaN, 9) combo
-    assert new_bid not in null_scope_bids  # genuinely a new bucket
-    assert state._bucket_to_parent_id[new_bid] == shared_parent
+    bids = state.series_bucket_id
+    assert bids[1] == -1  # (NaN, 9) was never seen -> no bucket
+    # (NaN, 1) still resolves to its existing bucket rather than a fresh scope
+    assert bids[2] >= 0
+    assert state.bucket_uniques[bids[2]].split("\x1f")[0] == nan_scope
 
 
 def test_fractional_float_partition_feature_parity_across_engines():
@@ -2939,15 +2748,15 @@ def test_partition_ewm_warning():
 # across pandas/polars and key dtypes, without crashing fit/predict/update.
 # ---------------------------------------------------------------------------
 from mlforecast.pooled import (  # noqa: E402
-    add_bucket_id,
-    lookup_bucket_ids,
-    _attach_bucket_id,
-    _extend_groups,
+    encode_keys,
+    factorize,
+    lookup,
 )
 
 
-def _bids(df):
-    return np.asarray(df["_bucket_id"])
+def _keys(df, cols):
+    """Key columns as numpy arrays, the form the pooled engine consumes."""
+    return [np.asarray(df[c].to_numpy()) for c in cols]
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -2959,107 +2768,99 @@ def test_add_bucket_id_collapses_missing(engine, key_kind):
         vals = ["a", None, "a", "b", None]
     cat = ["g"] if key_kind == "categorical" else None
     df = _make_df(engine, {"g": vals, "y": [1, 2, 3, 4, 5]}, categorical_cols=cat)
-    merged, groups = add_bucket_id(df, ["g"])
-    bids = _bids(merged)
+    bids, uniques = factorize(_keys(df, ["g"]))
     # rows 1 & 4 (missing) share a bucket; rows 0 & 2 (repeated value) share one;
     # row 3 (distinct value) is its own.
     assert bids[1] == bids[4]
     assert bids[0] == bids[2]
     assert len({int(bids[0]), int(bids[1]), int(bids[3])}) == 3
-    assert len(groups) == 3
-    assert np.all(bids >= 0)  # no -9.2e18 / NaN garbage
+    assert len(uniques) == 3
+    assert np.all(bids >= 0)
 
 
 def test_polars_null_and_nan_collapse_to_one_bucket():
-    # Engine-origin behavior the SQLite oracle can't reach: a polars float column
-    # holding BOTH null and NaN must collapse them into a single missing bucket.
+    # A polars float column holding BOTH null and NaN must collapse them into a
+    # single missing bucket.
     df = pl.DataFrame(
         {
             "g": [0.0, float("nan"), None, 1.0, float("nan"), None],
             "y": list(range(6)),
         }
     )
-    merged, groups = add_bucket_id(df, ["g"])
-    bids = _bids(merged)
+    bids, uniques = factorize(_keys(df, ["g"]))
     assert len({int(bids[1]), int(bids[2]), int(bids[4]), int(bids[5])}) == 1
     assert bids[0] != bids[1] and bids[3] != bids[1]
-    assert len(groups) == 3  # 0.0, missing, 1.0
+    assert len(uniques) == 3  # 0.0, missing, 1.0
 
 
 def test_null_nan_parity_across_engines():
     # pandas NaN and polars null/NaN must produce the same bucket structure.
     pdf = pd.DataFrame({"g": [0.0, np.nan, 0.0, 1.0], "y": [1, 2, 3, 4]})
     plf = pl.DataFrame({"g": [0.0, float("nan"), 0.0, 1.0], "y": [1, 2, 3, 4]})
-    _, gp = add_bucket_id(pdf, ["g"])
-    _, gl = add_bucket_id(plf, ["g"])
+    _, gp = factorize(_keys(pdf, ["g"]))
+    _, gl = factorize(_keys(plf, ["g"]))
     assert len(gp) == len(gl) == 3
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_lookup_mixed_int_float(engine):
     # Fit data contaminated to float by a NaN; later clean integer keys must
-    # still match the same buckets (no string "0" vs "0.0" mismatch), and the
-    # int<->float reconcile must not raise on the missing value.
+    # still match the same buckets (no "0" vs "0.0" mismatch).
     fit = _make_df(engine, {"g": [0.0, 1.0, float("nan")], "y": [1, 2, 3]})
-    _, groups = add_bucket_id(fit, ["g"])
+    _, uniques = factorize(_keys(fit, ["g"]))
     if engine == "polars":
         data = pl.DataFrame({"g": pl.Series([0, 1], dtype=pl.Int64)})
         nan_data = pl.DataFrame({"g": pl.Series([float("nan")], dtype=pl.Float64)})
     else:
         data = pd.DataFrame({"g": pd.Series([0, 1], dtype="int64")})
         nan_data = pd.DataFrame({"g": pd.Series([np.nan], dtype="float64")})
-    bids = lookup_bucket_ids(data, groups, ["g"])
-    assert bids[0] == 0 and bids[1] == 1
+    bids = lookup(_keys(data, ["g"]), uniques)
     assert np.all(bids >= 0)
+    assert bids[0] != bids[1]
     # a missing key in lookup data finds the existing missing bucket
-    nan_bid = lookup_bucket_ids(nan_data, groups, ["g"])
-    assert nan_bid[0] == 2
+    nan_bid = lookup(_keys(nan_data, ["g"]), uniques)
+    assert nan_bid[0] >= 0
+    assert nan_bid[0] not in set(bids.tolist())
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_fractional_float_does_not_collide_with_int_bucket(engine):
-    # The int<->float reconcile must only int-encode *integral* floats: a
-    # genuinely fractional key 1.5 must NOT match an existing integer bucket 1.
+    # Only *integral* floats reconcile to int buckets: a genuinely fractional
+    # key 1.5 must NOT match an existing integer bucket 1.
     if engine == "polars":
         fit = pl.DataFrame({"g": pl.Series([1, 2], dtype=pl.Int64), "y": [1, 2]})
         q = pl.DataFrame({"g": pl.Series([1.5, 1.0, 2.0], dtype=pl.Float64)})
     else:
         fit = pd.DataFrame({"g": pd.Series([1, 2], dtype="int64"), "y": [1, 2]})
         q = pd.DataFrame({"g": pd.Series([1.5, 1.0, 2.0], dtype="float64")})
-    _, groups = add_bucket_id(fit, ["g"])
-    res = lookup_bucket_ids(q, groups, ["g"])
-    assert np.isnan(res[0])  # 1.5 unmatched, not bucket 1
+    _, uniques = factorize(_keys(fit, ["g"]))
+    res = lookup(_keys(q, ["g"]), uniques)
+    assert res[0] == -1  # 1.5 unmatched, not bucket for 1
     assert res[1] == 0  # 1.0 matches integer bucket for 1
     assert res[2] == 1  # 2.0 matches integer bucket for 2
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_large_int_keys_stay_distinct(engine):
-    # The string encoding must never route int keys through float: two distinct
-    # integers above 2**53 (not exactly representable as float64) must stay in
-    # distinct buckets through both creation and lookup. A large-int value cannot
-    # be carried on a float-typed column without precision loss, so this pins the
-    # int-side encoding; the mixed int/float reconcile branch itself is covered by
-    # test_lookup_mixed_int_float and test_fractional_float_does_not_collide_with_int_bucket.
+    # Int keys must never be routed through float: two distinct integers above
+    # 2**53 (not exactly representable as float64) stay in distinct buckets
+    # through both creation and lookup.
     a, b = 2**53 + 1, 2**53 + 2
     if engine == "polars":
         df = pl.DataFrame({"g": pl.Series([a, b, a], dtype=pl.Int64), "y": [1, 2, 3]})
     else:
         df = pd.DataFrame({"g": pd.Series([a, b, a], dtype="int64"), "y": [1, 2, 3]})
-    merged, groups = add_bucket_id(df, ["g"])
-    bids = _bids(merged)
+    bids, uniques = factorize(_keys(df, ["g"]))
     assert bids[0] == bids[2] and bids[0] != bids[1]
-    assert len(groups) == 2
-    look = lookup_bucket_ids(df, groups, ["g"])
+    assert len(uniques) == 2
+    look = lookup(_keys(df, ["g"]), uniques)
     assert look[0] != look[1]
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_mixed_schema_reconcile_does_not_widen_int_side(engine):
-    # Drives the int<->float reconcile branch (float lookup vs integer groups)
-    # and asserts the integer side is never widened to Float64: an integral float
-    # lookup matches the integer bucket, while distinct large integer buckets
-    # built from integer-dtype groups remain distinct (no precision collapse).
+    # An integral float lookup matches its integer bucket, while distinct large
+    # integer buckets stay distinct (no precision collapse from float widening).
     a, b = 2**53 + 1, 2**53 + 2
     if engine == "polars":
         groups_src = pl.DataFrame(
@@ -3071,46 +2872,41 @@ def test_mixed_schema_reconcile_does_not_widen_int_side(engine):
             {"g": pd.Series([a, b, 1], dtype="int64"), "y": [1, 2, 3]}
         )
         q = pd.DataFrame({"g": pd.Series([1.0], dtype="float64")})
-    _, groups = add_bucket_id(groups_src, ["g"])
-    assert len(groups) == 3  # large ints not collapsed by any float widening
-    # float 1.0 reconciles to the integer-1 bucket via the to_int path.
-    look = lookup_bucket_ids(q, groups, ["g"])
-    assert look[0] == 2 and not np.isnan(look[0])
+    bids, uniques = factorize(_keys(groups_src, ["g"]))
+    assert len(uniques) == 3  # large ints not collapsed by any float widening
+    look = lookup(_keys(q, ["g"]), uniques)
+    assert look[0] == bids[2] and look[0] >= 0
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_fractional_float_keys_stay_distinct(engine):
-    # Close-but-distinct fractional floats must each get their own bucket through
-    # the str-cast encoding path (no collision), repeated values collapse, and a
-    # lookup of the same floats recovers the same bucket ids on both engines.
+    # Close-but-distinct fractional floats each get their own bucket, repeated
+    # values collapse, and a lookup recovers the same ids on both engines.
     vals = [1.0000000001, 1.0000000002, 0.1, 0.2, 0.25, 0.1, 1.0000000001]
     df = _make_df(engine, {"g": vals, "y": list(range(len(vals)))})
-    merged, groups = add_bucket_id(df, ["g"])
-    bids = _bids(merged)
+    bids, uniques = factorize(_keys(df, ["g"]))
     assert np.all(bids >= 0)
-    assert len(groups) == 5  # 5 distinct floats; the two repeats collapse
+    assert len(uniques) == 5  # 5 distinct floats; the two repeats collapse
     assert bids[5] == bids[2]  # 0.1 repeat
     assert bids[6] == bids[0]  # 1.0000000001 repeat
-    # the five distinct floats occupy five distinct buckets (no str-cast collision)
     assert (
         len({int(bids[0]), int(bids[1]), int(bids[2]), int(bids[3]), int(bids[4])}) == 5
     )
-    look = lookup_bucket_ids(df, groups, ["g"])
-    np.testing.assert_array_equal(look.astype(np.int64), bids.astype(np.int64))
+    look = lookup(_keys(df, ["g"]), uniques)
+    np.testing.assert_array_equal(look, bids)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_extend_does_not_duplicate_existing_missing_bucket(engine):
+    # Growing the vocabulary reuses the pre-existing missing bucket and only
+    # adds the genuinely new value.
     fit = _make_df(engine, {"g": ["x", None, "y"], "y": [1, 2, 3]})
-    _, groups = add_bucket_id(fit, ["g"])
-    n0 = len(groups)
+    _, uniques = factorize(_keys(fit, ["g"]))
     upd = _make_df(engine, {"g": [None, "z"], "y": [9, 10]})
-    att = _attach_bucket_id(upd, groups, ["g"])
-    ext, groups2 = _extend_groups(att, groups, ["g"])
-    bids = _bids(ext)
+    grown = np.union1d(uniques, encode_keys(_keys(upd, ["g"])))
+    assert len(grown) == len(uniques) + 1
+    bids = lookup(_keys(upd, ["g"]), grown)
     assert np.all(bids >= 0)
-    # the pre-existing missing bucket is reused; only the new value "z" is added.
-    assert len(groups2) == n0 + 1
 
 
 def test_one_missing_column_keeps_distinct_buckets():
@@ -3123,11 +2919,10 @@ def test_one_missing_column_keeps_distinct_buckets():
             "y": [1, 2, 3, 4],
         }
     )
-    merged, groups = add_bucket_id(df, ["b", "r"])
-    bids = _bids(merged)
+    bids, uniques = factorize(_keys(df, ["b", "r"]))
     assert bids[1] == bids[2]  # both (X, None)
     assert bids[0] != bids[1]  # (X, "n") distinct from (X, None)
-    assert len(groups) == 3
+    assert len(uniques) == 3
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -3201,32 +2996,24 @@ def test_null_groupby_key_no_static_change_error(engine, kind):
 
 
 def test_polars_join_preserves_row_order():
-    """Pins the order-preservation contract of the pooled bucket-id joins.
+    """Bucket ids must line up positionally with the rows they came from.
 
-    Join results are consumed positionally against arrays aligned with the left
-    frame, and polars does not contractually guarantee left-join row order, so
-    the helpers route through ``_order_preserving_left_join``. The in-memory
-    polars engine may preserve order on its own; this test pins the contract
-    rather than proving any particular engine scrambles."""
-    from mlforecast.pooled import _attach_bucket_id, add_bucket_id, lookup_bucket_ids
-
+    The engine consumes bucket ids as numpy arrays indexed against the caller's
+    row order, so `factorize`/`lookup` must be strictly positional -- no sorting
+    or joining that could permute rows.
+    """
     rng = np.random.default_rng(0)
-    n_keys = 200
-    shuffled_keys = rng.permutation(n_keys)
-    base = pl.DataFrame({"k": shuffled_keys.tolist()})
-    merged, groups = add_bucket_id(base, ["k"])
-    assert merged.get_column("k").to_list() == shuffled_keys.tolist()
-    key_to_bid = dict(zip(groups.get_column("k"), groups.get_column("_bucket_id")))
-    expected = [key_to_bid[k] for k in shuffled_keys]
-    assert merged.get_column("_bucket_id").to_list() == expected
-
-    lookup_df = pl.DataFrame({"k": shuffled_keys[::-1].tolist()})
-    bids = lookup_bucket_ids(lookup_df, groups, ["k"])
-    np.testing.assert_array_equal(bids, expected[::-1])
-
-    attached = _attach_bucket_id(lookup_df, groups, ["k"])
-    assert attached.get_column("k").to_list() == shuffled_keys[::-1].tolist()
-    assert attached.get_column("_bucket_id").to_list() == expected[::-1]
+    shuffled = rng.permutation(200)
+    base = pl.DataFrame({"k": shuffled.tolist()})
+    bids, uniques = factorize(_keys(base, ["k"]))
+    # positional: each row's id must map back to that row's own key
+    np.testing.assert_array_equal(uniques[bids], encode_keys(_keys(base, ["k"])))
+    # and id i is the i-th smallest encoded key
+    assert uniques.tolist() == sorted(uniques.tolist())
+    key_to_bid = dict(zip(shuffled.tolist(), bids.tolist()))
+    reversed_df = pl.DataFrame({"k": shuffled[::-1].tolist()})
+    look = lookup(_keys(reversed_df, ["k"]), uniques)
+    assert look.tolist() == [key_to_bid[k] for k in shuffled[::-1].tolist()]
 
 
 def test_polars_shuffled_rows_feature_parity_with_pandas():
@@ -3304,9 +3091,12 @@ def test_polars_shuffled_rows_slow_path_parity_with_pandas():
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_append_predictions_preserves_time_dtype(engine):
-    """Recursive prediction must not degrade state.time or the parent
-    calendars from datetime64 to object dtype (np.full with a pd.Timestamp
-    scalar used to produce object arrays)."""
+    """Recursive prediction must keep the shared calendar and channels intact.
+
+    `main` stored real timestamps per bucket, so it could degrade datetime64 to
+    object; the channel engine stores integer ordinals on one shared calendar,
+    so the equivalent risk is the calendar or the float channels drifting.
+    """
     n_series, n_times = 4, 8
     rng = np.random.default_rng(3)
     dates = pd.date_range("2020-01-01", periods=n_times, freq="D")
@@ -3331,19 +3121,20 @@ def test_append_predictions_preserves_time_dtype(engine):
         dropna=False,
         static_features=[],
     )
-    dtypes_before = {key: state.time.dtype for key, state in ts._pooled_states.items()}
+    ordinals_before = {k: st.n_ordinals for k, st in ts._pooled_states.items()}
     ts._predict_setup()
-    for step in range(2):
+    n_steps = 2
+    for step in range(n_steps):
         features = ts._update_features()
         for tfm in tfms:
             vals = np.asarray(features[tfm._get_name(1)], dtype=float)
             assert not np.all(np.isnan(vals)), f"step {step}: all NaN"
         ts._update_y(np.ones(n_series))
     for key, state in ts._pooled_states.items():
-        assert state.time.dtype == dtypes_before[key], key
-        assert np.issubdtype(state.time.dtype, np.datetime64), key
-        for pid, grid in (state._parent_time_grids or {}).items():
-            assert grid.dtype == state.time.dtype, (key, pid)
+        assert state.n_ordinals == ordinals_before[key] + n_steps, key
+        for name, arr in state.base.items():
+            assert arr.dtype == np.float64, (key, name)
+            assert arr.shape[0] == state.n_buckets, (key, name)
 
 
 def _diffed_range_mean_oracle(
@@ -3430,11 +3221,13 @@ def test_target_transforms_with_pooled_preprocess(engine):
 
     # the pooled states' target must be the differenced values
     for state in fcst.ts._pooled_states.values():
-        state_y = np.asarray(state.y, dtype=float)
-        assert np.isnan(state_y).sum() == np.isnan(diffs).sum()
+        # the cell store aggregates the transformed target, so its totals must
+        # match the differenced values that survived the transform
+        finite = diffs[~np.isnan(diffs)]
+        assert state.base["count"].sum() == len(finite)
         np.testing.assert_allclose(
-            np.sort(state_y[~np.isnan(state_y)]),
-            np.sort(diffs[~np.isnan(diffs)]),
+            state.base["sum"].sum(),
+            finite.sum(),
             atol=1e-12,
         )
 
@@ -3637,110 +3430,91 @@ from mlforecast.lag_transforms import (  # noqa: E402
     SeasonalRollingMean,
 )
 from mlforecast.pooled import (  # noqa: E402
-    _build_ts_aggs,
-    _collapse_rows_by_time,
-    _reaggregate_ts_aggs,
-    compute_pooled_features,
+    _build_cells,
+    _collapse,
+    _view_value,
 )
 
+_BASE = ("count", "sum", "sumsq", "min", "max")
 
-def _one_bucket_aggs():
+
+def _one_bucket_cells():
     # ord 0: [1, 3]; ord 1: [nan] (all-NaN); ord 2: [5]
     bid = np.array([0, 0, 0, 0])
     ordv = np.array([0, 0, 1, 2])
     y = np.array([1.0, 3.0, np.nan, 5.0])
-    return bid, ordv, y, _build_ts_aggs(bid, ordv, y)
+    return bid, ordv, y, _build_cells(bid, ordv, y, 1, 3, _BASE)
 
 
 def test_reaggregate_ts_aggs_values_and_nan():
-    _, _, _, aggs = _one_bucket_aggs()
+    """Collapsing to one value per timestamp, with an all-NaN timestamp present.
+
+    Unobserved cells (``count == 0``) carry a fill the kernels mask out, so only
+    the observed cells are asserted on.
+    """
+    _, _, _, cells = _one_bucket_cells()
     expected = {
-        "sum": dict(
-            sums=[4.0, 0.0, 5.0],
-            counts=[1.0, 0.0, 1.0],
-            sum_sq=[16.0, 0.0, 25.0],
-            mins=[4.0, np.nan, 5.0],
-        ),
-        "count": dict(
-            sums=[2.0, 0.0, 1.0],
-            counts=[1.0, 1.0, 1.0],
-            sum_sq=[4.0, 0.0, 1.0],
-            mins=[2.0, 0.0, 1.0],
-        ),
-        "mean": dict(
-            sums=[2.0, 0.0, 5.0],
-            counts=[1.0, 0.0, 1.0],
-            sum_sq=[4.0, 0.0, 25.0],
-            mins=[2.0, np.nan, 5.0],
-        ),
-        "min": dict(
-            sums=[1.0, 0.0, 5.0],
-            counts=[1.0, 0.0, 1.0],
-            sum_sq=[1.0, 0.0, 25.0],
-            mins=[1.0, np.nan, 5.0],
-        ),
-        "max": dict(
-            sums=[3.0, 0.0, 5.0],
-            counts=[1.0, 0.0, 1.0],
-            sum_sq=[9.0, 0.0, 25.0],
-            mins=[3.0, np.nan, 5.0],
-        ),
+        "sum": [4.0, 5.0],
+        "count": [2.0, 1.0],
+        "mean": [2.0, 5.0],
+        "min": [1.0, 5.0],
+        "max": [3.0, 5.0],
     }
-    for agg, exp in expected.items():
-        r = _reaggregate_ts_aggs(aggs, agg)[0]
-        np.testing.assert_allclose(r.sums, exp["sums"], equal_nan=True)
-        np.testing.assert_allclose(r.counts, exp["counts"], equal_nan=True)
-        np.testing.assert_allclose(r.sum_sq, exp["sum_sq"], equal_nan=True)
-        np.testing.assert_allclose(r.mins, exp["mins"], equal_nan=True)
-        # min/max aggs keep the observed extremes; others store v in both mins/maxs
-        maxs_exp = exp["mins"] if agg != "count" else exp["mins"]
-        np.testing.assert_allclose(r.maxs, maxs_exp, equal_nan=True)
-        np.testing.assert_array_equal(r.unique_times, aggs[0].unique_times)
+    for agg, vals in expected.items():
+        r = _collapse(*_view_value(cells, agg), shift=0.0)
+        obs = r["count"][0] > 0
+        if agg == "count":
+            # COUNT over an all-NULL group is 0, which is still an observation
+            np.testing.assert_allclose(r["sum"][0][[0, 2]], vals)
+        else:
+            np.testing.assert_array_equal(obs, [True, False, True])
+            np.testing.assert_allclose(r["sum"][0][obs], vals)
+            np.testing.assert_allclose(r["sumsq"][0][obs], np.square(vals))
+            np.testing.assert_allclose(r["min"][0][obs], vals)
+            np.testing.assert_allclose(r["max"][0][obs], vals)
 
 
 def test_reaggregate_ts_aggs_does_not_mutate_input():
-    _, _, _, aggs = _one_bucket_aggs()
-    before = {
-        f: getattr(aggs[0], f).copy()
-        for f in ("sums", "counts", "sum_sq", "mins", "maxs", "unique_times")
-    }
+    """Collapsed views are derived, so the shared base store must be untouched."""
+    _, _, _, cells = _one_bucket_cells()
+    before = {k: v.copy() for k, v in cells.items()}
     for agg in ("sum", "count", "mean", "min", "max"):
-        _reaggregate_ts_aggs(aggs, agg)
-    for f, arr in before.items():
-        np.testing.assert_allclose(getattr(aggs[0], f), arr, equal_nan=True)
+        _collapse(*_view_value(cells, agg), shift=0.0)
+    for k, arr in before.items():
+        np.testing.assert_allclose(cells[k], arr, equal_nan=True)
 
 
 @pytest.mark.parametrize("time_agg", ["sum", "count", "mean", "min", "max"])
 def test_collapse_matches_reaggregate(time_agg):
-    """_build_ts_aggs(collapse(rows)) == _reaggregate_ts_aggs(_build_ts_aggs(rows))."""
+    """Collapse-then-aggregate == aggregate-then-collapse.
+
+    This is the invariant that lets `PooledState` keep one base store per bucket
+    key and derive each `time_agg` as a cached view instead of re-aggregating the
+    panel per `time_agg`. It covers the ``sumsq`` centre too: both sides take
+    it from the bucket's first observed cell.
+    """
     rng = np.random.default_rng(0)
     bid = np.repeat([0, 1], 10)
     ordv = np.tile([0, 0, 1, 2, 2, 2, 3, 4, 4, 5], 2)
     y = rng.standard_normal(20)
     y[3] = np.nan  # partial-NaN and all-NaN timestamps
     y[7] = np.nan
-    raw_aggs = _build_ts_aggs(bid, ordv, y)
-    direct = _reaggregate_ts_aggs(raw_aggs, time_agg)
-    cb, co, cy, inv = _collapse_rows_by_time(bid, ordv, y, time_agg)
-    via_collapse = _build_ts_aggs(cb, co, cy)
-    assert set(direct) == set(via_collapse)
-    for b in direct:
-        for f in ("sums", "counts", "sum_sq", "mins", "maxs", "unique_times"):
-            np.testing.assert_allclose(
-                getattr(direct[b], f),
-                getattr(via_collapse[b], f),
-                equal_nan=True,
-                err_msg=f"{time_agg} bucket {b} field {f}",
-            )
-    # inv maps every raw row to its (bucket, ord) collapsed row
-    np.testing.assert_array_equal(cb[inv], bid)
-    np.testing.assert_array_equal(co[inv], ordv)
-    # supplying the pre-built aggregate cache must give the identical collapse
-    cb2, co2, cy2, inv2 = _collapse_rows_by_time(bid, ordv, y, time_agg, raw_aggs)
-    np.testing.assert_array_equal(cb2, cb)
-    np.testing.assert_array_equal(co2, co)
-    np.testing.assert_allclose(cy2, cy, equal_nan=True)
-    np.testing.assert_array_equal(inv2, inv)
+    n_buckets, width = 2, 6
+    base = _build_cells(bid, ordv, y, n_buckets, width, _BASE)
+    v, obs = _view_value(base, time_agg)
+    first = v[np.arange(n_buckets), obs.argmax(axis=1)][:, None]
+    direct = _collapse(v, obs, first)
+
+    # the same collapse done by hand on the rows, then aggregated
+    cb, co = np.nonzero(obs)
+    cy = v[obs]
+    via_rows = _build_cells(cb, co, cy, n_buckets, width, _BASE)
+    for field in ("count", "sum", "sumsq"):
+        np.testing.assert_allclose(
+            direct[field][obs], via_rows[field][obs], err_msg=f"{time_agg} {field}"
+        )
+    np.testing.assert_allclose(direct["min"][obs], via_rows["min"][obs])
+    np.testing.assert_allclose(direct["max"][obs], via_rows["max"][obs])
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -3809,43 +3583,9 @@ _TIME_AGG_FACTORIES = [
 @pytest.mark.parametrize("time_agg", ["sum", "count", "mean", "min", "max"])
 @pytest.mark.parametrize("lag", _LAGS)
 def test_fast_vs_slow_time_agg(tfm_factory, time_agg, lag):
-    """Fast (aggregate adapter) vs slow (row-collapse via wiped cache) match."""
-    rng = np.random.default_rng(7)
-    n_series, n_times = 6, 12
-    ids = np.repeat([f"s{i}" for i in range(n_series)], n_times)
-    times = np.tile(range(n_times), n_series)
-    y = rng.standard_normal(n_series * n_times)
-    grps = np.repeat(["A"] * 4 + ["B"] * 2, n_times)  # unbalanced buckets
-    df = pd.DataFrame({"unique_id": ids, "ds": times, "y": y, "grp": grps})
-
-    tfm = tfm_factory({"groupby": ["grp"], "time_agg": time_agg})
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
-        ts.fit_transform(
-            df,
-            id_col="unique_id",
-            time_col="ds",
-            target_col="y",
-            dropna=False,
-            static_features=["grp"],
-        )
-    col = tfm._get_name(lag)
-    fitted = ts.transforms[col]
-    state = ts._pooled_states[("groupby", ("grp",), ())]
-
-    fast = compute_pooled_features(state, {col: fitted})
-    saved = state._ts_aggs
-    state._ts_aggs = {}
-    slow = compute_pooled_features(state, {col: fitted})
-    state._ts_aggs = saved
-    np.testing.assert_allclose(
-        fast[col],
-        slow[col],
-        atol=1e-10,
-        equal_nan=True,
-        err_msg=f"fast vs slow mismatch for {col}",
-    )
+    """Same invariant across every time_agg -- the case the shared store exists for."""
+    _assert_view_matches_direct(tfm_factory, lag, {"global_": True}, time_agg)
+    _assert_view_matches_direct(tfm_factory, lag, {"groupby": ["grp"]}, time_agg)
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
@@ -4066,14 +3806,32 @@ def test_offset_effective_lag_must_be_positive():
 
 
 def test_ewm_time_agg_mean_skips_reaggregation():
-    """time_agg='mean' is EWM's native update rule, so _maybe_reagg must be an
-    identity (same object) instead of a full-copy re-aggregation."""
-    ewm = ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"])
-    _, _, _, aggs = _one_bucket_aggs()
-    assert ewm._maybe_reagg(aggs) is aggs
-    # other aggregates still re-aggregate
-    ewm_sum = ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"], time_agg="sum")
-    assert ewm_sum._maybe_reagg(aggs) is not aggs
+    """Collapsed views are cached, and the uncollapsed one is the base store itself.
+
+    EWM's native rule is time_agg="mean", so it reads a derived view on every
+    step; that view must be built once and reused rather than recomputed.
+    """
+    from mlforecast.pooled import _build_cells, PooledState
+
+    bid = np.array([0, 0, 0])
+    ordv = np.array([0, 1, 2])
+    y = np.array([1.0, 2.0, 3.0])
+    state = PooledState(
+        mode="global",
+        group_cols=[],
+        partition_cols=[],
+        n_buckets=1,
+        n_ordinals=3,
+        base=_build_cells(bid, ordv, y, 1, 3, ("count", "sum", "sumsq", "min", "max")),
+        series_bucket_id=np.zeros(1, dtype=np.int64),
+    )
+    assert ExponentiallyWeightedMean(alpha=0.5, groupby=["grp"]).time_agg == "mean"
+    # no collapse -> the base store itself, not a copy
+    assert state.channels(None) is state.base
+    # a collapse is derived once and cached
+    assert state.channels("mean") is state.channels("mean")
+    assert state.channels("mean") is not state.base
+    assert state.channels("sum") is not state.channels("mean")
 
 
 def test_time_agg_combine_mixed():
@@ -4104,9 +3862,12 @@ def test_time_agg_sklearn_clone_roundtrip():
 # In local partition mode min_samples=None defaults to 1 (SQL RANGE semantics);
 # every other mode keeps the window_size default.
 
-from mlforecast.lag_transforms import (  # noqa: E402
-    _resolve_min_samples,
-)
+from mlforecast.pooled import get_kernel as _get_kernel  # noqa: E402
+
+
+def _resolve_min_samples(tfm):
+    """Effective min_samples, as the pooled kernel resolves it."""
+    return _get_kernel(copy.deepcopy(tfm)._set_core_tfm(1)).min_samples()
 
 
 def test_min_samples_default_resolution():
@@ -4441,25 +4202,868 @@ def test_lookup_lag_predict_various_lags(engine, lag):
 
 
 def test_lookup_lag_compute_latest_from_aggs_nan_and_empty():
-    """Fast predict path (_compute_latest_from_aggs): NaN when a bucket has
-    fewer than `lag` occurrences or the looked-up occurrence has no valid
-    observation; None when there are no aggregates."""
-    from mlforecast.pooled import _build_ts_aggs
-
-    # bucket 0: 3 valid obs (10,20,30); bucket 1: single obs (< lag); bucket 2:
-    # the lag-back occurrence (index -2) is NaN-valued.
-    bid = np.array([0, 0, 0, 1, 2, 2, 2])
-    ordv = np.array([0, 1, 2, 0, 0, 1, 2])
-    y = np.array([10.0, 20.0, 30.0, 99.0, 5.0, np.nan, 7.0])
-    aggs = _build_ts_aggs(bid, ordv, y)
+    """LookupLag at predict: NaN when a bucket has fewer than `lag` occurrences,
+    or when the looked-up occurrence carries no valid observation."""
+    from mlforecast.pooled import _RowStore, get_kernel
 
     tfm = LookupLag(partition_by=["x"])
     tfm._set_core_tfm(2)  # lag = 2
-    result = tfm._compute_latest_from_aggs(aggs, {0: 3, 1: 1, 2: 3})
+    kernel = get_kernel(tfm)
 
-    np.testing.assert_allclose(result[0], 20.0)  # occurrence 2 back = index -2 = 20.0
-    assert np.isnan(result[1])  # only 1 occurrence, < lag=2 -> NaN
-    assert np.isnan(result[2])  # lag-back occurrence has NaN y (count==0) -> NaN
+    # bucket 0: 3 valid occurrences, so the one 2 back from ordinal 3 is 20.0;
+    # bucket 1: a single occurrence has nothing 2 back;
+    # bucket 2: the occurrence 2 back carries NaN, so the lookup is NaN
+    rows = _RowStore.from_rows(
+        bucket_id=np.array([0, 0, 0, 1, 2, 2, 2]),
+        ordinal=np.array([0, 1, 2, 0, 0, 1, 2]),
+        y=np.array([10.0, 20.0, 30.0, 99.0, 5.0, np.nan, 7.0]),
+        n_buckets=3,
+    )
+    got = kernel.values_at(rows, np.array([0, 1, 2]), np.array([3, 1, 3]))
+    np.testing.assert_allclose(got[0], 20.0)
+    assert np.isnan(got[1]) and np.isnan(got[2])
 
-    # No aggregates -> None (falls through to the slow path in core.py).
-    assert tfm._compute_latest_from_aggs({}, {}) is None
+
+# %% row kernels: a NaN target is not an observation
+from mlforecast.lag_transforms import SeasonalRollingQuantile  # noqa: E402
+
+
+def _nan_rows():
+    """One bucket, two rows per ordinal, NaN in a few of them."""
+    y = np.array(
+        [np.nan, np.nan, 1.0, np.nan, 2.0, 3.0, np.nan, 4.0, 5.0, 6.0, np.nan, np.nan]
+    )
+    return np.zeros(y.size, dtype=np.int64), np.repeat(np.arange(6), 2), y
+
+
+def _median_reference(
+    ordinal, y, targets, window=None, lag=1, season_length=1, min_samples=1
+):
+    """Median of the non-NaN rows in each target's window; ``None`` is expanding."""
+    out = np.full(len(targets), np.nan)
+    for i, t in enumerate(targets):
+        if window is None:
+            wanted = ordinal <= t - lag
+        else:
+            wanted = np.isin(ordinal, t - lag - np.arange(window) * season_length)
+        vals = y[wanted]
+        vals = vals[~np.isnan(vals)]
+        if vals.size >= min_samples:
+            out[i] = np.median(vals)
+    return out
+
+
+@pytest.mark.parametrize(
+    "make_tfm, reference",
+    [
+        (
+            lambda: RollingQuantile(p=0.5, window_size=3, min_samples=2, global_=True),
+            dict(window=3, min_samples=2),
+        ),
+        (
+            lambda: SeasonalRollingQuantile(
+                p=0.5, season_length=2, window_size=2, min_samples=1, global_=True
+            ),
+            dict(window=2, season_length=2),
+        ),
+        (lambda: ExpandingQuantile(p=0.5, global_=True), dict()),
+    ],
+    ids=["rolling", "seasonal", "expanding"],
+)
+def test_row_kernels_skip_nan_targets(make_tfm, reference):
+    """A NaN target neither enters a quantile nor counts toward ``min_samples``.
+
+    The channels drop it at aggregation; the row store keeps every row, so the
+    gather has to leave it out itself -- one NaN in a window would otherwise
+    poison the whole quantile, and the expanding one for good.
+    """
+    from mlforecast.pooled import _RowStore, get_kernel
+
+    bucket_id, ordinal, y = _nan_rows()
+    kernel = get_kernel(make_tfm()._set_core_tfm(1))
+    rows = _RowStore.from_rows(bucket_id, ordinal, y, n_buckets=1)
+    targets = np.arange(1, 8)
+    got = kernel.values_at(kernel._view(rows), np.zeros(7, dtype=np.int64), targets)
+    want = _median_reference(ordinal, y, targets, **reference)
+    assert np.isfinite(want).sum() >= 4  # the case is not vacuous
+    np.testing.assert_allclose(got, want, equal_nan=True)
+
+
+def test_lookup_lag_keeps_nan_occurrences():
+    """The odd one out: a NaN row is still an occurrence, so the lookup lands on it."""
+    from mlforecast.pooled import _RowStore, get_kernel
+
+    kernel = get_kernel(LookupLag(partition_by=["x"])._set_core_tfm(1))
+    rows = _RowStore.from_rows(
+        bucket_id=np.zeros(3, dtype=np.int64),
+        ordinal=np.arange(3),
+        y=np.array([1.0, np.nan, 3.0]),
+        n_buckets=1,
+    )
+    got = kernel.values_at(
+        kernel._view(rows), np.zeros(2, dtype=np.int64), np.array([2, 3])
+    )
+    assert np.isnan(got[0])
+    np.testing.assert_allclose(got[1], 3.0)
+
+
+def test_nan_targets_left_by_a_target_transform_are_skipped():
+    """End to end: the NaN head `Differences` leaves is skipped, and doesn't count.
+
+    Values are ``1.5 * t``, so the differenced target is 3 everywhere it exists.
+    At lag 2 with a window of 4 the first timestamp whose window holds four
+    real observations is ``ds == 5``; before it the row count alone would
+    already satisfy ``min_samples``.
+    """
+    from mlforecast.target_transforms import Differences
+
+    df = pd.DataFrame(
+        {
+            "unique_id": np.repeat(["a", "b"], 12),
+            "ds": np.tile(np.arange(12), 2),
+            "y": np.tile(1.5 * np.arange(12), 2),
+        }
+    )
+    tfm = RollingQuantile(p=0.5, window_size=4, global_=True)
+    ts = TimeSeries(
+        freq=1, lag_transforms={2: [tfm]}, target_transforms=[Differences([2])]
+    )
+    out = ts.fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y", dropna=False
+    )
+    got = out[tfm._get_name(2)].to_numpy()
+    want = np.where(out["ds"].to_numpy() >= 5, 3.0, np.nan)
+    np.testing.assert_allclose(got, want, equal_nan=True)
+
+
+# %% the row keys bound the bucket count, and windows never cross a bucket
+def test_row_store_bucket_count_is_bounded():
+    """Past the bound the keys wrap and every search silently misplaces its window."""
+    from mlforecast.pooled import _MAX_BUCKETS, _RowStore
+
+    args = (np.zeros(1, dtype=np.int64), np.zeros(1, dtype=np.int64), np.ones(1))
+    with pytest.raises(ValueError, match="buckets"):
+        _RowStore.from_rows(*args, n_buckets=_MAX_BUCKETS + 1)
+    rows = _RowStore.from_rows(*args, n_buckets=1)
+    with pytest.raises(ValueError, match="buckets"):
+        rows.grow(np.zeros(1, dtype=np.int64), _MAX_BUCKETS + 1)
+
+
+def test_row_store_search_stays_inside_the_bucket():
+    """A window reaching back before the calendar must not pick up another bucket's rows."""
+    from mlforecast.pooled import _ROW_STRIDE, _RowStore
+
+    rows = _RowStore.from_rows(
+        bucket_id=np.array([0, 0, 1, 1]),
+        ordinal=np.array([0, 1, 0, 1]),
+        y=np.arange(4.0),
+        n_buckets=2,
+    )
+    bucket = np.array([1])
+    far_back = np.array([-4 * _ROW_STRIDE])
+    for side in ("left", "right"):
+        assert rows.search(bucket, far_back, side)[0] == 2
+    # in-calendar targets are unaffected
+    assert rows.search(bucket, np.array([0]), "left")[0] == 2
+    assert rows.search(bucket, np.array([1]), "right")[0] == 4
+
+
+# %% bucket growth must remap per-kernel inner state
+def _stateful_inner_rows(ts):
+    """Row count of every accumulator-carrying inner, per pooled leaf."""
+    sizes = []
+    for leaves in ts._get_pooled_tfms().values():
+        for leaf in leaves:
+            for obj in leaf._pooled_inner.values():
+                stats = getattr(obj, "stats_", None)
+                if stats is not None:
+                    sizes.append(stats.shape[0])
+                elif isinstance(obj, dict) and obj.get("s") is not None:
+                    sizes.append(obj["s"].shape[0])
+    return sizes
+
+
+def _grow_setup(engine, tfm, lag, ys=(1.0, 10.0, 100.0), new_y=1000.0, new_brand="a0"):
+    """Fit on brands b1/b2, then update adding a series in `new_brand`.
+
+    `new_brand` sorts before the existing keys, so absorbing it renumbers the
+    existing buckets -- a genuine permutation, not just an append.
+    """
+    df = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "a", "b", "b", "c", "c"],
+            "ds": [1, 2, 1, 2, 1, 2],
+            "y": [ys[0], ys[0] + 1, ys[1], ys[1] + 1, ys[2], ys[2] + 1],
+            "brand": ["b1", "b1", "b1", "b1", "b2", "b2"],
+        },
+    )
+    ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    update = _make_df(
+        engine,
+        {
+            "unique_id": ["a", "b", "c", "d"],
+            "ds": [3, 3, 3, 3],
+            "y": [ys[0] + 2, ys[1] + 2, ys[2] + 2, new_y],
+            "brand": ["b1", "b1", "b2", new_brand],
+        },
+    )
+    ts.update(update)
+    return ts
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("lag", _LAGS)
+@pytest.mark.parametrize(
+    "tfm_factory",
+    [
+        lambda: ExpandingMean(groupby=["brand"]),
+        lambda: ExpandingMin(groupby=["brand"]),
+        lambda: ExpandingMax(groupby=["brand"]),
+        lambda: ExpandingStd(groupby=["brand"]),
+        lambda: ExponentiallyWeightedMean(alpha=0.5, groupby=["brand"]),
+    ],
+    ids=["exp_mean", "exp_min", "exp_max", "exp_std", "ewm"],
+)
+def test_bucket_growth_remaps_stateful_inner_state(engine, lag, tfm_factory):
+    """Growing the vocabulary must permute/extend accumulator-carrying inners.
+
+    Without the remap the inner state keeps its pre-growth row count and the
+    next `update` raises a broadcast error.
+    """
+    ts = _grow_setup(engine, tfm_factory(), lag)
+    state = ts._pooled_states[("groupby", ("brand",), ())]
+    assert state.n_buckets == 3
+    assert list(state.bucket_uniques) == ["a0", "b1", "b2"]
+    assert all(n == state.n_buckets for n in _stateful_inner_rows(ts))
+
+    ts._predict_setup()
+    ts._update_features()  # would raise pre-fix
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("lag", _LAGS)
+def test_bucket_growth_leaves_existing_buckets_unchanged(engine, lag):
+    """The permutation must not shuffle the surviving buckets' state.
+
+    A remap applied in the wrong direction still produces finite values, so this
+    compares against a control whose vocabulary never grew.
+    """
+    tfm = ExpandingMean(groupby=["brand"])
+    grown = _grow_setup(engine, tfm, lag)
+
+    control = TimeSeries(
+        freq=1, lag_transforms={lag: [ExpandingMean(groupby=["brand"])]}
+    )
+    control.fit_transform(
+        _make_df(
+            engine,
+            {
+                "unique_id": ["a", "a", "b", "b", "c", "c"],
+                "ds": [1, 2, 1, 2, 1, 2],
+                "y": [1.0, 2.0, 10.0, 11.0, 100.0, 101.0],
+                "brand": ["b1", "b1", "b1", "b1", "b2", "b2"],
+            },
+        ),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    control.update(
+        _make_df(
+            engine,
+            {
+                "unique_id": ["a", "b", "c"],
+                "ds": [3, 3, 3],
+                "y": [3.0, 12.0, 102.0],
+                "brand": ["b1", "b1", "b2"],
+            },
+        )
+    )
+
+    col = tfm._get_name(lag)
+    grown._predict_setup()
+    control._predict_setup()
+    got = dict(zip(grown.uids, grown._update_features()[col]))
+    want = dict(zip(control.uids, control._update_features()[col]))
+    for uid in want:
+        np.testing.assert_allclose(got[uid], want[uid], rtol=1e-12)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_bucket_growth_pads_new_expanding_extremes_with_infinity(engine):
+    """A new bucket's running extreme must ignore the cells it never saw.
+
+    Padding the accumulator with 0.0 instead of +/-inf would make the extreme
+    collapse onto the pad, so the values here are chosen to expose that.
+    """
+    tfm_min = ExpandingMin(groupby=["brand"])
+    ts = _grow_setup(engine, tfm_min, 1, ys=(100.0, 200.0, 300.0), new_y=400.0)
+    ts._predict_setup()
+    vals = dict(zip(ts.uids, ts._update_features()[tfm_min._get_name(1)]))
+    assert vals["d"] == 400.0  # its only observation, not the 0.0 pad
+
+    tfm_max = ExpandingMax(groupby=["brand"])
+    ts = _grow_setup(engine, tfm_max, 1, ys=(-100.0, -200.0, -300.0), new_y=-400.0)
+    ts._predict_setup()
+    vals = dict(zip(ts.uids, ts._update_features()[tfm_max._get_name(1)]))
+    assert vals["d"] == -400.0
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_bucket_growth_keeps_accumulator_cell_count_uniform(engine):
+    """Every bucket must have consumed the same number of calendar cells.
+
+    `_expanding_fill` reads the new bucket's cell count off an existing row, so a
+    change that breaks the lockstep would silently corrupt new buckets.
+    """
+    ts = _grow_setup(engine, ExpandingMean(groupby=["brand"]), 1)
+    leaf = next(iter(ts._get_pooled_tfms().values()))[0]
+    for obj in leaf._pooled_inner.values():
+        assert np.ptp(obj.stats_[:, 0]) == 0
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_bucket_growth_survives_backup_restore(engine):
+    """`_backup` rolls the state back per model; inner rows must still match."""
+    ts = _grow_setup(engine, ExpandingMean(groupby=["brand"]), 1)
+    state = ts._pooled_states[("groupby", ("brand",), ())]
+    for _ in range(2):  # one round per model in a multi-model predict
+        with ts._backup():
+            ts._predict_setup()
+            ts._update_features()
+            ts._update_y(np.array([1.0, 2.0, 3.0, 4.0]))
+            ts._update_features()
+        assert all(n == state.n_buckets for n in _stateful_inner_rows(ts))
+
+
+# %% update() must advance the accumulator kernels, one appended timestamp at a time
+def _split_panel(n_appended, T=8):
+    """Three series in two brands, split into a fitted head and an appended tail.
+
+    The extremes sit exactly where a skipped fold would miss them: the last
+    fitted timestamp and the first appended one.
+    """
+    brands = {"a": "b1", "b": "b1", "c": "b2"}
+    rows = [
+        {"unique_id": sid, "ds": t, "y": 10.0 + (3 * t + 7 * i) % 5, "brand": brand}
+        for i, (sid, brand) in enumerate(brands.items())
+        for t in range(1, T + n_appended + 1)
+    ]
+    df = pd.DataFrame(rows)
+    df.loc[(df.unique_id == "a") & (df.ds == T), "y"] = 0.5
+    df.loc[(df.unique_id == "c") & (df.ds == T + 1), "y"] = 100.0
+    return df[df.ds <= T], df[df.ds > T], df
+
+
+def _fit_ts(df, tfm, lag, keep_last_n=None):
+    ts = TimeSeries(freq=1, lag_transforms={lag: [tfm]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+        keep_last_n=keep_last_n,
+    )
+    return ts
+
+
+@pytest.mark.parametrize("keep_last_n", [None, 1], ids=["untrimmed", "trimmed"])
+@pytest.mark.parametrize("n_appended", [1, 2])
+@pytest.mark.parametrize("lag", _LAGS)
+@pytest.mark.parametrize(
+    "tfm_factory",
+    [
+        lambda: ExpandingMean(global_=True),
+        lambda: ExpandingMean(groupby=["brand"]),
+        lambda: ExpandingStd(groupby=["brand"]),
+        lambda: ExpandingMin(global_=True),
+        lambda: ExpandingMax(global_=True),
+        lambda: ExponentiallyWeightedMean(alpha=0.5, global_=True),
+    ],
+    ids=[
+        "exp_mean",
+        "exp_mean_groupby",
+        "exp_std_groupby",
+        "exp_min",
+        "exp_max",
+        "ewm",
+    ],
+)
+def test_update_advances_pooled_accumulators(tfm_factory, lag, n_appended, keep_last_n):
+    """`update` must leave the accumulators as a fit over everything would.
+
+    The inners fold one source cell per `PooledState.update`, which predict
+    calls once per timestamp. An update that only appended columns left them
+    behind by that many, so the next predict folded the newest source and
+    skipped the ones in between -- the last fitted timestamp among them.
+    """
+    head, tail, full = _split_panel(n_appended)
+    updated = _fit_ts(head, tfm_factory(), lag, keep_last_n)
+    updated.update(tail)
+    control = _fit_ts(full, tfm_factory(), lag, keep_last_n)
+    col = tfm_factory()._get_name(lag)
+    for ts in (updated, control):
+        ts._predict_setup()
+    got = updated._update_features()[col].to_numpy()
+    want = control._update_features()[col].to_numpy()
+    np.testing.assert_allclose(got, want, rtol=1e-12)
+    # and the inner state itself, not just the value read off it
+    (leaf,) = next(iter(updated._get_pooled_tfms().values()))
+    (ref,) = next(iter(control._get_pooled_tfms().values()))
+    for name, inner in leaf._pooled_inner.items():
+        stats = getattr(inner, "stats_", None)
+        if stats is not None:
+            np.testing.assert_allclose(
+                stats, ref._pooled_inner[name].stats_, rtol=1e-12
+            )
+
+
+# %% the sumsq channel is centred per bucket, so std survives an offset
+from mlforecast.lag_transforms import SeasonalRollingStd  # noqa: E402
+
+
+def _offset_panel(T=40, seed=0):
+    """Two brands at levels 1e6 and 1, two series each, unit-variance noise."""
+    rng = np.random.default_rng(seed)
+    series = {"a": ("b1", 1e6), "b": ("b1", 1e6), "c": ("b2", 1.0), "d": ("b2", 1.0)}
+    rows = [
+        {"unique_id": sid, "ds": t, "y": level + rng.standard_normal(), "brand": brand}
+        for sid, (brand, level) in series.items()
+        for t in range(1, T + 1)
+    ]
+    return pd.DataFrame(rows)
+
+
+def _std_reference(df, groups, lag, window=None, season_length=1, time_agg=None):
+    """Sample std over each row's window, in extended precision.
+
+    ``groups`` maps a series to its bucket; ``window=None`` is expanding.
+    """
+    ids, ords = df["unique_id"].to_numpy(), df["ds"].to_numpy()
+    ys = df["y"].to_numpy().astype(np.longdouble)
+    bucket = np.array([groups[s] for s in ids])
+    out = np.full(len(df), np.nan, dtype=np.longdouble)
+    for i in range(len(df)):
+        if window is None:
+            in_window = ords <= ords[i] - lag
+        else:
+            in_window = np.isin(ords, ords[i] - lag - np.arange(window) * season_length)
+        mask = (bucket == bucket[i]) & in_window
+        vals = ys[mask]
+        if time_agg == "mean":
+            vals = np.array(
+                [ys[mask & (ords == o)].mean() for o in np.unique(ords[mask])]
+            )
+        if vals.size >= 2:
+            out[i] = vals.std(ddof=1)
+    return out.astype(float)
+
+
+def _offset_groups(df, mode):
+    if "groupby" in mode:
+        return dict(zip(df["unique_id"], df["brand"]))
+    return {sid: 0 for sid in df["unique_id"]}
+
+
+_STD_CASES = [
+    (lambda **m: RollingStd(window_size=5, **m), dict(window=5)),
+    (
+        lambda **m: SeasonalRollingStd(season_length=3, window_size=3, **m),
+        dict(window=3, season_length=3),
+    ),
+    (lambda **m: ExpandingStd(**m), dict()),
+    (
+        lambda **m: RollingStd(window_size=5, time_agg="mean", **m),
+        dict(window=5, time_agg="mean"),
+    ),
+    (lambda **m: ExpandingStd(time_agg="mean", **m), dict(time_agg="mean")),
+]
+_STD_IDS = [
+    "rolling",
+    "seasonal",
+    "expanding",
+    "rolling_time_agg",
+    "expanding_time_agg",
+]
+
+
+@pytest.mark.parametrize(
+    "mode", [dict(global_=True), dict(groupby=["brand"])], ids=["global", "groupby"]
+)
+@pytest.mark.parametrize("make_tfm, reference", _STD_CASES, ids=_STD_IDS)
+def test_pooled_std_is_precise_on_offset_data(make_tfm, reference, mode):
+    """``sum(x**2) - sum(x)**2 / n`` keeps three figures at ``y ~ 1e6 +- 1``.
+
+    Centred on each bucket's first observed cell it keeps them all, and one
+    bucket at 1e6 next to one at 1 shows the centre has to be per bucket.
+    """
+    df = _offset_panel()
+    lag = 1
+    ts = TimeSeries(freq=1, lag_transforms={lag: [make_tfm(**mode)]})
+    out = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    got = out[make_tfm(**mode)._get_name(lag)].to_numpy()
+    want = _std_reference(df, _offset_groups(df, mode), lag, **reference)
+    ok = ~np.isnan(got)
+    assert ok.sum() > len(df) // 2
+    np.testing.assert_allclose(got[ok], want[ok], rtol=1e-9)
+
+
+class _LevelModel:
+    """Predicts a fixed level per series, so the recursion feeds known values back."""
+
+    def __init__(self, levels):
+        self.levels = levels
+
+    def predict(self, X):  # noqa: ARG002
+        return self.levels
+
+
+@pytest.mark.parametrize("keep_last_n", [None, 1], ids=["untrimmed", "trimmed"])
+@pytest.mark.parametrize("time_agg", [None, "mean"], ids=["rows", "time_agg"])
+@pytest.mark.parametrize(
+    "make_tfm, reference",
+    [
+        (lambda **m: RollingStd(window_size=4, **m), dict(window=4)),
+        (lambda **m: ExpandingStd(**m), dict()),
+    ],
+    ids=["rolling", "expanding"],
+)
+def test_pooled_std_stays_centred_through_update_and_predict(
+    make_tfm, reference, time_agg, keep_last_n
+):
+    """Cells appended by `update` and by the predict loop centre where the fit did.
+
+    Trimmed, the block no longer holds the cell the centre came from, so this is
+    where a centre re-derived from what is left would silently drift.
+    """
+    T, h = 20, 2
+    df = _offset_panel(T=T + 2)
+    head, tail = df[df.ds <= T], df[df.ds > T]
+    mode = dict(groupby=["brand"], time_agg=time_agg)
+    lag = 1
+    ts = _fit_ts(head, make_tfm(**mode), lag, keep_last_n)
+    ts.update(tail)
+    col = make_tfm(**mode)._get_name(lag)
+    levels = np.array([1e6, 1e6, 1.0, 1.0])
+    seen = []
+
+    def capture(X):
+        seen.append(X[col].to_numpy())
+        return X
+
+    ts.predict({"m": _LevelModel(levels)}, horizon=h, before_predict_callback=capture)
+    # the reference sees the predictions as rows; the last row of each series
+    # only serves as a target
+    future = pd.DataFrame(
+        {
+            "unique_id": np.tile(["a", "b", "c", "d"], h + 1),
+            "ds": np.repeat(np.arange(T + 3, T + 4 + h), 4),
+            "y": np.tile(levels, h + 1),
+            "brand": np.tile(["b1", "b1", "b2", "b2"], h + 1),
+        }
+    )
+    ref_df = pd.concat([df, future], ignore_index=True)
+    want = _std_reference(
+        ref_df, _offset_groups(ref_df, mode), lag, time_agg=time_agg, **reference
+    )
+    for step in range(h):
+        at = (ref_df["ds"] == T + 3 + step).to_numpy()
+        np.testing.assert_allclose(seen[step], want[at], rtol=1e-9)
+
+
+def test_pooled_std_centre_survives_bucket_growth():
+    """A brand appearing at update renumbers the buckets; the centres move with them."""
+    T = 12
+    df = _offset_panel(T=T)
+    head, tail = df[df.ds <= T - 2], df[df.ds > T - 2]
+    new = pd.DataFrame(
+        {"unique_id": "e", "ds": [T - 1, T], "y": [50.0, 51.0], "brand": "a0"}
+    )
+    lag = 1
+    tfm = RollingStd(window_size=4, groupby=["brand"])
+    grown = _fit_ts(head, tfm, lag)
+    grown.update(pd.concat([tail, new]))
+    state = grown._pooled_states[("groupby", ("brand",), ())]
+    assert list(state.bucket_uniques) == ["a0", "b1", "b2"]
+    control = _fit_ts(
+        pd.concat([df, new]), RollingStd(window_size=4, groupby=["brand"]), lag
+    )
+    col = tfm._get_name(lag)
+    for ts in (grown, control):
+        ts._predict_setup()
+    got = grown._update_features()[col].to_numpy()
+    want = control._update_features()[col].to_numpy()
+    np.testing.assert_allclose(got, want, rtol=1e-9)
+
+
+# %% collapsed views are maintained incrementally, and only for what's read
+def _view_state(n_buckets=3, width=4, channels=("count", "sum", "sumsq", "min", "max")):
+    from mlforecast.pooled import PooledState
+
+    rng = np.random.default_rng(0)
+    base = {}
+    for name in channels:
+        arr = rng.normal(size=(n_buckets, width))
+        if name == "count":
+            arr = np.abs(np.floor(arr * 2)) + 1.0
+        base[name] = np.ascontiguousarray(arr)
+    return PooledState(
+        mode="global",
+        group_cols=[],
+        partition_cols=[],
+        n_buckets=n_buckets,
+        n_ordinals=width,
+        base=base,
+        series_bucket_id=np.arange(n_buckets),
+    )
+
+
+_TIME_AGGS_ALL = ["sum", "count", "mean", "min", "max"]
+
+
+def _assert_views_fresh(state, ctx=""):
+    """Every cached view must equal a collapse of the current base."""
+    from mlforecast.pooled import _collapse, _view_value
+
+    for time_agg, view in state._views.items():
+        direct = _collapse(
+            *_view_value(state.base, time_agg), state.cell_shift(time_agg), list(view)
+        )
+        for name in view:
+            np.testing.assert_array_equal(
+                view[name], direct[name], err_msg=f"{ctx}:{time_agg}:{name}"
+            )
+
+
+@pytest.mark.parametrize("time_agg", _TIME_AGGS_ALL)
+def test_appended_views_match_a_full_recollapse(time_agg):
+    """`append` extends cached views instead of dropping them.
+
+    `_collapse` is elementwise per cell, so the extension must be bit-identical
+    to recollapsing the whole block -- asserted exactly, not approximately.
+    """
+    state = _view_state()
+    state.channels(time_agg)
+    for step in range(5):
+        state.append(np.array([1.0, 2.0, 3.0]), bucket_ids=np.arange(3))
+        _assert_views_fresh(state, ctx=f"step{step}")
+    assert state.width == 9
+
+
+@pytest.mark.parametrize("time_agg", _TIME_AGGS_ALL)
+def test_appended_views_handle_buckets_with_no_rows(time_agg):
+    """A bucket absent from a step collapses to the empty-cell fills.
+
+    Extending with the raw column instead of a collapsed one passes the mean
+    case and fails here, so this is the guard that matters.
+    """
+    state = _view_state()
+    view = state.channels(time_agg)
+    # only bucket 0 gets a row this step
+    state.append(np.array([5.0]), bucket_ids=np.array([0]))
+    _assert_views_fresh(state, ctx="sparse")
+    assert view["count"][1, -1] == 0.0
+    assert view["sum"][1, -1] == 0.0
+    assert view["sumsq"][1, -1] == 0.0
+    assert view["min"][1, -1] == np.inf
+    assert view["max"][1, -1] == -np.inf
+    # the divide is pre-zeroed, so an unobserved cell is 0.0, never NaN
+    assert not np.isnan(view["sum"]).any()
+
+
+def test_views_are_dropped_on_grow_trim_and_restore():
+    """The rare mutations still invalidate rather than maintain the views."""
+    state = _view_state(width=6)
+    state.bucket_uniques = np.array(["a", "b", "c"], dtype=object)
+
+    state.channels("sum")
+    state.grow_buckets(np.array(["a", "b", "c", "d"], dtype=object))
+    assert state._views == {}
+    _assert_views_fresh(state, ctx="grow")
+
+    state.channels("sum")
+    state.trim_to_last(3)
+    assert state._views == {}
+    _assert_views_fresh(state, ctx="trim")
+
+    state.channels("sum")
+    snap = state.snapshot()
+    state.append(np.array([1.0, 2.0, 3.0, 4.0]), bucket_ids=np.arange(4))
+    state.restore(snap)
+    assert state._views == {}
+    _assert_views_fresh(state, ctx="restore")
+
+
+def test_views_hold_only_the_channels_a_kernel_reads():
+    """Views are cached, so building all five would keep all five alive."""
+    state = _view_state()
+    view = state.channels("sum", ("sum", "count"))
+    assert set(view) == {"sum", "count"}
+
+    # a second kernel needing more widens the same view in place
+    widened = state.channels("sum", ("min", "count"))
+    assert widened is view
+    assert set(view) == {"sum", "count", "min"}
+    _assert_views_fresh(state, ctx="widened")
+
+    # and the widened channels keep tracking appends
+    state.append(np.array([1.0, 2.0, 3.0]), bucket_ids=np.arange(3))
+    _assert_views_fresh(state, ctx="widened+append")
+
+
+def test_channels_without_time_agg_is_the_base_store():
+    """No collapse to cache, so nothing to maintain or invalidate."""
+    state = _view_state()
+    assert state.channels(None) is state.base
+    assert state._views == {}
+
+
+@pytest.mark.parametrize("time_agg", _TIME_AGGS_ALL)
+def test_appended_views_work_from_a_minimal_base(time_agg):
+    """A real `time_agg` state stores only `{count, <source>}`, not all five.
+
+    Every collapsed channel is derived from that pair, so the incremental
+    extension has to work off the same minimal base the state actually keeps.
+    """
+    from mlforecast.pooled import _TIME_AGG_SOURCE, base_channels
+
+    needed = base_channels(("sum", "count"), time_agg)
+    assert needed == {"count", _TIME_AGG_SOURCE[time_agg]}
+    state = _view_state(channels=tuple(sorted(needed)))
+    state.channels(time_agg)
+    state.append(np.array([4.0, 5.0]), bucket_ids=np.array([0, 2]))
+    _assert_views_fresh(state, ctx="minimal-base")
+    assert set(state.base) == needed
+
+
+# ---------------------------------------------------------------------------
+# G5: the sample gate on long sparse windows.
+#
+# The gate counts observations recovered from a channel *mean*: `k * (S / k)`,
+# which is not S in float64 (`49 * (1 / 49)` is 0.9999999999999999). A bucket
+# whose window spans many more cells than it holds rows would then fail
+# `n_obs >= min_samples` and blank out a real value.
+# ---------------------------------------------------------------------------
+
+#: smallest cell count whose round trip loses a ULP at one observation
+_GATE_CELLS = 49
+
+
+def _gate_df(engine, n_times, promo_ordinals):
+    """One series over ``n_times`` steps, in partition ``1`` only where asked."""
+    return _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * n_times,
+            "ds": list(range(n_times)),
+            "y": [float(t + 1) for t in range(n_times)],
+            "promo": [1 if t in promo_ordinals else 0 for t in range(n_times)],
+        },
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "tfm_factory,promo_ordinals,expected",
+    [
+        (lambda: ExpandingMean(partition_by=["promo"]), (0, _GATE_CELLS), 1.0),
+        (lambda: ExpandingMin(partition_by=["promo"]), (0, _GATE_CELLS), 1.0),
+        (lambda: ExpandingMax(partition_by=["promo"]), (0, _GATE_CELLS), 1.0),
+        (
+            lambda: RollingMean(_GATE_CELLS, partition_by=["promo"]),
+            (0, _GATE_CELLS),
+            1.0,
+        ),
+        # std needs two observations to clear its own `n > 1` gate
+        (lambda: ExpandingStd(partition_by=["promo"]), (0, 1, _GATE_CELLS), 2**-0.5),
+    ],
+    ids=[
+        "ExpandingMean",
+        "ExpandingMin",
+        "ExpandingMax",
+        "RollingMean",
+        "ExpandingStd",
+    ],
+)
+def test_g5_1_sparse_window_gate_at_fit(engine, tfm_factory, promo_ordinals, expected):
+    """A window of 49 cells holding 1-2 rows still clears `min_samples`."""
+    df = _gate_df(engine, _GATE_CELLS + 1, promo_ordinals)
+    tfm = tfm_factory()
+    col = tfm._get_name(1)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    out = ts.fit_transform(df, "unique_id", "ds", "y", dropna=False, static_features=[])
+    values = np.asarray(out[col].to_numpy(), dtype=np.float64)
+    np.testing.assert_allclose(values[_GATE_CELLS], expected)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "tfm_factory,expected",
+    [
+        (lambda: ExpandingMean(partition_by=["promo"]), 1.0),
+        (lambda: ExpandingMin(partition_by=["promo"]), 1.0),
+        (lambda: RollingMean(_GATE_CELLS, partition_by=["promo"]), 1.0),
+    ],
+    ids=["ExpandingMean", "ExpandingMin", "RollingMean"],
+)
+def test_g5_2_sparse_window_gate_at_predict(engine, tfm_factory, expected):
+    """`update` recovers the same count from the same round trip."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.dummy import DummyRegressor
+
+    # the first predicted step lands at ordinal 49, so its window spans 49 cells
+    df = _gate_df(engine, _GATE_CELLS, promo_ordinals=(0,))
+    tfm = tfm_factory()
+    col = tfm._get_name(1)
+    captured = []
+
+    def save_features(x):
+        captured.append(np.asarray(x[col].to_numpy(), dtype=np.float64))
+        return x
+
+    fcst = MLForecast(
+        models=[DummyRegressor()], freq=1, lags=[1], lag_transforms={1: [tfm]}
+    )
+    fcst.fit(df, id_col="unique_id", time_col="ds", target_col="y", static_features=[])
+    future = _make_df(engine, {"unique_id": ["a"], "ds": [_GATE_CELLS], "promo": [1]})
+    fcst.predict(h=1, X_df=future, before_predict_callback=save_features)
+    np.testing.assert_allclose(captured[0][0], expected)
+
+
+# %% kernel dispatch follows the class hierarchy
+def test_get_kernel_resolves_subclasses():
+    """A user subclass of a supported transform is pooled like its parent."""
+    from mlforecast.lag_transforms import _BaseLagTransform
+    from mlforecast.pooled import RollingMeanK, get_kernel
+
+    class MyRollingMean(RollingMean):
+        pass
+
+    tfm = MyRollingMean(3, global_=True)._set_core_tfm(1)
+    assert isinstance(get_kernel(tfm), RollingMeanK)
+
+    class NotPooled(_BaseLagTransform):
+        pass
+
+    with pytest.raises(NotImplementedError, match="NotPooled"):
+        get_kernel(NotPooled())

@@ -27,6 +27,9 @@ from mlforecast.lag_transforms import (
 HORIZON = 12
 N_BRANDS = 20
 N_PROMO = 3
+#: high-cardinality dynamic key: with one bucket per (series, value) this is the
+#: shape whose fit block is widest, which the other configs do not reach
+N_SKU = 50
 
 
 class Constant(BaseEstimator):
@@ -45,6 +48,14 @@ class Config(NamedTuple):
     transforms: Callable[[], List]
     #: whether the case needs the dynamic `promo` partition column
     needs_promo: bool
+    #: whether it needs the high-cardinality `sku` one; defaulted so the
+    #: existing cases keep exactly the frame they had
+    needs_sku: bool = False
+
+    @property
+    def needs_future(self) -> bool:
+        """Whether predict needs an `X_df` carrying the dynamic key."""
+        return self.needs_promo or self.needs_sku
 
 
 #: the cases both suites measure; an entry added here shows up in both
@@ -92,6 +103,19 @@ CONFIGS = [
         True,
     ),
     Config(
+        "partition_expanding",
+        lambda: [ExpandingMean(partition_by=["promo"])],
+        True,
+    ),
+    Config(
+        "mixed_partition_shared",
+        lambda: [
+            RollingMean(7, partition_by=["promo"]),
+            ExpandingMean(partition_by=["promo"]),
+        ],
+        True,
+    ),
+    Config(
         "global_rolling_quantile",
         lambda: [RollingQuantile(p=0.5, window_size=7, global_=True)],
         False,
@@ -102,6 +126,12 @@ CONFIGS = [
         True,
     ),
     Config("lookup_lag_partition", lambda: [LookupLag(partition_by=["promo"])], True),
+    Config(
+        "partition_high_cardinality",
+        lambda: [RollingMean(7, partition_by=["sku"])],
+        False,
+        needs_sku=True,
+    ),
     Config(
         "mixed_realistic",
         lambda: [
@@ -129,6 +159,7 @@ def build_series(n_series, n_times):
             "y": rng.normal(10, 3, n),
             "brand": np.repeat([f"b{i % N_BRANDS}" for i in range(n_series)], n_times),
             "promo": rng.integers(0, N_PROMO, n),
+            "sku": rng.integers(0, N_SKU, n),
         }
     )
 
@@ -146,13 +177,19 @@ def build_future(series, horizon=HORIZON):
                 len(uids),
             ),
             "promo": rng.integers(0, N_PROMO, len(uids) * horizon),
+            "sku": rng.integers(0, N_SKU, len(uids) * horizon),
         }
     )
 
 
 def frame(series, config):
-    """The panel as `config` wants it: `promo` dropped unless it partitions by it."""
-    return series if config.needs_promo else series.drop(columns="promo")
+    """The panel as `config` wants it: a dynamic key dropped unless it is used."""
+    drop = [
+        col
+        for col, needed in (("promo", config.needs_promo), ("sku", config.needs_sku))
+        if not needed
+    ]
+    return series.drop(columns=drop) if drop else series
 
 
 def make_forecast(config, with_model=False):

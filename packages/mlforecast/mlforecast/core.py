@@ -18,6 +18,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Union,
 )
@@ -50,8 +51,11 @@ from .grouped_array import GroupedArray
 from .lag_transforms import Lag, _BaseLagTransform
 from .pooled import (
     PooledState,
-    _order_preserving_left_join,
-    compute_pooled_features,
+    base_channels,
+    encode_keys,
+    factorize,
+    get_kernel,
+    lookup,
 )
 from .utils import (
     _DUMMY_FEATURE_VALUES,
@@ -320,86 +324,204 @@ class TimeSeries:
             k: v for k, v in self.transforms.items() if isinstance(v, _BaseLagTransform)
         }
 
-    def _get_pooled_tfms(self) -> Dict[Tuple, Dict[str, _BaseLagTransform]]:
-        """Group all nonlocal transforms by their pooled key.
+    def _get_pooled_features(self) -> Dict[str, _BaseLagTransform]:
+        """Features needing pooled computation, including wrapped ones.
 
-        Key structure: ``(mode, group_cols_tuple, partition_cols_tuple)``
-
-        Examples::
-
-            ("global", (), ())                        -- pure global
-            ("groupby", ("brand",), ())               -- pure groupby
-            ("local", (), ("promo",))                 -- local partition
-            ("nonlocal", (), ("promo",))              -- global+partition
-            ("nonlocal", ("brand",), ("promo",))      -- groupby+partition
+        `Offset`/`Combine` are not pooled themselves but may wrap transforms
+        that are, so membership is decided by whether the tree has a pooled leaf.
         """
-        pooled: Dict[Tuple, Dict[str, _BaseLagTransform]] = {}
-        for name, tfm in self.transforms.items():
-            if not isinstance(tfm, _BaseLagTransform):
-                continue
-            is_global = getattr(tfm, "global_", False)
-            groupby = getattr(tfm, "groupby", None)
-            partition_by = getattr(tfm, "partition_by", None)
-            if not is_global and not groupby and not partition_by:
-                continue
-            if partition_by:
-                mode = "local" if (not is_global and not groupby) else "nonlocal"
-            elif is_global:
-                mode = "global"
-            else:
-                mode = "groupby"
-            group_cols = tuple(groupby) if groupby else ()
-            part_cols = tuple(partition_by) if partition_by else ()
-            key = (mode, group_cols, part_cols)
-            pooled.setdefault(key, {})[name] = tfm
+        return {
+            name: tfm
+            for name, tfm in self.transforms.items()
+            if isinstance(tfm, _BaseLagTransform) and tfm._pooled_leaves()
+        }
+
+    def _get_pooled_tfms(self) -> Dict[Tuple, List[_BaseLagTransform]]:
+        """Group every pooled leaf by its bucket definition.
+
+        Key structure: ``(mode, group_cols, partition_cols)``::
+
+            ("global", (), ())                    -- pure global
+            ("groupby", ("brand",), ())           -- pure groupby
+            ("local", (), ("promo",))             -- local partition
+            ("nonlocal", (), ("promo",))          -- global+partition
+            ("nonlocal", ("brand",), ("promo",))  -- groupby+partition
+
+        ``time_agg`` is not part of it: it changes how a bucket's rows are
+        summarised, not which rows are in it, so it is a view over the state.
+        Leaves sharing a key share one `PooledState`, so the panel is
+        aggregated once however many transforms read it.
+        """
+        pooled: Dict[Tuple, List[_BaseLagTransform]] = {}
+        for tfm in self._get_pooled_features().values():
+            for leaf in tfm._pooled_leaves():
+                pooled.setdefault(leaf._pooled_key, []).append(leaf)
         return pooled
+
+    def _leaf_cols(self, attr: str) -> List[str]:
+        cols: List[str] = []
+        for leaves in self._get_pooled_tfms().values():
+            for leaf in leaves:
+                for c in getattr(leaf, attr):
+                    if c not in cols:
+                        cols.append(c)
+        return cols
+
+    @property
+    def _partition_cols(self) -> List[str]:
+        return self._leaf_cols("_pt_cols")
+
+    @property
+    def _pooled_aux_cols(self) -> List[str]:
+        group = self._leaf_cols("_gb_cols")
+        return group + [c for c in self._leaf_cols("_pt_cols") if c not in group]
+
+    def _pooled_feature_values(self, tfm, updates_only: bool) -> np.ndarray:
+        """Evaluate a (possibly wrapped) pooled feature.
+
+        Each pooled leaf resolves against the `PooledState` for its bucket key;
+        `Offset`/`Combine` just walk down to their leaves.
+        """
+
+        def eval_leaf(leaf):
+            state = self._pooled_states[leaf._pooled_key]
+            if updates_only:
+                vals = state.update(leaf._pooled_kernel, leaf._pooled_inner)
+                return state.broadcast(vals)
+            return state.fit_values(leaf._pooled_kernel, leaf._pooled_inner)
+
+        return tfm._pooled_eval(eval_leaf)
 
     def _get_local_tfms(
         self,
         transforms: Mapping[str, Union[Tuple[Any, ...], _BaseLagTransform]],
     ) -> Dict[str, Union[Tuple[Any, ...], _BaseLagTransform]]:
-        local = {}
-        for name, tfm in transforms.items():
-            if isinstance(tfm, _BaseLagTransform) and getattr(tfm, "global_", False):
-                continue
-            if isinstance(tfm, _BaseLagTransform) and getattr(tfm, "groupby", None):
-                continue
-            if isinstance(tfm, _BaseLagTransform) and getattr(
-                tfm, "partition_by", None
-            ):
-                continue
-            local[name] = tfm
-        return local
+        """Transforms the per-series coreforecast path may compute.
+
+        A wrapper holding a pooled leaf is excluded too, otherwise it would
+        silently produce the local result under a pooled feature name.
+        """
+        return {
+            name: tfm
+            for name, tfm in transforms.items()
+            if not (isinstance(tfm, _BaseLagTransform) and tfm._pooled_leaves())
+        }
 
     def _trim_pooled_states(self) -> None:
         """Trim each pooled state's history under ``keep_last_n``.
 
-        Parity with the ``self.ga`` trim: a pooled state whose transforms are
-        *all* finite-window drops its unused history prefix, while a state
-        containing any Expanding*/EWM transform keeps full history (pooled has
-        no carried accumulator -- it recomputes over the full aggregate vectors
-        at predict, so trimming those would move predictions).
+        Parity with the ``self.ga`` trim: a state drops its unused prefix when
+        every one of its transforms declares a finite ``_pooled_retention``, and
+        keeps full history when any of them is unbounded.
 
-        Retention is ``max(keep_last_n, W_state)`` ordinals, where ``W_state``
-        is the state's largest finite window. The floor is required and is where
-        pooled legitimately diverges from the local coreforecast path: local
-        rolling survives an undersized explicit ``keep_last_n`` because
-        coreforecast carries a per-transform window buffer; pooled has none (the
-        aggregates *are* the buffer), so trimming below ``W_state`` would compute
-        windows off a truncated prefix. When ``keep_last_n`` is inferred it
-        already equals the global max window, so the floor is then a no-op.
+        Retention is ``max(keep_last_n, R_state)``. The floor is required and is
+        where pooled diverges from the local coreforecast path: local rolling
+        survives an undersized ``keep_last_n`` because coreforecast carries a
+        per-transform window buffer; pooled has none -- the channels *are* the
+        buffer -- so trimming below ``R_state`` would compute windows off a
+        truncated prefix while ``window_cells`` still claimed a full one.
         """
         if self.keep_last_n is None:
             return
-        for key, tfms in self._get_pooled_tfms().items():
+        keep = self.keep_last_n
+        for key, leaves in self._get_pooled_tfms().items():
             state = self._pooled_states.get(key)
             if state is None:
                 continue
-            tfm_list = list(tfms.values())
-            if not all(tfm._is_finite_window for tfm in tfm_list):
+            # the channel block and the raw rows are trimmed on the same
+            # cutoff, except that a row leaf reaching back to ordinal 0
+            # (ExpandingQuantile, LookupLag) keeps the rows whole -- it no
+            # longer pins the block the other leaves read
+            block: List[Optional[int]] = []
+            rows: List[Optional[int]] = []
+            for leaf in leaves:
+                kind = rows if leaf._pooled_kernel.needs_rows else block
+                kind.append(leaf._pooled_retention)
+            if any(r is None for r in block):
                 continue
-            w_state = max(tfm.update_samples for tfm in tfm_list)
-            state.trim_to_last(max(self.keep_last_n, w_state))
+            bounded = [r for r in block + rows if r is not None]
+            if not bounded:
+                continue
+            keep_rows = len(bounded) < len(block) + len(rows)
+            state.trim_to_last(max(keep, *bounded), keep_rows=keep_rows)
+
+    def _update_pooled_states(self, df, sizes, values: np.ndarray) -> None:
+        """Fold newly observed timestamps into the bucket aggregates.
+
+        Buckets advance one timestamp for every series at once, so an update has
+        to be a lockstep block: the same new timestamps for every series, new
+        ones included. New series (and new partition values) extend the bucket
+        vocabulary, which can renumber existing buckets -- `grow_buckets`
+        permutes the stored aggregates to match.
+
+        The accumulator kernels (Expanding*/EWM) fold one source cell per
+        ``PooledState.update``, which the predict loop calls once per
+        timestamp; the same call is made here for every appended timestamp,
+        otherwise the next predict would skip straight to the newest one.
+        """
+        states = getattr(self, "_pooled_states", {})
+        if not states:
+            return
+        counts = np.asarray(sizes["counts"].to_numpy())
+        if not counts.any():
+            return  # nothing appended
+        n_new = int(counts[0])
+        if not bool((counts == n_new).all()):
+            raise ValueError(
+                "Pooled lag transforms require updates to include all series for "
+                "each timestamp."
+            )
+        n_series = len(counts)
+        # values arrive grouped by id, so column j is the j-th new timestamp
+        per_step = np.asarray(values, dtype=np.float64).reshape(n_series, n_new)
+        uids = np.asarray(
+            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
+        )
+        statics = self.static_features_
+        part_cols = self._partition_cols
+        part: Dict[str, np.ndarray] = {}
+        if part_cols:
+            missing = [c for c in part_cols if c not in df.columns]
+            if missing:
+                raise ValueError(
+                    f"`partition_by` column(s) {missing} must be provided in the "
+                    "update frame."
+                )
+            pdf = df[part_cols]
+            part = {
+                c: np.asarray(pdf[c].to_numpy()).reshape(n_series, n_new)
+                for c in part_cols
+            }
+        leaves_by_key = self._get_pooled_tfms()
+        for key, state in states.items():
+            mode, gcols, pcols = key
+            leaves = leaves_by_key.get(key, ())
+            accumulators = [leaf for leaf in leaves if leaf._pooled_kernel.primes_state]
+            bids = None
+            for j in range(n_new):
+                if mode == "global" and not pcols:
+                    bids = np.zeros(n_series, dtype=np.int64)
+                else:
+                    arrays = []
+                    if mode == "local":
+                        arrays.append(uids)
+                    elif gcols:
+                        arrays += [np.asarray(statics[c].to_numpy()) for c in gcols]
+                    arrays += [part[c][:, j] for c in pcols]
+                    remap = state.grow_buckets(np.unique(encode_keys(arrays)))
+                    if remap is not None:
+                        # growing renumbers buckets, so the per-kernel inner state
+                        # has to be permuted and extended to match
+                        for leaf in leaves:
+                            leaf._pooled_kernel.remap_buckets(
+                                leaf._pooled_inner, remap, state.n_buckets
+                            )
+                    bids = lookup(arrays, state.bucket_uniques)
+                for leaf in accumulators:
+                    state.update(leaf._pooled_kernel, leaf._pooled_inner)
+                state.append(per_step[:, j], bucket_ids=bids)
+            if bids is not None:
+                state.set_series_bucket_id(bids)
 
     def _apply_keep_last_n(self) -> None:
         """Resolve ``keep_last_n`` and trim the stored history accordingly.
@@ -423,6 +545,8 @@ class TimeSeries:
         if self.keep_last_n is not None:
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
             self._trim_pooled_states()
+        for state in getattr(self, "_pooled_states", {}).values():
+            state.finish_fit()
 
     def _initialize_lag_transform_states(self) -> None:
         """Materialize lag transform state for subsequent update-based prediction.
@@ -432,9 +556,20 @@ class TimeSeries:
         or ``predict(new_df=...)``). Local (coreforecast) transforms need a full
         ``transform`` pass so stateful transforms like ``ExpandingMean`` can
         initialize their internal buffers before the first ``update(...)`` call.
-        Pooled transforms keep their state in ``_ts_aggs`` (built at
-        construction), so they need no warm-up pass.
+        Pooled transforms need the same treatment: the accumulator kernels'
+        inner state is primed by the fit pass, so that is run here (and its
+        result discarded) before the first ``update``.
         """
+        for name, tfm in self._get_pooled_features().items():
+            for leaf in tfm._pooled_leaves():
+                kernel = leaf._pooled_kernel
+                if not kernel.primes_state:
+                    # rolling/seasonal/lag `update` re-derives from the block
+                    # and the row kernels re-gather from the raw observations,
+                    # so there is nothing to prime
+                    continue
+                state = self._pooled_states[leaf._pooled_key]
+                state.prime(kernel, leaf._pooled_inner)
         core_tfms = self._get_core_lag_tfms()
         if core_tfms:
             self._compute_transforms(core_tfms, updates_only=False)
@@ -598,25 +733,13 @@ class TimeSeries:
                     ga.data = sorted_df[target_col].to_numpy()
         to_drop = [id_col, time_col, target_col]
         if static_features is None:
-            partition_cols = {
-                col
-                for tfm in self.transforms.values()
-                if isinstance(tfm, _BaseLagTransform)
-                for col in (getattr(tfm, "partition_by", None) or [])
-            }
-            self._partition_cols = partition_cols
+            partition_cols = self._partition_cols
             static_features = [
                 c
                 for c in df.columns
                 if c not in [time_col, target_col] and c not in partition_cols
             ]
         else:
-            self._partition_cols = {
-                col
-                for tfm in self.transforms.values()
-                if isinstance(tfm, _BaseLagTransform)
-                for col in (getattr(tfm, "partition_by", None) or [])
-            }
             if id_col not in static_features:
                 static_features = [id_col, *static_features]
             else:
@@ -677,83 +800,122 @@ class TimeSeries:
                     UserWarning,
                 )
         self.features_order_ = [f for f in self.features_order_ if f not in to_exclude]
-        self._pooled_states: Dict[Tuple, PooledState] = {}
-        pooled_tfms = self._get_pooled_tfms()
-        if pooled_tfms:
-            if self.target_transforms is not None:
-                transformed_target = ga.data
-                if self._restore_idxs is not None:
-                    transformed_target = transformed_target[self._restore_idxs]
-                df_for_pooled = ufp.assign_columns(df, target_col, transformed_target)
-            else:
-                df_for_pooled = df
-            for key, tfms in pooled_tfms.items():
-                mode, group_cols_t, part_cols_t = key
-                if mode == "global" and not part_cols_t:
-                    self._pooled_states[key] = PooledState.from_global(
-                        sorted_df,
-                        id_col=id_col,
-                        time_col=time_col,
-                        target_col=target_col,
-                        ga_data_dtype=ga.data.dtype,
-                        n_series=len(ga.indptr) - 1,
-                    )
-                elif mode == "groupby" and not part_cols_t:
-                    for col in group_cols_t:
-                        if col not in df.columns:
-                            raise ValueError(
-                                f"Groupby column '{col}' not found in dataframe."
-                            )
-                    group_cols_list = list(group_cols_t)
-                    missing = [
-                        c
-                        for c in group_cols_list
-                        if c not in self.static_features_.columns
-                    ]
-                    if missing:
-                        raise ValueError(
-                            "Groupby columns must be static features. "
-                            f"Missing from static_features: {missing}."
-                        )
-                    self._pooled_states[key] = PooledState.from_groupby(
-                        df_for_pooled,
-                        group_cols_list=group_cols_list,
-                        id_col=id_col,
-                        time_col=time_col,
-                        target_col=target_col,
-                        ga_data_dtype=ga.data.dtype,
-                        static_features=self.static_features_,
-                    )
-                else:
-                    all_cols = list(group_cols_t) + list(part_cols_t)
-                    for col in all_cols:
-                        if col not in df.columns and col != id_col:
-                            raise ValueError(
-                                f"partition_by/groupby column '{col}' not found in dataframe."
-                            )
-                    part_group_cols = list(group_cols_t) if group_cols_t else None
-                    self._pooled_states[key] = PooledState.from_partition(
-                        df_for_pooled,
-                        mode=mode,
-                        group_cols_list=part_group_cols,
-                        partition_cols_list=list(part_cols_t),
-                        id_col=id_col,
-                        time_col=time_col,
-                        target_col=target_col,
-                        ga_data_dtype=ga.data.dtype,
-                        static_features=self.static_features_,
-                        n_series=len(ga.indptr) - 1,
-                    )
-            for key, state in self._pooled_states.items():
-                if state.groups is not None:
-                    from .pooled import _compute_idsorted_to_bucket_pos
-
-                    state._idsorted_to_bucket_pos = _compute_idsorted_to_bucket_pos(
-                        state.bucket_df,
-                        id_col,
-                        time_col,
-                    )
+        self._build_pooled_states(df, sorted_df, ga)
         return self
+
+    def _build_pooled_states(self, df, sorted_df, ga) -> None:
+        """Aggregate the panel into per-bucket channels, one state per key.
+
+        Runs after the target transforms so the channels see the transformed
+        target, and after ``static_features_`` so ``groupby`` keys resolve.
+        """
+        self._pooled_states: Dict[Tuple, PooledState] = {}
+        pooled = self._get_pooled_tfms()
+        if not pooled:
+            return
+        self._check_aligned_ends()
+        time_col = self.time_col
+        indptr = ga.indptr
+        lens = np.diff(indptr).astype(np.int64)
+        y = ga.data.astype(np.float64, copy=False)
+        # Calendar position of every row, taken from the observed timestamps
+        # rather than from series lengths, so a gap inside a series leaves an
+        # empty cell instead of shifting every later row by one.
+        times = np.asarray(sorted_df[time_col].to_numpy())
+        _, row_ord = np.unique(times, return_inverse=True)
+        row_ord = row_ord.astype(np.int64, copy=False).ravel()
+        n_ordinals = int(row_ord.max()) + 1
+        uid_vals = np.asarray(
+            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
+        )
+        statics = self.static_features_
+        # Key columns for a partitioned bucket are read per row, so they may vary
+        # over time; a groupby column that is static is broadcast from statics.
+        key_cols = self._pooled_aux_cols
+        row_cols = [c for c in key_cols if c in df.columns]
+        part_cols = self._partition_cols
+        missing = [
+            c for c in part_cols if c not in df.columns and c not in statics.columns
+        ]
+        if missing:
+            raise ValueError(
+                f"partition_by column(s) {missing} not found in dataframe."
+            )
+        key_rows: Dict[str, np.ndarray] = {}
+        if row_cols:
+            kdf = df[row_cols]
+            if self._sort_idxs is not None:
+                kdf = ufp.take_rows(kdf, self._sort_idxs)
+            key_rows = {c: np.asarray(kdf[c].to_numpy()) for c in row_cols}
+
+        def _row_values(col):
+            """Per-row values for a key column, from the frame or the statics."""
+            if col in key_rows:
+                return key_rows[col]
+            return np.repeat(np.asarray(statics[col].to_numpy()), lens)
+
+        for key, leaves in pooled.items():
+            mode, gcols, pcols = key
+            if not pcols:
+                # a pure groupby bucket is broadcast from the statics at predict,
+                # so its key has to be static; with partition_by the key is read
+                # per row instead and may come from the frame
+                missing_static = [c for c in gcols if c not in statics.columns]
+                if missing_static:
+                    raise ValueError(
+                        "Groupby columns must be static features. "
+                        f"Missing from static_features: {missing_static}."
+                    )
+            uniques = None
+            if not pcols:
+                if mode == "global":
+                    n_buckets = 1
+                    series_bid = np.zeros(len(lens), dtype=np.int64)
+                else:
+                    series_bid, uniques = factorize(
+                        [np.asarray(statics[c].to_numpy()) for c in gcols]
+                    )
+                    n_buckets = len(uniques)
+                row_bid = np.repeat(series_bid, lens)
+            else:
+                arrays = []
+                if mode == "local":
+                    arrays.append(np.repeat(uid_vals, lens))
+                elif gcols:
+                    arrays += [_row_values(c) for c in gcols]
+                arrays += [_row_values(c) for c in pcols]
+                row_bid, uniques = factorize(arrays)
+                n_buckets = len(uniques)
+                # seed with each series' assignment at its last observed
+                # timestamp; predict overwrites this per step from X_df
+                series_bid = row_bid[indptr[1:] - 1]
+            needed: Set[str] = set()
+            needs_rows = False
+            for leaf in leaves:
+                leaf._pooled_kernel = get_kernel(leaf)
+                leaf._pooled_inner = leaf._pooled_kernel.make_inner()
+                if leaf._pooled_kernel.needs_rows:
+                    # gathers the raw rows; a state of only these keeps no block
+                    needs_rows = True
+                else:
+                    needed.update(
+                        base_channels(leaf._pooled_kernel.channels, leaf.time_agg)
+                    )
+            state = PooledState.build(
+                mode=mode,
+                group_cols=list(gcols),
+                partition_cols=list(pcols),
+                bucket_id_by_row=row_bid,
+                ordinal_by_row=row_ord,
+                y=y,
+                n_buckets=n_buckets,
+                n_ordinals=n_ordinals,
+                series_bucket_id=series_bid,
+                needed=needed,
+                bucket_uniques=uniques,
+                needs_rows=needs_rows,
+            )
+            self._pooled_states[key] = state
 
     def _compute_transforms(
         self,
@@ -777,32 +939,6 @@ class TimeSeries:
                 updates_only=updates_only,
             )
         return out
-
-    def _join_bucket_features(
-        self,
-        features: Dict[str, np.ndarray],
-        df: DFType,
-        bucket_df: DFType,
-        bucket_vals: Dict[str, np.ndarray],
-        join_cols: list,
-    ) -> None:
-        feature_cols = list(bucket_vals.keys())
-        if not feature_cols:
-            return
-        nw_bucket = nw.from_native(bucket_df, eager_only=True)
-        backend = nw.get_native_namespace(nw_bucket)
-        join_df = nw_bucket.select(join_cols)
-        for name, vals in bucket_vals.items():
-            join_df = join_df.with_columns(nw.new_series(name, vals, backend=backend))
-        join_df = join_df.to_native()
-        left = nw.from_native(df, eager_only=True).select(join_cols).to_native()
-        joined = nw.to_native(
-            _order_preserving_left_join(
-                nw.from_native(left), nw.from_native(join_df), on=join_cols
-            )
-        )
-        for name in feature_cols:
-            features[name] = joined[name].to_numpy()
 
     def _compute_date_feature(self, dates, feature) -> Dict[str, Any]:
         """Compute date feature(s) and return as a ``{col_name: values}`` dict."""
@@ -869,55 +1005,10 @@ class TimeSeries:
         features = self._compute_transforms(
             transforms=self.transforms, updates_only=False
         )
-        pooled_tfms = self._get_pooled_tfms()
-        if pooled_tfms:
-            if self._sort_idxs is not None:
-                df_sorted = ufp.take_rows(df, self._sort_idxs)
-            else:
-                df_sorted = df
-            for key, tfms in pooled_tfms.items():
-                state = self._pooled_states[key]
-                fast_features: Dict[str, Any] = {}
-                slow_tfms: Dict[str, _BaseLagTransform] = {}
-                for name, tfm in tfms.items():
-                    ts_vals = tfm._compute_ts_level_from_aggs(state._ts_aggs)
-                    if ts_vals is not None:
-                        fast_features[name] = ts_vals
-                    else:
-                        slow_tfms[name] = tfm
-                if fast_features:
-                    if state.groups is None:
-                        unique_times = np.unique(state.time)
-                        time_vals = df_sorted[self.time_col].to_numpy()
-                        row_ords = np.searchsorted(unique_times, time_vals)
-                        for name, ts_vals_by_bucket in fast_features.items():
-                            features[name] = ts_vals_by_bucket[0][row_ords]
-                    elif state._idsorted_to_bucket_pos is not None:
-                        pos = state._idsorted_to_bucket_pos
-                        bid_df = state.bucket_id[pos]
-                        ord_df = state.time_index[pos]
-                        for name, ts_vals_by_bucket in fast_features.items():
-                            out = np.full(len(pos), np.nan)
-                            for bid, ts_vals in ts_vals_by_bucket.items():
-                                mask = bid_df == bid
-                                bucket_ords = ord_df[mask]
-                                agg = state._ts_aggs[bid]
-                                dense_pos = np.searchsorted(
-                                    agg.unique_times, bucket_ords
-                                )
-                                out[mask] = ts_vals[dense_pos]
-                            features[name] = out
-                    else:
-                        slow_tfms.update({n: tfms[n] for n in fast_features})
-                if slow_tfms:
-                    bucket_vals = compute_pooled_features(state, slow_tfms)
-                    self._join_bucket_features(
-                        features,
-                        df_sorted,
-                        state.bucket_df,
-                        bucket_vals,
-                        state.join_cols,
-                    )
+        for name, tfm in self._get_pooled_features().items():
+            features[name] = self._pooled_feature_values(
+                tfm, updates_only=False
+            ).astype(self.ga.data.dtype, copy=False)
         # filter out the features that already exist in df to avoid overwriting them
         features = {k: v for k, v in features.items() if k not in df}
         if self._restore_idxs is not None:
@@ -1315,7 +1406,7 @@ class TimeSeries:
         new_arr = np.asarray(new)
         self.ga = self.ga.append(new_arr)
         for state in self._pooled_states.values():
-            state.append_predictions(self.curr_dates, new_arr, len(new_arr))
+            state.append(new_arr)
 
     def _update_features(self) -> DataFrame:
         """Compute the current values of all the features using the latest values of the time series.
@@ -1335,58 +1426,10 @@ class TimeSeries:
         self.test_dates.append(self.curr_dates)
 
         features = self._compute_transforms(self.transforms, updates_only=True)
-        pooled_tfms = self._get_pooled_tfms()
-        for key, tfms in pooled_tfms.items():
-            state = self._pooled_states[key]
-            n_series = len(self.uids)
-            slow_tfms: Dict[str, _BaseLagTransform] = {}
-            for name, tfm in tfms.items():
-                latest = tfm._compute_latest_from_aggs(
-                    state._ts_aggs,
-                    state.next_time_index_by_bucket,
-                )
-                if latest is not None:
-                    if state.groups is None:
-                        features[name] = np.full(n_series, latest[0])
-                    else:
-                        max_bid = max(
-                            max(latest.keys(), default=-1),
-                            int(state.series_bucket_id.max()),
-                        )
-                        lookup = np.full(max_bid + 1, np.nan)
-                        for bid, val in latest.items():
-                            lookup[bid] = val
-                        features[name] = lookup[state.series_bucket_id]
-                else:
-                    slow_tfms[name] = tfm
-            if slow_tfms:
-                query = state.build_query_arrays(self.curr_dates, n_series)
-                bucket_vals = compute_pooled_features(
-                    state,
-                    slow_tfms,
-                    query_arrays=query,
-                )
-                if state.groups is None:
-                    for name, vals in bucket_vals.items():
-                        features[name] = np.full(n_series, vals[-1])
-                else:
-                    tmp_bid = query[0]
-                    n_orig = len(state.y)
-                    for name, vals in bucket_vals.items():
-                        new_vals = vals[n_orig:]
-                        new_bid_vals = tmp_bid[n_orig:]
-                        val_map = {}
-                        for bv, v in zip(new_bid_vals, new_vals):
-                            val_map[bv] = v
-                        max_bid = max(
-                            max(val_map.keys(), default=-1),
-                            int(state.series_bucket_id.max()),
-                        )
-                        lookup = np.full(max_bid + 1, np.nan)
-                        for bid, val in val_map.items():
-                            lookup[bid] = val
-                        features[name] = lookup[state.series_bucket_id]
-
+        for name, tfm in self._get_pooled_features().items():
+            features[name] = self._pooled_feature_values(tfm, updates_only=True).astype(
+                self.ga.data.dtype, copy=False
+            )
         if self._uniform_dates and self.date_features:
             # all series are on the same timestamp, so date features are
             # constant across series: compute them on a single date and
@@ -1491,49 +1534,44 @@ class TimeSeries:
         return ufp.drop_index_if_pandas(ufp.take_rows(X_df, rows))
 
     def _update_partition_assignments(self, X_df):
-        """Update partition state bucket assignments from current X_df row.
+        """Re-bucket every series for the current step from the dynamic columns.
 
-        Returns the sliced X_row (one row per series for the current step)
-        so ``_get_features_for_next_step`` can reuse it without re-slicing.
-        Returns ``None`` when there are no partition columns.
+        Returns the sliced ``X_row`` (one row per series for this step) so
+        ``_get_features_for_next_step`` can reuse it, or ``None`` when there are
+        no partition columns.
         """
-        if not getattr(self, "_partition_cols", None):
+        if not self._partition_cols:
             return None
         X_row = self._current_step_rows(X_df)
-        # Both frames hold one row per series in uid order, so selecting key
-        # columns from each and concatenating keeps the context aligned.
-        X_row_nw = nw.from_native(X_row, eager_only=True)
-        statics_nw = nw.from_native(self.static_features_, eager_only=True)
-        x_cols = set(X_row_nw.columns)
-        sf_cols = set(statics_nw.columns)
+        x_cols = set(getattr(X_row, "columns", []))
+        uids = np.asarray(
+            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
+        )
         for key, state in self._pooled_states.items():
-            _mode, _group_cols, part_cols = key
-            if not part_cols or state.key_cols is None:
+            mode, gcols, pcols = key
+            if not pcols:
                 continue
-            from_statics = [self.id_col]
-            from_x = []
-            missing_keys = []
-            for col in state.key_cols:
-                if col == self.id_col:
-                    continue
-                if col in x_cols:
-                    from_x.append(col)
-                elif col in sf_cols:
-                    from_statics.append(col)
-                else:
-                    missing_keys.append(col)
-            if missing_keys:
+            sf_cols = set(self.static_features_.columns)
+            needed = list(gcols) + list(pcols)
+            missing = [c for c in needed if c not in x_cols and c not in sf_cols]
+            if missing:
                 raise ValueError(
-                    f"Partition/group key column(s) {missing_keys} not found "
-                    f"in X_df or static_features. Provide these columns in "
-                    f"X_df for prediction."
+                    f"Partition/group key column(s) {missing} not found in X_df "
+                    "or static_features. Provide these columns in X_df for "
+                    "prediction."
                 )
-            context_nw = statics_nw.select(from_statics)
-            if from_x:
-                context_nw = nw.concat(
-                    [context_nw, X_row_nw.select(from_x)], how="horizontal"
-                )
-            state.update_series_bucket_id(context_nw.to_native(), self.id_col)
+
+            def _ctx(col):
+                src = X_row if col in x_cols else self.static_features_
+                return np.asarray(src[col].to_numpy())
+
+            arrays = []
+            if mode == "local":
+                arrays.append(uids)
+            elif gcols:
+                arrays += [_ctx(c) for c in gcols]
+            arrays += [_ctx(c) for c in pcols]
+            state.set_series_bucket_id(lookup(arrays, state.bucket_uniques))
         return X_row
 
     def _get_features_for_next_step(self, X_df=None):
@@ -2102,12 +2140,4 @@ class TimeSeries:
             new_values=values,
             new_groups=new_groups.to_numpy(),
         )
-        for state in self._pooled_states.values():
-            state.append_observations(
-                df,
-                id_col=self.id_col,
-                time_col=self.time_col,
-                target_col=self.target_col,
-                ga_data_dtype=self.ga.data.dtype,
-                static_features=self.static_features_,
-            )
+        self._update_pooled_states(df, sizes, values)

@@ -44,7 +44,7 @@ def _child(conn, config_name):
     df = build_series(N_SERIES, N_TIMES)
     if config_name is not None:
         config = CONFIG_BY_NAME[config_name]
-        x = build_future(df) if config.needs_promo else None
+        x = build_future(df) if config.needs_future else None
         fcst = make_forecast(config, with_model=True)
         fcst.fit(frame(df, config), static_features=["brand"], dropna=False)
         fcst.predict(h=HORIZON, X_df=x)

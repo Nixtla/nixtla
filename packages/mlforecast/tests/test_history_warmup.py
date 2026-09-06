@@ -164,7 +164,9 @@ def test_history_warmup_trims_like_fit():
     # containing ExpandingMean keeps full history)
     for key, state in warmed.ts._pooled_states.items():
         fitted_state = fitted.ts._pooled_states[key]
-        np.testing.assert_array_equal(state.time_index, fitted_state.time_index)
+        assert state.width == fitted_state.width, key
+        for name, arr in fitted_state.base.items():
+            np.testing.assert_array_equal(state.base[name], arr, err_msg=str(key))
 
     explicit = _new_fcst("local")
     explicit.history_warmup(_gen("pandas"), keep_last_n=30)

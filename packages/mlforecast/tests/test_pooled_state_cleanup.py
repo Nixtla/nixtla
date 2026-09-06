@@ -103,41 +103,40 @@ def _agg_arrays(agg):
 
 
 def _assert_state_equal(got, ref):
-    """Field-by-field equality of two PooledStates (mutable fields)."""
-    for f in ("series_bucket_id", "bucket_id", "time", "time_index", "y"):
-        np.testing.assert_array_equal(getattr(got, f), getattr(ref, f))
-    if ref._idsorted_to_bucket_pos is None:
-        assert got._idsorted_to_bucket_pos is None
+    """Field-for-field equality of two PooledStates' mutable state.
+
+    The mutable state is what `snapshot`/`restore` round-trips: the aggregate
+    channels, the shared calendar length, the bucket vocabulary and the current
+    series assignment.
+    """
+    assert got.n_buckets == ref.n_buckets
+    assert got.n_ordinals == ref.n_ordinals
+    np.testing.assert_array_equal(
+        got.series_bucket_id,
+        ref.series_bucket_id,
+    )
+    if ref.bucket_uniques is None:
+        assert got.bucket_uniques is None
     else:
         np.testing.assert_array_equal(
-            got._idsorted_to_bucket_pos, ref._idsorted_to_bucket_pos
+            got.bucket_uniques,
+            ref.bucket_uniques,
         )
-    assert got.next_time_index_by_bucket == ref.next_time_index_by_bucket
-    assert got._bucket_to_parent_id == ref._bucket_to_parent_id
-    assert got._parent_to_buckets == ref._parent_to_buckets
-    assert got._scope_key_to_parent_id == ref._scope_key_to_parent_id
-    # bucket_df / groups grow on append / new buckets; a missed restore would
-    # change their length.
-    assert len(got.bucket_df) == len(ref.bucket_df)
-    assert list(got.bucket_df.columns) == list(ref.bucket_df.columns)
-    if ref.groups is None:
-        assert got.groups is None
+    assert got.base.keys() == ref.base.keys()
+    for name in ref.base:
+        np.testing.assert_array_equal(
+            got.base[name],
+            ref.base[name],
+        )
+    if ref._rows is None:
+        assert got._rows is None
     else:
-        assert len(got.groups) == len(ref.groups)
-    if ref._parent_time_grids is None:
-        assert got._parent_time_grids is None
-    else:
-        assert got._parent_time_grids.keys() == ref._parent_time_grids.keys()
-        for pid in ref._parent_time_grids:
+        got_rows, ref_rows = got._rows.merged(), ref._rows.merged()
+        for attr in ("ordinal", "y", "indptr"):
             np.testing.assert_array_equal(
-                got._parent_time_grids[pid], ref._parent_time_grids[pid]
+                getattr(got_rows, attr),
+                getattr(ref_rows, attr),
             )
-    assert got._ts_aggs.keys() == ref._ts_aggs.keys()
-    for bid in ref._ts_aggs:
-        for a_got, a_ref in zip(
-            _agg_arrays(got._ts_aggs[bid]), _agg_arrays(ref._ts_aggs[bid])
-        ):
-            np.testing.assert_array_equal(a_got, a_ref)
 
 
 def test_backup_snapshot_restores_pooled_state_like_deepcopy():
@@ -167,8 +166,11 @@ def test_backup_snapshot_restores_pooled_state_like_deepcopy():
 
 
 def test_snapshot_restore_after_dynamic_new_bucket():
-    """update_series_bucket_id creates new buckets (mutating groups, parent maps,
-    _ts_aggs, ...). snapshot taken before must restore all of it."""
+    """Growing the bucket vocabulary mutates every per-bucket structure.
+
+    `grow_buckets` re-sorts the vocabulary and permutes the channels, the row
+    store and the series assignment, so a snapshot taken before must restore all
+    of it."""
     import copy
 
     df = _make_panel()
@@ -193,16 +195,12 @@ def test_snapshot_restore_after_dynamic_new_bucket():
     state = fcst.ts._pooled_states[key]
     ref = copy.deepcopy(state)
     snap = state.snapshot()
-    # introduce a brand-new (brand, promo) combo -> new bucket created in place
-    ctx = pd.DataFrame(
-        {
-            "unique_id": ["a", "b", "c", "d"],
-            "brand": ["x", "x", "y", "y"],
-            "promo": [9, 9, 9, 9],
-        }
-    )
-    state.update_series_bucket_id(ctx, "unique_id")
-    assert len(state._ts_aggs) > len(ref._ts_aggs)  # a new bucket really appeared
+    # introduce brand-new (brand, promo) combos -> new buckets created in place
+    from mlforecast.pooled import encode_keys
+
+    new_keys = encode_keys([np.array(["x", "y"], dtype=object), np.array([9, 9])])
+    state.grow_buckets(new_keys)
+    assert state.n_buckets > ref.n_buckets  # new buckets really appeared
     state.restore(snap)
     _assert_state_equal(state, ref)
 

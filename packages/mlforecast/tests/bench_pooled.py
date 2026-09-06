@@ -54,7 +54,7 @@ def test_pooled_preprocess(benchmark, series, config):
 def test_pooled_predict(benchmark, series, future_promo, config):
     fcst = make_forecast(config, with_model=True)
     fcst.fit(frame(series, config), static_features=["brand"], dropna=False)
-    x_df = future_promo if config.needs_promo else None
+    x_df = future_promo if config.needs_future else None
     benchmark(lambda: fcst.predict(h=HORIZON, X_df=x_df))
 
 

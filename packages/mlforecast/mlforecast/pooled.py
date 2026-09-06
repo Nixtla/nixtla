@@ -1,1348 +1,1860 @@
-__all__ = ["PooledState", "compute_pooled_features"]
+"""Pooled (cross-series) lag transform engine.
 
-import copy
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+A *pooled* lag transform computes its statistic over a **bucket** of series
+aggregated by timestamp rather than over a single series, so every series in a
+bucket receives the same value at each timestamp.
 
-import narwhals as nw
+The engine rests on one observation: **a bucket is a series**.  Collapse the
+panel to one cell per ``(bucket, timestamp)`` and a bucket becomes an ordinary
+time series, so the *existing* ``coreforecast`` transforms can be run on it
+unchanged -- no new rolling/expanding kernels.  Two consequences fall out:
+
+* ``RANGE`` semantics for free.  One cell per calendar step means a
+  row-position window over the collapsed series *is* a timestamp-distance
+  window over the panel.  Series that start late simply contribute nothing to
+  early cells, so no phantom zeros enter the window.
+* Cheap recursion.  ``coreforecast`` transforms are stateful and expose
+  ``update()`` (last value per group), which is what the local path already
+  relies on, so a horizon step costs ``O(n_series + n_buckets)``.
+
+Running a transform on a single collapsed channel would only give
+*statistic-of-per-timestamp-aggregates* (that is what ``time_agg`` means).  The
+default is the *row-weighted* pooled statistic, where every observation in the
+window counts once.  Both come from the same machinery by keeping a few
+**channels** per cell and combining ordinary results over them, e.g.
+``pooled_mean = rolling_mean(sum) / rolling_mean(count)`` (the window length
+cancels).  See ``_PooledKernel`` subclasses for the full table.
+"""
+
+__all__ = ["PooledState"]
+
+from typing import Any, Collection, Dict, List, Optional, Sequence, Set, Tuple
+
 import numpy as np
-import utilsforecast.processing as ufp
+import pandas as pd
+import coreforecast.lag_transforms as core_tfms
+from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 
-from .lag_transforms import _BaseLagTransform, _TIME_AGGS
-
-
-def _dedupe_preserve_order(items):
-    return list(dict.fromkeys(items))
-
-
-# Sentinel string that every missing (null/NaN) key value is encoded to, so that
-# missing matches missing (and only missing) across pandas/polars and all key
-# dtypes. NUL-prefixed to make a collision with a real key value negligible.
-_NULL_SENTINEL = "\x00__MLF_NULL__"
+# Value every missing/null key is encoded to, so missing matches missing (and
+# only missing) across backends and key dtypes. NUL-prefixed so a collision
+# with a real key value is negligible.
+_NULL_KEY = "\x00__MLF_NULL__"
 
 
-def _missing_expr(col, dtype):
-    """Dtype-aware "is missing" predicate: null, plus NaN for float columns.
+# %% key encoding
+def _encode_column(values: np.ndarray) -> np.ndarray:
+    """Encode one key column as strings, canonically across dtypes.
 
-    narwhals ``is_null`` flags NaN on pandas but not float NaN on polars, so the
-    ``is_nan`` arm is required (and is only valid on float dtypes).
+    Two things have to hold. Every missing value (null, NaN, ``None``) maps to a
+    single sentinel, so missing matches missing and nothing else -- SQL
+    ``PARTITION BY`` semantics. And a key must encode the same whether it
+    arrives as an int or as a float: a column can be float at fit (one NaN is
+    enough to widen it) and int in ``X_df`` at predict, and those must land in
+    the same bucket. So integral values encode as an int string and only
+    fractional ones keep a decimal point, which cannot collide with an integer.
     """
-    expr = nw.col(col).is_null()
-    if dtype.is_float():
-        expr = expr | nw.col(col).is_nan()
-    return expr
-
-
-def _encode_col_expr(col, dtype, *, to_int=False):
-    """Sentinel-encode one key column to a String expression.
-
-    Missing values (null/NaN) become ``_NULL_SENTINEL``; non-missing values are
-    cast to String. When ``to_int`` the *integral* non-missing values are routed
-    through Int64 first so a float ``0.0`` matches an integer ``0`` (``"0"`` on
-    both sides); a genuinely fractional float (e.g. ``1.5``) keeps its own float
-    string form so it does not collide with an integer bucket. The int cast is
-    applied only after missing values are masked out, since casting NaN/null
-    through a non-nullable int raises on both engines.
-    """
-    miss = _missing_expr(col, dtype)
-    if not to_int:
-        return (
-            nw.when(miss)
-            .then(nw.lit(_NULL_SENTINEL))
-            .otherwise(nw.col(col).cast(nw.String))
-        )
-    # replace missing with a safe placeholder before the (otherwise-raising) int
-    # cast; placeholder rows are overwritten by the sentinel branch below.
-    safe = nw.when(miss).then(nw.lit(0.0)).otherwise(nw.col(col))
-    as_int = safe.cast(nw.Int64)
-    is_integral = safe == as_int  # 1.0 -> True, 1.5 -> False
-    # integral -> int string ("1"); fractional -> float string ("1.5", which
-    # cannot collide with an integer bucket); missing -> sentinel.
-    non_missing = (
-        nw.when(is_integral)
-        .then(as_int.cast(nw.String))
-        .otherwise(safe.cast(nw.String))
-    )
-    return nw.when(miss).then(nw.lit(_NULL_SENTINEL)).otherwise(non_missing)
-
-
-def _encode_keys(frame_nw, cols):
-    """Add transient ``__enc_<col>`` string columns for bucket *creation*.
-
-    Single-frame: no cross-frame dtype reconcile is needed because creation and
-    its matching join operate on the same frame.
-    """
-    schema = frame_nw.schema
-    return frame_nw.with_columns(
-        [_encode_col_expr(c, schema[c]).alias(f"__enc_{c}") for c in cols]
-    )
-
-
-def _encode_join_keys(left_nw, right_nw, cols):
-    """Sentinel-encode key ``cols`` on both frames for a null-equal *match*.
-
-    Applies a narrow int<->float reconcile: when one side's key column is integer
-    and the other float (e.g. a fit column contaminated to float by a NaN, matched
-    against clean integer data), the float side's integral non-missing values are
-    cast to int so they match. No blanket Float64 widening (that would corrupt
-    large int keys above 2**53).
-    """
-    lschema, rschema = left_nw.schema, right_nw.schema
-    left_exprs, right_exprs = [], []
-    for c in cols:
-        ldt, rdt = lschema[c], rschema[c]
-        left_exprs.append(
-            _encode_col_expr(c, ldt, to_int=ldt.is_float() and rdt.is_integer()).alias(
-                f"__enc_{c}"
-            )
-        )
-        right_exprs.append(
-            _encode_col_expr(c, rdt, to_int=rdt.is_float() and ldt.is_integer()).alias(
-                f"__enc_{c}"
-            )
-        )
-    return left_nw.with_columns(left_exprs), right_nw.with_columns(right_exprs)
-
-
-_ROW_ORDER_COL = "_mlf_row_order"
-
-
-def _order_preserving_left_join(left_nw, right_nw, on):
-    """Left join that preserves the left frame's row order.
-
-    Results are consumed positionally against arrays aligned with the left
-    frame, but narwhals exposes no ``maintain_order`` for joins and polars does
-    not guarantee row order, so attach a row index to the left frame, sort on
-    it after the join, and drop it. All call sites join against key-unique
-    right frames, so the join never fans out.
-    """
-    left_idx = left_nw.with_row_index(name=_ROW_ORDER_COL)
-    joined = left_idx.join(right_nw, on=list(on), how="left")
-    return joined.sort(_ROW_ORDER_COL).drop(_ROW_ORDER_COL)
-
-
-def _null_equal_left_join(left_nw, right_nw, cols, payload_cols):
-    """Left-join ``left_nw`` to ``right_nw`` on ``cols`` treating missing as equal.
-
-    ``right_nw`` contributes only ``payload_cols`` (e.g. ``["_bucket_id"]``); its
-    original key columns are excluded so the join emits no ``*_right`` duplicates.
-    Encoded columns are transient and dropped before returning.
-    """
-    enc_cols = [f"__enc_{c}" for c in cols]
-    left_enc, right_enc = _encode_join_keys(left_nw, right_nw, cols)
-    right_enc = right_enc.select(enc_cols + list(payload_cols))
-    joined = _order_preserving_left_join(left_enc, right_enc, on=enc_cols)
-    return joined.drop(enc_cols)
-
-
-def add_bucket_id(data, cols):
-    cols = list(cols)
-    enc_cols = [f"__enc_{c}" for c in cols]
-    data_enc = _encode_keys(nw.from_native(data), cols)
-    # One representative original-key row per encoded key, so null and NaN (and
-    # pandas-None) collapse into a single bucket and the join below cannot fan out.
-    groups_enc = data_enc.select(cols + enc_cols).unique(
-        subset=enc_cols, keep="first", maintain_order=True
-    )
-    groups_enc = groups_enc.with_row_index(name="_bucket_id").with_columns(
-        nw.col("_bucket_id").cast(nw.Int64)
-    )
-    merged_nw = _order_preserving_left_join(
-        data_enc, groups_enc.select(enc_cols + ["_bucket_id"]), on=enc_cols
-    ).drop(enc_cols)
-    groups_nw = groups_enc.drop(enc_cols)
-    return (
-        ufp.drop_index_if_pandas(nw.to_native(merged_nw)),
-        ufp.drop_index_if_pandas(nw.to_native(groups_nw)),
-    )
-
-
-def lookup_bucket_ids(data, groups, cols):
-    cols = list(cols)
-    joined = _null_equal_left_join(
-        nw.from_native(data).select(cols),
-        nw.from_native(groups),
-        cols,
-        ["_bucket_id"],
-    )
-    return joined.get_column("_bucket_id").to_numpy()
-
-
-@dataclass
-class _TimestampAggregates:
-    """Per-timestamp aggregates for a single bucket."""
-
-    unique_times: np.ndarray
-    sums: np.ndarray
-    counts: np.ndarray
-    sum_sq: np.ndarray
-    mins: np.ndarray
-    maxs: np.ndarray
-
-
-def _build_ts_aggs(
-    bid_arr: np.ndarray,
-    ord_arr: np.ndarray,
-    y_arr: np.ndarray,
-) -> Dict[int, _TimestampAggregates]:
-    aggs: Dict[int, _TimestampAggregates] = {}
-    for bid in np.unique(bid_arr):
-        mask = bid_arr == bid
-        ord_b = ord_arr[mask]
-        y_b = y_arr[mask]
-        unique_ord, inv = np.unique(ord_b, return_inverse=True)
-        m = len(unique_ord)
-        valid = ~np.isnan(y_b)
-        y_valid = np.where(valid, y_b, 0.0)
-        sums = np.bincount(inv, weights=y_valid, minlength=m)
-        counts = np.bincount(inv, weights=valid.astype(float), minlength=m)
-        sum_sq = np.bincount(inv, weights=np.where(valid, y_b**2, 0.0), minlength=m)
-        mins = np.full(m, np.inf)
-        maxs = np.full(m, -np.inf)
-        valid_inv = inv[valid]
-        valid_y = y_b[valid]
-        if len(valid_y) > 0:
-            np.minimum.at(mins, valid_inv, valid_y)
-            np.maximum.at(maxs, valid_inv, valid_y)
-        no_valid = mins == np.inf
-        mins[no_valid] = np.nan
-        maxs[no_valid] = np.nan
-        aggs[int(bid)] = _TimestampAggregates(
-            unique_times=unique_ord,
-            sums=sums,
-            counts=counts,
-            sum_sq=sum_sq,
-            mins=mins,
-            maxs=maxs,
-        )
-    return aggs
-
-
-def _time_agg_values(agg: _TimestampAggregates, time_agg: str) -> np.ndarray:
-    """Per-timestamp collapsed value ``v_t`` for one bucket's aggregates.
-
-    ``time_agg`` is one of :data:`_TIME_AGGS`.  A timestamp that has rows but
-    no non-NaN target (``counts == 0``) is *unobserved* for
-    ``sum``/``mean``/``min``/``max`` and gets NaN, matching SQL aggregates over
-    all-NULL groups returning NULL.  For ``count`` the value is the non-NaN row
-    count — 0 there is a genuine observation (SQL ``COUNT`` over all-NULL
-    returns 0).  This is the single source of the per-aggregate value
-    derivation, shared by the fast (:func:`_reaggregate_ts_aggs`) and slow
-    (:func:`_collapse_rows_by_time`) paths so they cannot diverge.
-    """
-    if time_agg not in _TIME_AGGS:
-        raise ValueError(f"time_agg must be one of {_TIME_AGGS}; got {time_agg!r}.")
-    if time_agg == "count":
-        return agg.counts.astype(float)
-    if time_agg == "min":
-        return agg.mins.astype(float)
-    if time_agg == "max":
-        return agg.maxs.astype(float)
-    obs = agg.counts > 0
-    if time_agg == "sum":
-        return np.where(obs, agg.sums, np.nan)
-    # "mean"
-    v = np.full(len(agg.unique_times), np.nan)
-    np.divide(agg.sums, agg.counts, out=v, where=obs)
-    return v
-
-
-class _ReaggregatedAggregates:
-    """Lazy ``_TimestampAggregates`` stand-in over a ``time_agg``-collapsed bucket.
-
-    The collapsed value ``v_t`` (:func:`_time_agg_values`) at each observed
-    timestamp becomes a unit-count observation — ``sums=v``, ``counts=1``,
-    ``sum_sq=v**2``, ``mins=maxs=v`` — while unobserved timestamps (NaN in the
-    value array) keep ``counts=0``, zeroed ``sums``/``sum_sq`` (so they never
-    poison the cumulative sums the helpers take) and NaN ``mins``/``maxs`` (the
-    range helpers use NaN-skipping fmin/fmax and the count guard excludes
-    them).
-
-    Everything is derived on demand: the value array itself is only computed on
-    first field access (so re-aggregating before an unsupported hook that
-    returns ``None`` does no numpy work at all), and each of the five aggregate
-    fields — of which a given helper reads at most three — is derived on access
-    rather than materialized up front.  Accessors return freshly allocated
-    arrays except ``mins``/``maxs``, which return the shared value array and
-    must not be mutated.
-    """
-
-    def __init__(self, source: "_TimestampAggregates", time_agg: str):
-        self.unique_times = source.unique_times
-        self._source = source
-        self._time_agg = time_agg
-        self._values_cache: Optional[np.ndarray] = None
-        self._obs_cache: Optional[np.ndarray] = None
-
-    @property
-    def _values(self) -> np.ndarray:
-        if self._values_cache is None:
-            self._values_cache = _time_agg_values(self._source, self._time_agg)
-        return self._values_cache
-
-    @property
-    def _obs(self) -> np.ndarray:
-        if self._obs_cache is None:
-            self._obs_cache = ~np.isnan(self._values)
-        return self._obs_cache
-
-    @property
-    def sums(self) -> np.ndarray:
-        return np.where(self._obs, self._values, 0.0)
-
-    @property
-    def counts(self) -> np.ndarray:
-        return self._obs.astype(float)
-
-    @property
-    def sum_sq(self) -> np.ndarray:
-        return np.where(self._obs, self._values**2, 0.0)
-
-    @property
-    def mins(self) -> np.ndarray:
-        return self._values
-
-    @property
-    def maxs(self) -> np.ndarray:
-        return self._values
-
-
-def _reaggregate_ts_aggs(
-    ts_aggs: Dict[int, _TimestampAggregates], time_agg: str
-) -> Dict[int, _ReaggregatedAggregates]:
-    """Collapse each bucket's per-timestamp aggregates to a single value per
-    timestamp, returning lazy ``_TimestampAggregates``-compatible views shaped
-    so the existing rolling/expanding/ewm helpers compute the transform *over
-    the per-timestamp aggregated series* (e.g. a rolling mean of daily sums).
-    See :func:`_time_agg_values` for the value/NaN conventions and
-    :class:`_ReaggregatedAggregates` for the field layout.
-
-    The input is the shared ``PooledState._ts_aggs`` cache and is never
-    mutated.  ``unique_times`` is intentionally shared by reference
-    (``append_predictions`` reassigns it via ``np.append`` rather than mutating
-    in place) and preserved exactly, because the fit-path fast mapping indexes
-    results by that grid.  Callers must recompute this per call — never cache
-    it, or it goes stale after ``append_predictions`` extends the underlying
-    aggregates.
-    """
-    if time_agg not in _TIME_AGGS:
-        raise ValueError(f"time_agg must be one of {_TIME_AGGS}; got {time_agg!r}.")
-    return {bid: _ReaggregatedAggregates(agg, time_agg) for bid, agg in ts_aggs.items()}
-
-
-def _collapse_rows_by_time(
-    bid_arr: np.ndarray,
-    ord_arr: np.ndarray,
-    y_arr: np.ndarray,
-    time_agg: str,
-    ts_aggs: Optional[Dict[int, _TimestampAggregates]] = None,
-):
-    """Collapse raw ``(bucket, ordinal, y)`` rows to one row per
-    ``(bucket, timestamp)`` holding the ``time_agg`` aggregate, for the
-    row-level (slow-path) transforms that have no aggregate-cache fast path.
-
-    ``ts_aggs`` is an optional pre-built per-timestamp aggregate cache for
-    exactly these rows (``PooledState._ts_aggs`` at fit, the query-array
-    aggregates at predict); when supplied the collapse is derived from it in
-    O(unique timestamps) instead of re-aggregating every raw row.
-
-    Returns ``(bid2, ord2, y2, inv)`` with one entry per unique
-    ``(bucket, ord)`` and ``inv`` mapping every input row to its collapsed row,
-    so ``vals[inv]`` broadcasts per-timestamp results back to the raw rows.
-    All-NaN timestamps get ``y2 = NaN`` for ``sum``/``mean``/``min``/``max`` (so
-    the row loops' NaN filtering treats them as unobserved) and ``y2 = 0`` for
-    ``count`` (a genuine zero observation).  This mirrors
-    :func:`_reaggregate_ts_aggs` — both derive values via
-    :func:`_time_agg_values` — i.e.
-    ``_build_ts_aggs(*_collapse_rows_by_time(rows, a)[:3])`` equals
-    ``_reaggregate_ts_aggs(_build_ts_aggs(rows), a)``.
-    """
-    if not ts_aggs:  # absent or wiped cache: aggregate the raw rows
-        ts_aggs = _build_ts_aggs(bid_arr, ord_arr, y_arr)
-    # group the input rows by bucket once (argsort + slices) instead of a
-    # full-array mask per bucket
-    order = np.argsort(bid_arr, kind="stable")
-    sorted_bids = bid_arr[order]
-    group_bids, group_starts = np.unique(sorted_bids, return_index=True)
-    group_ends = np.append(group_starts[1:], len(order))
-    row_groups = {
-        int(b): order[s:e] for b, s, e in zip(group_bids, group_starts, group_ends)
-    }
-    # -1 sentinel: every input row must map to a collapsed row below. Callers
-    # always build ``ts_aggs`` from exactly these rows, so no row can reference a
-    # bucket absent from ``ts_aggs``; the assert turns a silent out-of-bounds
-    # gather (garbage ``vals[inv]``) into a loud failure if that ever breaks.
-    inv = np.full(len(bid_arr), -1, dtype=np.int64)
-    bids, ords, ys = [], [], []
-    offset = 0
-    for bid, agg in ts_aggs.items():
-        m = len(agg.unique_times)
-        if m == 0:
-            continue
-        bids.append(np.full(m, bid))
-        ords.append(agg.unique_times)
-        ys.append(_time_agg_values(agg, time_agg))
-        rows = row_groups.get(int(bid))
-        if rows is not None:
-            inv[rows] = offset + np.searchsorted(agg.unique_times, ord_arr[rows])
-        offset += m
-    assert (inv >= 0).all(), (
-        "every input row must map to a collapsed (bucket, timestamp)"
-    )
-    if not bids:
-        return (
-            np.empty(0, dtype=bid_arr.dtype),
-            np.empty(0, dtype=ord_arr.dtype),
-            np.empty(0, dtype=float),
-            inv,
-        )
-    return (
-        np.concatenate(bids).astype(bid_arr.dtype),
-        np.concatenate(ords).astype(ord_arr.dtype),
-        np.concatenate(ys),
-        inv,
-    )
-
-
-def _compute_time_index(bid_arr, ts_arr):
-    """Assign integer period coordinates over the validated regular time grid.
-
-    For each bucket, maps raw timestamps to consecutive integers based on
-    the bucket's sorted unique timestamps. Because the input grid is validated
-    as regular (no gaps within a series), this is equivalent to SQL RANGE
-    interval semantics. Series that start later simply have no rows at earlier
-    periods — no synthetic zeros are injected.
-    """
-    idx_arr = np.empty(len(ts_arr), dtype=np.int64)
-    next_by_bucket = {}
-    for bid in np.unique(bid_arr):
-        mask = bid_arr == bid
-        ts_b = ts_arr[mask]
-        unique_ts = np.unique(ts_b)
-        idx_arr[mask] = np.searchsorted(unique_ts, ts_b)
-        next_by_bucket[int(bid)] = len(unique_ts)
-    return idx_arr, next_by_bucket
-
-
-def _compute_time_index_from_parent(bid_arr, ts_arr, parent_grids):
-    """Assign ordinals using the parent calendar's time grid.
-
-    For partition_by states, ordinals must reflect the parent calendar so
-    that missing partition values leave holes.  E.g. if the parent has
-    timestamps [1,2,3,4,5] but a partition bucket only has [1,3,5], the
-    ordinals are [0,2,4] (not [0,1,2]).
-
-    Parameters
-    ----------
-    bid_arr : np.ndarray
-        Bucket ID for each observation.
-    ts_arr : np.ndarray
-        Timestamp for each observation.
-    parent_grids : Dict[int, np.ndarray]
-        Maps each bucket_id to the sorted unique timestamps of its parent
-        calendar.
-
-    Returns
-    -------
-    idx_arr : np.ndarray
-        Ordinal coordinates derived from parent calendar positions.
-    next_by_bucket : Dict[int, int]
-        Next ordinal for each bucket (= len(parent_grid)).
-    """
-    idx_arr = np.empty(len(ts_arr), dtype=np.int64)
-    next_by_bucket = {}
-    for bid in np.unique(bid_arr):
-        mask = bid_arr == bid
-        ts_b = ts_arr[mask]
-        parent_ts = parent_grids[int(bid)]
-        idx_arr[mask] = np.searchsorted(parent_ts, ts_b)
-        next_by_bucket[int(bid)] = len(parent_ts)
-    return idx_arr, next_by_bucket
-
-
-def _compute_idsorted_to_bucket_pos(bucket_df, id_col, time_col):
-    _pos_col = "_idsorted_tmp_pos"
-    df_nw = nw.from_native(bucket_df)
-    df_nw = (
-        df_nw.select([id_col, time_col])
-        .with_row_index(name=_pos_col)
-        .with_columns(nw.col(_pos_col).cast(nw.Int64))
-    )
-    idsorted = ufp.sort(nw.to_native(df_nw), by=[id_col, time_col])
-    return idsorted[_pos_col].to_numpy()
-
-
-@dataclass
-class PooledState:
-    """Holds all arrays and metadata for a pooled bucket.
-
-    Covers global, groupby, and partition_by modes (and combinations thereof).
-
-    ``time_index`` is an integer period coordinate over a validated regular
-    time grid.  For global/group states (no partition), the input is validated
-    to have no missing timestamps within any series.  Different series in the
-    same bucket may have different start dates; only actual observations are
-    included (no synthetic zeros).  Under this invariant, ``time_index``
-    is equivalent to SQL ``RANGE BETWEEN … PRECEDING`` interval semantics.
-
-    For partition_by buckets, ``time_index`` is derived from the parent
-    series/global calendar — not the bucket's observed timestamps — so that
-    missing partition values leave holes and window bounds remain
-    interval-correct.
-
-    **Ordering contract**: ``bucket_id``, ``time``, ``time_index``, and ``y``
-    arrays are positionally aligned — row *i* in each describes the same
-    observation.  All feature computation uses these flat arrays (and the
-    derived ``_ts_aggs``) via ``compute_pooled_features``.
-    """
-
-    bucket_df: Any
-    groups: Any
-    group_cols: Optional[List[str]]
-    series_bucket_id: np.ndarray
-    bucket_id: np.ndarray
-    time: np.ndarray
-    time_index: np.ndarray
-    y: np.ndarray
-    next_time_index_by_bucket: Dict[int, int]
-    join_cols: List[str]
-    mode: str = "nonlocal"
-    partition_cols: Optional[List[str]] = None
-    key_cols: Optional[List[str]] = None
-    parent_scope_cols: Optional[List[str]] = None
-    _parent_time_grids: Optional[Dict[int, np.ndarray]] = None
-    _bucket_to_parent_id: Optional[Dict[int, int]] = None
-    _parent_to_buckets: Optional[Dict[int, List[int]]] = None
-    _scope_key_to_parent_id: Optional[Dict[tuple, int]] = None
-    _ts_aggs: Dict[int, _TimestampAggregates] = field(default_factory=dict)
-    _idsorted_to_bucket_pos: Optional[np.ndarray] = None
-
-    @property
-    def group_uids(self):
-        if self.groups is None:
-            ns = nw.get_native_namespace(self.bucket_df)
-            return nw.to_native(
-                nw.new_series("_bucket_id", [0], dtype=nw.Int64, backend=ns)
-            )
-        return nw.to_native(nw.from_native(self.groups).get_column("_bucket_id").sort())
-
-    # Mutable fields touched during recursive prediction. ``snapshot``/``restore``
-    # let ``TimeSeries._backup`` save and roll back state cheaply (see below);
-    # keep this list in sync with the fields mutated by ``append_predictions`` /
-    # ``append_observations`` / ``update_series_bucket_id``.
-    _MUTABLE_REF_FIELDS = (
-        "bucket_df",
-        "groups",
-        "series_bucket_id",
-        "bucket_id",
-        "time",
-        "time_index",
-        "y",
-        "_idsorted_to_bucket_pos",
-    )
-    _MUTABLE_DICT_FIELDS = (
-        "next_time_index_by_bucket",
-        "_parent_time_grids",
-        "_bucket_to_parent_id",
-        "_scope_key_to_parent_id",
-    )
-
-    def snapshot(self):
-        """Cheap structural backup for recursive prediction.
-
-        Prediction only ever **replaces** the array fields wholesale
-        (``np.append`` / ``np.concatenate`` produce new arrays) and rebinds
-        attributes on the ``_TimestampAggregates`` instances — it never mutates
-        a shared array in place. So a faithful backup needs only reference
-        copies of the arrays plus shallow copies of the mutable containers and
-        of each aggregate instance; no array data is duplicated (unlike a full
-        ``deepcopy`` of every pooled state per model per ``predict``).
-        """
-        snap = {f: getattr(self, f) for f in self._MUTABLE_REF_FIELDS}
-        for f in self._MUTABLE_DICT_FIELDS:
-            v = getattr(self, f)
-            snap[f] = None if v is None else dict(v)
-        # lists are reassigned wholesale today, but copy them defensively so a
-        # future in-place ``append`` can't corrupt the backup.
-        snap["_parent_to_buckets"] = (
-            None
-            if self._parent_to_buckets is None
-            else {k: list(v) for k, v in self._parent_to_buckets.items()}
-        )
-        # each agg instance is mutated in place (``agg.sums = np.append(...)``),
-        # so copy the instances; their arrays are replaced wholesale, share them.
-        snap["_ts_aggs"] = {bid: copy.copy(agg) for bid, agg in self._ts_aggs.items()}
-        return snap
-
-    def restore(self, snap):
-        for field_name, value in snap.items():
-            setattr(self, field_name, value)
-
-    @classmethod
-    def from_global(
-        cls,
-        sorted_df,
-        id_col: str,
-        time_col: str,
-        target_col: str,
-        ga_data_dtype,
-        n_series: int,
-    ):
-        keep_cols = _dedupe_preserve_order([id_col, time_col, target_col])
-        global_df = sorted_df[keep_cols]
-        global_df = ufp.sort(global_df, by=[time_col, id_col])
-        global_df = ufp.drop_index_if_pandas(global_df)
-        ts_raw = global_df[time_col].to_numpy()
-        # cast through ga_data_dtype before float to keep numerics bit-identical
-        # with the model's working dtype (e.g. float32 rounding).
-        y_raw = global_df[target_col].to_numpy().astype(ga_data_dtype)
-        unique_ts = np.unique(ts_raw)
-        ord_raw = np.searchsorted(unique_ts, ts_raw).astype(np.int64)
-        bid_arr = np.zeros(len(global_df), dtype=np.int64)
-        y_float = y_raw.astype(float)
-        return cls(
-            bucket_df=global_df,
-            groups=None,
-            group_cols=None,
-            series_bucket_id=np.zeros(n_series, dtype=np.int64),
-            bucket_id=bid_arr,
-            time=ts_raw,
-            time_index=ord_raw,
-            y=y_float,
-            next_time_index_by_bucket={0: len(unique_ts)},
-            join_cols=[id_col, time_col],
-            _ts_aggs=_build_ts_aggs(bid_arr, ord_raw, y_float),
-        )
-
-    @classmethod
-    def from_groupby(
-        cls,
-        df_for_group,
-        group_cols_list: List[str],
-        id_col: str,
-        time_col: str,
-        target_col: str,
-        ga_data_dtype,
-        static_features,
-    ):
-        keep_cols = _dedupe_preserve_order(
-            [id_col] + group_cols_list + [time_col, target_col]
-        )
-        bucket_df = df_for_group[keep_cols]
-        bucket_df = ufp.sort(bucket_df, by=group_cols_list + [time_col, id_col])
-        bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        bucket_df, groups = add_bucket_id(bucket_df, group_cols_list)
-        ts_raw = bucket_df[time_col].to_numpy()
-        # cast through ga_data_dtype before float to keep numerics bit-identical
-        # with the model's working dtype (e.g. float32 rounding).
-        y_raw = bucket_df[target_col].to_numpy().astype(ga_data_dtype)
-        bid_raw = bucket_df["_bucket_id"].to_numpy()
-        bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        bid_arr = bid_raw.astype(np.int64)
-        ord_arr, next_by_bucket = _compute_time_index(bid_arr, ts_raw)
-        series_bucket_id = lookup_bucket_ids(
-            static_features, groups, group_cols_list
-        ).astype(np.int64, copy=False)
-        y_float = y_raw.astype(float)
-        return cls(
-            bucket_df=bucket_df,
-            groups=groups,
-            group_cols=group_cols_list,
-            series_bucket_id=series_bucket_id,
-            bucket_id=bid_arr,
-            time=ts_raw,
-            time_index=ord_arr,
-            y=y_float,
-            next_time_index_by_bucket=next_by_bucket,
-            join_cols=[id_col, time_col],
-            _ts_aggs=_build_ts_aggs(bid_arr, ord_arr, y_float),
-        )
-
-    @classmethod
-    def from_partition(
-        cls,
-        sorted_df,
-        mode: str,
-        group_cols_list: Optional[List[str]],
-        partition_cols_list: List[str],
-        id_col: str,
-        time_col: str,
-        target_col: str,
-        ga_data_dtype,
-        static_features,
-        n_series: int,
-    ):
-        """Build a PooledState for partition_by transforms.
-
-        Parameters
-        ----------
-        mode : str
-            "local" — each (id, partition_vals) is its own bucket.
-            "nonlocal" — bucket key is (*group_cols, *partition_cols) or
-            (*partition_cols) for global+partition_by.
-        group_cols_list : list of str or None
-            Group columns (from ``groupby``). None for global+partition or
-            local+partition.
-        partition_cols_list : list of str
-            Partition columns (from ``partition_by``).
-        """
-        if mode == "local":
-            key_cols = _dedupe_preserve_order([id_col] + partition_cols_list)
-        elif group_cols_list:
-            key_cols = _dedupe_preserve_order(
-                list(group_cols_list) + partition_cols_list
-            )
-        else:
-            key_cols = _dedupe_preserve_order(partition_cols_list)
-
-        # (id_col, time_col) uniquely identifies each row in bucket_df in every
-        # mode, so the slow-path join never needs to key on the (nullable)
-        # partition columns — a plain merge on a null partition value would
-        # mismatch (NaN != NaN) and drop the feature.
-        join_cols = [id_col, time_col]
-
-        keep_cols = _dedupe_preserve_order([id_col] + key_cols + [time_col, target_col])
-        bucket_df = sorted_df[keep_cols]
-        bucket_df = ufp.sort(bucket_df, by=key_cols + [time_col, id_col])
-        bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        bucket_df, groups = add_bucket_id(bucket_df, key_cols)
-        ts_raw = bucket_df[time_col].to_numpy()
-        # cast through ga_data_dtype before float to keep numerics bit-identical
-        # with the model's working dtype (e.g. float32 rounding).
-        y_raw = bucket_df[target_col].to_numpy().astype(ga_data_dtype)
-        bid_raw = bucket_df["_bucket_id"].to_numpy()
-        bucket_df = ufp.drop_index_if_pandas(bucket_df)
-        bid_arr = bid_raw.astype(np.int64)
-
-        if mode == "local":
-            parent_scope_cols = [id_col]
-        elif group_cols_list:
-            parent_scope_cols = list(group_cols_list)
-        else:
-            parent_scope_cols = None
-
-        parent_id_map: Dict[tuple, int] = {}
-        bucket_to_parent: Dict[int, int] = {}
-        parent_grids: Dict[int, np.ndarray] = {}
-        next_pid = 0
-
-        if parent_scope_cols is not None:
-            # Sentinel-encode the scope columns so a null/NaN scope value (e.g. a
-            # null groupby key under groupby+partition_by) matches itself and only
-            # itself: scope keys are used both as dict keys (NaN != NaN would split
-            # one scope across parents) and as a grid filter (an `== null` predicate
-            # matches nothing). Mirrors the null-equal bucket-key handling above.
-            enc_scope_cols = [f"__enc_{c}" for c in parent_scope_cols]
-            groups_nw = _encode_keys(nw.from_native(groups), parent_scope_cols)
-            sorted_nw = _encode_keys(nw.from_native(sorted_df), parent_scope_cols)
-            # Single pass over the unique (scope, time) pairs to build every
-            # scope's calendar at once instead of filtering the full frame per
-            # bucket. Scope keys are read via .rows() so they compare equal to
-            # the .row(0) tuples `_resolve_parent_for_bucket` builds later;
-            # times come from .to_numpy() so grids keep their native dtype.
-            scope_time = sorted_nw.select(enc_scope_cols + [time_col]).unique()
-            grid_scope_keys = scope_time.select(enc_scope_cols).rows()
-            grid_ts_vals = scope_time.get_column(time_col).to_numpy()
-            times_by_scope: Dict[tuple, list] = {}
-            for key, ts in zip(grid_scope_keys, grid_ts_vals):
-                times_by_scope.setdefault(key, []).append(ts)
-
-            # `groups` has one row per bucket in ascending _bucket_id order, so
-            # iterating it assigns parent ids in the same order as before.
-            bucket_scope_keys = groups_nw.select(enc_scope_cols).rows()
-            for bid, scope_key in zip(
-                groups_nw.get_column("_bucket_id").to_numpy(), bucket_scope_keys
-            ):
-                if scope_key not in parent_id_map:
-                    pid = next_pid
-                    next_pid += 1
-                    parent_id_map[scope_key] = pid
-                    parent_grids[pid] = np.sort(np.asarray(times_by_scope[scope_key]))
-                bucket_to_parent[int(bid)] = parent_id_map[scope_key]
-        else:
-            all_ts = sorted_df[time_col].to_numpy()
-            global_ts = np.sort(np.unique(all_ts))
-            parent_grids[0] = global_ts
-            for bid in np.unique(bid_arr):
-                bucket_to_parent[int(bid)] = 0
-
-        parent_to_buckets: Dict[int, List[int]] = {}
-        for bid, pid in bucket_to_parent.items():
-            parent_to_buckets.setdefault(pid, []).append(bid)
-
-        if parent_scope_cols is not None:
-            scope_key_to_parent = dict(parent_id_map)
-        else:
-            scope_key_to_parent = {(): 0}
-
-        per_bucket_grids = {
-            bid: parent_grids[bucket_to_parent[bid]] for bid in bucket_to_parent
-        }
-        ord_arr, next_by_bucket = _compute_time_index_from_parent(
-            bid_arr, ts_raw, per_bucket_grids
-        )
-
-        sf_cols = set(static_features.columns)
-        can_lookup = all(c in sf_cols for c in key_cols)
-        if can_lookup:
-            series_bucket_id = lookup_bucket_ids(
-                static_features, groups, key_cols
-            ).astype(np.int64, copy=False)
-        else:
-            series_bucket_id = np.zeros(n_series, dtype=np.int64)
-
-        y_float = y_raw.astype(float)
-        return cls(
-            bucket_df=bucket_df,
-            groups=groups,
-            group_cols=group_cols_list,
-            series_bucket_id=series_bucket_id,
-            bucket_id=bid_arr,
-            time=ts_raw,
-            time_index=ord_arr,
-            y=y_float,
-            next_time_index_by_bucket=next_by_bucket,
-            join_cols=join_cols,
-            mode=mode,
-            partition_cols=partition_cols_list,
-            key_cols=key_cols,
-            parent_scope_cols=parent_scope_cols,
-            _parent_time_grids=parent_grids,
-            _bucket_to_parent_id=bucket_to_parent,
-            _parent_to_buckets=parent_to_buckets,
-            _scope_key_to_parent_id=scope_key_to_parent,
-            _ts_aggs=_build_ts_aggs(bid_arr, ord_arr, y_float),
-        )
-
-    def update_series_bucket_id(self, context_df, _id_col: str):
-        """Recompute series_bucket_id from a context dataframe.
-
-        This is used at prediction time when partition_by values are dynamic
-        (e.g. the partition key comes from exogenous features that change
-        each step). If new partition combinations appear, new buckets are
-        created.
-
-        Parameters
-        ----------
-        context_df : DataFrame
-            Must contain ``id_col`` and all ``key_cols`` columns. One row per
-            series, representing the current partition assignment.
-        id_col : str
-            The series identifier column.
-        """
-        if self.key_cols is None:
-            return
-        key_cols = self.key_cols
-        context_with_bid = _attach_bucket_id(context_df, self.groups, key_cols)
-        context_with_bid, self.groups = _extend_groups(
-            context_with_bid, self.groups, key_cols
-        )
-        new_bid = context_with_bid["_bucket_id"].to_numpy().astype(np.int64)
-        self.series_bucket_id = new_bid
-        groups_nw = nw.from_native(self.groups)
-        if self.parent_scope_cols:
-            # Encode once so the per-bucket `_resolve_parent_for_bucket` loop below
-            # reuses it instead of re-encoding each new bucket.
-            groups_nw = _encode_keys(groups_nw, self.parent_scope_cols)
-        for bid in np.unique(new_bid):
-            bid_int = int(bid)
-            if bid_int not in self.next_time_index_by_bucket:
-                pid = self._resolve_parent_for_bucket(bid_int, groups_nw=groups_nw)
-                if pid is not None and self._parent_time_grids is not None:
-                    self.next_time_index_by_bucket[bid_int] = len(
-                        self._parent_time_grids[pid]
-                    )
-                else:
-                    self.next_time_index_by_bucket[bid_int] = 0
-            if bid_int not in self._ts_aggs:
-                self._ts_aggs[bid_int] = _TimestampAggregates(
-                    unique_times=np.array([], dtype=np.intp),
-                    sums=np.array([], dtype=np.float64),
-                    counts=np.array([], dtype=np.intp),
-                    sum_sq=np.array([], dtype=np.float64),
-                    mins=np.array([], dtype=np.float64),
-                    maxs=np.array([], dtype=np.float64),
-                )
-
-    def _resolve_parent_for_bucket(self, bid: int, groups_nw=None) -> Optional[int]:
-        """Find or create the parent_id for a bucket from its scope columns.
-
-        ``groups_nw`` is an optional pre-wrapped Narwhals view of ``self.groups``;
-        callers that resolve many buckets in a loop pass it once to avoid
-        re-wrapping per bucket. When omitted it is wrapped internally.
-        """
-        if (
-            self._bucket_to_parent_id is None
-            or self._parent_to_buckets is None
-            or self._parent_time_grids is None
-            or self._scope_key_to_parent_id is None
-        ):
-            return None
-
-        if bid in self._bucket_to_parent_id:
-            return self._bucket_to_parent_id[bid]
-
-        if self.parent_scope_cols is None:
-            scope_key = ()
-        else:
-            if groups_nw is None:
-                groups_nw = nw.from_native(self.groups)
-            # `_scope_key_to_parent_id` is keyed by sentinel-encoded scope tuples
-            # (see `from_partition`), so encode here too — null/NaN scope values
-            # must resolve to the same parent, not a fresh one per NaN.
-            enc_scope_cols = [f"__enc_{c}" for c in self.parent_scope_cols]
-            if enc_scope_cols[0] not in groups_nw.columns:
-                groups_nw = _encode_keys(groups_nw, self.parent_scope_cols)
-            row_nw = groups_nw.filter(nw.col("_bucket_id") == bid)
-            if len(row_nw) == 0:
-                return None
-            scope_key = row_nw.select(enc_scope_cols).row(0)
-
-        if scope_key in self._scope_key_to_parent_id:
-            pid = self._scope_key_to_parent_id[scope_key]
-            self._bucket_to_parent_id[bid] = pid
-            self._parent_to_buckets[pid].append(bid)
-            return pid
-
-        pid = max(self._parent_time_grids.keys()) + 1 if self._parent_time_grids else 0
-        dtype = (
-            next(iter(self._parent_time_grids.values())).dtype
-            if self._parent_time_grids
-            else self.time.dtype
-        )
-        self._parent_time_grids[pid] = np.array([], dtype=dtype)
-        self._bucket_to_parent_id[bid] = pid
-        self._parent_to_buckets[pid] = [bid]
-        self._scope_key_to_parent_id[scope_key] = pid
-        return pid
-
-    def _advance_parent_calendars(self, new_ts_val):
-        """Advance all parent calendars and sync sibling bucket ordinals.
-
-        When a prediction is appended at ``new_ts_val``, every parent
-        calendar grows by that timestamp and ALL sibling buckets under
-        each parent update their ``next_time_index_by_bucket`` to the
-        new parent grid length.
-        """
-        if self._parent_time_grids is None or self._parent_to_buckets is None:
-            return
-        for pid, grid in self._parent_time_grids.items():
-            if len(grid) == 0 or new_ts_val > grid[-1]:
-                self._parent_time_grids[pid] = np.append(grid, new_ts_val)
-            else:
-                pos = np.searchsorted(grid, new_ts_val)
-                if pos >= len(grid) or grid[pos] != new_ts_val:
-                    self._parent_time_grids[pid] = np.insert(grid, pos, new_ts_val)
-            new_len = len(self._parent_time_grids[pid])
-            for bid in self._parent_to_buckets.get(pid, []):
-                self.next_time_index_by_bucket[bid] = new_len
-
-    def append_predictions(self, curr_dates, predictions, n_series):
-        new_arr = np.asarray(predictions)
-        # normalize the scalar to self.time's dtype: a raw pd.Timestamp would
-        # produce object arrays in np.full/np.append, silently degrading
-        # self.time and the parent calendars from datetime64 to object
-        new_ts_val = np.asarray(curr_dates)[:1].astype(self.time.dtype, copy=False)[0]
-        if self.groups is None:
-            new_ts = np.full(n_series, new_ts_val, dtype=self.time.dtype)
-            new_bid = np.zeros(n_series, dtype=np.int64)
-            next_ord = self.next_time_index_by_bucket[0]
-            new_ord = np.full(n_series, next_ord, dtype=np.int64)
-            new_y = new_arr.astype(float)
-            self.time = np.concatenate([self.time, new_ts])
-            self.y = np.concatenate([self.y, new_y])
-            self.bucket_id = np.concatenate([self.bucket_id, new_bid])
-            self.time_index = np.concatenate([self.time_index, new_ord])
-            self.next_time_index_by_bucket[0] = next_ord + 1
-            if 0 in self._ts_aggs:
-                agg = self._ts_aggs[0]
-                valid = ~np.isnan(new_y)
-                agg.unique_times = np.append(agg.unique_times, next_ord)
-                agg.sums = np.append(agg.sums, np.sum(np.where(valid, new_y, 0.0)))
-                agg.counts = np.append(agg.counts, np.sum(valid))
-                agg.sum_sq = np.append(
-                    agg.sum_sq, np.sum(np.where(valid, new_y**2, 0.0))
-                )
-                valid_vals = new_y[valid]
-                agg.mins = np.append(
-                    agg.mins, np.min(valid_vals) if len(valid_vals) > 0 else np.nan
-                )
-                agg.maxs = np.append(
-                    agg.maxs, np.max(valid_vals) if len(valid_vals) > 0 else np.nan
-                )
-        else:
-            sort_order = np.argsort(self.series_bucket_id, kind="stable")
-            sorted_bids = self.series_bucket_id[sort_order]
-            new_ts = np.full(n_series, new_ts_val, dtype=self.time.dtype)
-            self.time = np.concatenate([self.time, new_ts[sort_order]])
-            self.y = np.concatenate([self.y, new_arr[sort_order].astype(float)])
-            self.bucket_id = np.concatenate([self.bucket_id, sorted_bids])
-            new_ords = np.array(
-                [self.next_time_index_by_bucket[int(gid)] for gid in sorted_bids],
-                dtype=np.int64,
-            )
-            self.time_index = np.concatenate([self.time_index, new_ords])
-            for bid in np.unique(sorted_bids):
-                bid_int = int(bid)
-                new_ord = self.next_time_index_by_bucket[bid_int]
-                if bid_int in self._ts_aggs:
-                    agg = self._ts_aggs[bid_int]
-                    bid_mask = sorted_bids == bid
-                    y_bid = new_arr[sort_order][bid_mask].astype(float)
-                    valid = ~np.isnan(y_bid)
-                    agg.unique_times = np.append(agg.unique_times, new_ord)
-                    agg.sums = np.append(agg.sums, np.sum(np.where(valid, y_bid, 0.0)))
-                    agg.counts = np.append(agg.counts, np.sum(valid))
-                    agg.sum_sq = np.append(
-                        agg.sum_sq, np.sum(np.where(valid, y_bid**2, 0.0))
-                    )
-                    valid_vals = y_bid[valid]
-                    agg.mins = np.append(
-                        agg.mins, np.min(valid_vals) if len(valid_vals) > 0 else np.nan
-                    )
-                    agg.maxs = np.append(
-                        agg.maxs, np.max(valid_vals) if len(valid_vals) > 0 else np.nan
-                    )
-            if self._parent_time_grids is not None:
-                self._advance_parent_calendars(new_ts_val)
-            else:
-                for bid in np.unique(sorted_bids):
-                    self.next_time_index_by_bucket[int(bid)] += 1
-
-    def append_observations(
-        self,
-        df,
-        id_col: str,
-        time_col: str,
-        target_col: str,
-        ga_data_dtype,
-        static_features=None,
-    ):
-        if self.groups is None:
-            new_df = df[_dedupe_preserve_order([id_col, time_col, target_col])]
-            new_df = ufp.sort(new_df, by=[time_col, id_col])
-            new_df = ufp.drop_index_if_pandas(new_df)
-            new_ts = new_df[time_col].to_numpy()
-            new_y = new_df[target_col].to_numpy().astype(float)
-            new_bid = np.zeros(len(new_df), dtype=np.int64)
-            old_ts = self.time
-            all_ts = np.concatenate([old_ts, new_ts])
-            unique_all = np.unique(all_ts)
-            old_idx = np.searchsorted(unique_all, old_ts).astype(np.int64)
-            new_idx = np.searchsorted(unique_all, new_ts).astype(np.int64)
-            self.time = all_ts
-            self.y = np.concatenate([self.y, new_y])
-            self.bucket_id = np.concatenate([self.bucket_id, new_bid])
-            self.time_index = np.concatenate([old_idx, new_idx])
-            self.next_time_index_by_bucket[0] = len(unique_all)
-            self._ts_aggs = _build_ts_aggs(self.bucket_id, self.time_index, self.y)
-            old_len = len(self.bucket_df)
-            new_df_nw = nw.from_native(new_df)
-            new_rows_nw = new_df_nw.with_row_index(name="_bucket_pos").with_columns(
-                (nw.col("_bucket_pos") + old_len).cast(nw.Int64).alias("_bucket_pos")
-            )
-            new_rows = nw.to_native(new_rows_nw)
-            cols = list(self.bucket_df.columns)
-            self.bucket_df = ufp.vertical_concat([self.bucket_df, new_rows[cols]])
-        else:
-            group_cols_list = self.key_cols or self.group_cols
-            assert group_cols_list is not None
-            keep_cols = _dedupe_preserve_order(
-                [id_col] + group_cols_list + [time_col, target_col]
-            )
-            bucket_df = df[keep_cols]
-            bucket_df = ufp.sort(bucket_df, by=group_cols_list + [time_col, id_col])
-            bucket_df = ufp.drop_index_if_pandas(bucket_df)
-            old_uids = self.group_uids
-            groups = self.groups
-            bucket_df = _attach_bucket_id(bucket_df, groups, group_cols_list)
-            bucket_df, groups = _extend_groups(bucket_df, groups, group_cols_list)
-            self.groups = groups
-            # match_if_categorical normalizes (possibly categorical) bucket ids
-            # against the existing registry; new_ids feeds new_bid below.
-            _, new_ids = ufp.match_if_categorical(old_uids, bucket_df["_bucket_id"])
-            bucket_df = ufp.assign_columns(bucket_df, "_bucket_id", new_ids)
-            bucket_df = ufp.sort(bucket_df, by=["_bucket_id", time_col, id_col])
-            values = bucket_df[target_col].to_numpy().astype(ga_data_dtype, copy=False)
-            new_ts = bucket_df[time_col].to_numpy()
-            new_y = values.astype(float)
-            new_bid = bucket_df["_bucket_id"].to_numpy().astype(np.int64)
-            self.time = np.concatenate([self.time, new_ts])
-            self.y = np.concatenate([self.y, new_y])
-            self.bucket_id = np.concatenate([self.bucket_id, new_bid])
-            all_ts = self.time
-            all_bid = self.bucket_id
-            if (
-                self._parent_time_grids is not None
-                and self._bucket_to_parent_id is not None
-                and self._parent_to_buckets is not None
-            ):
-                groups_nw = nw.from_native(self.groups)
-                for bid in np.unique(new_bid):
-                    bid_int = int(bid)
-                    if bid_int not in self._bucket_to_parent_id:
-                        self._resolve_parent_for_bucket(bid_int, groups_nw=groups_nw)
-                affected_parents: set[int] = set()
-                for bid in np.unique(new_bid):
-                    pid = self._bucket_to_parent_id.get(int(bid))
-                    if pid is not None:
-                        affected_parents.add(pid)
-                for pid in affected_parents:
-                    sibling_bids = self._parent_to_buckets.get(pid, [])
-                    all_new_for_parent = []
-                    for sbid in sibling_bids:
-                        mask = new_bid == sbid
-                        if mask.any():
-                            all_new_for_parent.append(new_ts[mask])
-                    if all_new_for_parent:
-                        combined_new = np.concatenate(all_new_for_parent)
-                        grid = self._parent_time_grids[pid]
-                        self._parent_time_grids[pid] = np.unique(
-                            np.concatenate([grid, combined_new])
-                        )
-                per_bucket_grids = {
-                    bid: self._parent_time_grids[self._bucket_to_parent_id[bid]]
-                    for bid in self._bucket_to_parent_id
-                }
-                new_ord_arr, new_next = _compute_time_index_from_parent(
-                    all_bid, all_ts, per_bucket_grids
-                )
-            else:
-                new_ord_arr, new_next = _compute_time_index(all_bid, all_ts)
-            self.time_index = new_ord_arr
-            self.next_time_index_by_bucket = new_next
-            self._ts_aggs = _build_ts_aggs(self.bucket_id, self.time_index, self.y)
-            old_len = len(self.bucket_df)
-            bucket_df_nw = nw.from_native(bucket_df)
-            new_rows_nw = bucket_df_nw.with_row_index(name="_bucket_pos").with_columns(
-                (nw.col("_bucket_pos") + old_len).cast(nw.Int64).alias("_bucket_pos")
-            )
-            new_rows = nw.to_native(new_rows_nw)
-            cols = list(self.bucket_df.columns)
-            self.bucket_df = ufp.vertical_concat([self.bucket_df, new_rows[cols]])
-            if self._idsorted_to_bucket_pos is not None:
-                self._idsorted_to_bucket_pos = _compute_idsorted_to_bucket_pos(
-                    self.bucket_df,
-                    id_col,
-                    time_col,
-                )
-            if static_features is not None:
-                lookup_cols = self.key_cols or group_cols_list
-                sf_cols = set(static_features.columns)
-                if all(c in sf_cols for c in lookup_cols):
-                    self.series_bucket_id = lookup_bucket_ids(
-                        static_features, groups, lookup_cols
-                    ).astype(np.int64, copy=False)
-
-    def build_query_arrays(self, _curr_dates, n_series):
-        if self.groups is None:
-            next_ord = self.next_time_index_by_bucket[0]
-            tmp_y = np.concatenate(
-                [
-                    self.y,
-                    np.full(n_series, np.nan),
-                ]
-            )
-            tmp_bid = np.concatenate(
-                [
-                    self.bucket_id,
-                    np.zeros(n_series, dtype=np.int64),
-                ]
-            )
-            tmp_ord = np.concatenate(
-                [
-                    self.time_index,
-                    np.full(n_series, next_ord, dtype=np.int64),
-                ]
-            )
-            return tmp_bid, tmp_ord, tmp_y
-        else:
-            sort_order = np.argsort(self.series_bucket_id, kind="stable")
-            new_bids = self.series_bucket_id[sort_order]
-            new_ords = np.array(
-                [self.next_time_index_by_bucket[int(gid)] for gid in new_bids],
-                dtype=np.int64,
-            )
-            tmp_y = np.concatenate(
-                [
-                    self.y,
-                    np.full(n_series, np.nan),
-                ]
-            )
-            tmp_bid = np.concatenate([self.bucket_id, new_bids])
-            tmp_ord = np.concatenate([self.time_index, new_ords])
-            return tmp_bid, tmp_ord, tmp_y
-
-    def trim_to_last(self, n_ordinals: int) -> None:
-        """Drop history so each calendar keeps only its last ``n_ordinals`` ordinals.
-
-        Equivalent, by construction, to fitting on only the observations whose
-        parent-calendar ordinal falls in the last ``n_ordinals`` positions: the
-        flat arrays, ``bucket_df`` and parent grids are trimmed and renumbered
-        in lockstep, then every derived structure (``_ts_aggs``,
-        ``_idsorted_to_bucket_pos``) is regenerated through the same primitives
-        the constructors/append paths use, so all representations stay mutually
-        consistent. The caller must pass an ``n_ordinals`` covering every
-        transform's window (see the retention rule in ``TimeSeries._transform``),
-        so the dropped prefix can never enter a window and the trim is
-        prediction-neutral.
-
-        Only valid at fit time, before any prediction/observation append, while
-        ``bucket_df`` is still positionally aligned with the flat arrays.
-
-        In every mode ``next_time_index_by_bucket[bid]`` is the length of that
-        bucket's calendar (global: distinct global timestamps; groupby: the
-        bucket's own distinct timestamps; partition: the shared parent grid), so
-        the per-bucket cutoff ``len - n_ordinals`` is uniform across the buckets
-        that share a calendar. Renumbering by subtracting the cutoff matches a
-        fresh ``searchsorted`` into the retained-suffix calendar, which is also
-        what the next ``append_observations`` recomputes.
-        """
-        if n_ordinals <= 0:
-            return
-        bid_arr = self.bucket_id
-        # Per-row cutoff in a single grouping pass instead of one boolean scan
-        # per bucket (the old ``for bid: bid_arr == bid`` loop was O(buckets x
-        # rows)). ``inv`` maps each row to its bucket's slot in the sorted
-        # ``uniq``; the cutoff is uniform within a bucket, so a gather assigns
-        # it per row.
-        uniq, inv = np.unique(bid_arr, return_inverse=True)
-        next_vals = np.array(
-            [self.next_time_index_by_bucket[int(b)] for b in uniq], dtype=np.int64
-        )
-        cutoff_by_uniq = np.maximum(next_vals - n_ordinals, 0)
-        cutoff = cutoff_by_uniq[inv]
-        keep = self.time_index >= cutoff
-        if keep.all():
-            # every calendar already fits in n_ordinals -> nothing to drop.
-            return
-        new_time_index = self.time_index - cutoff
-        self.bucket_id = bid_arr[keep]
-        self.time = self.time[keep]
-        self.y = self.y[keep]
-        self.time_index = new_time_index[keep]
-        # bucket_df is row-aligned with the flat arrays at fit time, so the same
-        # boolean mask trims it consistently.
-        self.bucket_df = ufp.filter_with_mask(self.bucket_df, keep)
-        if self._parent_time_grids is not None:
-            for pid, grid in self._parent_time_grids.items():
-                self._parent_time_grids[pid] = grid[max(len(grid) - n_ordinals, 0) :]
-        # A trim drops a whole prefix of ordinals per bucket (``keep`` is
-        # ``ord >= cutoff``, uniform within a bucket), so every surviving
-        # timestamp group is untouched: its sums/counts/sum_sq/min/max are
-        # byte-identical to before and only the ordinal shifts down by
-        # ``cutoff``. So slice each aggregate to its surviving suffix rather
-        # than re-aggregating from raw ``y`` -- the dominant cost of a trim on
-        # large panels. Buckets whose suffix is empty lost all their rows and
-        # are dropped, matching ``_build_ts_aggs`` on the filtered rows.
-        # The cache is complete whenever it is non-empty (every constructor
-        # fills it for all buckets); a cleared cache (slow-path ``_transform``)
-        # has no suffixes to slice, so rebuild it from the trimmed arrays.
-        if self._ts_aggs:
-            new_aggs: Dict[int, _TimestampAggregates] = {}
-            for pos, b in enumerate(uniq):
-                cut = int(cutoff_by_uniq[pos])
-                bid_int = int(b)
-                agg = self._ts_aggs[bid_int]
-                if cut == 0:
-                    new_aggs[bid_int] = agg
-                    continue
-                m = agg.unique_times >= cut
-                if not m.any():
-                    continue
-                new_aggs[bid_int] = _TimestampAggregates(
-                    unique_times=agg.unique_times[m] - cut,
-                    sums=agg.sums[m],
-                    counts=agg.counts[m],
-                    sum_sq=agg.sum_sq[m],
-                    mins=agg.mins[m],
-                    maxs=agg.maxs[m],
-                )
-            self._ts_aggs = new_aggs
-        else:
-            self._ts_aggs = _build_ts_aggs(self.bucket_id, self.time_index, self.y)
-        for bid_int, cal_len in self.next_time_index_by_bucket.items():
-            self.next_time_index_by_bucket[bid_int] = min(cal_len, n_ordinals)
-        if self._idsorted_to_bucket_pos is not None:
-            id_col, time_col = self.join_cols
-            self._idsorted_to_bucket_pos = _compute_idsorted_to_bucket_pos(
-                self.bucket_df, id_col, time_col
-            )
-
-
-def _attach_bucket_id(bucket_df, groups, group_cols_list):
-    joined = _null_equal_left_join(
-        nw.from_native(bucket_df),
-        nw.from_native(groups),
-        group_cols_list,
-        ["_bucket_id"],
-    )
-    return nw.to_native(joined)
-
-
-def _extend_groups(bucket_df, groups, group_cols_list):
-    bucket_df_nw = nw.from_native(bucket_df)
-    groups_nw = nw.from_native(groups)
-    missing = bucket_df_nw.get_column("_bucket_id").is_null()
-    if missing.any():
-        enc_cols = [f"__enc_{c}" for c in group_cols_list]
-        # Create new buckets on the *encoded* key so null/NaN/None collapse into a
-        # single new bucket (polars .unique() keeps them as distinct raw rows).
-        new_groups_nw = (
-            _encode_keys(bucket_df_nw.filter(missing), group_cols_list)
-            .select(group_cols_list + enc_cols)
-            .unique(subset=enc_cols, keep="first", maintain_order=True)
-            .drop(enc_cols)
-        )
-        start = len(groups_nw)
-        new_groups_nw = new_groups_nw.with_row_index(name="_bucket_id").with_columns(
-            (nw.col("_bucket_id") + start).cast(nw.Int64).alias("_bucket_id")
-        )
-        groups = ufp.vertical_concat(
-            [
-                nw.to_native(groups_nw),
-                nw.to_native(new_groups_nw),
-            ]
-        )
-        # Re-lookup every row (including pre-existing missing buckets) so an
-        # existing null bucket is matched, not duplicated.
-        joined = _null_equal_left_join(
-            bucket_df_nw.drop("_bucket_id"),
-            nw.from_native(groups),
-            group_cols_list,
-            ["_bucket_id"],
-        )
-        bucket_df = nw.to_native(joined)
-    return bucket_df, groups
-
-
-def compute_pooled_features(
-    state: PooledState,
-    transforms: Dict[str, _BaseLagTransform],
-    query_arrays=None,
-) -> Dict[str, np.ndarray]:
-    if query_arrays is not None:
-        bid_arr, idx_arr, y_arr = query_arrays
-        ts_aggs = _build_ts_aggs(bid_arr, idx_arr, y_arr)
+    values = np.asarray(values)
+    if values.dtype.kind in "fc":
+        missing = np.isnan(values)
+    elif values.dtype.kind == "O":
+        missing = np.array([v is None or v != v for v in values], dtype=bool)
+    elif values.dtype.kind == "M":
+        missing = np.isnat(values)
     else:
-        bid_arr = state.bucket_id
-        idx_arr = state.time_index
-        y_arr = state.y
-        ts_aggs = state._ts_aggs
-    bucket_vals: Dict[str, np.ndarray] = {}
-    for name, tfm in transforms.items():
-        computed = tfm._compute_bucket_feature(
-            bid_arr,
-            idx_arr,
-            y_arr,
-            _ts_aggs=ts_aggs,
+        missing = np.zeros(values.shape, dtype=bool)
+    if values.dtype.kind == "f":
+        safe = np.where(missing, 0.0, values)
+        integral = safe == np.floor(safe)
+        out = np.empty(values.shape, dtype=object)
+        if integral.any():
+            out[integral] = safe[integral].astype(np.int64).astype(str)
+        if (~integral).any():
+            out[~integral] = safe[~integral].astype(str)
+    elif values.dtype.kind == "O":
+        # object columns may mix ints and floats; normalise the numeric ones
+        out = np.array(
+            [
+                str(int(v))
+                if isinstance(v, float) and not (v != v) and v == int(v)
+                else str(v)
+                for v in values
+            ],
+            dtype=object,
         )
-        if computed is None:
-            raise NotImplementedError(
-                f"Transform {type(tfm).__name__!r} does not support pooled "
-                f"(global/groupby/partition_by) computation. Implement "
-                f"_compute_bucket_feature to use it with global_, groupby, "
-                f"or partition_by."
+    else:
+        out = values.astype(str).astype(object)
+    if missing.any():
+        out[missing] = _NULL_KEY
+    return out
+
+
+def _join_encoded(parts: Sequence[np.ndarray]) -> np.ndarray:
+    """Join already-encoded key columns into one key per row."""
+    if len(parts) == 1:
+        return parts[0]
+    return np.array(["\x1f".join(t) for t in zip(*parts)], dtype=object)
+
+
+def _join_keys(arrays: Sequence[np.ndarray]) -> np.ndarray:
+    return _join_encoded([_encode_column(a) for a in arrays])
+
+
+def encode_keys(arrays: Sequence[np.ndarray]) -> np.ndarray:
+    """Encoded bucket key per row, in the same space as ``bucket_uniques``."""
+    return _join_keys(arrays)
+
+
+def factorize(arrays: Sequence[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
+    """Map a set of key columns to dense bucket ids. Returns (ids, uniques).
+
+    Builds one key string per distinct *combination* rather than one per row,
+    which is the difference between ``O(n_rows)`` and ``O(n_buckets)`` Python
+    string work on a partitioned panel. The columns are hash-factorized to
+    integer codes, combined as a mixed radix, and only the surviving
+    combinations are encoded and joined.
+
+    The vocabulary is still sorted in *joined-string* space, which is not the
+    same as tuple order: a key value may contain a byte below the ``\\x1f``
+    separator (``"a"`` sorts before ``"a\\nb"`` as a tuple, after it once
+    joined), so the survivors are joined first and sorted second.
+    """
+    codes: List[np.ndarray] = []
+    encoded: List[np.ndarray] = []
+    for arr in arrays:
+        col_codes, col_uniques = pd.factorize(np.asarray(arr))
+        enc = _encode_column(np.asarray(col_uniques))
+        if (col_codes < 0).any():
+            # pandas parks every missing value at -1; give it a slot of its own
+            # so it encodes to the sentinel like any other key
+            enc = np.append(enc, _NULL_KEY)
+            col_codes = np.where(col_codes < 0, len(col_uniques), col_codes)
+        codes.append(col_codes.astype(np.int64, copy=False))
+        encoded.append(enc)
+    combined = codes[0]
+    for col_codes, enc in zip(codes[1:], encoded[1:]):
+        # re-compressed every step so the radix product cannot overflow int64
+        combined = np.unique(combined * len(enc) + col_codes, return_inverse=True)[1]
+        combined = combined.ravel().astype(np.int64, copy=False)
+    combo_uniques, combo_ids = np.unique(combined, return_inverse=True)
+    combo_ids = combo_ids.ravel()
+    # one representative row per surviving combination, taken in reverse so the
+    # earliest row wins -- any row of the combination encodes the same
+    first = np.zeros(len(combo_uniques), dtype=np.int64)
+    first[combo_ids[::-1]] = np.arange(len(combo_ids))[::-1]
+    keys = _join_encoded([enc[c[first]] for c, enc in zip(codes, encoded)])
+    # sorts, and dedupes where two raw values encode alike (None beside NaN)
+    uniques, inv = np.unique(keys, return_inverse=True)
+    return inv.ravel()[combo_ids].astype(np.int64, copy=False), uniques
+
+
+def lookup(arrays: Sequence[np.ndarray], uniques: np.ndarray) -> np.ndarray:
+    """Map key columns onto an existing vocabulary; unseen keys get ``-1``."""
+    keys = _join_keys(arrays)
+    if len(uniques) == 0:
+        return np.full(len(keys), -1, dtype=np.int64)
+    pos = np.clip(np.searchsorted(uniques, keys), 0, len(uniques) - 1)
+    return np.where(uniques[pos] == keys, pos, -1).astype(np.int64, copy=False)
+
+
+# %% cell aggregates
+#: what an unoccupied cell holds per channel, so coreforecast never sees a null;
+#: cells with no data are masked out later using the observation count
+_FILL = {"min": np.inf, "max": -np.inf}
+
+
+class _CellStore:
+    """Occupied ``(bucket, ordinal)`` cells of the fit panel, bucket-major.
+
+    The dense ``(n_buckets, width)`` block has a cell at every calendar position
+    of every bucket whether rows land there or not; a partitioned panel occupies
+    ``1 / cardinality`` of it. Holding only the occupied cells keeps the fit-time
+    store ``O(n_rows)`` however wide the calendar, and any column range of the
+    dense block is scattered out of it on demand.
+
+    The per-cell aggregates come from one ``bincount`` over the cell index,
+    which accumulates in row order exactly as a bincount over the flat
+    ``bucket * width + ordinal`` index does, so a scattered block is
+    bit-identical to one built dense.
+    """
+
+    def __init__(
+        self,
+        bucket_id: np.ndarray,
+        ordinal: np.ndarray,
+        y: np.ndarray,
+        n_buckets: int,
+        width: int,
+        names: Sequence[str],
+    ):
+        self.n_buckets = n_buckets
+        self.width = width
+        flat = bucket_id.astype(np.int64) * width + ordinal
+        keys, cell = np.unique(flat, return_inverse=True)
+        self.keys = keys
+        self.cell_of_row = cell.ravel().astype(np.int64, copy=False)
+        self.bucket = keys // width
+        self.ordinal = keys - self.bucket * width
+        n = keys.size
+        valid = ~np.isnan(y)
+        cell_v = self.cell_of_row[valid]
+        y_v = y[valid]
+        #: per-bucket centre of each view's ``sumsq`` channel, keyed by
+        #: ``time_agg`` (``None`` for the base); see `_StdKernel`
+        self.shift: Dict[Optional[str], np.ndarray] = {}
+
+        def centre(mean, obs):
+            self.shift[None] = _fill_shift(None, mean, obs, n_buckets, self.bucket)
+            return self.shift[None][self.bucket[cell_v]]
+
+        self.chan = _cell_aggregates(cell_v, y_v, n, names, centre)
+        self._by_ordinal: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        self._starts: Optional[np.ndarray] = None
+        self._views: Dict[str, Dict[str, np.ndarray]] = {}
+        self._seasonal: Dict[int, Tuple[np.ndarray, np.ndarray]] = {}
+
+    @property
+    def size(self) -> int:
+        return self.bucket.size
+
+    def channels_for(
+        self, time_agg: Optional[str], names: Collection[str]
+    ) -> Dict[str, np.ndarray]:
+        """Per-cell channels, collapsed by ``time_agg`` if given (cached)."""
+        if time_agg is None:
+            return {name: self.chan[name] for name in names}
+        want = set(names) | {"count"}
+        view = self._views.setdefault(time_agg, {})
+        build = want - view.keys()
+        if build:
+            new, self.shift[time_agg] = _collapsed(
+                self.chan,
+                time_agg,
+                build,
+                self.shift.get(time_agg),
+                self.n_buckets,
+                self.bucket,
             )
-        bucket_vals[name] = computed
-    return bucket_vals
+            view.update(new)
+        return {name: view[name] for name in names}
+
+    def cell_shift(self, time_agg: Optional[str]) -> Optional[np.ndarray]:
+        """Per-cell ``sumsq`` centre of a view, once the view has been built."""
+        shift = self.shift.get(time_agg)
+        return None if shift is None else shift[self.bucket]
+
+    @property
+    def starts(self) -> np.ndarray:
+        """CSR offsets: bucket ``b`` owns cells ``starts[b]:starts[b + 1]``."""
+        if self._starts is None:
+            self._starts = np.searchsorted(self.bucket, np.arange(self.n_buckets + 1))
+        return self._starts
+
+    def ragged(self, values: np.ndarray, keep: np.ndarray) -> CoreGroupedArray:
+        """The cells selected by ``keep``, as one coreforecast group per bucket.
+
+        Cells are ordered by ordinal within a bucket, so a coreforecast
+        transform walking a group sees that bucket's history in time order,
+        with the empty calendar positions simply absent.
+        """
+        starts = np.searchsorted(self.bucket[keep], np.arange(self.n_buckets + 1))
+        return CoreGroupedArray(values[keep], starts.astype(np.int32))
+
+    # -- windows ---------------------------------------------------------
+    # A window is a run of consecutive cells in some layout of the store: the
+    # store itself for calendar windows, or a phase-major reordering for
+    # seasonal ones. Bounds come from two searchsorted calls over every cell at
+    # once, and a window of `w` calendar positions holds at most `w` cells.
+
+    def source_bound(self, lag: int) -> np.ndarray:
+        """Index after the last cell at or before ``ordinal - lag``, per cell.
+
+        The clamp keeps the key inside the cell's own bucket, so a source
+        before the calendar starts yields the bucket's first index -- an
+        empty window, never a cell of the bucket before.
+        """
+        src = np.maximum(self.ordinal - lag, -1)
+        return np.searchsorted(self.keys, self.bucket * self.width + src, side="right")
+
+    def rolling_bounds(self, lag: int, window: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Half-open cell bounds of ``[t - lag - window + 1, t - lag]`` per cell.
+
+        A window that reaches before the calendar starts is simply shorter.
+        """
+        first = np.maximum(self.ordinal - lag - window + 1, 0)
+        lo = np.searchsorted(self.keys, self.bucket * self.width + first, side="left")
+        return lo, self.source_bound(lag)
+
+    def seasonal_layout(self, season_length: int) -> Tuple[np.ndarray, np.ndarray]:
+        """Cells reordered by ``(bucket, ordinal % season_length, ordinal)``.
+
+        In that order the cells of one seasonal window -- same bucket, same
+        phase, ``window_size`` seasons back -- are consecutive.
+        """
+        layout = self._seasonal.get(season_length)
+        if layout is None:
+            phase = self.ordinal % season_length
+            keys = (self.bucket * season_length + phase) * self.width + self.ordinal
+            perm = np.argsort(keys, kind="stable")
+            layout = self._seasonal[season_length] = (keys[perm], perm)
+        return layout
+
+    def seasonal_bounds(
+        self, lag: int, window: int, season_length: int
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Bounds in the seasonal layout, plus the layout's cell permutation."""
+        keys, perm = self.seasonal_layout(season_length)
+        src = self.ordinal - lag
+        has = src >= 0
+        phase = np.where(has, src % season_length, 0)
+        base = (self.bucket * season_length + phase) * self.width
+        # the earliest ordinal on this phase is the phase itself
+        first = np.maximum(src - (window - 1) * season_length, phase)
+        lo = np.searchsorted(keys, base + first, side="left")
+        hi = np.searchsorted(keys, base + np.where(has, src, 0), side="right")
+        return lo, np.where(has, hi, lo), perm
+
+    def reduce_windows(
+        self,
+        lo: np.ndarray,
+        hi: np.ndarray,
+        window: int,
+        arrays: Dict[str, np.ndarray],
+        perm: Optional[np.ndarray] = None,
+    ) -> Dict[str, np.ndarray]:
+        """Reduce each window's cells: sums, or extremes for ``min``/``max``.
+
+        Gathered in row blocks capped at ``_MAX_GATHER`` cells, so the transient
+        is bounded whatever the window or the panel. Cells past ``hi`` are
+        masked with the channel's fill, which every reduction ignores.
+        """
+        n = lo.size
+        out = {name: np.full(n, _FILL.get(name, 0.0)) for name in arrays}
+        offsets = np.arange(window)
+        step = max(1, _MAX_GATHER // window)
+        last = max(self.size - 1, 0)
+        for a in range(0, n, step):
+            z = slice(a, min(a + step, n))
+            idx = lo[z][:, None] + offsets
+            ok = idx < hi[z][:, None]
+            np.minimum(idx, last, out=idx)
+            if perm is not None:
+                idx = perm[idx]
+            for name, arr in arrays.items():
+                vals = np.where(ok, arr[idx], _FILL.get(name, 0.0))
+                if name == "min":
+                    out[name][z] = vals.min(axis=1)
+                elif name == "max":
+                    out[name][z] = vals.max(axis=1)
+                else:
+                    out[name][z] = vals.sum(axis=1)
+        return out
+
+    @property
+    def nbytes(self) -> int:
+        arrays = [self.cell_of_row, self.bucket, self.ordinal, *self.chan.values()]
+        return sum(a.nbytes for a in arrays)
+
+    def cells_in(self, lo: int, hi: int) -> np.ndarray:
+        """Indices of the cells whose ordinal lies in ``[lo, hi)``.
+
+        The store is bucket-major, so a column range is not a slice of it; one
+        stable argsort by ordinal, cached, turns every range into one.
+        """
+        if self._by_ordinal is None:
+            perm = np.argsort(self.ordinal, kind="stable")
+            offsets = np.searchsorted(self.ordinal[perm], np.arange(self.width + 1))
+            self._by_ordinal = (perm, offsets)
+        perm, offsets = self._by_ordinal
+        return perm[offsets[lo] : offsets[hi]]
+
+    def dense(
+        self, lo: int, hi: int, names: Optional[Collection[str]] = None
+    ) -> Dict[str, np.ndarray]:
+        """Dense ``(n_buckets, hi - lo)`` block per channel over columns ``[lo, hi)``."""
+        cells = self.cells_in(lo, hi)
+        b = self.bucket[cells]
+        o = self.ordinal[cells] - lo
+        out: Dict[str, np.ndarray] = {}
+        for name in names or self.chan:
+            block = np.full((self.n_buckets, hi - lo), _FILL.get(name, 0.0))
+            block[b, o] = self.chan[name][cells]
+            out[name] = block
+        return out
+
+    def gather(
+        self, block: np.ndarray, lo: int, cells: Optional[np.ndarray] = None
+    ) -> np.ndarray:
+        """Per-cell values read off a block whose first column is ``lo``."""
+        if cells is None:
+            return block[self.bucket, self.ordinal - lo]
+        return block[self.bucket[cells], self.ordinal[cells] - lo]
+
+    def row_values(self, cell_values: np.ndarray) -> np.ndarray:
+        return cell_values[self.cell_of_row]
+
+
+def _build_cells(
+    bucket_id: np.ndarray,
+    ordinal: np.ndarray,
+    y: np.ndarray,
+    n_buckets: int,
+    width: int,
+    names: Sequence[str],
+) -> Dict[str, np.ndarray]:
+    """Aggregate rows into a dense ``(n_buckets, width)`` array per requested channel."""
+    return _CellStore(bucket_id, ordinal, y, n_buckets, width, names).dense(0, width)
+
+
+_ALL_CHANNELS = ("count", "sum", "sumsq", "min", "max")
+
+#: Cells per temporary gather block, for the window reductions at fit and the
+#: row kernels' gathers: a few same-shaped temporaries live at once, so this
+#: bounds those transients at a small multiple of ``8 * _MAX_GATHER`` bytes
+#: whatever the window or the panel.
+_MAX_GATHER = 1 << 20
+
+
+def _block_ga(block: np.ndarray) -> CoreGroupedArray:
+    """Wrap a ``(n_buckets, n_cols)`` block as one coreforecast group per bucket."""
+    n_buckets, n_cols = block.shape
+    data = np.ascontiguousarray(block).ravel()
+    indptr = np.arange(0, (n_buckets + 1) * n_cols, n_cols, dtype=np.int32)
+    return CoreGroupedArray(data, indptr)
+
+
+def _first_observed(
+    values: np.ndarray, obs: np.ndarray, n_buckets: int, bucket: Optional[np.ndarray]
+) -> np.ndarray:
+    """Value of each bucket's first observed cell; NaN for a bucket with none.
+
+    ``values``/``obs`` are per cell: a ``(n_buckets, width)`` block (or one
+    value per bucket), or flat and bucket-major with ``bucket`` naming each
+    cell's bucket.
+    """
+    out = np.full(n_buckets, np.nan)
+    if bucket is None:
+        values = values.reshape(n_buckets, -1)
+        obs = obs.reshape(n_buckets, -1)
+        seen = np.flatnonzero(obs.any(axis=1))
+        out[seen] = values[seen, obs.argmax(axis=1)[seen]]
+    else:
+        idx = np.flatnonzero(obs)
+        if idx.size:
+            lead = np.r_[True, bucket[idx[1:]] != bucket[idx[:-1]]]
+            out[bucket[idx[lead]]] = values[idx[lead]]
+    return out
+
+
+def _fill_shift(
+    shift: Optional[np.ndarray],
+    values: np.ndarray,
+    obs: np.ndarray,
+    n_buckets: int,
+    bucket: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """``shift`` with every bucket still unset taking its first observed value.
+
+    A bucket's shift is fixed the first time the bucket is observed and never
+    moves after, so every ``sumsq`` cell of the bucket is centred on the same
+    value (see `_StdKernel`). ``None`` is a shift with every bucket unset.
+    """
+    if shift is None:
+        shift = np.full(n_buckets, np.nan)
+    unset = np.isnan(shift)
+    if not unset.any():
+        return shift
+    return np.where(unset, _first_observed(values, obs, n_buckets, bucket), shift)
+
+
+def _cell_aggregates(
+    idx: np.ndarray,
+    y: np.ndarray,
+    n: int,
+    names: Collection[str],
+    centre,
+) -> Dict[str, np.ndarray]:
+    """The channels ``names`` of ``y`` aggregated by cell ``idx`` (``n`` cells).
+
+    ``centre(mean, obs)`` maps the cells' means and observed mask to the
+    ``sumsq`` centre per row; it is only called when that channel is asked for.
+    """
+    count = np.bincount(idx, minlength=n).astype(np.float64)
+    out: Dict[str, np.ndarray] = {}
+    if "count" in names:
+        out["count"] = count
+    if "sum" in names or "sumsq" in names:
+        total = np.bincount(idx, weights=y, minlength=n)
+    if "sum" in names:
+        out["sum"] = total
+    if "sumsq" in names:
+        obs = count > 0
+        mean = np.divide(total, count, out=np.zeros(n), where=obs)
+        dev = y - centre(mean, obs)
+        out["sumsq"] = np.bincount(idx, weights=dev * dev, minlength=n)
+    if "min" in names:
+        buf = np.full(n, np.inf)
+        np.minimum.at(buf, idx, y)
+        out["min"] = buf
+    if "max" in names:
+        buf = np.full(n, -np.inf)
+        np.maximum.at(buf, idx, y)
+        out["max"] = buf
+    return out
+
+
+def _view_value(
+    cells: Dict[str, np.ndarray], time_agg: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """The collapsed value ``v_t`` per cell, and which cells are observed."""
+    counts = cells["count"]
+    obs = counts > 0
+    if time_agg == "count":
+        v = counts
+    elif time_agg == "sum":
+        v = cells["sum"]
+    elif time_agg == "min":
+        v = cells["min"]
+    elif time_agg == "max":
+        v = cells["max"]
+    else:  # mean
+        v = np.divide(cells["sum"], counts, out=np.zeros_like(cells["sum"]), where=obs)
+    return v, obs
+
+
+def _collapse(
+    v: np.ndarray,
+    obs: np.ndarray,
+    shift: Optional[np.ndarray],
+    names: Optional[Collection[str]] = None,
+) -> Dict[str, np.ndarray]:
+    """Re-express the collapsed value ``v_t`` (see `_view_value`) as channels.
+
+    With ``time_agg`` each timestamp contributes a single value, so the channels
+    become "one observation per observed timestamp".  Because the shape matches
+    the row-weighted channels exactly, every kernel combine below works
+    unchanged for both modes.
+
+    ``shift`` centres ``sumsq`` (see `_StdKernel`); it must broadcast against
+    ``v`` and is only read when that channel is built. ``names`` limits the
+    output to the channels a kernel actually reads; the result is cached, so
+    building all five would also keep them all alive.
+    """
+    zero = np.zeros_like(v)
+    builders = {
+        "count": lambda: obs.astype(np.float64),
+        "sum": lambda: np.where(obs, v, zero),
+        "sumsq": lambda: np.where(obs, (v - shift) ** 2, zero),
+        "min": lambda: np.where(obs, v, np.inf),
+        "max": lambda: np.where(obs, v, -np.inf),
+    }
+    return {name: builders[name]() for name in (names or _ALL_CHANNELS)}
+
+
+def _collapsed(
+    cells: Dict[str, np.ndarray],
+    time_agg: str,
+    names: Collection[str],
+    shift: Optional[np.ndarray],
+    n_buckets: int,
+    bucket: Optional[np.ndarray] = None,
+) -> Tuple[Dict[str, np.ndarray], np.ndarray]:
+    """Collapse ``cells`` into the channels ``names``, plus the view's shift.
+
+    ``shift`` is the view's per-bucket shift so far (``None`` before its first
+    build); it comes back filled for the buckets observed here for the first
+    time, and the ``sumsq`` built here is centred on it.
+    """
+    v, obs = _view_value(cells, time_agg)
+    shift = _fill_shift(shift, v, obs, n_buckets, bucket)
+    per_cell = shift[bucket] if bucket is not None else shift[:, None]
+    return _collapse(v, obs, per_cell, names), shift
+
+
+# %% raw rows
+#: bucket stride of the row keys, ``bucket * _ROW_STRIDE + ordinal``. Ordinals
+#: are calendar positions and never come near it, and `_RowStore.search` clamps
+#: a target before the calendar to -1, so every key stays inside its own
+#: bucket's range. The price is a bound on the bucket count, enforced wherever
+#: buckets are created.
+_ROW_STRIDE = 1 << 32
+_MAX_BUCKETS = (1 << 63) // _ROW_STRIDE
+
+
+def _check_bucket_count(n_buckets: int) -> None:
+    if n_buckets > _MAX_BUCKETS:
+        raise ValueError(
+            f"Pooled row kernels support up to {_MAX_BUCKETS} buckets; got {n_buckets}."
+        )
+
+
+class _RowStore:
+    """Raw observations in CSR form, sorted by ``(bucket, ordinal)``.
+
+    The row kernels gather windows of actual observations, so they keep every
+    row -- ``O(n_rows)``, never a dense block. One key per row,
+    ``bucket * stride + ordinal``, lets a single ``searchsorted`` place a window
+    bound for every bucket at once.
+
+    Predictions appended at predict are stashed per step and folded in on the
+    next read. They carry the newest ordinal, so each bucket's new rows go
+    after its old ones and the merge is two scatters, no sort.
+    """
+
+    def __init__(self, ordinal: np.ndarray, y: np.ndarray, indptr: np.ndarray):
+        self.ordinal = ordinal
+        self.y = y
+        self.indptr = indptr
+        self._pending: List[Tuple[np.ndarray, np.ndarray, int]] = []
+        self._keys: Optional[np.ndarray] = None
+        self._views: Dict[str, "_RowStore"] = {}
+
+    @classmethod
+    def from_rows(
+        cls, bucket_id: np.ndarray, ordinal: np.ndarray, y: np.ndarray, n_buckets: int
+    ) -> "_RowStore":
+        _check_bucket_count(n_buckets)
+        order = np.lexsort((ordinal, bucket_id))
+        counts = np.bincount(bucket_id, minlength=n_buckets)
+        indptr = np.concatenate([[0], np.cumsum(counts)]).astype(np.int64)
+        return cls(ordinal[order].astype(np.int64), y[order].astype(np.float64), indptr)
+
+    @property
+    def n_buckets(self) -> int:
+        return self.indptr.size - 1
+
+    @property
+    def bucket(self) -> np.ndarray:
+        return np.repeat(np.arange(self.n_buckets), np.diff(self.indptr))
+
+    @property
+    def keys(self) -> np.ndarray:
+        if self._keys is None:
+            self._keys = self.bucket * _ROW_STRIDE + self.ordinal
+        return self._keys
+
+    def search(self, bucket: np.ndarray, ordinal: np.ndarray, side: str) -> np.ndarray:
+        """Row position of ``ordinal`` within ``bucket``, broadcast over both.
+
+        A target before the calendar resolves to the bucket's first row on
+        either side, so a window reaching back past ordinal 0 is just shorter.
+        """
+        clamped: np.ndarray = np.maximum(ordinal, -1)
+        return np.searchsorted(self.keys, bucket * _ROW_STRIDE + clamped, side=side)
+
+    def _invalidate(self) -> None:
+        self._keys = None
+        self._views = {}
+
+    def append(self, bucket_ids: np.ndarray, values: np.ndarray, ordinal: int) -> None:
+        self._pending.append((bucket_ids, values, ordinal))
+
+    def merged(self) -> "_RowStore":
+        """This store with the stashed rows folded in."""
+        if not self._pending:
+            return self
+        pb = np.concatenate([b for b, _, _ in self._pending])
+        pv = np.concatenate([v for _, v, _ in self._pending])
+        po = np.concatenate([np.full(b.size, o) for b, _, o in self._pending])
+        # stable, so within a bucket the rows keep their step order
+        order = np.argsort(pb, kind="stable")
+        pb, pv, po = pb[order], pv[order], po[order]
+        pstarts = np.concatenate(
+            [[0], np.cumsum(np.bincount(pb, minlength=self.n_buckets))]
+        )
+        n_old = self.ordinal.size
+        pos_old = np.arange(n_old) + pstarts[self.bucket]
+        pos_new = self.indptr[1:][pb] + np.arange(pb.size)
+        ordinal = np.empty(n_old + pb.size, dtype=np.int64)
+        y = np.empty(n_old + pb.size, dtype=np.float64)
+        ordinal[pos_old], ordinal[pos_new] = self.ordinal, po
+        y[pos_old], y[pos_new] = self.y, pv
+        self.ordinal, self.y, self.indptr = ordinal, y, self.indptr + pstarts
+        self._pending = []
+        self._invalidate()
+        return self
+
+    def collapsed(self, time_agg: str) -> "_RowStore":
+        """One row per observed ``(bucket, ordinal)``, reduced by ``time_agg``."""
+        view = self._views.get(time_agg)
+        if view is not None:
+            return view
+        keys, y = self.keys, self.y
+        if keys.size:
+            starts = np.flatnonzero(np.r_[True, keys[1:] != keys[:-1]])
+            sizes = np.diff(np.r_[starts, keys.size])
+            if time_agg == "count":
+                v = sizes.astype(np.float64)
+            elif time_agg == "sum":
+                v = np.add.reduceat(y, starts)
+            elif time_agg == "mean":
+                v = np.add.reduceat(y, starts) / sizes
+            elif time_agg == "min":
+                v = np.minimum.reduceat(y, starts)
+            else:
+                v = np.maximum.reduceat(y, starts)
+        else:
+            starts, v = np.empty(0, dtype=np.int64), np.empty(0)
+        bucket = self.bucket[starts]
+        indptr = np.searchsorted(bucket, np.arange(self.n_buckets + 1))
+        view = self._views[time_agg] = _RowStore(self.ordinal[starts], v, indptr)
+        return view
+
+    def valid(self) -> "_RowStore":
+        """This store without the rows whose target is NaN (cached).
+
+        A window holds the observations that exist, so a NaN row must neither
+        enter a quantile nor count toward ``min_samples``.
+        """
+        view = self._views.get("valid")
+        if view is None:
+            keep = ~np.isnan(self.y)
+            view = self if keep.all() else self._filtered(keep)
+            self._views["valid"] = view
+        return view
+
+    def _filtered(self, keep: np.ndarray) -> "_RowStore":
+        counts = np.bincount(self.bucket[keep], minlength=self.n_buckets)
+        indptr = np.concatenate([[0], np.cumsum(counts)])
+        return _RowStore(self.ordinal[keep], self.y[keep], indptr)
+
+    def trim(self, cutoff: int) -> None:
+        """Drop the rows before ``cutoff``, an absolute ordinal."""
+        self.merged()
+        keep = self.ordinal >= cutoff
+        if keep.all():
+            return
+        kept = self._filtered(keep)
+        self.ordinal, self.y, self.indptr = kept.ordinal, kept.y, kept.indptr
+        self._invalidate()
+
+    def grow(self, remap: np.ndarray, n_new: int) -> None:
+        """Renumber the buckets into a grown vocabulary.
+
+        ``remap`` is increasing (a sorted vocabulary merged into a sorted one),
+        so the rows keep their order and only the offsets move.
+        """
+        _check_bucket_count(n_new)
+        self.merged()
+        counts = np.zeros(n_new, dtype=np.int64)
+        counts[remap] = np.diff(self.indptr)
+        self.indptr = np.concatenate([[0], np.cumsum(counts)])
+        self._invalidate()
+
+    # the arrays are replaced, never written in place, so references suffice
+    def snapshot(self):
+        self.merged()
+        return self.ordinal, self.y, self.indptr
+
+    def restore(self, snap) -> None:
+        self.ordinal, self.y, self.indptr = snap
+        self._pending = []
+        self._invalidate()
+
+
+# %% kernels
+def _grow_rows(arr: np.ndarray, remap: np.ndarray, n_new: int, fill) -> np.ndarray:
+    """Permute per-bucket rows into a grown vocabulary; new buckets get ``fill``."""
+    out = np.empty((n_new,) + arr.shape[1:], dtype=arr.dtype)
+    out[...] = fill
+    out[remap] = arr
+    return out
+
+
+def _expanding_fill(tfm, stats: np.ndarray):
+    """Inner state of a bucket that has only ever seen empty cells."""
+    if isinstance(tfm, core_tfms.ExpandingMean):
+        # ``[cells consumed, cumsum]``. The cell count is read off an existing
+        # bucket rather than derived from ``n_ordinals``: a multi-timestamp
+        # ``update`` appends several columns but advances the accumulator once,
+        # so the two disagree.
+        return np.array([stats[0, 0] if stats.shape[0] else 0.0, 0.0])
+    if isinstance(tfm, core_tfms.ExpandingMin):
+        return np.inf
+    if isinstance(tfm, core_tfms.ExpandingMax):
+        return -np.inf
+    raise NotImplementedError(
+        f"pooled bucket growth for inner transform {type(tfm).__name__!r}"
+    )
+
+
+class _PooledKernel:
+    """Maps a user-facing transform onto channels + inner transforms + a combine.
+
+    ``channels`` names the cell aggregates needed.  ``make_inner`` builds one
+    stateful ``coreforecast`` transform per channel (they are advanced in
+    lockstep by ``update``).  ``window_cells`` gives the number of *source
+    cells* the window spans at each ordinal, which converts a channel mean back
+    into a channel sum so observation counts can be recovered.
+    """
+
+    channels: Tuple[str, ...] = ("sum", "count")
+    #: kernels that carry their own recurrence instead of delegating to a
+    #: stateful coreforecast transform (see :class:`EwmK`).
+    custom: bool = False
+    #: kernels that gather the raw observations (see :class:`_RowKernel`).
+    needs_rows: bool = False
+    #: whether the fit pass leaves behind state a later ``update`` reads back.
+    #: False for the kernels whose inners recompute from the block on every
+    #: update (Rolling*/SeasonalRolling*/Lag) and for the row kernels, which
+    #: re-gather from the raw observations; only the accumulator-carrying
+    #: kernels (Expanding*, EWM) need priming at all.
+    primes_state: bool = True
+
+    def __init__(self, tfm):
+        self.tfm = tfm
+        self.lag = tfm._core_tfm.lag
+
+    def make_inner(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    def window_cells(self, ordinals: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    def fit_from_store(
+        self, _store: "_CellStore", _inner: Optional[Dict[str, Any]] = None
+    ) -> Optional[np.ndarray]:
+        """Fit-time value per occupied cell, computed on the cell store.
+
+        Every channel kernel defines it, two ways. A bounded window is a run of
+        at most ``window_size`` consecutive cells in some layout of the store,
+        gathered and reduced outright; the sums are combined with ``k = 1``,
+        so the count needs no ``k * mean`` round trip and is exact. An
+        accumulator kernel runs its inner transforms over each bucket's
+        occupied cells instead, and when ``inner`` is given primes it off the
+        same pass. ``None`` (the default) sends the kernel down the dense
+        ``transform`` path, which no built-in kernel takes any more; the row
+        kernels compute on the row store through ``fit_rows`` instead.
+        """
+        return None
+
+    def min_samples(self) -> float:
+        ms = getattr(self.tfm, "min_samples", None)
+        if ms is not None:
+            return float(ms)
+        # a local partition bucket holds a single series, so requiring a full
+        # window of observations would blank out most of the partition
+        if self.tfm._pooled_mode == "local":
+            return 1.0
+        return float(getattr(self.tfm, "window_size", 1))
+
+    def combine(
+        self, res: Dict[str, np.ndarray], k: np.ndarray, shift: Optional[np.ndarray]
+    ) -> np.ndarray:
+        """Feature values from the reduced channels ``res``.
+
+        ``k`` is the number of cells each window spans (see ``window_cells``)
+        and ``shift`` the ``sumsq`` centre per cell, which only `_StdKernel`
+        reads; both broadcast against the channels.
+        """
+        raise NotImplementedError
+
+    # implemented by kernels with ``custom = True``, which carry their own
+    # recurrence or row gather instead of a coreforecast transform per channel
+    def run_transform(self, state: "PooledState", st: Dict) -> np.ndarray:
+        raise NotImplementedError
+
+    def run_update(self, state: "PooledState", st: Dict) -> np.ndarray:
+        raise NotImplementedError
+
+    def remap_buckets(
+        self, inner: Dict[str, Any], remap: np.ndarray, n_new: int
+    ) -> None:
+        """Permute/extend per-bucket inner state after ``grow_buckets``.
+
+        Stateless inners (``Rolling*``/``SeasonalRolling*``/``Lag``) recompute
+        from the stored block on every ``update``, so only the accumulator-carrying
+        ones need this. A new bucket's channels were padded over the whole existing
+        calendar, so its inner state is that of a bucket which consumed exactly
+        those empty cells.
+        """
+        for tfm in inner.values():
+            stats = getattr(tfm, "stats_", None)
+            if stats is None:
+                continue
+            tfm.stats_ = _grow_rows(stats, remap, n_new, _expanding_fill(tfm, stats))
+
+    @staticmethod
+    def _n_obs(res: Dict[str, np.ndarray], k: np.ndarray) -> np.ndarray:
+        """Total observations inside the window: ``k * mean(count)``.
+
+        Rounded because the count only ever comes back as a *mean* over ``k``
+        cells, and ``k * (S / k)`` is not exactly ``S`` in float64 -- ``49 *
+        (1 / 49)`` is ``0.9999999999999999``, which would fail a
+        ``min_samples=1`` gate and blank out a real value. ``S`` is an integer
+        and the round trip is accurate to a few ULP, so rounding recovers it.
+        """
+        n = k * res["count"]
+        # in place: on a wide state this is a full block, and the rounded copy
+        # would be a second one
+        return np.rint(n, out=n)
+
+
+class _MeanKernel(_PooledKernel):
+    channels = ("sum", "count")
+
+    def combine(self, res, k, _shift):
+        # inline rather than named so the observation count, a full block, is
+        # freed at the comparison instead of living to the end of the call
+        ok = (self._n_obs(res, k) >= self.min_samples()) & (res["count"] > 0)
+        out = np.full(res["sum"].shape, np.nan)
+        # `out` starts as nan and `where=ok` writes nowhere else, so it already
+        # carries the nans a trailing ``np.where`` would add -- at one block per
+        # call, which is a tenth of the fit-time transient on a wide state
+        np.divide(res["sum"], res["count"], out=out, where=ok)
+        return out
+
+
+class _StdKernel(_PooledKernel):
+    """Sample standard deviation off the ``sum``/``sumsq``/``count`` channels.
+
+    ``sumsq`` is not ``sum(x**2)`` but ``sum((x - c)**2)`` for a per-bucket
+    centre ``c``: the bucket's first observed cell, fixed when the bucket is
+    first seen and carried by the store, so every cell ever folded into the
+    channel is centred alike (a view over ``time_agg`` has a centre of its
+    own). The plain ``sum(x**2) - sum(x)**2 / n`` cancels catastrophically on
+    offset data -- at ``y ~ 1e6 +- 1`` it keeps about three significant figures
+    of the deviation -- while centred both terms are the size of the deviations
+    themselves, so nothing is lost to the level.
+    """
+
+    channels = ("sum", "sumsq", "count")
+
+    def combine(self, res, k, shift):
+        n = self._n_obs(res, k)
+        ok = (n >= max(self.min_samples(), 2.0)) & (n > 1)
+        # 2.0 keeps ``safe_n - 1`` non-zero where ~ok; those cells are nan'd below
+        safe_n = np.where(ok, n, 2.0)
+        s1 = k * res["sum"]
+        # sum(x - c) = sum(x) - n c, matching the centred sumsq; `n` is free now
+        n *= shift
+        s1 -= n
+        var = k * res["sumsq"]
+        # accumulated in place: each temporary here is a full (bucket, cell) block
+        s1 *= s1
+        s1 /= safe_n
+        var -= s1
+        safe_n -= 1.0
+        var /= safe_n
+        # tiny negatives are float cancellation, not real variance
+        np.clip(var, 0.0, None, out=var)
+        np.sqrt(var, out=var)
+        var[~ok] = np.nan
+        return var
+
+
+class _MinKernel(_PooledKernel):
+    channels = ("min", "count")
+
+    def combine(self, res, k, _shift):
+        n = self._n_obs(res, k)
+        ok = (n >= self.min_samples()) & np.isfinite(res["min"])
+        return np.where(ok, res["min"], np.nan)
+
+
+class _MaxKernel(_PooledKernel):
+    channels = ("max", "count")
+
+    def combine(self, res, k, _shift):
+        n = self._n_obs(res, k)
+        ok = (n >= self.min_samples()) & np.isfinite(res["max"])
+        return np.where(ok, res["max"], np.nan)
+
+
+class _RollingMixin:
+    primes_state = False
+
+    def window_cells(self, ordinals):
+        return np.clip(ordinals - self.lag + 1, 0, self.tfm.window_size).astype(float)
+
+    def fit_from_store(self, store, _inner=None):
+        window = self.tfm.window_size
+        lo, hi = store.rolling_bounds(self.lag, window)
+        cells = store.channels_for(self.tfm.time_agg, self.channels)
+        res = store.reduce_windows(lo, hi, window, cells)
+        return self.combine(res, 1.0, store.cell_shift(self.tfm.time_agg))
+
+    def _inner(self, cls, **kw):
+        return cls(lag=self.lag, window_size=self.tfm.window_size, min_samples=1, **kw)
+
+
+class _SeasonalMixin:
+    primes_state = False
+
+    def window_cells(self, ordinals):
+        sl = self.tfm.season_length
+        avail = np.floor_divide(np.maximum(ordinals - self.lag, -1), sl) + 1
+        return np.clip(avail, 0, self.tfm.window_size).astype(float)
+
+    def fit_from_store(self, store, _inner=None):
+        window = self.tfm.window_size
+        lo, hi, perm = store.seasonal_bounds(self.lag, window, self.tfm.season_length)
+        cells = store.channels_for(self.tfm.time_agg, self.channels)
+        res = store.reduce_windows(lo, hi, window, cells, perm)
+        return self.combine(res, 1.0, store.cell_shift(self.tfm.time_agg))
+
+    def _inner(self, cls, **kw):
+        return cls(
+            lag=self.lag,
+            season_length=self.tfm.season_length,
+            window_size=self.tfm.window_size,
+            min_samples=1,
+            **kw,
+        )
+
+
+class _ExpandingMixin:
+    def window_cells(self, ordinals):
+        return np.clip(ordinals - self.lag + 1, 0, None).astype(float)
+
+    def _inner(self, cls, lag=None, **kw):
+        return cls(lag=self.lag if lag is None else lag, **kw)
+
+    def min_samples(self):
+        return 1.0
+
+    def fit_from_store(self, store, inner=None):
+        """Running statistics over each bucket's occupied cells, read at ``t - lag``.
+
+        An empty calendar position adds nothing to an expanding window, so the
+        inner transforms can walk the occupied cells alone, with ``lag=0``
+        since the lag is applied when the running value is looked up. Only the
+        cells at or before ``width - 1 - lag`` are ever a source at fit, so the
+        pass stops there -- which leaves the lag-0 inners holding the
+        accumulator the dense pass would have left in the state's own, to
+        within an ulp (the same values, minus the zeros). Priming copies it
+        over, with the cell count set to the calendar cells the dense pass
+        consumed, which is what ``window_cells`` derives the factor from.
+        """
+        cells = store.channels_for(self.tfm.time_agg, self.channels)
+        consumed = max(store.width - self.lag, 0)
+        keep = store.ordinal < consumed
+        n_kept = np.bincount(store.bucket[keep], minlength=store.n_buckets)
+        primed = self.make_inner(lag=0)
+        # coreforecast reads each group's last output for its state, which an
+        # empty group has to borrow from the group before -- so those buckets
+        # are refilled below, and a pass with nothing kept is skipped outright
+        running = {
+            name: tfm.transform(store.ragged(cells[name], keep))
+            if keep.any()
+            else np.empty(0)
+            for name, tfm in primed.items()
+        }
+        starts = store.starts
+        first = starts[store.bucket]
+        hi = store.source_bound(self.lag)
+        has = hi > first
+        # `hi` indexes the full store; the pass skipped the cells past the
+        # cutoff of every earlier bucket, so shift by that many
+        kept_before = np.concatenate([[0], np.cumsum(keep)])
+        at = (hi - 1 - (first - kept_before[first]))[has]
+        res = {}
+        for name, vals in running.items():
+            out = np.full(store.size, _FILL.get(name, 0.0))
+            out[has] = vals[at]
+            res[name] = out
+        k = np.where(has, hi - first, 0).astype(np.float64)
+        values = self.combine(res, k, store.cell_shift(self.tfm.time_agg))
+        if inner is not None:
+            empty = n_kept == 0
+            for name, tfm in inner.items():
+                if keep.any():
+                    stats = np.array(primed[name].stats_, copy=True)
+                elif isinstance(tfm, core_tfms.ExpandingMean):
+                    stats = np.zeros((store.n_buckets, 2))
+                else:
+                    stats = np.zeros(store.n_buckets)
+                if stats.ndim == 2:
+                    # ``[cells consumed, cumsum]``: the dense pass consumes the
+                    # calendar, which is what ``window_cells`` counts against
+                    stats[:, 0] = consumed
+                    stats[empty, 1] = 0.0
+                else:
+                    stats[empty] = _expanding_fill(tfm, stats)
+                tfm.stats_ = stats
+        return values
+
+
+class RollingMeanK(_RollingMixin, _MeanKernel):
+    def make_inner(self):
+        return {c: self._inner(core_tfms.RollingMean) for c in self.channels}
+
+
+class RollingStdK(_RollingMixin, _StdKernel):
+    def make_inner(self):
+        return {c: self._inner(core_tfms.RollingMean) for c in self.channels}
+
+
+class RollingMinK(_RollingMixin, _MinKernel):
+    def make_inner(self):
+        return {
+            "min": self._inner(core_tfms.RollingMin),
+            "count": self._inner(core_tfms.RollingMean),
+        }
+
+
+class RollingMaxK(_RollingMixin, _MaxKernel):
+    def make_inner(self):
+        return {
+            "max": self._inner(core_tfms.RollingMax),
+            "count": self._inner(core_tfms.RollingMean),
+        }
+
+
+class SeasonalRollingMeanK(_SeasonalMixin, _MeanKernel):
+    def make_inner(self):
+        return {c: self._inner(core_tfms.SeasonalRollingMean) for c in self.channels}
+
+
+class SeasonalRollingStdK(_SeasonalMixin, _StdKernel):
+    def make_inner(self):
+        return {c: self._inner(core_tfms.SeasonalRollingMean) for c in self.channels}
+
+
+class SeasonalRollingMinK(_SeasonalMixin, _MinKernel):
+    def make_inner(self):
+        return {
+            "min": self._inner(core_tfms.SeasonalRollingMin),
+            "count": self._inner(core_tfms.SeasonalRollingMean),
+        }
+
+
+class SeasonalRollingMaxK(_SeasonalMixin, _MaxKernel):
+    def make_inner(self):
+        return {
+            "max": self._inner(core_tfms.SeasonalRollingMax),
+            "count": self._inner(core_tfms.SeasonalRollingMean),
+        }
+
+
+class ExpandingMeanK(_ExpandingMixin, _MeanKernel):
+    def make_inner(self, lag=None):
+        return {c: self._inner(core_tfms.ExpandingMean, lag) for c in self.channels}
+
+
+class ExpandingStdK(_ExpandingMixin, _StdKernel):
+    def make_inner(self, lag=None):
+        return {c: self._inner(core_tfms.ExpandingMean, lag) for c in self.channels}
+
+
+class ExpandingMinK(_ExpandingMixin, _MinKernel):
+    def make_inner(self, lag=None):
+        return {
+            "min": self._inner(core_tfms.ExpandingMin, lag),
+            "count": self._inner(core_tfms.ExpandingMean, lag),
+        }
+
+
+class ExpandingMaxK(_ExpandingMixin, _MaxKernel):
+    def make_inner(self, lag=None):
+        return {
+            "max": self._inner(core_tfms.ExpandingMax, lag),
+            "count": self._inner(core_tfms.ExpandingMean, lag),
+        }
+
+
+class EwmK(_PooledKernel):
+    """Pooled exponentially weighted mean over the per-timestamp value.
+
+    This is the one kernel whose predict step cannot delegate to
+    ``coreforecast``.  A cell with no observations must leave the decay
+    untouched, but the grouped ``update`` advances every bucket in lockstep and
+    cannot skip one, and a ratio of two exponentially weighted channels does
+    *not* reproduce the skip either -- it decays the accumulated mass and so
+    over-weights the next observation.  The recurrence is three lines, so it is
+    carried here and applied only where the bucket is actually observed. At
+    fit the observed cells of a bucket are exactly the ragged series that
+    recurrence walks, so there ``coreforecast`` runs it after all.
+    """
+
+    channels = ("sum", "count")
+    custom = True
+
+    def make_inner(self):
+        return {"_state": {"s": None, "started": None, "next_src": 0}}
+
+    def fit_from_store(self, store, inner=None):
+        cells = store.channels_for(self.tfm.time_agg, self.channels)
+        counts = cells["count"]
+        consumed = max(store.width - self.lag, 0)
+        # the cells the fit folds: observed, and a source for some ordinal
+        obs = (counts > 0) & (store.ordinal < consumed)
+        v = np.divide(cells["sum"], counts, out=np.zeros(counts.shape), where=obs)
+        ewm = core_tfms.ExponentiallyWeightedMean(lag=0, alpha=self.tfm.alpha)
+        s = ewm.transform(store.ragged(v, obs)) if obs.any() else np.empty(0)
+        # the value at t is the state after the last observed source cell,
+        # found by counting observed cells up to the source bound
+        seen = np.concatenate([[0], np.cumsum(obs)])
+        first = store.starts[store.bucket]
+        pos = seen[store.source_bound(self.lag)]
+        started = pos > seen[first]
+        values = np.full(store.size, np.nan)
+        values[started] = s[pos[started] - 1]
+        if inner is not None:
+            st = inner["_state"]
+            last = seen[store.starts[1:]]
+            st["started"] = last > seen[store.starts[:-1]]
+            st["s"] = np.zeros(store.n_buckets)
+            st["s"][st["started"]] = s[last[st["started"]] - 1]
+            # negative when the lag outruns the calendar; `run_update` skips
+            # sources that predate it, so the cursor can start there
+            st["next_src"] = store.width - self.lag
+        return values
+
+    def remap_buckets(self, inner, remap, n_new):
+        # next_src is a calendar cursor shared by every bucket, so it doesn't move
+        st = inner["_state"]
+        if st["s"] is None:
+            return
+        st["s"] = _grow_rows(st["s"], remap, n_new, 0.0)
+        st["started"] = _grow_rows(st["started"], remap, n_new, False)
+
+    def _fold(self, s, started, vals, obs):
+        a = self.tfm.alpha
+        stepped = np.where(started, (1.0 - a) * s + a * vals, vals)
+        return np.where(obs, stepped, s), started | obs
+
+    @staticmethod
+    def _cell(cells, col):
+        counts = cells["count"][:, col]
+        obs = counts > 0
+        vals = np.divide(
+            cells["sum"][:, col], counts, out=np.zeros(counts.shape), where=obs
+        )
+        return vals, obs
+
+    def run_transform(self, state, st):
+        cells = state.channels(self.tfm.time_agg, self.channels)
+        n_buckets, width = cells["count"].shape
+        out = np.full((n_buckets, width), np.nan)
+        s = np.zeros(n_buckets)
+        started = np.zeros(n_buckets, dtype=bool)
+        for t in range(width):
+            src = t - self.lag
+            if src >= 0:
+                s, started = self._fold(s, started, *self._cell(cells, src))
+            out[:, t] = np.where(started, s, np.nan)
+        st["s"], st["started"] = s, started
+        st["next_src"] = width - self.lag
+        return out
+
+    def run_update(self, state, st):
+        cells = state.channels(self.tfm.time_agg, self.channels)
+        n_ordinals, width = state.n_ordinals, state.width
+        s, started = st["s"], st["started"]
+        target = n_ordinals - self.lag
+        offset = n_ordinals - width
+        for src in range(st["next_src"], target + 1):
+            if src < 0:
+                continue  # source ordinal predates the calendar; nothing to fold
+            col = src - offset
+            if col < 0:
+                # the cell existed and was trimmed away; folding on regardless
+                # would silently under-decay, so fail instead of skipping
+                raise RuntimeError(
+                    f"pooled EWM needs calendar column {src} but the state starts "
+                    f"at {offset} (lag={self.lag}); it was trimmed below its "
+                    "retention."
+                )
+            s, started = self._fold(s, started, *self._cell(cells, col))
+        st["s"], st["started"] = s, started
+        st["next_src"] = max(st["next_src"], target + 1)
+        return np.where(started, s, np.nan)
+
+
+class _RowKernel(_PooledKernel):
+    """Kernel that needs the raw observations, not the moment channels.
+
+    Quantiles cannot be recovered from sums and counts, so these gather the rows
+    inside each window instead.  Two things keep that affordable: values are only
+    produced at the cells that actually carry rows (the only ones ever read
+    back), and windows of equal length are gathered into one rectangular block
+    so the statistic runs once per distinct length rather than once per
+    position. Every target is placed by one ``searchsorted`` over the row keys,
+    whatever bucket it is in, so there is no per-bucket loop.
+    """
+
+    #: reads the row store, not the channels, so its state carries no block
+    channels = ()
+    custom = True
+    needs_rows = True
+    #: the gather reads the raw observations, never a primed inner
+    primes_state = False
+    #: cap on a temporary gather block, so a long expanding window is processed
+    #: in chunks instead of being materialised all at once
+    _max_gather = _MAX_GATHER
+
+    def make_inner(self):
+        return {"_state": {}}
+
+    def stat(self, mat: np.ndarray) -> np.ndarray:
+        """Reduce each row of a ``(n_windows, window_len)`` block."""
+        raise NotImplementedError
+
+    def window_bounds(self, rows: _RowStore, bucket: np.ndarray, ordinal: np.ndarray):
+        """Half-open row bounds of each target's window, vectorised."""
+        raise NotImplementedError
+
+    def _view(self, rows: _RowStore) -> _RowStore:
+        """The rows the windows are taken over: the observed ones, collapsed."""
+        rows = rows.merged().valid()
+        if self.tfm.time_agg is None:
+            return rows
+        return rows.collapsed(self.tfm.time_agg)
+
+    def values_at(self, rows: _RowStore, bucket, ordinal):
+        lo, hi = self.window_bounds(rows, bucket, ordinal)
+        out = np.full(np.shape(ordinal), np.nan)
+        lengths = hi - lo
+        usable = np.flatnonzero((lengths > 0) & (lengths >= self.min_samples()))
+        if usable.size == 0:
+            return out
+        ys = rows.y
+        order = usable[np.argsort(lengths[usable], kind="stable")]
+        sorted_len = lengths[order]
+        starts = np.flatnonzero(np.r_[True, sorted_len[1:] != sorted_len[:-1]])
+        for a, b in zip(starts, np.r_[starts[1:], order.size]):
+            grp = order[a:b]
+            width = int(sorted_len[a])
+            step = max(1, self._max_gather // width)
+            offsets = np.arange(width)
+            for c in range(0, grp.size, step):
+                sel = grp[c : c + step]
+                out[sel] = self.stat(ys[lo[sel][:, None] + offsets])
+        return out
+
+    def fit_rows(self, rows: _RowStore, store: _CellStore) -> np.ndarray:
+        """Fit-time value per occupied cell -- the cells are the targets."""
+        return self.values_at(self._view(rows), store.bucket, store.ordinal)
+
+    def run_transform(self, state, _st):
+        store = state._fit_store()
+        out = np.full((state.n_buckets, state.width), np.nan)
+        out[store.bucket, store.ordinal] = self.fit_rows(state._rows, store)
+        return out
+
+    def run_update(self, state, _st):
+        n = state.n_buckets
+        targets = np.full(n, state.n_ordinals)
+        return self.values_at(self._view(state._rows), np.arange(n), targets)
+
+
+class _RollingRowMixin:
+    def window_bounds(self, rows, bucket, ordinal):
+        hi_ord = ordinal - self.lag
+        lo_ord = hi_ord - self.tfm.window_size + 1
+        return rows.search(bucket, lo_ord, "left"), rows.search(bucket, hi_ord, "right")
+
+
+class _ExpandingRowMixin:
+    def window_bounds(self, rows, bucket, ordinal):
+        return rows.indptr[bucket], rows.search(bucket, ordinal - self.lag, "right")
+
+    def min_samples(self):
+        return 1.0
+
+
+class RollingQuantileK(_RollingRowMixin, _RowKernel):
+    def stat(self, mat):
+        return np.quantile(mat, self.tfm.p, axis=1)
+
+
+class ExpandingQuantileK(_ExpandingRowMixin, _RowKernel):
+    def stat(self, mat):
+        return np.quantile(mat, self.tfm.p, axis=1)
+
+
+class SeasonalRollingQuantileK(_RowKernel):
+    """Seasonal windows are strided, so the rows are gathered per season offset."""
+
+    def values_at(self, rows, bucket, ordinal):
+        sl, w = self.tfm.season_length, self.tfm.window_size
+        ms = self.min_samples()
+        out = np.full(np.shape(ordinal), np.nan)
+        # one searchsorted pair per (target, season offset) instead of a full
+        # membership scan per target
+        wanted = ordinal[:, None] - self.lag - np.arange(w) * sl
+        lo = rows.search(bucket[:, None], wanted, "left")
+        hi = rows.search(bucket[:, None], wanted, "right")
+        counts = (hi - lo).sum(axis=1)
+        ys = rows.y
+        for i in np.flatnonzero(counts >= max(ms, 1)):
+            vals = np.concatenate(
+                [ys[lo[i, j] : hi[i, j]] for j in range(w) if hi[i, j] > lo[i, j]]
+            )
+            out[i] = float(np.quantile(vals, self.tfm.p))
+        return out
+
+
+class LookupLagK(_RowKernel):
+    """Target from the previous matching occurrence within the bucket.
+
+    Position-based rather than calendar-based: the value is the observation
+    ``lag`` *occurrences* back inside the (id, partition) bucket, however far
+    away in time that is.
+    """
+
+    def _view(self, rows):
+        # a row whose target is NaN is still an occurrence: the lookup lands on
+        # it and returns the NaN rather than skipping to the occurrence before
+        return rows.merged()
+
+    def values_at(self, rows, bucket, ordinal):
+        j = rows.search(bucket, ordinal, "left") - self.tfm._core_tfm.lag
+        out = np.full(np.shape(ordinal), np.nan)
+        ok = j >= rows.indptr[bucket]
+        if ok.any():
+            out[ok] = rows.y[j[ok]]
+        return out
+
+
+_KERNELS = {
+    "RollingQuantile": RollingQuantileK,
+    "ExpandingQuantile": ExpandingQuantileK,
+    "SeasonalRollingQuantile": SeasonalRollingQuantileK,
+    "LookupLag": LookupLagK,
+    "RollingMean": RollingMeanK,
+    "RollingStd": RollingStdK,
+    "RollingMin": RollingMinK,
+    "RollingMax": RollingMaxK,
+    "SeasonalRollingMean": SeasonalRollingMeanK,
+    "SeasonalRollingStd": SeasonalRollingStdK,
+    "SeasonalRollingMin": SeasonalRollingMinK,
+    "SeasonalRollingMax": SeasonalRollingMaxK,
+    "ExpandingMean": ExpandingMeanK,
+    "ExpandingStd": ExpandingStdK,
+    "ExpandingMin": ExpandingMinK,
+    "ExpandingMax": ExpandingMaxK,
+    "ExponentiallyWeightedMean": EwmK,
+}
+
+
+#: base aggregate a ``time_agg`` collapses from
+_TIME_AGG_SOURCE = {
+    "count": "count",
+    "sum": "sum",
+    "mean": "sum",
+    "min": "min",
+    "max": "max",
+}
+
+
+def base_channels(kernel_channels: Sequence[str], time_agg: Optional[str]) -> Set[str]:
+    """Base aggregates needed to serve a kernel's channels under ``time_agg``."""
+    if time_agg:
+        return {"count", _TIME_AGG_SOURCE[time_agg]}
+    return set(kernel_channels) | {"count"}
+
+
+def get_kernel(tfm) -> _PooledKernel:
+    """The kernel for a transform, resolved along its class hierarchy.
+
+    So a user subclass of a supported transform is pooled like its parent,
+    the way its local path already is.
+    """
+    for cls in type(tfm).__mro__:
+        kernel_cls = _KERNELS.get(cls.__name__)
+        if kernel_cls is not None:
+            return kernel_cls(tfm)
+    raise NotImplementedError(
+        f"{type(tfm).__name__!r} does not support pooled "
+        "(global_/groupby/partition_by) computation. Supported: "
+        + ", ".join(sorted(_KERNELS))
+    )
+
+
+# %% state
+class PooledState:
+    """Per-bucket aggregate store shared by every leaf with the same bucket key.
+
+    The key is ``(mode, group_cols, partition_cols)`` -- deliberately *not*
+    including ``time_agg``. ``time_agg`` doesn't change which rows land in a
+    bucket, only how they are summarised, so it is a *view* over the same store
+    rather than a separate one. That keeps the expensive part (one ``bincount``
+    pass over the panel) shared, and makes each collapsed view an O(buckets x
+    width) derivation that is cached.
+
+    Layout is a dense ``(n_buckets, width)`` block per aggregate over the shared
+    calendar, which is what makes the window a true ``RANGE`` window. Buckets
+    that start late carry ``count == 0`` cells and so contribute nothing.
+
+    At fit the block is not built up front: `build` keeps a `_CellStore` of the
+    occupied cells (and a `_RowStore` of the raw rows when a row kernel needs
+    them), the kernels compute on those directly, and the dense block is only
+    derived when something reads it whole -- or, after `trim_to_last`, at the
+    width the predict loop keeps.
+    """
+
+    def __init__(
+        self,
+        mode: str,
+        group_cols: List[str],
+        partition_cols: List[str],
+        n_buckets: int,
+        n_ordinals: int,
+        base: Optional[Dict[str, np.ndarray]],
+        series_bucket_id: np.ndarray,
+        bucket_uniques: Optional[np.ndarray] = None,
+        store: Optional[_CellStore] = None,
+    ):
+        self.mode = mode
+        self.group_cols = group_cols
+        self.partition_cols = partition_cols
+        self.n_buckets = n_buckets
+        self.n_ordinals = n_ordinals
+        #: fit-time cell store; dropped by `finish_fit` once the features exist
+        self._store = store
+        self._base: Optional[Dict[str, np.ndarray]] = None
+        if base is not None:
+            self.base = base
+        elif store is not None:
+            self.channel_names = tuple(store.chan)
+            self._width = store.width
+        else:
+            raise ValueError("PooledState needs either `base` or `store`")
+        #: per-view, per-bucket centre of the ``sumsq`` channel (see
+        #: `_StdKernel`); shared with the store, which fills it during the fit
+        self.shift: Dict[Optional[str], np.ndarray] = (
+            store.shift if store is not None else {}
+        )
+        self.series_bucket_id = series_bucket_id
+        self.bucket_uniques = bucket_uniques
+        self._views: Dict[str, Dict[str, np.ndarray]] = {}
+        #: raw observations, kept only when a row kernel needs them
+        self._rows: Optional[_RowStore] = None
+
+    # -- construction ----------------------------------------------------
+    @classmethod
+    def build(
+        cls,
+        *,
+        mode: str,
+        group_cols: List[str],
+        partition_cols: List[str],
+        bucket_id_by_row: np.ndarray,
+        ordinal_by_row: np.ndarray,
+        y: np.ndarray,
+        n_buckets: int,
+        n_ordinals: int,
+        series_bucket_id: np.ndarray,
+        needed: Collection[str],
+        bucket_uniques: Optional[np.ndarray] = None,
+        needs_rows: bool = False,
+    ) -> "PooledState":
+        store = _CellStore(
+            bucket_id_by_row, ordinal_by_row, y, n_buckets, n_ordinals, sorted(needed)
+        )
+        obj = cls(
+            mode=mode,
+            group_cols=group_cols,
+            partition_cols=partition_cols,
+            n_buckets=n_buckets,
+            n_ordinals=n_ordinals,
+            base=None,
+            series_bucket_id=series_bucket_id,
+            bucket_uniques=bucket_uniques,
+            store=store,
+        )
+        if needs_rows:
+            obj._rows = _RowStore.from_rows(
+                bucket_id_by_row, ordinal_by_row, y, n_buckets
+            )
+        return obj
+
+    @property
+    def base(self) -> Dict[str, np.ndarray]:
+        """Dense ``(n_buckets, width)`` block per channel.
+
+        Derived from the cell store on first use, so a fit that only ever reads
+        column ranges never pays for the full width.
+        """
+        if self._base is None:
+            assert self._store is not None
+            self._base = self._store.dense(0, self._width)
+        return self._base
+
+    @base.setter
+    def base(self, value: Dict[str, np.ndarray]) -> None:
+        self._base = value
+        self.channel_names = tuple(value)
+        if value:  # a row-only state has no channels; its width is tracked alone
+            self._width = next(iter(value.values())).shape[1]
+
+    @property
+    def width(self) -> int:
+        return self._width
+
+    def finish_fit(self) -> None:
+        """Materialise the predict-time block and drop the fit-time store."""
+        if self._base is None and self._store is not None:
+            self._base = self._store.dense(0, self._width)
+        self._store = None
+
+    @property
+    def ordinal_offset(self) -> int:
+        """Calendar cells dropped by ``trim_to_last``; 0 while untrimmed.
+
+        ``append`` advances ``n_ordinals`` and ``width`` together, so this is
+        fixed by the trim and then constant.
+        """
+        return self.n_ordinals - self.width
+
+    # -- views -----------------------------------------------------------
+    def channels(
+        self, time_agg: Optional[str], names: Optional[Collection[str]] = None
+    ) -> Dict[str, np.ndarray]:
+        """Aggregate block per channel, collapsed by ``time_agg`` if given.
+
+        ``names`` is what the calling kernel reads; a cached view holding fewer
+        channels than that is widened in place, which can only happen while
+        priming (before any append) and at most once per channel.
+        """
+        if time_agg is None:
+            return self.base
+        want = set(names or _ALL_CHANNELS) | {"count"}
+        view = self._views.setdefault(time_agg, {})
+        build = want - view.keys()
+        if build:
+            new, self.shift[time_agg] = _collapsed(
+                self.base, time_agg, build, self.shift.get(time_agg), self.n_buckets
+            )
+            view.update(new)
+        return view
+
+    def cell_shift(self, time_agg: Optional[str]) -> Optional[np.ndarray]:
+        """The ``sumsq`` centre of a view as a ``(n_buckets, 1)`` column, if built."""
+        shift = self.shift.get(time_agg)
+        return None if shift is None else shift[:, None]
+
+    # -- feature computation --------------------------------------------
+    def _channel_ga(self, cells: Dict[str, np.ndarray], name: str) -> CoreGroupedArray:
+        return _block_ga(cells[name])
+
+    def _require_untrimmed(self) -> None:
+        if self.ordinal_offset:
+            raise RuntimeError(
+                "The pooled fit pass can't run on a trimmed state: it reads the "
+                "window factor off relative column positions and would re-prime "
+                "the inner transforms from a truncated prefix. Priming must precede "
+                "the keep_last_n trim."
+            )
+
+    def _fit_store(self) -> _CellStore:
+        self._require_untrimmed()
+        if self._store is None:
+            raise RuntimeError(
+                "PooledState needs the fit-time cell store for this, which "
+                "finish_fit() drops once the features exist."
+            )
+        return self._store
+
+    def fit_values(self, kernel, inner: Dict[str, Any]) -> np.ndarray:
+        """Per-row feature values at fit, priming ``inner`` where it needs it.
+
+        The channel kernels compute on the cell store and the row kernels on
+        the row store, so nothing full-width is built; the dense ``transform``
+        stays as the fallback for a kernel defining neither.
+        """
+        store = self._fit_store()
+        if kernel.needs_rows:
+            assert self._rows is not None
+            values = kernel.fit_rows(self._rows, store)
+        else:
+            values = kernel.fit_from_store(store, inner)
+            if values is None:
+                values = store.gather(self.transform(kernel, inner), 0)
+        return store.row_values(values)
+
+    def prime(self, kernel, inner: Dict[str, Any]) -> None:
+        """Leave ``inner`` as a fit would, without keeping the features."""
+        if kernel.fit_from_store(self._fit_store(), inner) is None:
+            self.transform(kernel, inner)
+
+    def transform(self, kernel, inner: Dict[str, Any]) -> np.ndarray:
+        """Full ``(n_buckets, width)`` feature block, priming the inner state."""
+        self._require_untrimmed()
+        if kernel.custom:
+            return kernel.run_transform(self, inner["_state"])
+        cells = self.channels(kernel.tfm.time_agg, kernel.channels)
+        res = {
+            name: tfm.transform(self._channel_ga(cells, name)).reshape(
+                self.n_buckets, self.width
+            )
+            for name, tfm in inner.items()
+        }
+        k = kernel.window_cells(np.arange(self.width))[None, :]
+        return kernel.combine(res, k, self.cell_shift(kernel.tfm.time_agg))
+
+    def update(self, kernel, inner: Dict[str, Any]) -> np.ndarray:
+        """One value per bucket for the next timestamp, advancing inner state."""
+        if kernel.custom:
+            return kernel.run_update(self, inner["_state"])
+        cells = self.channels(kernel.tfm.time_agg, kernel.channels)
+        res = {
+            name: tfm.update(self._channel_ga(cells, name)).reshape(self.n_buckets, 1)
+            for name, tfm in inner.items()
+        }
+        k = kernel.window_cells(np.array([self.n_ordinals]))[None, :]
+        return kernel.combine(res, k, self.cell_shift(kernel.tfm.time_agg))[:, 0]
+
+    def broadcast(self, values: np.ndarray) -> np.ndarray:
+        """Map per-bucket values onto series using the current assignment."""
+        bid = self.series_bucket_id
+        out = np.full(bid.shape, np.nan)
+        known = bid >= 0
+        out[known] = values[bid[known]]
+        return out
+
+    # -- mutation --------------------------------------------------------
+    def _cells_for(
+        self, bucket_ids: np.ndarray, y: np.ndarray
+    ) -> Dict[str, np.ndarray]:
+        """One new column per base aggregate from a single timestamp of values."""
+        b = bucket_ids.astype(np.int64)
+        v = np.asarray(y, dtype=np.float64)
+        n = self.n_buckets
+
+        def centre(mean, obs):
+            self.shift[None] = _fill_shift(self.shift.get(None), mean, obs, n)
+            return self.shift[None][b]
+
+        return _cell_aggregates(b, v, n, self.channel_names, centre)
+
+    def append(
+        self, y_hat: np.ndarray, bucket_ids: Optional[np.ndarray] = None
+    ) -> None:
+        """Fold one new timestamp into every aggregate."""
+        bid = self.series_bucket_id if bucket_ids is None else bucket_ids
+        known = bid >= 0
+        b = bid[known].astype(np.int64)
+        v = np.asarray(y_hat, dtype=np.float64)[known]
+        # a NaN value is no observation of its bucket; the rows keep it, since
+        # a row kernel decides for itself whether it counts (see `LookupLagK`)
+        valid = ~np.isnan(v)
+        col = self._cells_for(b[valid], v[valid])
+        for name in self.base:
+            self.base[name] = np.concatenate(
+                [self.base[name], col[name][:, None]], axis=1
+            )
+        self._width += 1
+        self._extend_views(col)
+        if self._rows is not None:
+            # row kernels re-gather from history, so predictions land there too
+            self._rows.append(b, v, self.n_ordinals)
+        self.n_ordinals += 1
+
+    def _extend_views(self, col: Dict[str, np.ndarray]) -> None:
+        """Extend each cached collapsed view with the newly appended column.
+
+        ``_collapse`` is elementwise per cell, so collapsing the single new
+        column yields exactly the column a full recollapse would produce.
+        """
+        if not self._views:
+            return
+        cells = {name: values[:, None] for name, values in col.items()}
+        for time_agg, view in self._views.items():
+            new, self.shift[time_agg] = _collapsed(
+                cells, time_agg, list(view), self.shift.get(time_agg), self.n_buckets
+            )
+            for name in list(view):
+                view[name] = np.concatenate([view[name], new[name]], axis=1)
+
+    def grow_buckets(self, new_uniques: np.ndarray) -> Optional[np.ndarray]:
+        """Merge new bucket keys in, returning the old -> new id mapping.
+
+        ``bucket_uniques`` must stay sorted for `lookup`, so absorbing new keys
+        can renumber existing buckets; every per-bucket structure is permuted to
+        match. Returns ``None`` when the vocabulary didn't move, so the caller
+        knows there is no per-kernel state to remap either.
+        """
+        if self.bucket_uniques is None:
+            return None
+        merged = np.union1d(self.bucket_uniques, new_uniques)
+        if merged.size == self.bucket_uniques.size:
+            return None
+        remap = np.searchsorted(merged, self.bucket_uniques).astype(np.int64)
+        n_new = merged.size
+        for name, arr in self.base.items():
+            grown = np.zeros((n_new, arr.shape[1]), dtype=arr.dtype)
+            if name == "min":
+                grown[:] = np.inf
+            elif name == "max":
+                grown[:] = -np.inf
+            grown[remap] = arr
+            self.base[name] = grown
+        for view, shift in self.shift.items():
+            self.shift[view] = _grow_rows(shift, remap, n_new, np.nan)
+        if self._rows is not None:
+            self._rows.grow(remap, n_new)
+        known = self.series_bucket_id >= 0
+        self.series_bucket_id = np.where(
+            known, remap[np.clip(self.series_bucket_id, 0, None)], -1
+        )
+        self.bucket_uniques = merged
+        self.n_buckets = n_new
+        self._views = {}
+        return remap
+
+    def trim_to_last(self, n: int, keep_rows: bool = False) -> None:
+        """Keep only the last `n` calendar cells. ``n_ordinals`` keeps counting.
+
+        The raw row store is trimmed on the same criterion, by absolute ordinal,
+        unless ``keep_rows``: a row kernel that reaches back to ordinal 0 needs
+        every row, but it reads nothing off the block, so the block can still
+        be trimmed for the leaves that do.
+        """
+        if n <= 0 or n >= self.width:
+            return
+        if self._base is None:
+            # straight from the cell store, so only the kept tail is ever built
+            assert self._store is not None
+            self._base = self._store.dense(self.width - n, self.width)
+        else:
+            for name in self._base:
+                self._base[name] = np.ascontiguousarray(self._base[name][:, -n:])
+        self._width = n
+        self._store = None
+        self._views = {}
+        if self._rows is not None and not keep_rows:
+            self._rows.trim(self.n_ordinals - n)
+
+    def set_series_bucket_id(self, bucket_id: np.ndarray) -> None:
+        self.series_bucket_id = bucket_id
+
+    # -- cheap rollback for TimeSeries._backup ---------------------------
+    def snapshot(self):
+        # aggregates are only appended to during predict, so copying the array
+        # references is enough -- no deep copy of the whole state per model
+        return (
+            dict(self.base),
+            dict(self.shift),
+            self._width,
+            self.n_ordinals,
+            self.series_bucket_id,
+            self.n_buckets,
+            self.bucket_uniques,
+            self._rows.snapshot() if self._rows is not None else None,
+        )
+
+    def restore(self, snap) -> None:
+        (
+            base,
+            shift,
+            self._width,
+            self.n_ordinals,
+            self.series_bucket_id,
+            self.n_buckets,
+            self.bucket_uniques,
+            rows,
+        ) = snap
+        self.base = dict(base)
+        self.shift = dict(shift)
+        if rows is not None:
+            assert self._rows is not None
+            self._rows.restore(rows)
+        self._views = {}
+
+    def __repr__(self) -> str:
+        return (
+            f"PooledState(mode={self.mode}, n_buckets={self.n_buckets}, "
+            f"width={self.width}, n_ordinals={self.n_ordinals})"
+        )

@@ -950,6 +950,81 @@ def test_random_partition_data(seed):
             )
 
 
+# Long sparse partitions: a bucket observed a handful of times over a long
+# calendar. The window then spans many more cells than it holds observations,
+# which is the regime where a count recovered as ``k * mean(count)`` can land
+# just below an integer and blank out a real value.
+
+#: spans the 49-ordinal gap below, so the window holds 49 cells and 1-2 rows
+_SPARSE_WINDOW = 49
+
+_SPARSE_TRANSFORMS = [
+    (RollingMean, "RollingMean"),
+    (RollingStd, "RollingStd"),
+    (RollingMin, "RollingMin"),
+    (RollingMax, "RollingMax"),
+    (ExpandingMean, "ExpandingMean"),
+    (ExpandingStd, "ExpandingStd"),
+    (ExpandingMin, "ExpandingMin"),
+    (ExpandingMax, "ExpandingMax"),
+]
+
+
+def _sparse_long_partition_df():
+    """Two series over 60 steps; ``promo=1`` only at 4 widely spaced ordinals."""
+    n_times = 60
+    rare = {0, 1, 49, 55}
+    promo = [1 if t in rare else 0 for t in range(n_times)]
+    return pd.DataFrame(
+        {
+            "unique_id": ["a"] * n_times + ["b"] * n_times,
+            "ds": list(range(n_times)) * 2,
+            "y": [float(t) for t in range(n_times)]
+            + [float(10 * t + 1) for t in range(n_times)],
+            "promo": promo * 2,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "transform_cls,transform_name",
+    _SPARSE_TRANSFORMS,
+    ids=[t[1] for t in _SPARSE_TRANSFORMS],
+)
+@pytest.mark.parametrize("min_samples", [1, 2])
+@pytest.mark.parametrize("mode", ["global_partition", "local_partition"])
+def test_sqlite_oracle_sparse_long_partition(
+    transform_cls, transform_name, min_samples, mode
+):
+    is_rolling = transform_name.startswith("Rolling")
+    if not is_rolling and min_samples != 1:
+        pytest.skip("expanding transforms take no min_samples")
+    kwargs: dict = {"partition_by": ["promo"]}
+    if mode == "global_partition":
+        kwargs["global_"] = True
+        group_cols = None
+    else:
+        group_cols = ["unique_id"]
+    if is_rolling:
+        transform = transform_cls(_SPARSE_WINDOW, min_samples=min_samples, **kwargs)
+        window_size: Optional[int] = _SPARSE_WINDOW
+    else:
+        transform = transform_cls(**kwargs)
+        window_size = None
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        assert_oracle_matches(
+            _sparse_long_partition_df(),
+            transform,
+            transform_name,
+            lag=1,
+            group_cols=group_cols,
+            partition_cols=["promo"],
+            window_size=window_size,
+            min_samples=min_samples if is_rolling else None,
+        )
+
+
 # NULL partition keys: SQL PARTITION BY collapses all NULLs into one partition,
 # and our pooled state must do the same. to_sql maps NaN/None -> SQL NULL, so the
 # oracle locks the SQL NULL-partition semantics for partition_by transforms.
