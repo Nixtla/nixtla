@@ -92,6 +92,10 @@ Documentation = "https://nixtlaverse.nixtla.io/"
 Repository = "https://github.com/Nixtla/nixtla/"
 
 [tool.uv]
+# Minimum uv version. Older uv writes uv.lock with redundant environment
+# markers, producing large no-op diffs on every re-lock. setup-uv reads this
+# value, so CI and local development stay on the same uv.
+required-version = ">=0.12.10"
 constraint-dependencies = [
     "aiohttp>=3.14.3",
     "bleach>=6.4.0",
