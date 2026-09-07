@@ -104,7 +104,7 @@ constraint-dependencies = [
     "msgpack>=1.2.1",
     "pyjwt>=2.13.0",
     "setuptools>=83.0.0",
-    "tornado>=6.5.7",
+    "tornado>=6.5.8",
 ]
 
 [tool.uv.build-backend]
