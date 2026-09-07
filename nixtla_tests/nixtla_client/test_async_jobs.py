@@ -1,722 +1,1137 @@
-"""Wire-level tests for the asynchronous job protocol used by simulate/explain.
-
-The API accepts the request with a job id (202), the client polls the job's
-status until it is terminal and reads the result from the status envelope.
-"""
-
-import json
-from http import HTTPStatus
 from unittest.mock import MagicMock
 
 import httpx
-import numpy as np
 import orjson
 import pandas as pd
 import pytest
-import zstandard as zstd
 
-import nixtla.nixtla_client as client_module
-from nixtla import ApiError, AsyncJobError, NixtlaClient
-
-
-class FakeApi:
-    """In-memory stand-in for the async job routes of the API.
-
-    `statuses` is the sequence of statuses reported by successive polls of a
-    job; the last one repeats. `submit_responses` optionally overrides the
-    responses of successive submits (a list of `(status_code, body, headers)`
-    or exceptions); once exhausted the job is accepted.
-    """
-
-    def __init__(
-        self,
-        task="simulate",
-        statuses=("pending", "running", "succeeded"),
-        result=None,
-        error=None,
-        submit_responses=None,
-        poll_responses=None,
-    ):
-        self.task = task
-        self.prefix = {"simulate": "sm", "explain": "ex"}[task]
-        self.statuses = list(statuses)
-        self.result = result
-        self.error = error
-        self.submit_responses = list(submit_responses or [])
-        self.poll_responses = list(poll_responses or [])
-        self.requests: list[httpx.Request] = []
-        self.jobs: dict[str, int] = {}
-        self.cancelled: list[str] = []
-        self.transport = httpx.MockTransport(self.handle)
-
-    # -- helpers ---------------------------------------------------------- #
-    @property
-    def submits(self):
-        return [r for r in self.requests if r.url.path.endswith("/async")]
-
-    @property
-    def polls(self):
-        return [r for r in self.requests if "/jobs/" in r.url.path]
-
-    @staticmethod
-    def decode(request):
-        body = request.content
-        if request.headers.get("content-encoding") == "zstd":
-            body = zstd.ZstdDecompressor().decompressobj().decompress(body)
-        return orjson.loads(body)
-
-    def make_client(self, **kwargs):
-        client = NixtlaClient(
-            api_key="test",
-            max_retries=kwargs.pop("max_retries", 3),
-            retry_interval=kwargs.pop("retry_interval", 0),
-            **kwargs,
-        )
-        client._get_model_params = MagicMock(return_value=(28, 7))
-        client._make_client = lambda **kw: httpx.Client(transport=self.transport, **kw)
-        return client
-
-    # -- routes ----------------------------------------------------------- #
-    def handle(self, request):
-        self.requests.append(request)
-        path = request.url.path
-        if request.method == "POST" and path == f"/v2/{self.task}/async":
-            if self.submit_responses:
-                response = self.submit_responses.pop(0)
-                if isinstance(response, Exception):
-                    raise response
-                status_code, body, headers = response
-                return httpx.Response(status_code, json=body, headers=headers)
-            job_id = f"{self.prefix}-{len(self.jobs):032x}"
-            self.jobs[job_id] = 0
-            return httpx.Response(HTTPStatus.ACCEPTED, json={"job_id": job_id})
-        if request.method == "GET" and path.startswith(f"/v2/{self.task}/jobs/"):
-            if self.poll_responses:
-                status_code, body = self.poll_responses.pop(0)
-                return httpx.Response(status_code, json=body)
-            job_id = path.rsplit("/", 1)[1]
-            if job_id not in self.jobs:
-                return httpx.Response(
-                    HTTPStatus.NOT_FOUND,
-                    json={"detail": f"Async job '{job_id}' not found."},
-                )
-            idx = min(self.jobs[job_id], len(self.statuses) - 1)
-            self.jobs[job_id] += 1
-            status = self.statuses[idx]
-            return httpx.Response(
-                HTTPStatus.OK,
-                json={
-                    "job_id": job_id,
-                    "status": status,
-                    "result": self.result if status == "succeeded" else None,
-                    "error": self.error if status in ("failed", "cancelled") else None,
-                    "created_at": "2026-01-01T00:00:00Z",
-                    "updated_at": "2026-01-01T00:00:01Z",
-                },
-            )
-        if request.method == "POST" and path.startswith("/v2/async/jobs/"):
-            job_id = path.split("/")[4]
-            self.cancelled.append(job_id)
-            return httpx.Response(HTTPStatus.ACCEPTED, json={"job_id": job_id})
-        return httpx.Response(HTTPStatus.NOT_FOUND, json={"detail": path})
+from nixtla.nixtla_client import (
+    ApiError,
+    AsyncJobCancelledError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
+    Job,
+    NixtlaClient,
+)
 
 
-@pytest.fixture(autouse=True)
-def no_sleep(monkeypatch):
-    sleeps = []
-
-    def wait_for_poll(seconds, cancellation_event):
-        sleeps.append(seconds)
-        return cancellation_event is not None and cancellation_event.is_set()
-
-    monkeypatch.setattr(client_module, "_sleep", sleeps.append)
-    monkeypatch.setattr(client_module, "_wait_for_poll", wait_for_poll)
-    return sleeps
+def _client(**kwargs):
+    return NixtlaClient(api_key="dummy", **kwargs)
 
 
-def _series_df(n_series=1, n=6):
+def _small_df(n=20):
     return pd.DataFrame(
         {
-            "unique_id": np.repeat([f"id-{i}" for i in range(n_series)], n),
-            "ds": list(pd.date_range("2024-01-01", periods=n, freq="D")) * n_series,
-            "y": np.arange(n_series * n, dtype=float),
+            "unique_id": "id_0",
+            "ds": pd.date_range("2020-01-01", periods=n, freq="D"),
+            "y": range(n),
         }
     )
 
 
-def _simulate_result(n_series, n_paths, h):
+def _multi_series_df(n_series=2, n=20):
+    return pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "unique_id": f"id_{i}",
+                    "ds": pd.date_range("2020-01-01", periods=n, freq="D"),
+                    "y": range(n),
+                }
+            )
+            for i in range(n_series)
+        ],
+        ignore_index=True,
+    )
+
+
+def _mock_response(status_code, body):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.content = orjson.dumps(body)
+    return resp
+
+
+def _polling_stubs(statuses, job_id="fc-abc123"):
+    """Build fake `_make_request`/`_get_request` replacements simulating an
+    async submit followed by the given sequence of job-status bodies. The
+    last entry in `statuses` repeats if polled past the end of the list."""
+    calls = {"n": 0}
+
+    def fake_make_request(client, endpoint, payload, multithreaded_compress=True):
+        assert endpoint.endswith("/async")
+        return {"job_id": job_id}
+
+    def fake_get_request(client, endpoint, params=None):
+        assert endpoint.endswith(f"/jobs/{job_id}")
+        i = min(calls["n"], len(statuses) - 1)
+        calls["n"] += 1
+        return {"job_id": job_id, **statuses[i]}
+
+    return fake_make_request, fake_get_request, calls
+
+
+# ---------------------------------------------------------------------------
+# _run_async_job: submit + poll mechanics
+# ---------------------------------------------------------------------------
+
+
+def test_run_async_job_success():
+    client = _client()
+    fake_make_request, fake_get_request, calls = _polling_stubs(
+        [
+            {"status": "pending"},
+            {"status": "running"},
+            {"status": "succeeded", "result": {"mean": [1, 2, 3]}},
+        ]
+    )
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    result = client._run_async_job(
+        MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+    )
+
+    assert result == {"mean": [1, 2, 3]}
+    assert calls["n"] == 3
+
+
+def test_run_async_job_failed():
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs(
+        [{"status": "running"}, {"status": "failed", "error": {"detail": "boom"}}]
+    )
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(AsyncJobError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+    assert excinfo.value.job_id == "fc-abc123"
+    assert excinfo.value.error == {"detail": "boom"}
+
+
+def test_run_async_job_cancelled():
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs(
+        [{"status": "running"}, {"status": "cancelled"}]
+    )
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(AsyncJobCancelledError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+    assert excinfo.value.job_id == "fc-abc123"
+
+
+def test_run_async_job_unexpected_status():
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "weird"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(AsyncJobError, match="unexpected job status"):
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+
+def test_run_async_job_timeout(monkeypatch):
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", lambda self, client, job_id: None)
+
+    with pytest.raises(AsyncJobTimeoutError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+        )
+
+    assert excinfo.value.job_id == "fc-abc123"
+
+
+def test_run_async_job_cancels_the_job_on_timeout(monkeypatch):
+    """`_run_async_job` never surfaces the job_id, so a client-side timeout must
+    cancel the job here or nobody ever can."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    calls = []
+    monkeypatch.setattr(
+        NixtlaClient, "_cancel_job", lambda self, client, job_id: calls.append(job_id)
+    )
+
+    with pytest.raises(AsyncJobTimeoutError):
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+        )
+
+    assert calls == ["fc-abc123"]
+
+
+@pytest.mark.parametrize(
+    "statuses, expected_error",
+    [
+        ([{"status": "failed", "error": {"detail": "boom"}}], AsyncJobError),
+        ([{"status": "cancelled"}], AsyncJobCancelledError),
+    ],
+    ids=["failed", "cancelled"],
+)
+def test_run_async_job_does_not_cancel_on_terminal_states(
+    monkeypatch, statuses, expected_error
+):
+    """Failed/cancelled jobs are already terminal -- cancelling them is pointless."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs(statuses)
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    calls = []
+    monkeypatch.setattr(
+        NixtlaClient, "_cancel_job", lambda self, client, job_id: calls.append(job_id)
+    )
+
+    with pytest.raises(expected_error):
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        )
+
+    assert calls == []
+
+
+def test_run_async_job_timeout_survives_a_failing_cancel(monkeypatch, caplog):
+    """A failed cancel must be logged, not raised: it would mask the timeout."""
+    client = _client()
+    fake_make_request, fake_get_request, _ = _polling_stubs([{"status": "running"}])
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
+
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AsyncJobTimeoutError) as excinfo:
+            client._run_async_job(
+                MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+            )
+
+    assert excinfo.value.job_id == "fc-abc123"
+    assert "Failed to cancel job fc-abc123" in caplog.text
+
+
+def test_run_async_job_fails_fast_on_non_retriable_poll_error():
+    """A permanent error (e.g. bad job_id, auth failure) while polling should
+    surface immediately, not be retried until poll_timeout elapses."""
+    client = _client()
+    fake_make_request, _, _ = _polling_stubs([{"status": "running"}])
+    calls = {"n": 0}
+
+    def fake_get_request(client, endpoint, params=None):
+        calls["n"] += 1
+        raise ApiError(status_code=404, body={"detail": "job not found"})
+
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    with pytest.raises(ApiError) as excinfo:
+        client._run_async_job(
+            MagicMock(), "v2/forecast", {}, poll_interval=10, poll_timeout=3600
+        )
+
+    assert excinfo.value.status_code == 404
+    assert calls["n"] == 1
+
+
+def test_run_async_job_retries_transient_poll_error():
+    """A transient network error while polling (not wrapped as ApiError by
+    _get_request) should be retried like any other not-yet-terminal poll,
+    not crash the whole call."""
+    client = _client()
+    fake_make_request, _, _ = _polling_stubs([{"status": "running"}])
+    responses = iter(
+        [
+            httpx.ReadTimeout("timed out"),
+            {"job_id": "fc-abc123", "status": "succeeded", "result": {"mean": [1, 2, 3]}},
+        ]
+    )
+
+    def fake_get_request(client, endpoint, params=None):
+        resp = next(responses)
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
+
+    client._make_request = fake_make_request
+    client._get_request = fake_get_request
+
+    result = client._run_async_job(
+        MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+    )
+
+    assert result == {"mean": [1, 2, 3]}
+
+
+def test_run_async_job_submit_retries_on_transient_error():
+    client = _client(max_retries=3, retry_interval=0, max_wait_time=10)
+    mock_http_client = MagicMock()
+    mock_http_client.post.side_effect = [
+        _mock_response(503, {"detail": "server error"}),
+        _mock_response(202, {"job_id": "fc-abc123"}),
+    ]
+
+    resp = client._make_request_with_retries(
+        mock_http_client, "v2/forecast/async", {"model": "timegpt-2.1"}
+    )
+
+    assert resp == {"job_id": "fc-abc123"}
+    assert mock_http_client.post.call_count == 2
+
+
+def test_make_request_accepts_202():
+    client = _client()
+    mock_http_client = MagicMock()
+    mock_http_client.post.return_value = _mock_response(202, {"job_id": "fc-abc123"})
+
+    resp = client._make_request(
+        mock_http_client, "v2/forecast/async", {}, multithreaded_compress=True
+    )
+
+    assert resp == {"job_id": "fc-abc123"}
+
+
+def test_make_request_still_rejects_other_status_codes():
+    client = _client()
+    mock_http_client = MagicMock()
+    mock_http_client.post.return_value = _mock_response(500, {"detail": "oops"})
+
+    with pytest.raises(ApiError) as excinfo:
+        client._make_request(
+            mock_http_client, "v2/forecast/async", {}, multithreaded_compress=True
+        )
+
+    assert excinfo.value.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# submit_finetune_job / submit_forecast_job / submit_cross_validation_job
+# ---------------------------------------------------------------------------
+
+# (method_name, endpoint, call_kwargs factory, _get_model_params return value or
+# None if the method doesn't call it)
+SUBMIT_JOB_CASES = [
+    pytest.param(
+        "submit_finetune_job",
+        "v2/finetune",
+        lambda: {"df": _small_df(), "freq": "D"},
+        None,
+        id="finetune",
+    ),
+    pytest.param(
+        "submit_forecast_job",
+        "v2/forecast",
+        lambda: {"df": _small_df(), "h": 5},
+        (100, 12),
+        id="forecast",
+    ),
+    pytest.param(
+        "submit_cross_validation_job",
+        "v2/cross_validation",
+        lambda: {"df": _small_df(), "h": 5},
+        (10_000, 12),
+        id="cross_validation",
+    ),
+]
+
+
+def _stub_model_params(monkeypatch, model_params):
+    if model_params is not None:
+        monkeypatch.setattr(
+            NixtlaClient, "_get_model_params", lambda self, model, freq: model_params
+        )
+
+
+def _stub_job_status(monkeypatch, status):
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_get_job_data",
+        lambda self, client, endpoint, job_id: {"status": status},
+    )
+
+
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
+def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kwargs, model_params):
+    calls = []
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        calls.append(endpoint)
+        return "job-1"
+
+    _stub_model_params(monkeypatch, model_params)
+    _stub_job_status(monkeypatch, "pending")
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
+
+    job = getattr(client, method_name)(**make_call_kwargs())
+
+    assert isinstance(job, Job)
+    assert job.job_id == "job-1"
+    assert job.status == "pending"
+    assert calls == [endpoint]
+
+
+def _finetune_poll_response():
+    return {"status": "succeeded", "result": {"finetuned_model_id": "abc123"}}
+
+
+def _forecast_poll_response():
     return {
-        "samples": list(range(n_paths * n_series * h)),
-        "n_paths": n_paths,
-        "h": h,
-        "sizes": [h] * n_series,
-        "coupled": False,
+        "status": "succeeded",
+        "result": {"mean": list(range(5)), "intervals": None, "weights_x": None},
     }
 
 
-def _explain_df():
-    return pd.DataFrame(
-        {
-            "unique_id": ["a"] * 8,
-            "ds": pd.date_range("2024-01-01", periods=8, freq="D"),
-            "y": np.arange(8, dtype=float),
-            "driver": np.arange(8, dtype=float) * 2,
-            "noise": np.arange(8, dtype=float)[::-1],
-        }
+def _cross_validation_poll_response():
+    n, h = 20, 5
+    return {
+        "status": "succeeded",
+        "result": {
+            "idxs": list(range(n - h, n)),
+            "sizes": [h],
+            "mean": list(range(h)),
+            "intervals": None,
+        },
+    }
+
+
+def _check_finetune_result(result):
+    assert result == "abc123"
+
+
+def _check_point_forecast_df(result):
+    assert len(result) == 5
+    assert result["TimeGPT"].tolist() == list(range(5))
+
+
+WAIT_JOB_CASES = [
+    pytest.param(
+        "submit_finetune_job",
+        lambda: {"df": _small_df(), "freq": "D"},
+        None,
+        _finetune_poll_response,
+        _check_finetune_result,
+        id="finetune",
+    ),
+    pytest.param(
+        "submit_forecast_job",
+        lambda: {"df": _small_df(), "h": 5},
+        (100, 12),
+        _forecast_poll_response,
+        _check_point_forecast_df,
+        id="forecast",
+    ),
+    pytest.param(
+        "submit_cross_validation_job",
+        lambda: {"df": _small_df(n=20), "h": 5},
+        (10_000, 12),
+        _cross_validation_poll_response,
+        _check_point_forecast_df,
+        id="cross_validation",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "method_name, make_call_kwargs, model_params, poll_response_fn, check_result", WAIT_JOB_CASES
+)
+def test_submit_job_wait_returns_result(
+    monkeypatch, method_name, make_call_kwargs, model_params, poll_response_fn, check_result
+):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "job-1"
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        return poll_response_fn()
+
+    _stub_model_params(monkeypatch, model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    client = _client()
+
+    job = getattr(client, method_name)(**make_call_kwargs())
+    result = job.wait(poll_interval=1, poll_timeout=2)
+
+    check_result(result)
+    assert job.status == "succeeded"
+    assert job.result is result
+
+
+def test_job_cancel_calls_cancel_job(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job.cancel()
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_status_queries_server_and_caches_once_terminal(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    calls = []
+    statuses = iter(["running", "succeeded"])
+
+    def fake_get_job_data(self, client, endpoint, job_id):
+        calls.append(job_id)
+        return {"status": next(statuses)}
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_get_job_data", fake_get_job_data)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+
+    assert job.status == "running"
+    assert job.status == "succeeded"
+    assert len(calls) == 2  # "running" isn't terminal, so it wasn't cached
+
+    assert job.status == "succeeded"
+    assert len(calls) == 2  # terminal status is now cached, no further calls
+
+
+def test_job_wait_raises_after_cancelled_status(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
+
+    def fake_cancel_job(self, client, job_id):
+        pass
+
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        raise AsyncJobCancelledError(job_id=job_id)
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    client = _client()
+
+    job = client.submit_finetune_job(df=_small_df(), freq="D")
+    job.cancel()
+
+    with pytest.raises(AsyncJobCancelledError) as excinfo:
+        job.wait(poll_interval=1, poll_timeout=2)
+
+    assert excinfo.value.job_id == "ft-job-1"
+
+
+def _raise(exc):
+    raise exc
+
+
+def _recording_cancel(calls):
+    """A `_cancel_job` stub that records the job ids it was asked to cancel."""
+
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
+
+    return fake_cancel_job
+
+
+def _timing_out_job(monkeypatch, cancel_job):
+    """A submitted `Job` whose polling always times out, with `_cancel_job` stubbed."""
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_submit_job",
+        lambda self, client, endpoint, payload, multithreaded_compress=True: "ft-job-1",
+    )
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_poll_job",
+        lambda self, client, endpoint, job_id, poll_interval, poll_timeout: _raise(
+            AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
+        ),
+    )
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", cancel_job)
+    return _client().submit_finetune_job(df=_small_df(), freq="D")
+
+
+def test_job_wait_cancels_on_timeout_by_default(monkeypatch):
+    """Giving up on a job should stop it consuming server-side compute."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    with pytest.raises(AsyncJobTimeoutError):
+        job.wait(poll_interval=0, poll_timeout=0.01)
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_wait_leaves_the_job_running_when_opted_out(monkeypatch):
+    """`poll_timeout` bounds local polling only, so `cancel_on_timeout=False`
+    supports waiting in short increments and resuming."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    for _ in range(2):
+        with pytest.raises(AsyncJobTimeoutError):
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=False)
+
+    assert calls == []
+    assert job._status is None  # still resumable
+
+
+def test_job_wait_cancels_on_timeout_when_set_explicitly(monkeypatch):
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
+
+    with pytest.raises(AsyncJobTimeoutError):
+        job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
+
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
+
+
+def test_job_wait_cancel_on_timeout_leaves_status_unresolved_if_cancel_fails(
+    monkeypatch, caplog
+):
+    """A cancel that the server rejected must not be cached as `cancelled`;
+    `status` should go back to the server for the truth."""
+
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
+
+    job = _timing_out_job(monkeypatch, fake_cancel_job)
+    monkeypatch.setattr(
+        NixtlaClient,
+        "_get_job_data",
+        lambda self, client, endpoint, job_id: {"status": "running"},
     )
 
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AsyncJobTimeoutError):
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
 
-# --------------------------------------------------------------------------- #
-# Happy paths                                                                  #
-# --------------------------------------------------------------------------- #
-
-
-def test_simulate_submits_then_polls_until_succeeded(no_sleep):
-    api = FakeApi(result=_simulate_result(n_series=1, n_paths=2, h=3))
-    client = api.make_client()
-
-    out = client.simulate(df=_series_df(), h=3, freq="D", n_paths=2, model="timegpt-1")
-
-    assert len(out) == 6
-    assert out["TimeGPT"].tolist() == list(range(6))
-    (submit,) = api.submits
-    assert submit.url.path == "/v2/simulate/async"
-    assert submit.headers["nixtla-model"] == "timegpt-1"
-    assert submit.headers["authorization"] == "Bearer test"
-    body = api.decode(submit)
-    assert body["h"] == 3 and body["n_paths"] == 2 and body["model"] == "timegpt-1"
-    assert "job_options" not in body
-    job_id = next(iter(api.jobs))
-    assert [p.url.path for p in api.polls] == [f"/v2/simulate/jobs/{job_id}"] * 3
-    # slept between the three polls, backing off from the initial interval
-    assert len(no_sleep) == 2
-    assert no_sleep[1] > no_sleep[0]
-    assert api.cancelled == []
+    assert "Failed to cancel job ft-job-1" in caplog.text
+    assert job._status is None
+    assert job.status == "running"
 
 
-def test_explain_submits_without_model_header_and_reads_result():
-    api = FakeApi(
-        task="explain",
-        result={"weights": [0.75, 0.25], "feature_names": None, "method": "granger"},
-    )
-    client = api.make_client()
+def test_job_wait_cancel_on_timeout_inside_context_manager_cancels_once(monkeypatch):
+    """`wait` marks the status terminal, so `__exit__` must not cancel again."""
+    calls = []
+    job = _timing_out_job(monkeypatch, _recording_cancel(calls))
 
-    out = client.explain(_explain_df(), features=["driver", "noise"])
+    with pytest.raises(AsyncJobTimeoutError):
+        with job:
+            job.wait(poll_interval=0, poll_timeout=0.01, cancel_on_timeout=True)
 
-    assert out["feature"].tolist() == ["driver", "noise"]
-    assert out["weight"].tolist() == [0.75, 0.25]
-    (submit,) = api.submits
-    assert submit.url.path == "/v2/explain/async"
-    assert "nixtla-model" not in submit.headers
-    body = api.decode(submit)
-    assert body["method"] == "granger"
-    assert "model" not in body
-    assert api.polls[0].url.path.startswith("/v2/explain/jobs/ex-")
+    assert calls == ["ft-job-1"]
 
 
-def test_timeout_seconds_is_forwarded_as_job_options():
-    api = FakeApi(result=_simulate_result(1, 1, 2))
-    client = api.make_client()
-
-    client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, timeout_seconds=120)
-
-    assert api.decode(api.submits[0])["job_options"] == {"timeout_seconds": 120}
+# ---------------------------------------------------------------------------
+# Job as a context manager
+# ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bad", [0, -5, True, 1.5, "10"])
-def test_invalid_timeout_seconds_is_rejected_before_any_request(bad):
-    api = FakeApi(result=_simulate_result(1, 1, 2))
-    client = api.make_client()
+def test_job_context_manager_cancels_on_exception(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
 
-    with pytest.raises(ValueError, match="timeout_seconds"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, timeout_seconds=bad)
-    with pytest.raises(ValueError, match="timeout_seconds"):
-        client.explain(_explain_df(), timeout_seconds=bad)
-    assert api.requests == []
+    calls = []
 
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
 
-def test_large_submit_body_is_zstd_compressed():
-    api = FakeApi(result=_simulate_result(1, 1, 1))
-    client = api.make_client()
-    # > 1MB of history triggers compression; keep the model's input size above
-    # the history length so the client does not trim it before sending.
-    n = 300_000
-    client._get_model_params = MagicMock(return_value=(n, 7))
-    df = pd.DataFrame(
-        {
-            "ds": pd.date_range("2000-01-01", periods=n, freq="min"),
-            "y": np.random.default_rng(0).normal(size=n),
-        }
-    )
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
 
-    client.simulate(df=df, h=1, freq="min", n_paths=1, model="timegpt-1")
+    with pytest.raises(ValueError):
+        with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+            raise ValueError("boom")
 
-    (submit,) = api.submits
-    assert submit.headers["content-encoding"] == "zstd"
-    assert len(api.decode(submit)["series"]["y"]) == n
+    assert calls == ["ft-job-1"]
+    assert job.status == "cancelled"
 
 
-def test_partitioned_simulate_runs_one_job_per_partition():
-    api = FakeApi(result=_simulate_result(n_series=1, n_paths=2, h=2))
-    client = api.make_client()
+def test_job_context_manager_no_cancel_on_normal_exit(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
 
-    out = client.simulate(
-        df=_series_df(n_series=3),
-        h=2,
-        freq="D",
-        n_paths=2,
-        num_partitions=3,
-        seed=1,
-    )
+    calls = []
 
-    assert len(out) == 3 * 2 * 2
-    assert len(api.submits) == 3
-    assert len(api.jobs) == 3
-    assert {api.decode(s)["seed"] for s in api.submits} == {1, 2, 3}
-    for job_id in api.jobs:
-        assert sum(p.url.path.endswith(job_id) for p in api.polls) == 3
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
 
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
 
-# --------------------------------------------------------------------------- #
-# Terminal failures and malformed envelopes                                    #
-# --------------------------------------------------------------------------- #
+    with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+        pass
+
+    assert calls == []
+    assert job._status is None
 
 
-def test_failed_job_raises_async_job_error_with_server_message():
-    api = FakeApi(
-        statuses=("running", "failed"),
-        error="InvalidInputException: n_paths too large",
-    )
-    client = api.make_client()
+def test_job_context_manager_no_cancel_if_already_terminal(monkeypatch):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
 
-    with pytest.raises(AsyncJobError, match="n_paths too large") as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        return _finetune_poll_response()
 
-    err = excinfo.value
-    assert err.task == "simulate"
-    assert err.status == "failed"
-    assert err.job_id.startswith("sm-")
-    assert err.error == "InvalidInputException: n_paths too large"
-    assert api.cancelled == []
+    calls = []
 
+    def fake_cancel_job(self, client, job_id):
+        calls.append(job_id)
 
-def test_cancelled_job_raises_async_job_error_even_without_message():
-    api = FakeApi(task="explain", statuses=("cancelled",), error=None)
-    client = api.make_client()
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
 
-    with pytest.raises(AsyncJobError, match="cancelled") as excinfo:
-        client.explain(_explain_df())
+    with pytest.raises(ValueError):
+        with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+            job.wait(poll_interval=1, poll_timeout=2)
+            raise ValueError("boom")
 
-    assert excinfo.value.status == "cancelled"
-    assert excinfo.value.error is None
+    assert calls == []
+    assert job.status == "succeeded"
 
 
-def test_succeeded_job_without_result_raises():
-    api = FakeApi(statuses=("succeeded",), result=None)
-    client = api.make_client()
+def test_job_context_manager_logs_and_swallows_cancel_failure(monkeypatch, caplog):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        return "ft-job-1"
 
-    with pytest.raises(RuntimeError, match="returned no result"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+    def fake_cancel_job(self, client, job_id):
+        raise ApiError(status_code=500, body={"detail": "boom"})
 
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_cancel_job", fake_cancel_job)
+    client = _client()
 
-def test_unknown_status_raises_instead_of_polling_forever():
-    api = FakeApi(statuses=("exploded",))
-    client = api.make_client()
+    with caplog.at_level("WARNING"):
+        with pytest.raises(ValueError, match="original error"):
+            with client.submit_finetune_job(df=_small_df(), freq="D") as job:
+                raise ValueError("original error")
 
-    with pytest.raises(RuntimeError, match="Unexpected status"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-    assert len(api.polls) == 1
-
-
-def test_unexpected_submit_body_raises():
-    api = FakeApi(submit_responses=[(HTTPStatus.ACCEPTED, {"job_id": "fc-wrong"}, {})])
-    client = api.make_client()
-
-    with pytest.raises(RuntimeError, match="Unexpected response"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-    assert api.polls == []
+    assert "Failed to cancel job ft-job-1" in caplog.text
+    assert job._status is None
 
 
-# --------------------------------------------------------------------------- #
-# Submit errors and retries                                                    #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# _cancel_job
+# ---------------------------------------------------------------------------
 
 
-def test_submit_422_is_not_retried():
-    api = FakeApi(
-        submit_responses=[(HTTPStatus.UNPROCESSABLE_ENTITY, {"detail": "bad"}, {})] * 3
-    )
-    client = api.make_client()
+def test_cancel_job_accepts_terminal_success_codes():
+    client = _client()
+    mock_http_client = MagicMock()
+    for status_code in (200, 202, 204):
+        resp = MagicMock()
+        resp.status_code = status_code
+        mock_http_client.post.return_value = resp
+        client._cancel_job(mock_http_client, "fc-abc123")
+    mock_http_client.post.assert_called_with("v2/async/jobs/fc-abc123/cancel")
+
+
+def test_cancel_job_raises_on_other_status_codes():
+    client = _client()
+    mock_http_client = MagicMock()
+    resp = MagicMock()
+    resp.status_code = 404
+    resp.json.return_value = {"detail": "job not found"}
+    mock_http_client.post.return_value = resp
 
     with pytest.raises(ApiError) as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert excinfo.value.status_code == 422
-    assert len(api.submits) == 1
-
-
-def test_submit_read_timeout_is_not_retried_to_avoid_duplicate_jobs():
-    api = FakeApi(submit_responses=[httpx.ReadTimeout("lost response")])
-    client = api.make_client()
-
-    with pytest.raises(httpx.ReadTimeout):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert len(api.submits) == 1
-
-
-def test_submit_connect_error_is_retried():
-    api = FakeApi(
-        submit_responses=[httpx.ConnectError("refused")],
-        result=_simulate_result(1, 1, 2),
-    )
-    client = api.make_client()
-
-    out = client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert len(out) == 2
-    assert len(api.submits) == 2
-
-
-def test_submit_429_is_retried_and_carries_retry_after():
-    api = FakeApi(
-        submit_responses=[
-            (
-                HTTPStatus.TOO_MANY_REQUESTS,
-                {"detail": "Your team already has the maximum of 5 async jobs"},
-                {"Retry-After": "0"},
-            )
-        ],
-        result=_simulate_result(1, 1, 2),
-    )
-    client = api.make_client()
-
-    out = client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert len(out) == 2
-    assert len(api.submits) == 2
-
-
-def test_submit_429_exhausting_retries_raises_api_error():
-    api = FakeApi(
-        submit_responses=[
-            (HTTPStatus.TOO_MANY_REQUESTS, {"detail": "capped"}, {"Retry-After": "0"})
-        ]
-        * 5
-    )
-    client = api.make_client(max_retries=2)
-
-    with pytest.raises(ApiError) as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert excinfo.value.status_code == 429
-    assert excinfo.value.retry_after == 0.0
-    assert len(api.submits) == 2
-
-
-def test_submit_unavailable_503_fails_fast_with_actionable_message():
-    api = FakeApi(
-        task="explain",
-        submit_responses=[
-            (
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {"detail": "Async jobs are not available in this deployment."},
-                {},
-            )
-        ]
-        * 3,
-    )
-    client = api.make_client()
-
-    with pytest.raises(ApiError) as excinfo:
-        client.explain(_explain_df())
-
-    assert excinfo.value.status_code == 503
-    assert "asynchronous job" in str(excinfo.value)
-    assert "not available in this deployment" in str(excinfo.value)
-    assert len(api.submits) == 1
-
-
-def test_submit_other_503_is_not_retried():
-    api = FakeApi(
-        submit_responses=[(HTTPStatus.SERVICE_UNAVAILABLE, {"detail": "upstream"}, {})]
-        * 3
-    )
-    client = api.make_client()
-
-    with pytest.raises(ApiError) as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert excinfo.value.status_code == 503
-    assert len(api.submits) == 1
-
-
-# --------------------------------------------------------------------------- #
-# Poll errors                                                                  #
-# --------------------------------------------------------------------------- #
-
-
-def test_transient_503_while_polling_is_retried():
-    api = FakeApi(
-        poll_responses=[
-            (HTTPStatus.SERVICE_UNAVAILABLE, {"detail": "Status temporarily unavailable"})
-        ],
-        statuses=("succeeded",),
-        result=_simulate_result(1, 1, 2),
-    )
-    client = api.make_client()
-
-    out = client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert len(out) == 2
-    assert len(api.polls) == 2
-
-
-def test_404_while_polling_raises_immediately():
-    api = FakeApi(poll_responses=[(HTTPStatus.NOT_FOUND, {"detail": "not found"})] * 3)
-    client = api.make_client()
-
-    with pytest.raises(ApiError) as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+        client._cancel_job(mock_http_client, "fc-abc123")
 
     assert excinfo.value.status_code == 404
-    assert len(api.polls) == 1
+    assert excinfo.value.body == {"detail": "job not found"}
 
 
-def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
-    api = FakeApi(statuses=("pending",))
-    client = api.make_client(async_job_wait_timeout=2)
-    clock = iter(range(0, 1000))
-    monkeypatch.setattr(client_module.time, "monotonic", lambda: float(next(clock)))
-
-    with pytest.raises(TimeoutError, match="did not finish within 2 seconds") as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    job_id = next(iter(api.jobs))
-    assert job_id in str(excinfo.value)
-    assert api.cancelled == [job_id]
+# ---------------------------------------------------------------------------
+# job_timeout_seconds -> job_options threading on submit_*_job
+# ---------------------------------------------------------------------------
 
 
-def test_success_response_received_after_wait_deadline_is_discarded():
-    api = FakeApi(statuses=("succeeded",), result=_simulate_result(1, 1, 2))
-    original_handle = api.handle
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
+def test_submit_job_threads_job_timeout_seconds(
+    monkeypatch, method_name, endpoint, make_call_kwargs, model_params
+):
+    payloads = []
 
-    def handle(request):
-        if request.method == "GET" and "/jobs/" in request.url.path:
-            client_module.time.sleep(0.02)
-        return original_handle(request)
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        payloads.append(payload)
+        return "job-1"
 
-    api.transport = httpx.MockTransport(handle)
-    client = api.make_client(async_job_wait_timeout=0.001)
+    _stub_model_params(monkeypatch, model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    client = _client()
 
-    with pytest.raises(TimeoutError, match="did not finish within 0.001 seconds"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+    getattr(client, method_name)(**make_call_kwargs(), job_timeout_seconds=120)
+    getattr(client, method_name)(**make_call_kwargs())
 
-    assert api.cancelled == [next(iter(api.jobs))]
-
-
-def test_poll_retries_do_not_run_past_wait_deadline():
-    api = FakeApi(
-        poll_responses=[
-            (HTTPStatus.SERVICE_UNAVAILABLE, {"detail": "temporarily unavailable"})
-        ]
-    )
-    original_handle = api.handle
-
-    def handle(request):
-        if request.method == "GET" and "/jobs/" in request.url.path:
-            client_module.time.sleep(0.02)
-        return original_handle(request)
-
-    api.transport = httpx.MockTransport(handle)
-    client = api.make_client(async_job_wait_timeout=0.001, max_retries=3)
-
-    with pytest.raises(TimeoutError, match="did not finish within 0.001 seconds"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert sum(request.method == "GET" for request in api.polls) == 1
-    assert api.cancelled == [next(iter(api.jobs))]
+    assert payloads[0]["job_options"] == {"timeout_seconds": 120}
+    assert "job_options" not in payloads[1]
 
 
-def test_wait_timeout_none_polls_until_terminal():
-    api = FakeApi(statuses=("pending",) * 30 + ("succeeded",), result=_simulate_result(1, 1, 2))
-    client = api.make_client(async_job_wait_timeout=None)
+@pytest.mark.parametrize(
+    "method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES
+)
+@pytest.mark.parametrize("bad_timeout", [0, -1])
+def test_submit_job_rejects_a_non_positive_job_timeout(
+    monkeypatch, method_name, endpoint, make_call_kwargs, model_params, bad_timeout
+):
+    """The server refuses these, so the client should not spend a round-trip finding out."""
 
-    out = client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+    def boom(*args, **kwargs):
+        raise AssertionError("validation should fail before any HTTP call")
 
-    assert len(out) == 2
-    assert len(api.polls) == 31
+    _stub_model_params(monkeypatch, model_params)
+    monkeypatch.setattr(NixtlaClient, "_submit_job", boom)
 
-
-def test_keyboard_interrupt_while_polling_requests_cancellation():
-    api = FakeApi(statuses=("pending",))
-    client = api.make_client()
-    original_handle = api.handle
-
-    def handle(request):
-        if request.url.path.startswith("/v2/simulate/jobs/"):
-            api.requests.append(request)
-            raise KeyboardInterrupt
-        return original_handle(request)
-
-    api.transport = httpx.MockTransport(handle)
-
-    with pytest.raises(KeyboardInterrupt):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert api.cancelled == [next(iter(api.jobs))]
-
-
-def test_partition_failure_signals_other_workers_to_stop():
-    client = NixtlaClient(api_key="test")
-    started = client_module.Event()
-    stopped = client_module.Event()
-
-    def run(_client, _task, payload, *, cancellation_event, **_kwargs):
-        if payload["position"] == 0:
-            assert started.wait(1)
-            raise RuntimeError("partition failed")
-        started.set()
-        assert cancellation_event.wait(1)
-        stopped.set()
-        raise client_module.CancelledError
-
-    client._run_async_job = run
-    with pytest.raises(RuntimeError, match="partition failed"):
-        client._dispatch_async_jobs(
-            MagicMock(),
-            "simulate",
-            [{"position": 0}, {"position": 1}],
+    with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
+        getattr(_client(), method_name)(
+            **make_call_kwargs(), job_timeout_seconds=bad_timeout
         )
 
-    assert stopped.is_set()
+
+# ---------------------------------------------------------------------------
+# job_timeout_seconds on the async forecast/cross_validation paths
+# ---------------------------------------------------------------------------
 
 
-def test_partition_cancellation_signal_cancels_submitted_job():
-    api = FakeApi(statuses=("pending",))
-    client = api.make_client()
-    job_id = "sm-00000000000000000000000000000000"
-    api.jobs[job_id] = 0
-    cancellation_event = client_module.Event()
-    cancellation_event.set()
+def _capture_submitted_payloads(monkeypatch, h=5):
+    """Record every payload reaching `_submit_job`, with polling stubbed out.
 
-    with client._make_client(**client._client_kwargs) as http:
-        with pytest.raises(client_module.CancelledError):
-            client._poll_async_job(
-                http,
-                "simulate",
-                job_id,
-                deadline=None,
-                cancellation_event=cancellation_event,
-            )
+    The stubbed result is shaped per endpoint because forecast and cross_validation parse their
+    responses differently; these tests only assert on what was *sent*, but the call still has to
+    return without blowing up in `parse_result`.
+    """
+    payloads = []
 
-    assert api.cancelled == [job_id]
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True):
+        payloads.append((endpoint, payload))
+        return "job-1"
 
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout):
+        if endpoint == "v2/cross_validation":
+            n = len(payloads[-1][1]["series"]["y"])
+            result = {
+                "idxs": list(range(n - h, n)),
+                "sizes": [h],
+                "mean": list(range(h)),
+                "intervals": None,
+            }
+        else:
+            result = {"mean": list(range(h)), "intervals": None, "weights_x": None}
+        return {"status": "succeeded", "result": result}
 
-@pytest.mark.parametrize("status_code", [HTTPStatus.ACCEPTED, HTTPStatus.NOT_FOUND, HTTPStatus.CONFLICT])
-def test_cancel_is_best_effort_and_quiet_for_expected_statuses(status_code, caplog):
-    def handle(request):
-        return httpx.Response(status_code, json={"job_id": "sm-1"})
-
-    client = NixtlaClient(api_key="test")
-    with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
-        with caplog.at_level("WARNING"):
-            client._cancel_async_job(http, "sm-1")
-    assert caplog.records == []
-
-
-def test_cancel_never_raises(caplog):
-    def handle(request):
-        raise httpx.ConnectError("down")
-
-    client = NixtlaClient(api_key="test")
-    with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
-        with caplog.at_level("WARNING"):
-            client._cancel_async_job(http, "sm-1")
-    assert "Could not cancel job sm-1" in caplog.text
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(NixtlaClient, "_poll_job", fake_poll_job)
+    monkeypatch.setattr(
+        NixtlaClient, "_get_model_params", lambda self, model, freq: (10_000, 12)
+    )
+    return payloads
 
 
-# --------------------------------------------------------------------------- #
-# Helpers and constructor validation                                           #
-# --------------------------------------------------------------------------- #
+def test_run_async_job_folds_job_options_into_the_payload(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+    client = _client()
+
+    original = {"idx": 0}
+    client._run_async_job(
+        MagicMock(), "v2/forecast", original, 0, 1, job_timeout_seconds=300
+    )
+
+    assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
+    # The caller's dict is reused to derive other requests, so it must not be mutated.
+    assert original == {"idx": 0}
 
 
-@pytest.mark.parametrize(
-    "headers,expected",
-    [
-        ({}, None),
-        ({"Retry-After": "30"}, 30.0),
-        ({"retry-after": "1.5"}, 1.5),
-        ({"Retry-After": "-2"}, 0.0),
-        ({"Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"}, None),
-    ],
-)
-def test_parse_retry_after(headers, expected):
-    assert client_module._parse_retry_after(httpx.Headers(headers)) == expected
+def test_run_async_job_omits_job_options_when_unset(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+    _client()._run_async_job(MagicMock(), "v2/forecast", {"idx": 0}, 0, 1)
+    assert "job_options" not in payloads[0][1]
 
 
-def test_api_error_defaults_are_backwards_compatible():
-    err = ApiError(status_code=500, body="boom")
-    assert err.retry_after is None
-    assert str(err) == "status_code: 500, body: boom"
+def test_make_partitioned_requests_forwards_the_job_timeout():
+    client = _client()
+    seen = []
+
+    def fake_run_async_job(
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        seen.append(job_timeout_seconds)
+        return {"mean": [payload["idx"]], "intervals": None, "weights_x": None}
+
+    client._run_async_job = fake_run_async_job
+    client._make_partitioned_requests(
+        MagicMock(),
+        "v2/forecast",
+        [{"idx": i} for i in range(3)],
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+        _job_timeout_seconds=300,
+    )
+
+    # Per job, not per call: every partition is its own job and gets the full budget.
+    assert seen == [300, 300, 300]
 
 
-def test_async_job_error_message_and_attributes():
-    err = AsyncJobError(job_id="ex-1", task="explain", status="failed", error="bad input")
-    assert str(err) == "explain job 'ex-1' failed: bad input"
-    assert isinstance(err, RuntimeError)
-    quiet = AsyncJobError(job_id="sm-1", task="simulate", status="cancelled")
-    assert "no error message was reported" in str(quiet)
+def test_forecast_async_job_carries_the_job_timeout(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    _client().forecast(df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True)
+
+    assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
 
 
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"async_job_wait_timeout": 0},
-        {"async_job_wait_timeout": -1},
-        {"async_job_poll_interval": 0},
-    ],
-)
-def test_constructor_rejects_non_positive_async_settings(kwargs):
-    with pytest.raises(ValueError):
-        NixtlaClient(api_key="test", **kwargs)
+def test_forecast_add_history_applies_the_timeout_to_both_jobs(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    _client().forecast(
+        df=_small_df(),
+        h=5,
+        add_history=True,
+        _job_timeout_seconds=300,
+        _is_async_job=True,
+    )
+
+    # The forecast job and the in-sample cross_validation job are separate jobs.
+    assert [endpoint for endpoint, _ in payloads] == [
+        "v2/forecast",
+        "v2/cross_validation",
+    ]
+    assert all(p["job_options"] == {"timeout_seconds": 300} for _, p in payloads)
 
 
-def test_sync_endpoints_still_use_make_request():
-    """The forecast path is unchanged: one POST, 200, optional `data` unwrapping."""
+def test_forecast_partitioned_async_job_carries_the_job_timeout(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
 
-    def handle(request):
-        assert request.url.path == "/v2/forecast"
-        return httpx.Response(200, json={"data": {"mean": [1.0]}})
+    _client().forecast(
+        df=_multi_series_df(n_series=2),
+        h=5,
+        num_partitions=2,
+        _job_timeout_seconds=300,
+        _is_async_job=True,
+    )
 
-    client = NixtlaClient(api_key="test")
-    with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
-        out = client._make_request(http, "v2/forecast", {"model": "m"}, False)
-    assert out == {"mean": [1.0]}
-
-
-def test_oversized_payload_guidance_uses_the_task_name(monkeypatch):
-    class _Oversized:
-        def __len__(self):
-            return 201 * 2**20
-
-    monkeypatch.setattr(client_module.orjson, "dumps", lambda *a, **k: _Oversized())
-    client = NixtlaClient(api_key="test")
-
-    with pytest.raises(ValueError, match="cannot be partitioned"):
-        client._encode_payload({"series": {}}, False, task="explain")
-    with pytest.raises(ValueError, match="num_partitions"):
-        client._encode_payload({"series": {}, "multivariate": False}, False, task="simulate")
-    with pytest.raises(ValueError, match="cannot be partitioned"):
-        client._encode_payload({"series": {}, "multivariate": True}, False, task="simulate")
-    with pytest.raises(ValueError, match="num_partitions"):
-        client._encode_payload({"series": {}}, False, task="forecast")
+    assert len(payloads) == 2
+    assert all(p["job_options"] == {"timeout_seconds": 300} for _, p in payloads)
 
 
-def test_status_envelope_is_json_from_the_fixture():
-    """Guard the fixture itself: it must speak the documented envelope."""
-    api = FakeApi(statuses=("succeeded",), result={"weights": [1.0], "method": "granger"}, task="explain")
-    with httpx.Client(transport=api.transport, base_url="http://t") as http:
-        job_id = http.post("/v2/explain/async", content=b"{}").json()["job_id"]
-        envelope = json.loads(http.get(f"/v2/explain/jobs/{job_id}").content)
-    assert set(envelope) == {"job_id", "status", "result", "error", "created_at", "updated_at"}
+def test_cross_validation_async_job_carries_the_job_timeout(monkeypatch):
+    payloads = _capture_submitted_payloads(monkeypatch)
+
+    _client().cross_validation(
+        df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True
+    )
+
+    assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
+
+
+@pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
+def test_job_timeout_without_async_job_raises(method_name):
+    # A synchronous request creates no job, so silently ignoring the value would be worse.
+    with pytest.raises(ValueError, match="requires _is_async_job"):
+        getattr(_client(), method_name)(df=_small_df(), h=5, _job_timeout_seconds=300)
+
+
+@pytest.mark.parametrize("method_name", ["forecast", "cross_validation"])
+@pytest.mark.parametrize("bad_timeout", [0, -1])
+def test_forecast_and_cv_reject_a_non_positive_job_timeout(method_name, bad_timeout):
+    with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
+        getattr(_client(), method_name)(
+            df=_small_df(), h=5, _job_timeout_seconds=bad_timeout, _is_async_job=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# num_partitions + async job fan-out (local pandas/polars DataFrames)
+# ---------------------------------------------------------------------------
+
+
+def test_make_partitioned_requests_dispatches_async_jobs():
+    client = _client()
+    calls = []
+
+    def fake_run_async_job(
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        calls.append((endpoint, poll_interval, poll_timeout, multithreaded_compress))
+        return {"mean": [payload["idx"]], "intervals": None, "weights_x": None}
+
+    client._run_async_job = fake_run_async_job
+
+    payloads = [{"idx": i} for i in range(3)]
+    resp = client._make_partitioned_requests(
+        MagicMock(),
+        "v2/forecast",
+        payloads,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert len(calls) == 3
+    assert all(c == ("v2/forecast", 1, 2, False) for c in calls)
+    assert sorted(resp["mean"].tolist()) == [0, 1, 2]
+    assert resp["intervals"] is None
+    assert resp["weights_x"] is None
+
+
+def test_make_partitioned_requests_propagates_async_job_error():
+    client = _client()
+
+    def fake_run_async_job(
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        if payload["idx"] == 1:
+            raise AsyncJobError(job_id="fc-bad", error="boom")
+        return {"mean": [0], "intervals": None, "weights_x": None}
+
+    client._run_async_job = fake_run_async_job
+
+    payloads = [{"idx": i} for i in range(3)]
+    with pytest.raises(AsyncJobError):
+        client._make_partitioned_requests(
+            MagicMock(),
+            "v2/forecast",
+            payloads,
+            _is_async_job=True,
+            _poll_interval=0,
+            _poll_timeout=1,
+        )
+
+
+def test_forecast_num_partitions_with_async_job(monkeypatch):
+    h = 5
+    calls = []
+
+    def fake_get_model_params(self, model, freq):
+        return 100, 12
+
+    def fake_run_async_job(
+        self,
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        calls.append(endpoint)
+        return {"mean": list(range(h)), "intervals": None, "weights_x": None}
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    client = _client()
+
+    out = client.forecast(
+        df=_multi_series_df(n_series=2),
+        h=h,
+        num_partitions=2,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert calls == ["v2/forecast", "v2/forecast"]
+    assert len(out) == h * 2
+
+
+def test_cross_validation_num_partitions_with_async_job(monkeypatch):
+    h = 5
+    calls = []
+
+    def fake_get_model_params(self, model, freq):
+        return 10_000, 12
+
+    def fake_run_async_job(
+        self,
+        client,
+        endpoint,
+        payload,
+        poll_interval,
+        poll_timeout,
+        multithreaded_compress=True,
+        job_timeout_seconds=None,
+    ):
+        calls.append(endpoint)
+        n = len(payload["series"]["y"])
+        return {
+            "idxs": list(range(n - h, n)),
+            "sizes": [h],
+            "mean": list(range(h)),
+            "intervals": None,
+        }
+
+    monkeypatch.setattr(NixtlaClient, "_get_model_params", fake_get_model_params)
+    monkeypatch.setattr(NixtlaClient, "_run_async_job", fake_run_async_job)
+    client = _client()
+
+    out = client.cross_validation(
+        df=_multi_series_df(n_series=2),
+        h=h,
+        num_partitions=2,
+        _is_async_job=True,
+        _poll_interval=1,
+        _poll_timeout=2,
+    )
+
+    assert calls == ["v2/cross_validation", "v2/cross_validation"]
+    assert len(out) == h * 2
+
+
+@pytest.mark.parametrize("method_name", ["submit_forecast_job", "submit_cross_validation_job"])
+def test_submit_job_with_unrecognized_df_type_still_raises(method_name):
+    # submit_forecast_job/submit_cross_validation_job don't support distributed
+    # (dask/spark/ray) dataframes in this version — an arbitrary non-pandas/polars
+    # object should raise a clear ValueError rather than doing something undefined.
+    client = _client()
+    with pytest.raises(ValueError, match=f"{method_name} only supports"):
+        getattr(client, method_name)(df=[1, 2, 3], h=5)

@@ -1,6 +1,3 @@
-import platform
-import sys
-
 import pytest
 
 from nixtla_tests.helpers.checks import (

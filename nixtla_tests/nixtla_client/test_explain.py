@@ -18,7 +18,7 @@ def _client_with_response(response):
             response(task, payload) if callable(response) else response
         )
     )
-    client._run_async_job = request
+    client._run_async_task = request
     return client, request
 
 

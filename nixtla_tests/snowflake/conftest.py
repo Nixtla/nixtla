@@ -324,7 +324,7 @@ def deployed_with_api_endpoint(
         deploy_package=True,
         deploy_udtfs=True,
         deploy_procedures=True,
-        deploy_finetune=False,  # Skip finetune to speed up tests
+        deploy_finetune=True,
         deploy_examples=False,  # Load examples separately to get DataFrames
         fallback_package_source=_PROJECT_ROOT,
     )
@@ -490,6 +490,7 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
         ("NIXTLA_EVALUATE", "VARCHAR, ARRAY, NUMBER"),
         ("NIXTLA_DETECT_ANOMALIES", "VARCHAR, OBJECT, NUMBER"),
         ("NIXTLA_EXPLAIN", "VARCHAR, OBJECT, NUMBER"),
+        ("NIXTLA_FINETUNE", "VARCHAR, OBJECT, NUMBER"),
     ]
 
     try:
@@ -500,4 +501,30 @@ def verify_procedures_exist(session: Session, config: DeploymentConfig) -> bool:
         return True
     except Exception as e:
         print(f"Procedure verification failed: {e}")
+        return False
+
+
+def verify_finetune_procedure_exists(
+    session: Session, config: DeploymentConfig
+) -> bool:
+    """
+    Verify that the finetune stored procedure exists.
+
+    Args:
+        session: Snowflake session
+        config: Deployment configuration
+
+    Returns:
+        True if the finetune procedure exists
+    """
+    # Resolved on argument types, which are unaffected by how the default
+    # value for MAX_SERIES is rendered.
+    full_name = f"{config.prefix}NIXTLA_FINETUNE"
+    signature = "VARCHAR, OBJECT, NUMBER"
+
+    try:
+        session.sql(f"DESC PROCEDURE {full_name}({signature})").collect()
+        return True
+    except Exception as e:
+        print(f"Finetune procedure verification failed: {e}")
         return False

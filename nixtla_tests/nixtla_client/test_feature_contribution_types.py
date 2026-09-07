@@ -84,7 +84,12 @@ def test_forecast_omits_contribution_type_when_contributions_are_disabled():
 
 
 def test_forecast_appends_feature_contribution_type_to_public_signature():
-    parameters = list(inspect.signature(NixtlaClient.forecast).parameters)
+    # internal keyword-only params (underscore-prefixed) are not public API
+    parameters = [
+        p
+        for p in inspect.signature(NixtlaClient.forecast).parameters
+        if not p.startswith("_")
+    ]
 
     assert parameters[-3:] == [
         "model_parameters",

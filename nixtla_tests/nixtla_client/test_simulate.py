@@ -15,7 +15,7 @@ def _client_with_response(response, model_params=(28, 7)):
     client._make_client = MagicMock()
     client._get_model_params = MagicMock(return_value=model_params)
 
-    # Mirrors NixtlaClient._run_async_job: both the single-request and the
+    # Mirrors NixtlaClient._run_async_task: both the single-request and the
     # partitioned path call it with positional client, task and payload.
     def respond(
         client=None,
@@ -28,7 +28,7 @@ def _client_with_response(response, model_params=(28, 7)):
         return response(task, payload) if callable(response) else response
 
     request = MagicMock(side_effect=respond)
-    client._run_async_job = request
+    client._run_async_task = request
     return client, request
 
 

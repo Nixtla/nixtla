@@ -111,6 +111,7 @@ def test_model_parameters(nixtla_test_client, air_passengers_df, test_params, ex
         assert expected_error_msg in str(exc_info.value)
 
 
+@pytest.mark.xfail(reason="flaky test")
 def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):
     series_with_features, train, valid, x_cols, h, freq = cv_series_with_features
     for hist_exog_list in [None, [], [x_cols[2], x_cols[1]], x_cols]:

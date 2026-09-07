@@ -13,11 +13,13 @@ from snowflake.snowpark import Session
 from nixtla import NixtlaClient
 from nixtla.scripts.snowflake_install_nixtla import (
     DeploymentConfig,
+    create_finetune_sproc,
     get_example_test_cases,
     load_example_datasets,
 )
 from nixtla_tests.snowflake.conftest import (
     SnowflakeTestConfig,
+    verify_finetune_procedure_exists,
     verify_integration_exists,
     verify_network_rule_exists,
     verify_procedures_exist,
@@ -50,6 +52,44 @@ class TestSnowflakeDeployment:
     ):
         """Test full deployment with api.nixtla.io endpoint."""
         _verify_full_deployment(snowflake_session, deployed_with_api_endpoint)
+
+    def test_deploy_finetune_procedure(
+        self,
+        snowflake_session: Session,
+        deployed_with_api_endpoint: DeploymentConfig,
+    ):
+        """Test that NIXTLA_FINETUNE survives DDL compilation.
+
+        Regression test for the ``DEFAULT 1000 :: INT`` cast that Snowpark
+        renders for ``max_series: int = 1000`` and Snowflake rejects with
+        ``000947 invalid default argument expression``.
+
+        Deployed here rather than via ``deploy_finetune=True`` in the
+        module-scoped fixture so a failure surfaces as this one test instead
+        of a setup error on every test in the module.
+        """
+        config = deployed_with_api_endpoint
+
+        # Ensure session is using the correct database and schema context
+        snowflake_session.use_database(config.database)
+        snowflake_session.use_schema(config.schema)
+
+        # Left unguarded on purpose: the SnowparkSQLException is the signal.
+        create_finetune_sproc(snowflake_session, config)
+
+        assert verify_finetune_procedure_exists(snowflake_session, config), (
+            "Finetune procedure not created"
+        )
+
+        ddl = snowflake_session.sql(
+            "SELECT GET_DDL('PROCEDURE', "
+            f"'{config.prefix}NIXTLA_FINETUNE(VARCHAR, OBJECT, NUMBER)')"
+        ).collect()[0][0]
+
+        assert "DEFAULT 1000" in ddl, "MAX_SERIES lost its default value"
+        assert ":: INT" not in ddl, (
+            "MAX_SERIES default is a CAST expression, not a literal"
+        )
 
     def test_example_datasets_loaded(
         self,
