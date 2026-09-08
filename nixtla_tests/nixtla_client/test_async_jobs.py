@@ -1343,7 +1343,7 @@ def test_partition_failure_cancels_siblings_and_stops_queued_submissions(
     assert sorted(submitted) == [0, 1]
     assert cancelled == ([] if sibling_state == "submit_retry" else ["job-1"])
 
-    assert all(wait_outcomes)
+    assert wait_outcomes == [True]
     assert len(sibling_polls) == (0 if sibling_state == "submit_retry" else 1)
 
 
