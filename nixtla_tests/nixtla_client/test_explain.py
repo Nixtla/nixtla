@@ -176,7 +176,7 @@ def test_explain_rejects_gapped_timestamps_before_request():
     gapped = _explain_df()
     gapped = gapped[gapped["ds"] != "2024-01-02"]
 
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+    with pytest.raises(ValueError, match="missing timestamps"):
         client.explain(gapped, features=["driver"], freq="D")
 
     request.assert_not_called()
@@ -187,7 +187,7 @@ def test_explain_rejects_duplicate_timestamps_before_request():
     df = _explain_df()
     duplicated = pd.concat([df, df.iloc[[0]]], ignore_index=True)
 
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+    with pytest.raises(ValueError, match="duplicate timestamps"):
         client.explain(duplicated, features=["driver"], freq="D")
 
     request.assert_not_called()
@@ -207,7 +207,7 @@ def test_explain_rejects_balanced_gap_and_duplicate_before_request(freq):
         }
     )
 
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+    with pytest.raises(ValueError, match="duplicate timestamps"):
         client.explain(invalid, features=["driver"], freq=freq)
 
     request.assert_not_called()

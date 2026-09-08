@@ -569,11 +569,14 @@ def _validate_freq_regularity(
             "`freq` should be a string, integer or pandas offset, "
             f"got {type(freq).__name__}."
         )
-    if freq_ok and _has_duplicate_keys(df, id_col, time_col):
-        freq_ok = False
+    if _has_duplicate_keys(df, id_col, time_col):
+        raise ValueError(
+            "Series contain duplicate timestamps. "
+            f"Each (`{id_col}`, `{time_col}`) pair must be unique."
+        )
     if not freq_ok:
         raise ValueError(
-            "Series contain missing or duplicate timestamps, or the timestamps "
+            "Series contain missing timestamps, or the timestamps "
             "do not match the provided frequency.\n"
             "Please make sure that all series have a single observation from the first "
             "to the last timestamp and that the provided frequency matches the timestamps'.\n"

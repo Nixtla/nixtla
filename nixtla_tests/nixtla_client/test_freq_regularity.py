@@ -22,8 +22,10 @@ def _regular_df(n_series=2, n=5):
     )
 
 
-def _with_duplicate_cancelling_a_gap():
-    df = _regular_df(n_series=1).drop(index=2).reset_index(drop=True)
+def _with_duplicate(missing_timestamp):
+    df = _regular_df(n_series=1)
+    if missing_timestamp:
+        df = df.drop(index=2).reset_index(drop=True)
     return pd.concat([df, df.iloc[[0]]], ignore_index=True)
 
 
@@ -41,17 +43,18 @@ def test_accepts_regular_series(freq):
 def test_rejects_missing_timestamps(freq):
     df = _regular_df().drop(index=2).reset_index(drop=True)
 
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+    with pytest.raises(ValueError, match="missing timestamps"):
         _validate_freq_regularity(df=df, freq=freq, id_col="unique_id", time_col="ds")
 
 
 @pytest.mark.parametrize("freq", FREQS)
-def test_rejects_duplicate_that_cancels_out_a_gap(freq):
-    df = _with_duplicate_cancelling_a_gap()
-    assert len(df) == 5
+@pytest.mark.parametrize("missing_timestamp", [False, True])
+def test_rejects_duplicate_timestamps(freq, missing_timestamp):
+    df = _with_duplicate(missing_timestamp)
 
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+    with pytest.raises(ValueError, match="duplicate timestamps") as excinfo:
         _validate_freq_regularity(df=df, freq=freq, id_col="unique_id", time_col="ds")
+    assert "Each (`unique_id`, `ds`) pair must be unique." in str(excinfo.value)
 
 
 def test_polars_accepts_regular_series():
@@ -63,10 +66,11 @@ def test_polars_accepts_regular_series():
     )
 
 
-def test_polars_rejects_duplicate_that_cancels_out_a_gap():
-    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+@pytest.mark.parametrize("missing_timestamp", [False, True])
+def test_polars_rejects_duplicate_timestamps(missing_timestamp):
+    with pytest.raises(ValueError, match="duplicate timestamps"):
         _validate_freq_regularity(
-            df=pl.from_pandas(_with_duplicate_cancelling_a_gap()),
+            df=pl.from_pandas(_with_duplicate(missing_timestamp)),
             freq="1d",
             id_col="unique_id",
             time_col="ds",
