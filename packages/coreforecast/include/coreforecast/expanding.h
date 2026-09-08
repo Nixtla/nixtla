@@ -59,6 +59,7 @@ inline void QuantileTransform(const T *data, int n, T *out, T p,
 template <typename T>
 inline void QuantileUpdate(const T *data, int n, T *out, T p,
                            bool skipna = false) {
+  rolling::RequireProbability("p", p);
   if (!skipna) {
     std::vector<T> buffer(data, data + n);
     *out = stats::Quantile(buffer.begin(), buffer.end(), p);

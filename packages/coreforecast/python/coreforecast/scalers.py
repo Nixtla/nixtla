@@ -43,8 +43,11 @@ def _boxcox_lambda_checks(
         )
     if lower >= upper:
         raise ValueError("lower must be less than upper")
-    if method == "guerrero" and season_length is None:
-        raise ValueError("season_length is required when method='guerrero'")
+    if method == "guerrero":
+        if season_length is None:
+            raise ValueError("season_length is required when method='guerrero'")
+        if season_length <= 0:
+            raise ValueError("season_length must be greater than 0")
 
 
 def boxcox_lambda(
@@ -180,7 +183,8 @@ class LocalMinMaxScaler(_BaseLocalScaler):
 
     Args:
         skipna (bool): If True, exclude NaN values when computing statistics.
-            When False (default), NaN values are included and may result in NaN statistics."""
+            When False (default), only a leading run of NaNs is supported; an
+            interior one leaves the statistics unspecified, so pass True for that."""
 
     _scaler_type = "minmax"
 
@@ -193,7 +197,8 @@ class LocalStandardScaler(_BaseLocalScaler):
 
     Args:
         skipna (bool): If True, exclude NaN values when computing statistics.
-            When False (default), NaN values are included and may result in NaN statistics."""
+            When False (default), only a leading run of NaNs is supported; an
+            interior one leaves the statistics unspecified, so pass True for that."""
 
     _scaler_type = "standard"
 
@@ -209,7 +214,8 @@ class LocalRobustScaler(_BaseLocalScaler):
             If 'iqr' will use the inter quartile range as the scale.
             If 'mad' will use median absolute deviation as the scale.
         skipna (bool): If True, exclude NaN values when computing statistics.
-            When False (default), NaN values are included and may result in NaN statistics."""
+            When False (default), only a leading run of NaNs is supported; an
+            interior one leaves the statistics unspecified, so pass True for that."""
 
     def __init__(self, scale: str, skipna: bool = False):
         if scale == "iqr":

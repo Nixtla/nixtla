@@ -1,12 +1,17 @@
 #pragma once
 
 #include "brent.h"
+#include "common.h"
 #include "stats.h"
 
 #include <Eigen/Dense>
 
 #include <algorithm>
+#include <cmath>
+#include <iterator>
+#include <limits>
 #include <numeric>
+#include <ranges>
 #include <vector>
 
 namespace scalers {
@@ -20,129 +25,75 @@ inline T CommonScalerInverseTransform(T data, T offset, T scale) {
   return data * scale + offset;
 }
 
+// Applies stats_fn to the data, or to a NaN-free copy of it when skipna is set,
+// writing NaN stats when nothing valid remains.
+template <typename T, typename Fn>
+inline void WithSkipNA(const T *data, int n, T *stats, bool skipna,
+                       Fn stats_fn) {
+  if (!skipna) {
+    stats_fn(data, n, stats);
+    return;
+  }
+  std::vector<T> valid;
+  valid.reserve(n);
+  std::copy_if(data, data + n, std::back_inserter(valid),
+               [](T x) { return !std::isnan(x); });
+  if (valid.empty()) {
+    stats[0] = std::numeric_limits<T>::quiet_NaN();
+    stats[1] = std::numeric_limits<T>::quiet_NaN();
+    return;
+  }
+  stats_fn(valid.data(), static_cast<int>(valid.size()), stats);
+}
+
 template <typename T>
 inline void MinMaxScalerStats(const T *data, int n, T *stats,
                               bool skipna = false) {
-  if (!skipna) {
-    auto [min, max] =
-        std::ranges::minmax(std::ranges::subrange(data, data + n));
-    stats[0] = min;
-    stats[1] = max - min;
-  } else {
-    std::vector<T> valid_data;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        valid_data.push_back(data[i]);
-      }
-    }
-    if (valid_data.empty()) {
-      stats[0] = std::numeric_limits<T>::quiet_NaN();
-      stats[1] = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      auto [min, max] = std::ranges::minmax(valid_data);
-      stats[0] = min;
-      stats[1] = max - min;
-    }
-  }
+  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
+    auto [min, max] = std::ranges::minmax(std::ranges::subrange(d, d + m));
+    s[0] = min;
+    s[1] = max - min;
+  });
 }
 
 template <typename T>
 inline void StandardScalerStats(const T *data, int n, T *stats,
                                 bool skipna = false) {
-  if (!skipna) {
-    const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(data, n);
+  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
+    const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(d, m);
     auto double_v = v.template cast<double>().array();
     double mean = double_v.mean();
     double std = std::sqrt((double_v - mean).square().mean());
-    stats[0] = static_cast<T>(mean);
-    stats[1] = static_cast<T>(std);
-  } else {
-    std::vector<T> valid_data;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        valid_data.push_back(data[i]);
-      }
-    }
-    if (valid_data.empty()) {
-      stats[0] = std::numeric_limits<T>::quiet_NaN();
-      stats[1] = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(
-          valid_data.data(), valid_data.size());
-      auto double_v = v.template cast<double>().array();
-      double mean = double_v.mean();
-      double std = std::sqrt((double_v - mean).square().mean());
-      stats[0] = static_cast<T>(mean);
-      stats[1] = static_cast<T>(std);
-    }
-  }
+    s[0] = static_cast<T>(mean);
+    s[1] = static_cast<T>(std);
+  });
 }
 
 template <typename T>
 inline void RobustScalerIqrStats(const T *data, int n, T *stats,
                                  bool skipna = false) {
-  if (!skipna) {
-    std::vector<T> buffer(data, data + n);
+  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
+    std::vector<T> buffer(d, d + m);
     const T q1 = stats::Quantile(buffer.begin(), buffer.end(), T{0.25});
     const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
     const T q3 = stats::Quantile(buffer.begin(), buffer.end(), T{0.75});
-    stats[0] = median;
-    stats[1] = q3 - q1;
-  } else {
-    std::vector<T> valid_data;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        valid_data.push_back(data[i]);
-      }
-    }
-    if (valid_data.empty()) {
-      stats[0] = std::numeric_limits<T>::quiet_NaN();
-      stats[1] = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      const T q1 =
-          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.25});
-      const T median =
-          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
-      const T q3 =
-          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.75});
-      stats[0] = median;
-      stats[1] = q3 - q1;
-    }
-  }
+    s[0] = median;
+    s[1] = q3 - q1;
+  });
 }
 
 template <typename T>
 inline void RobustScalerMadStats(const T *data, int n, T *stats,
                                  bool skipna = false) {
-  if (!skipna) {
-    std::vector<T> buffer(data, data + n);
+  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
+    std::vector<T> buffer(d, d + m);
     const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
     std::transform(buffer.begin(), buffer.end(), buffer.begin(),
                    [median](auto x) { return std::abs(x - median); });
     const T mad = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
-    stats[0] = median;
-    stats[1] = mad;
-  } else {
-    std::vector<T> valid_data;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        valid_data.push_back(data[i]);
-      }
-    }
-    if (valid_data.empty()) {
-      stats[0] = std::numeric_limits<T>::quiet_NaN();
-      stats[1] = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      const T median =
-          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
-      std::transform(valid_data.begin(), valid_data.end(), valid_data.begin(),
-                     [median](auto x) { return std::abs(x - median); });
-      const T mad =
-          stats::Quantile(valid_data.begin(), valid_data.end(), T{0.5});
-      stats[0] = median;
-      stats[1] = mad;
-    }
-  }
+    s[0] = median;
+    s[1] = mad;
+  });
 }
 
 template <typename T>
@@ -173,6 +124,7 @@ T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
 template <typename T>
 void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
                           T upper) {
+  RequirePositive("season_length", period);
   if (n <= 2 * period) {
     *out = T{1.0};
     return;

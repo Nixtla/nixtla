@@ -54,8 +54,11 @@ def _rolling_docstring(*args, **kwargs) -> Callable:
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
         skipna (bool, optional): Exclude NaN values from calculations. When False (default),
-            any NaN value in the window causes the result to be NaN. When True, NaN values
-            are ignored and statistics are computed on remaining valid values in the window.
+            NaNs are assumed to occur only as a leading run: that prefix is preserved in the
+            output and the statistic is computed over the values that follow it. A NaN
+            anywhere else makes that result and every later one NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window,
+            which is what you want for data with gaps in the middle.
             Defaults to False for backwards compatibility.
 
     Returns:
@@ -79,8 +82,12 @@ def _seasonal_rolling_docstring(*args, **kwargs) -> Callable:
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
         skipna (bool, optional): Exclude NaN values from calculations. When False (default),
-            any NaN value in the window causes the result to be NaN. When True, NaN values
-            are ignored and statistics are computed on remaining valid values in the window.
+            NaNs are assumed to occur only as a leading run: that prefix is preserved in the
+            output and the statistic is computed over the values that follow it. A NaN
+            anywhere else makes that result and every later one in the same season NaN;
+            the other seasons are unaffected. When True, NaN values are ignored and
+            statistics are computed on remaining valid values in the window, which is
+            what you want for data with gaps in the middle.
             Defaults to False for backwards compatibility.
 
     Returns:
@@ -150,8 +157,11 @@ def rolling_quantile(
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
         skipna (bool, optional): Exclude NaN values from calculations. When False (default),
-            any NaN value in the window causes the result to be NaN. When True, NaN values
-            are ignored and statistics are computed on remaining valid values in the window.
+            NaNs are assumed to occur only as a leading run: that prefix is preserved in the
+            output and the statistic is computed over the values that follow it. A NaN
+            anywhere else makes that result and every later one NaN. When True, NaN values
+            are ignored and statistics are computed on remaining valid values in the window,
+            which is what you want for data with gaps in the middle.
             Defaults to False for backwards compatibility.
 
     Returns:
@@ -232,8 +242,12 @@ def seasonal_rolling_quantile(
         min_samples (int, optional): The minimum number of samples required to compute the statistic.
             If None, it is set to `window_size`.
         skipna (bool, optional): Exclude NaN values from calculations. When False (default),
-            any NaN value in the window causes the result to be NaN. When True, NaN values
-            are ignored and statistics are computed on remaining valid values in the window.
+            NaNs are assumed to occur only as a leading run: that prefix is preserved in the
+            output and the statistic is computed over the values that follow it. A NaN
+            anywhere else makes that result and every later one in the same season NaN;
+            the other seasons are unaffected. When True, NaN values are ignored and
+            statistics are computed on remaining valid values in the window, which is
+            what you want for data with gaps in the middle.
             Defaults to False for backwards compatibility.
 
     Returns:

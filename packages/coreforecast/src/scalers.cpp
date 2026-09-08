@@ -5,31 +5,34 @@
 template <typename T>
 T BoxCoxLambdaGuerrero(py::array_t<T> data, int period, T lower, T upper) {
   T out;
-  scalers::BoxCoxLambdaGuerrero(data.data(), data.size(), &out, period, lower,
-                                upper);
+  const auto x = AsContiguous(data);
+  scalers::BoxCoxLambdaGuerrero(x.data(), x.size(), &out, period, lower, upper);
   return out;
 }
 
 template <typename T>
 T BoxCoxLambdaLogLik(py::array_t<T> data, T lower, T upper) {
   T out;
-  scalers::BoxCoxLambdaLogLik(data.data(), data.size(), &out, lower, upper);
+  const auto x = AsContiguous(data);
+  scalers::BoxCoxLambdaLogLik(x.data(), x.size(), &out, lower, upper);
   return out;
 }
 
 template <typename T>
 py::array_t<T> BoxCoxTransform(py::array_t<T> data, T lambda) {
-  py::array_t<T> out(data.size());
+  const auto in = AsContiguous(data);
+  py::array_t<T> out(in.size());
   std::transform(
-      data.data(), data.data() + data.size(), out.mutable_data(),
+      in.data(), in.data() + in.size(), out.mutable_data(),
       [lambda](T x) { return scalers::BoxCoxTransform<T>(x, lambda, 0.0); });
   return out;
 }
 
 template <typename T>
 py::array_t<T> BoxCoxInverseTransform(const py::array_t<T> data, T lambda) {
-  py::array_t<T> out(data.size());
-  std::transform(data.data(), data.data() + data.size(), out.mutable_data(),
+  const auto in = AsContiguous(data);
+  py::array_t<T> out(in.size());
+  std::transform(in.data(), in.data() + in.size(), out.mutable_data(),
                  [lambda](T x) {
                    return scalers::BoxCoxInverseTransform<T>(x, lambda, 0.0);
                  });
@@ -45,6 +48,6 @@ template <typename T> void init_sc_fns(py::module_ &m) {
 
 void init_sc(py::module_ &m) {
   py::module_ sc = m.def_submodule("scalers");
-  init_sc_fns<float>(sc);
   init_sc_fns<double>(sc);
+  init_sc_fns<float>(sc);
 }

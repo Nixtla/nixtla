@@ -31,7 +31,16 @@ if TYPE_CHECKING:
 
 
 class _BaseLagTransform(abc.ABC):
+    lag: int
     stats_: np.ndarray
+
+    @property
+    def _update_lag(self) -> int:
+        # an update consumes the value that isn't in ga yet, so it reads one
+        # position further back than the transform does
+        if self.lag < 1:
+            raise ValueError(f"lag must be greater than 0 to update, got {self.lag}")
+        return self.lag - 1
 
     @abc.abstractmethod
     def transform(self, ga: "GroupedArray") -> np.ndarray:
@@ -86,12 +95,11 @@ class Lag(_BaseLagTransform):
         return ga._lag(self.lag)
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        return ga._index_from_end(self.lag - 1)
+        return ga._index_from_end(self._update_lag)
 
 
 class _RollingBase(_BaseLagTransform):
     stat_name: str
-    lag: int
     window_size: int
     min_samples: int
     skipna: bool
@@ -119,7 +127,7 @@ class _RollingBase(_BaseLagTransform):
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return getattr(ga, f"_rolling_{self.stat_name}_update")(
-            self.lag - 1, self.window_size, self.min_samples, self.skipna
+            self._update_lag, self.window_size, self.min_samples, self.skipna
         )
 
 
@@ -211,7 +219,7 @@ class RollingQuantile(_RollingBase):
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return ga._rolling_quantile_update(
-            self.lag - 1, self.p, self.window_size, self.min_samples, self.skipna
+            self._update_lag, self.p, self.window_size, self.min_samples, self.skipna
         )
 
 
@@ -240,7 +248,7 @@ class _SeasonalRollingBase(_RollingBase):
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return getattr(ga, f"_seasonal_rolling_{self.stat_name}_update")(
-            self.lag - 1,
+            self._update_lag,
             self.season_length,
             self.window_size,
             self.min_samples,
@@ -351,7 +359,7 @@ class SeasonalRollingQuantile(_SeasonalRollingBase):
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
         return ga._seasonal_rolling_quantile_update(
-            self.lag - 1,
+            self._update_lag,
             self.p,
             self.season_length,
             self.window_size,
@@ -389,8 +397,9 @@ class ExpandingMean(_ExpandingBase):
         return out
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
+        x = ga._index_from_end(self._update_lag)
         self.stats_[:, 0] += 1.0
-        self.stats_[:, 1] += ga._index_from_end(self.lag - 1)
+        self.stats_[:, 1] += x
         return self.stats_[:, 1] / self.stats_[:, 0]
 
 
@@ -407,7 +416,7 @@ class ExpandingStd(_ExpandingBase):
         return out
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        x = ga._index_from_end(self.lag - 1)
+        x = ga._index_from_end(self._update_lag)
         self.stats_[:, 0] += 1.0
         n = self.stats_[:, 0]
         prev_avg = self.stats_[:, 1].copy()
@@ -427,7 +436,7 @@ class _ExpandingComp(_ExpandingBase):
         return out
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        self.stats_ = self._comp_fn(self.stats_, ga._index_from_end(self.lag - 1))
+        self.stats_ = self._comp_fn(self.stats_, ga._index_from_end(self._update_lag))
         return self.stats_
 
 
@@ -475,7 +484,7 @@ class ExpandingQuantile(_BaseLagTransform):
         return ga._expanding_quantile(self.lag, self.p, self.skipna)
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        return ga._expanding_quantile_update(self.lag - 1, self.p, self.skipna)
+        return ga._expanding_quantile_update(self._update_lag, self.p, self.skipna)
 
 
 class ExponentiallyWeightedMean(_BaseLagTransform):
@@ -498,7 +507,7 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         return out
 
     def update(self, ga: "GroupedArray") -> np.ndarray:
-        x = ga._index_from_end(self.lag - 1)
+        x = ga._index_from_end(self._update_lag)
         self.stats_ = self.alpha * x + (1 - self.alpha) * self.stats_
         return self.stats_
 

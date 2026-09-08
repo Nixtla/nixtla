@@ -51,7 +51,7 @@ void GreatestAutocovariance(const T *x, size_t n, T *out, size_t max_lag) {
   Eigen::VectorX<T> resids(n);
   Difference(x, n, resids.data(), 1);
   indptr_t start = FirstNotNaN(resids.data(), n);
-  if (start == n) {
+  if (static_cast<size_t>(start) == n) {
     *out = T{0};
     return;
   }

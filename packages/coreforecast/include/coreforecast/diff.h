@@ -69,6 +69,12 @@ template <typename T> void NumDiffs(const T *x, indptr_t n, T *out, int max_d) {
 
 template <typename T>
 void NumSeasDiffs(const T *x, indptr_t n, T *out, int period, int max_d) {
+  RequireNonNegative("season_length", period);
+  // find_season_length passes the zero it gets when it finds no seasonality
+  if (period == 0) {
+    *out = 0;
+    return;
+  }
   // assume there are only NaNs at the start
   indptr_t start_idx = FirstNotNaN(x, n);
   x += start_idx;

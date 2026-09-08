@@ -1,5 +1,8 @@
 name: pytest
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -42,6 +45,89 @@ jobs:
           CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           CIBW_BEFORE_TEST: uv sync --group dev --active
           CIBW_TEST_COMMAND: uv run pytest {project}/tests -k "not efficiency"
+
+  warnings:
+    name: Build with -Werror on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # gcc here, AppleClang on macOS; -Werror is off by default so that a new
+      # compiler warning fails this job instead of everyone's source install
+      - name: Build with warnings as errors
+        run: uv build --wheel -Ccmake.define.COREFORECAST_WERROR=ON
+
+  sanitizers:
+    name: Run tests under ASan and UBSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # --no-install-project so uv never builds an uninstrumented coreforecast:
+      # it caches that wheel and restores it over the sanitizer build below
+      - name: Install dependencies
+        run: uv sync --group dev --no-install-project
+
+      # not editable: the scikit-build redirecting finder would otherwise import
+      # whatever _lib the sync left behind instead of the instrumented one.
+      # No linker flags: cmake puts CMAKE_CXX_FLAGS on the link line too, so the
+      # module already comes out with libasan and libubsan as DT_NEEDED. The
+      # SHARED ones wouldn't apply either, pybind11_add_module builds a MODULE
+      - name: Build with the sanitizers
+        run: |
+          uv pip install . \
+            -Ccmake.build-type=Debug \
+            -Ccmake.define.CMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS"
+
+      # --no-sync so it can't reinstall the project over the instrumented build.
+      # The runtimes still have to be preloaded even though the module links
+      # them: python isn't instrumented, so pulling them in with the module
+      # leaves ASan initializing too late to be usable ("runtime does not come
+      # first in initial library list"). Both of them, since with libasan alone
+      # the process dies with no report the first time a kernel throws.
+      # detect_leaks=0 because CPython leaks by design; halt_on_error makes a
+      # UBSan report fail the job instead of only printing
+      - name: Run tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)" \
+            uv run --no-sync pytest tests -k "not efficiency"
 
   run_benchmarks:
     runs-on: ubuntu-22.04

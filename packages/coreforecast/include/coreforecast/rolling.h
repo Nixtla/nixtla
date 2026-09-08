@@ -2,10 +2,24 @@
 
 #include "SkipList.h"
 
+#include <memory>
+#include <stdexcept>
+#include <string>
+
+#include "common.h"
 #include "stats.h"
 #include <variant>
 
 namespace rolling {
+
+// Quantile levels index into the sorted window, so a value outside [0, 1]
+// indexes past its end. NaN fails both comparisons and is rejected too.
+inline void RequireProbability(const char *name, double value) {
+  if (value >= 0.0 && value <= 1.0) {
+    return;
+  }
+  throw std::invalid_argument(std::string(name) + " must be between 0 and 1");
+}
 
 template <typename T, bool SkipNA> class MeanAccumulator {
 public:
@@ -63,6 +77,8 @@ private:
 template <typename T, typename Accumulator, typename... Args>
 inline void Transform(const T *data, int n, T *out, int window_size,
                       int min_samples, Args &&...args) {
+  RequirePositive("window_size", window_size);
+  RequirePositive("min_samples", min_samples);
   if (n < min_samples) {
     std::fill(out, out + n, std::numeric_limits<T>::quiet_NaN());
     return;
@@ -98,6 +114,8 @@ template <typename T>
 inline void StdTransformWithStats(const T *data, int n, T *out, T *agg,
                                   bool save_stats, int window_size,
                                   int min_samples, bool skipna = false) {
+  RequirePositive("window_size", window_size);
+  RequirePositive("min_samples", min_samples);
   if (!skipna) {
     // Fast path: original implementation without NaN checking
     T prev_avg = static_cast<T>(0.0);
@@ -210,9 +228,16 @@ inline void StdTransform(const T *data, int n, T *out, int window_size,
 // ============================================================================
 template <typename T, typename Comp, bool SkipNA> class CompAccumulator {
 public:
-  CompAccumulator(int window_size) : window_size_(window_size) {
-    buffer_.reserve(window_size);
-  }
+  // std::pair's default constructor value-initializes, which would zero the
+  // whole ring buffer on every allocation; this aggregate's one is trivial
+  struct Entry {
+    int index;
+    T value;
+  };
+
+  CompAccumulator(int window_size)
+      : buffer_(std::make_unique_for_overwrite<Entry[]>(window_size)),
+        window_size_(window_size) {}
   inline bool Empty() const noexcept { return tail_ == -1; }
   inline void PushBack(int i, T x) noexcept {
     if (tail_ == -1) {
@@ -245,12 +270,8 @@ public:
       ++head_;
     }
   }
-  inline const std::pair<int, T> &Front() const noexcept {
-    return buffer_[head_];
-  }
-  inline const std::pair<int, T> &Back() const noexcept {
-    return buffer_[tail_];
-  }
+  inline const Entry &Front() const noexcept { return buffer_[head_]; }
+  inline const Entry &Back() const noexcept { return buffer_[tail_]; }
 
   void Insert(T x) noexcept {
     if constexpr (!SkipNA) {
@@ -268,16 +289,21 @@ public:
 
     if constexpr (SkipNA) {
       if (std::isnan(x)) {
+        // the front can expire on this step even though nothing is inserted;
+        // skipping the check leaves an out-of-window entry to be returned
+        if (!Empty() && Front().index <= i_) {
+          PopFront();
+        }
         ++i_;
         return;
       }
     }
 
     // Valid value: maintain monotonic deque
-    while (!Empty() && comp_(Back().second, x)) {
+    while (!Empty() && comp_(Back().value, x)) {
       PopBack();
     }
-    if (!Empty() && Front().first <= i_) {
+    if (!Empty() && Front().index <= i_) {
       PopFront();
     }
     PushBack(window_size_ + i_, x);
@@ -286,7 +312,7 @@ public:
 
   void Update(T x) noexcept { Insert(x); }
 
-  T Update(T x, int n) noexcept {
+  T Update(T x, int) noexcept {
     Insert(x);
     if constexpr (!SkipNA) {
       if (has_nan_)
@@ -294,10 +320,10 @@ public:
     }
     if (Empty())
       return std::numeric_limits<T>::quiet_NaN();
-    return Front().second;
+    return Front().value;
   }
 
-  T Update(T new_x, T old_x) noexcept {
+  T Update(T new_x, T) noexcept {
     Insert(new_x);
     if constexpr (!SkipNA) {
       if (has_nan_)
@@ -305,11 +331,11 @@ public:
     }
     if (Empty())
       return std::numeric_limits<T>::quiet_NaN();
-    return Front().second;
+    return Front().value;
   }
 
 private:
-  std::vector<std::pair<int, T>> buffer_;
+  std::unique_ptr<Entry[]> buffer_;
   int window_size_;
   int head_ = 0;
   int tail_ = -1;
@@ -431,6 +457,7 @@ private:
 template <typename T>
 inline void QuantileTransform(const T *data, int n, T *out, int window_size,
                               int min_samples, T p, bool skipna = false) {
+  RequireProbability("p", p);
   if (skipna) {
     Transform<T, QuantileAccumulator<T, true>>(data, n, out, window_size,
                                                min_samples, p);
@@ -444,6 +471,7 @@ template <typename Func, typename T, typename... Args>
 inline void SeasonalTransform(Func RollingTfm, const T *data, int n, T *out,
                               int season_length, int window_size,
                               int min_samples, Args &&...args) {
+  RequirePositive("season_length", season_length);
   int buff_size = n / season_length + (n % season_length > 0);
   std::vector<T> season_data(buff_size);
   std::vector<T> season_out(buff_size);
@@ -503,6 +531,8 @@ void SeasonalQuantileTransform(const T *data, int n, T *out, int season_length,
 template <typename Func, typename T, typename... Args>
 inline void Update(Func RollingTfm, const T *data, int n, T *out,
                    int window_size, int min_samples, Args &&...args) {
+  // hoisted from the kernel: the buffer below is sized from window_size
+  RequirePositive("window_size", window_size);
   if (n < min_samples) {
     *out = std::numeric_limits<T>::quiet_NaN();
     return;
@@ -549,6 +579,8 @@ template <typename Func, typename T, typename... Args>
 inline void SeasonalUpdate(Func RollingUpdate, const T *data, int n, T *out,
                            int season_length, int window_size, int min_samples,
                            Args &&...args) {
+  RequirePositive("season_length", season_length);
+  RequirePositive("window_size", window_size);
   int season = n % season_length;
   int season_n = n / season_length + (season > 0);
   if (season_n < min_samples) {

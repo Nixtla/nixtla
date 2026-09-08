@@ -1,4 +1,10 @@
+#include <algorithm>
+#include <exception>
 #include <limits>
+#include <stdexcept>
+#include <string>
+#include <thread>
+#include <vector>
 
 #include "common.h"
 #include "diff.h"
@@ -11,6 +17,44 @@
 #include "seasonal.h"
 
 using namespace pybind11::literals;
+
+// The module is built with -fvisibility=hidden, so anything holding a pybind
+// type has to be hidden too; internal linkage is the portable way to say it.
+namespace {
+
+// Entries used as offsets into a buffer: a negative one makes a slice start
+// before it and a decreasing one makes a slice run backwards.
+template <typename T>
+inline void RequireOffsets(const T *values, py::ssize_t size) {
+  for (py::ssize_t i = 0; i < size; ++i) {
+    if (values[i] < 0) {
+      throw std::invalid_argument("indptr values must be non-negative");
+    }
+    if (i > 0 && values[i] < values[i - 1]) {
+      throw std::invalid_argument("indptr must be non-decreasing");
+    }
+  }
+}
+
+// One difference order per group, used both as a loop bound and to build the
+// tails offsets, so a short array is read past its end.
+inline void CheckDs(const CArray<indptr_t> &ds, int n_groups) {
+  if (ds.size() != n_groups) {
+    throw std::invalid_argument("ds must have one element per group");
+  }
+  for (py::ssize_t i = 0; i < ds.size(); ++i) {
+    RequireNonNegative("d", ds.data()[i]);
+  }
+}
+
+// Two entries per group, read as stats[2 * i] and stats[2 * i + 1], so anything
+// shorter is read past its end.
+template <typename T>
+inline void CheckStats(const CArray<T> &stats, int n_groups) {
+  if (stats.ndim() != 2 || stats.size() != 2 * n_groups) {
+    throw std::invalid_argument("stats must have shape (n_groups, 2)");
+  }
+}
 
 template <typename T> inline void SkipLags(T *out, int n, int lag) {
   int replacements = std::min(lag, n);
@@ -51,11 +95,15 @@ public:
                           static_cast<T *>(buffer.ptr) + start, data_);
   }
 
-  py::array_t<T> Take(const py::array_t<indptr_t> indices) const {
+  py::array_t<T> Take(const CArray<indptr_t> indices) const {
     auto indices_data = indices.data();
     auto indptr_data = indptr_.data();
+    const indptr_t num_groups = NumGroups();
     indptr_t out_size = 0;
     for (int i = 0; i < indices.size(); ++i) {
+      if (indices_data[i] < 0 || indices_data[i] >= num_groups) {
+        throw std::out_of_range("Index out of range");
+      }
       indptr_t start = indptr_data[indices_data[i]];
       indptr_t end = indptr_data[indices_data[i] + 1];
       out_size += end - start;
@@ -72,28 +120,58 @@ public:
     return out;
   }
 
-  template <typename Func> void ForEach(Func f) const noexcept {
-    if (num_threads_ < 2) {
-      f(0, NumGroups());
+  // The workers only touch raw buffers, never the Python API, so the GIL is
+  // released around them. Exceptions can't cross a thread boundary, so each
+  // worker stashes its own and we rethrow once everything has been joined.
+  template <typename Func> void ForEach(Func f) const {
+    const int n_groups = NumGroups();
+    const int n_threads = std::clamp(num_threads_, 1, std::max(1, n_groups));
+    if (n_threads < 2) {
+      py::gil_scoped_release release;
+      f(0, n_groups);
       return;
     }
+    std::vector<std::exception_ptr> errors(n_threads);
     std::vector<std::thread> threads;
-    threads.reserve(num_threads_);
-    int groups_per_thread = NumGroups() / num_threads_;
-    int remainder = NumGroups() % num_threads_;
-    for (int t = 0; t < num_threads_; ++t) {
-      int start_group = t * groups_per_thread + std::min(t, remainder);
-      int end_group = (t + 1) * groups_per_thread + std::min(t + 1, remainder);
-      threads.emplace_back(f, start_group, end_group);
+    threads.reserve(n_threads);
+    const int groups_per_thread = n_groups / n_threads;
+    const int remainder = n_groups % n_threads;
+    std::exception_ptr spawn_error;
+    {
+      py::gil_scoped_release release;
+      try {
+        for (int t = 0; t < n_threads; ++t) {
+          int start_group = t * groups_per_thread + std::min(t, remainder);
+          int end_group =
+              (t + 1) * groups_per_thread + std::min(t + 1, remainder);
+          threads.emplace_back([&f, &errors, t, start_group, end_group]() {
+            try {
+              f(start_group, end_group);
+            } catch (...) {
+              errors[t] = std::current_exception();
+            }
+          });
+        }
+      } catch (...) {
+        spawn_error = std::current_exception();
+      }
+      for (auto &thread : threads) {
+        thread.join();
+      }
     }
-    for (auto &thread : threads) {
-      thread.join();
+    if (spawn_error) {
+      std::rethrow_exception(spawn_error);
+    }
+    for (auto &error : errors) {
+      if (error) {
+        std::rethrow_exception(error);
+      }
     }
   }
 
   template <typename Func, typename... Args>
-  void Reduce(Func f, int n_out, T *out, int lag,
-              Args &&...args) const noexcept {
+  void Reduce(Func f, int n_out, T *out, int lag, Args &&...args) const {
+    RequireNonNegative("lag", lag);
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, n_out, out, lag,
              &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -116,7 +194,7 @@ public:
 
   template <typename Func, typename... Args>
   void VariableReduce(Func f, const indptr_t *indptr_out, T *out,
-                      Args &&...args) const noexcept {
+                      Args &&...args) const {
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, indptr_out, out,
              &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -131,7 +209,7 @@ public:
   }
 
   template <typename Func>
-  void ScalerTransform(Func f, const T *stats, T *out) const noexcept {
+  void ScalerTransform(Func f, const T *stats, T *out) const {
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, stats,
              out](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -150,7 +228,8 @@ public:
   }
 
   template <typename Func, typename... Args>
-  void Transform(Func f, int lag, T *out, Args &&...args) const noexcept {
+  void Transform(Func f, int lag, T *out, Args &&...args) const {
+    RequireNonNegative("lag", lag);
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, lag, out,
              &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -170,8 +249,7 @@ public:
   }
 
   template <typename Func>
-  void VariableTransform(Func f, const indptr_t *params,
-                         T *out) const noexcept {
+  void VariableTransform(Func f, const indptr_t *params, T *out) const {
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, params,
              out](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -190,7 +268,8 @@ public:
 
   template <typename Func, typename... Args>
   void TransformAndReduce(Func f, int lag, T *out, int n_agg, T *agg,
-                          Args &&...args) const noexcept {
+                          Args &&...args) const {
+    RequireNonNegative("lag", lag);
     ForEach([data = data_.data(), indptr = indptr_.data(), &f, lag, out, n_agg,
              agg, &args...](int start_group, int end_group) {
       for (int i = start_group; i < end_group; ++i) {
@@ -199,8 +278,13 @@ public:
         indptr_t n = end - start;
         indptr_t start_idx = FirstNotNaN(data + start, n, out + start);
         SkipLags(out + start + start_idx, n - start_idx, lag);
-        if (start_idx + lag >= n)
+        if (start_idx + lag >= n) {
+          // f never runs for an empty or all-NaN group, so its stats row would
+          // otherwise be left uninitialised.
+          std::fill(agg + i * n_agg, agg + (i + 1) * n_agg,
+                    std::numeric_limits<T>::quiet_NaN());
           continue;
+        }
         start += start_idx;
         f(data + start, n - start_idx - lag, out + start + lag, agg + i * n_agg,
           std::forward<Args>(args)...);
@@ -210,7 +294,7 @@ public:
 
   template <typename Func>
   void Zip(Func f, const GroupedArray<T> &other, const indptr_t *out_indptr,
-           T *out) const noexcept {
+           T *out) const {
     ForEach([data = data_.data(), indptr = indptr_.data(), &f,
              other_data = other.data_.data(),
              other_indptr = other.indptr_.data(), out_indptr,
@@ -228,7 +312,7 @@ public:
     });
   }
 
-  std::unique_ptr<GroupedArray<T>> WithData(const py::array_t<T> new_data) {
+  std::unique_ptr<GroupedArray<T>> WithData(const CArray<T> new_data) {
     if (new_data.size() != data_.size()) {
       throw std::invalid_argument("Data must have the same size");
     }
@@ -236,17 +320,20 @@ public:
   }
 
   py::array_t<T> IndexFromEnd(int k) {
+    RequireNonNegative("k", k);
     py::array_t<T> out(NumGroups());
     Reduce(grouped_array_functions::IndexFromEnd<T>, 1, out.mutable_data(), 0,
            k);
     return out;
   }
   py::array_t<T> Head(int k) {
+    RequireNonNegative("k", k);
     py::array_t<T> out(k * NumGroups());
     Reduce(grouped_array_functions::Head<T>, k, out.mutable_data(), 0, k);
     return out;
   }
   py::array_t<T> Tail(int k) {
+    RequireNonNegative("k", k);
     py::array_t<T> out(k * NumGroups());
     Reduce(grouped_array_functions::Tail<T>, k, out.mutable_data(), 0, k);
     return out;
@@ -265,7 +352,17 @@ public:
     return std::make_unique<GroupedArray<T>>(out_data, out_indptr,
                                              num_threads_);
   }
-  py::array_t<T> Tails(py::array_t<indptr_t> out_indptr) {
+  py::array_t<T> Tails(const CArray<indptr_t> out_indptr) {
+    if (out_indptr.size() != indptr_.size()) {
+      throw std::invalid_argument(
+          "indptr must have one element per group plus one");
+    }
+    RequireOffsets(out_indptr.data(), out_indptr.size());
+    // the output is sized from the last offset, so a non-zero first one would
+    // leave the elements before it uninitialized
+    if (out_indptr.data()[0] != 0) {
+      throw std::invalid_argument("First element of indptr must be zero");
+    }
     py::array_t<T> out(out_indptr.data()[NumGroups()]);
     VariableReduce(grouped_array_functions::Tail<T>, out_indptr.data(),
                    out.mutable_data());
@@ -309,6 +406,7 @@ public:
   py::array_t<T> RollingQuantileTransform(int lag, T p, int window_size,
                                           int min_samples,
                                           bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(data_.size());
     Transform(rolling::QuantileTransform<T>, lag, out.mutable_data(),
               window_size, min_samples, p, skipna);
@@ -345,6 +443,7 @@ public:
   }
   py::array_t<T> RollingQuantileUpdate(int lag, T p, int window_size,
                                        int min_samples, bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(NumGroups());
     Reduce(rolling::QuantileUpdate<T>, 1, out.mutable_data(), lag, window_size,
            min_samples, p, skipna);
@@ -394,6 +493,7 @@ public:
                                                   int window_size,
                                                   int min_samples,
                                                   bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(data_.size());
     Transform(rolling::SeasonalQuantileTransform<T>, lag, out.mutable_data(),
               season_length, window_size, min_samples, p, skipna);
@@ -440,6 +540,7 @@ public:
   py::array_t<T> SeasonalRollingQuantileUpdate(int lag, T p, int season_length,
                                                int window_size, int min_samples,
                                                bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(NumGroups());
     Reduce(rolling::SeasonalQuantileUpdate<T>, 1, out.mutable_data(), lag,
            season_length, window_size, min_samples, p, skipna);
@@ -473,12 +574,14 @@ public:
     return out;
   }
   py::array_t<T> ExpandingQuantileTransform(int lag, T p, bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(data_.size());
     Transform(expanding::QuantileTransform<T>, lag, out.mutable_data(), p,
               skipna);
     return out;
   }
   py::array_t<T> ExpandingQuantileUpdate(int lag, T p, bool skipna = false) {
+    rolling::RequireProbability("p", p);
     py::array_t<T> out(NumGroups());
     Reduce(expanding::QuantileUpdate<T>, 1, out.mutable_data(), lag, p, skipna);
     return out;
@@ -495,100 +598,30 @@ public:
   template <typename Func>
   py::array_t<T> ScalerStats(Func func, bool skipna = false) {
     py::array_t<T> out({static_cast<int>(NumGroups()), 2});
-    // Use Reduce with skipna as last parameter
     Reduce(func, 2, out.mutable_data(), 0, skipna);
     return out;
   }
   py::array_t<T> MinMaxScalerStats(bool skipna = false) {
-    py::array_t<T> out({static_cast<int>(NumGroups()), 2});
-    // Directly call Reduce with skipna for scaler stats
-    ForEach([data = data_.data(), indptr = indptr_.data(), skipna,
-             &out](int start_group, int end_group) {
-      for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr[i];
-        indptr_t end = indptr[i + 1];
-        indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data + start, n);
-        if (start_idx >= n) {
-          out.mutable_data()[2 * i] = std::numeric_limits<T>::quiet_NaN();
-          out.mutable_data()[2 * i + 1] = std::numeric_limits<T>::quiet_NaN();
-          continue;
-        }
-        scalers::MinMaxScalerStats<T>(data + start + start_idx, n - start_idx,
-                                      out.mutable_data() + 2 * i, skipna);
-      }
-    });
-    return out;
+    return ScalerStats(scalers::MinMaxScalerStats<T>, skipna);
   }
   py::array_t<T> StandardScalerStats(bool skipna = false) {
-    py::array_t<T> out({static_cast<int>(NumGroups()), 2});
-    ForEach([data = data_.data(), indptr = indptr_.data(), skipna,
-             &out](int start_group, int end_group) {
-      for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr[i];
-        indptr_t end = indptr[i + 1];
-        indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data + start, n);
-        if (start_idx >= n) {
-          out.mutable_data()[2 * i] = std::numeric_limits<T>::quiet_NaN();
-          out.mutable_data()[2 * i + 1] = std::numeric_limits<T>::quiet_NaN();
-          continue;
-        }
-        scalers::StandardScalerStats<T>(data + start + start_idx, n - start_idx,
-                                        out.mutable_data() + 2 * i, skipna);
-      }
-    });
-    return out;
+    return ScalerStats(scalers::StandardScalerStats<T>, skipna);
   }
   py::array_t<T> RobustIqrScalerStats(bool skipna = false) {
-    py::array_t<T> out({static_cast<int>(NumGroups()), 2});
-    ForEach([data = data_.data(), indptr = indptr_.data(), skipna,
-             &out](int start_group, int end_group) {
-      for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr[i];
-        indptr_t end = indptr[i + 1];
-        indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data + start, n);
-        if (start_idx >= n) {
-          out.mutable_data()[2 * i] = std::numeric_limits<T>::quiet_NaN();
-          out.mutable_data()[2 * i + 1] = std::numeric_limits<T>::quiet_NaN();
-          continue;
-        }
-        scalers::RobustScalerIqrStats<T>(data + start + start_idx,
-                                         n - start_idx,
-                                         out.mutable_data() + 2 * i, skipna);
-      }
-    });
-    return out;
+    return ScalerStats(scalers::RobustScalerIqrStats<T>, skipna);
   }
   py::array_t<T> RobustMadScalerStats(bool skipna = false) {
-    py::array_t<T> out({static_cast<int>(NumGroups()), 2});
-    ForEach([data = data_.data(), indptr = indptr_.data(), skipna,
-             &out](int start_group, int end_group) {
-      for (int i = start_group; i < end_group; ++i) {
-        indptr_t start = indptr[i];
-        indptr_t end = indptr[i + 1];
-        indptr_t n = end - start;
-        indptr_t start_idx = FirstNotNaN(data + start, n);
-        if (start_idx >= n) {
-          out.mutable_data()[2 * i] = std::numeric_limits<T>::quiet_NaN();
-          out.mutable_data()[2 * i + 1] = std::numeric_limits<T>::quiet_NaN();
-          continue;
-        }
-        scalers::RobustScalerMadStats<T>(data + start + start_idx,
-                                         n - start_idx,
-                                         out.mutable_data() + 2 * i, skipna);
-      }
-    });
-    return out;
+    return ScalerStats(scalers::RobustScalerMadStats<T>, skipna);
   }
-  py::array_t<T> ApplyScaler(const py::array_t<T> stats) {
+  py::array_t<T> ApplyScaler(const CArray<T> stats) {
+    CheckStats(stats, NumGroups());
     py::array_t<T> out(data_.size());
     ScalerTransform(scalers::CommonScalerTransform<T>, stats.data(),
                     out.mutable_data());
     return out;
   }
-  py::array_t<T> InvertScaler(const py::array_t<T> stats) {
+  py::array_t<T> InvertScaler(const CArray<T> stats) {
+    CheckStats(stats, NumGroups());
     py::array_t<T> out(data_.size());
     ScalerTransform(scalers::CommonScalerInverseTransform<T>, stats.data(),
                     out.mutable_data());
@@ -606,13 +639,15 @@ public:
            upper);
     return out;
   }
-  py::array_t<T> BoxCoxTransform(const py::array_t<T> lambdas) {
+  py::array_t<T> BoxCoxTransform(const CArray<T> lambdas) {
+    CheckStats(lambdas, NumGroups());
     py::array_t<T> out(data_.size());
     ScalerTransform(scalers::BoxCoxTransform<T>, lambdas.data(),
                     out.mutable_data());
     return out;
   }
-  py::array_t<T> BoxCoxInverseTransform(const py::array_t<T> lambdas) {
+  py::array_t<T> BoxCoxInverseTransform(const CArray<T> lambdas) {
+    CheckStats(lambdas, NumGroups());
     py::array_t<T> out(data_.size());
     ScalerTransform(scalers::BoxCoxInverseTransform<T>, lambdas.data(),
                     out.mutable_data());
@@ -629,7 +664,10 @@ public:
     Reduce(diff::NumSeasDiffs<T>, 1, out.mutable_data(), 0, period, max_d);
     return out;
   }
-  py::array_t<T> NumSeasDiffsPeriods(int max_d, py::array_t<T> periods) {
+  py::array_t<T> NumSeasDiffsPeriods(int max_d, const CArray<T> periods) {
+    if (periods.size() != NumGroups()) {
+      throw std::invalid_argument("periods must have one element per group");
+    }
     py::array_t<T> periods_and_out({static_cast<int>(NumGroups()), 2});
     auto periods_ptr = periods.data();
     auto periods_and_out_ptr = periods_and_out.mutable_data();
@@ -652,28 +690,38 @@ public:
     return out;
   }
   py::array_t<T> Difference(int d) {
+    RequireNonNegative("d", d);
     py::array_t<T> out(data_.size());
     Transform(seasonal::Difference<T>, 0, out.mutable_data(), d);
     return out;
   }
-  py::array_t<T> Differences(const py::array_t<indptr_t> ds) {
+  py::array_t<T> Differences(const CArray<indptr_t> ds) {
+    CheckDs(ds, NumGroups());
     py::array_t<T> out(data_.size());
     VariableTransform(diff::Differences<T>, ds.data(), out.mutable_data());
     return out;
   }
-  py::array_t<T> InvertDifference(int d, const py::array_t<T> tails) {
+  py::array_t<T> InvertDifference(int d, const CArray<T> tails) {
     py::array_t<indptr_t> ds(NumGroups());
     std::fill(ds.mutable_data(), ds.mutable_data() + ds.size(), d);
     return InvertDifferences(ds, tails);
   }
-  py::array_t<T> InvertDifferences(const py::array_t<indptr_t> ds,
-                                   const py::array_t<T> tails) {
+  py::array_t<T> InvertDifferences(const CArray<indptr_t> ds,
+                                   const CArray<T> tails) {
+    CheckDs(ds, NumGroups());
     py::array_t<indptr_t> tails_indptr(indptr_.size());
     auto ds_data = ds.data();
     auto tails_indptr_data = tails_indptr.mutable_data();
     tails_indptr_data[0] = 0;
     for (int i = 1; i < tails_indptr.size(); ++i) {
       tails_indptr_data[i] = tails_indptr_data[i - 1] + ds_data[i - 1];
+    }
+    // tails_ga is built here rather than through the factory, so the check the
+    // factory would have done on its last offset has to happen here.
+    if (static_cast<py::ssize_t>(tails_indptr_data[tails_indptr.size() - 1]) !=
+        tails.size()) {
+      throw std::invalid_argument(
+          "tails must have as many elements as the sum of ds");
     }
     auto tails_ga = GroupedArray<T>(tails, tails_indptr, num_threads_);
     py::array_t<T> out(data_.size());
@@ -683,10 +731,48 @@ public:
   }
 };
 
+// Validates indptr at the Python boundary and returns it as indptr_t. Every
+// entry is used as an offset into data, so all of them have to be
+// representable and describe a non-decreasing range, not just the last one:
+// casting straight to indptr_t would wrap a too-large value into one that can
+// still compare equal to the size of data. Takes py::object so that lists,
+// tuples and Series keep working, which py::array would reject.
+inline py::array_t<indptr_t> CheckedIndptr(const py::object &indptr,
+                                           py::ssize_t data_size) {
+  auto indptr64 = py::array_t < int64_t,
+       py::array::c_style | py::array::forcecast > ::ensure(indptr);
+  if (!indptr64) {
+    throw std::invalid_argument("indptr must be an integer array");
+  }
+  if (indptr64.ndim() != 1) {
+    throw std::invalid_argument("indptr must be a 1d array");
+  }
+  if (indptr64.size() < 1) {
+    throw std::invalid_argument("indptr must have at least one element");
+  }
+  const int64_t *values = indptr64.data();
+  for (py::ssize_t i = 0; i < indptr64.size(); ++i) {
+    if (values[i] > std::numeric_limits<indptr_t>::max()) {
+      throw std::invalid_argument(
+          "indptr values must be representable with 32-bit integers");
+    }
+  }
+  RequireOffsets(values, indptr64.size());
+  if (data_size != values[indptr64.size() - 1]) {
+    throw std::invalid_argument(
+        "Last element of indptr must be equal to the size of data");
+  }
+  return py::array_t < indptr_t,
+         py::array::c_style | py::array::forcecast > (indptr64);
+}
+
 template <typename T> void bind_ga(py::module &m, const std::string &name) {
   py::class_<GroupedArray<T>>(m, name.c_str())
-      .def(py::init<const py::array_t<T> &, const py::array_t<indptr_t> &,
-                    int>())
+      .def(py::init(
+          [](const CArray<T> &data, const py::object &indptr, int num_threads) {
+            return std::make_unique<GroupedArray<T>>(
+                data, CheckedIndptr(indptr, data.size()), num_threads);
+          }))
       .def_readonly("data", &GroupedArray<T>::data_)
       .def_readonly("indptr", &GroupedArray<T>::indptr_)
       .def_readwrite("num_threads", &GroupedArray<T>::num_threads_)
@@ -810,30 +896,23 @@ template <typename T> void bind_ga(py::module &m, const std::string &name) {
       .def("_inv_diffs", &GroupedArray<T>::InvertDifferences);
 }
 
+} // namespace
+
 void init_ga(py::module_ &m) {
   py::module_ ga = m.def_submodule("grouped_array");
   bind_ga<float>(ga, "_GroupedArrayFloat32");
   bind_ga<double>(ga, "_GroupedArrayFloat64");
   ga.def(
       "GroupedArray",
-      [](py::array data,
-         py::array_t<indptr_t, py::array::c_style | py::array::forcecast>
-             indptr,
+      [](py::array data, const py::object &indptr_arg,
          int num_threads) -> py::object {
         if (data.ndim() != 1) {
           throw std::invalid_argument("data must be a 1d array");
         }
-        if (indptr.ndim() != 1) {
-          throw std::invalid_argument("indptr must be a 1d array");
-        }
-        indptr_t last_indptr = indptr.data()[indptr.size() - 1];
-        if (data.size() != last_indptr) {
-          throw std::invalid_argument(
-              "Last element of indptr must be equal to the size of data");
-        }
+        auto indptr = CheckedIndptr(indptr_arg, data.size());
         data = py::array::ensure(data, py::array::c_style);
         if (data.dtype().kind() != 'f') {
-          data = data.attr("astype")("float32");
+          data = data.attr("astype")("float64");
         }
         if (py::isinstance<py::array_t<float>>(data)) {
           return py::cast(std::make_unique<GroupedArray<float>>(

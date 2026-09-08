@@ -5,9 +5,9 @@
 
 template <typename T, typename Func, typename... Args>
 py::array_t<T> ExpandingOp(Func f, const py::array_t<T> data, Args... args) {
-  py::array_t<T> out(data.size());
-  f(data.data(), data.size(), out.mutable_data(), std::forward<Args>(args)...);
-  return out;
+  return SkipLeadingNaN<T>(data, [&](const T *d, indptr_t n, T *o) {
+    f(d, n, o, std::forward<Args>(args)...);
+  });
 }
 
 template <typename T>
@@ -35,6 +35,7 @@ py::array_t<T> ExpandingMax(const py::array_t<T> data, bool skipna = false) {
 template <typename T>
 py::array_t<T> ExpandingQuantile(const py::array_t<T> data, T p,
                                  bool skipna = false) {
+  rolling::RequireProbability("p", p);
   return ExpandingOp(expanding::QuantileTransform<T>, data, p, skipna);
 }
 
@@ -53,6 +54,6 @@ template <typename T> void init_exp_fns(py::module_ &m) {
 
 void init_exp(py::module_ &m) {
   py::module_ exp = m.def_submodule("expanding");
-  init_exp_fns<float>(exp);
   init_exp_fns<double>(exp);
+  init_exp_fns<float>(exp);
 }
