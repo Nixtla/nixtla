@@ -7,11 +7,12 @@ from .async_job import (
     Job,
     JobStatus,
 )
-from .nixtla_client import NixtlaClient
+from .nixtla_client import ApiError, NixtlaClient
 from .steps import StepResult, ref
 
 __version__ = version("nixtla")
 __all__ = [
+    "ApiError",
     "AsyncJobCancelledError",
     "AsyncJobError",
     "AsyncJobTimeoutError",

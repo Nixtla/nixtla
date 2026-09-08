@@ -1,8 +1,31 @@
 from enum import Enum
+import math
+from numbers import Real
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from .nixtla_client import NixtlaClient
+
+
+def _validate_poll_settings(
+    poll_interval: float, poll_timeout: Optional[float], *, allow_unbounded: bool = False
+) -> None:
+    if (
+        isinstance(poll_interval, bool)
+        or not isinstance(poll_interval, Real)
+        or not math.isfinite(poll_interval)
+        or poll_interval < 0
+    ):
+        raise ValueError("`poll_interval` must be a finite, non-negative number.")
+    if poll_timeout is None and allow_unbounded:
+        return
+    if (
+        isinstance(poll_timeout, bool)
+        or not isinstance(poll_timeout, Real)
+        or not math.isfinite(poll_timeout)
+        or poll_timeout <= 0
+    ):
+        raise ValueError("`poll_timeout` must be a finite, positive number.")
 
 
 class JobStatus(str, Enum):
@@ -17,14 +40,39 @@ class JobStatus(str, Enum):
         return self in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED)
 
 
-class AsyncJobError(Exception):
-    """Raised when a server-side async job (forecast/finetune/cross_validation) fails."""
+class AsyncJobError(RuntimeError):
+    """Raised when a job fails or returns an invalid response.
 
-    def __init__(self, *, job_id: str, error: Any):
+    Attributes:
+        job_id (str): Identifier of the job on the server.
+        error (Any): Original error reported by the server, or a description
+            of an invalid response.
+        task (str, optional): Task the job ran (e.g. `"simulate"`, `"explain"`);
+            set by the task-style endpoints, `None` for forecast/finetune/
+            cross_validation jobs.
+        status (str, optional): Known terminal status, such as `"failed"` or
+            `"succeeded"`. None when the terminal state is unknown.
+    """
+
+    def __init__(
+        self,
+        *,
+        job_id: str,
+        error: Any = None,
+        task: Optional[str] = None,
+        status: Optional[str] = None,
+    ):
         self.job_id = job_id
         self.error = error
+        self.task = task
+        self.status = status
+        super().__init__(str(self))
 
     def __str__(self) -> str:
+        if self.task is not None:
+            detail = self.error if self.error else "no error message was reported"
+            status = self.status or "returned an invalid response"
+            return f"{self.task} job '{self.job_id}' {status}: {detail}"
         return f"job_id: {self.job_id}, error: {self.error}"
 
 
@@ -121,17 +169,18 @@ class Job:
 
         Args:
             poll_interval (float): Seconds to wait between job-status polls.
-                Defaults to 15.
+                Must be finite and non-negative. Defaults to 15.
             poll_timeout (float): Maximum seconds to wait for the job to
                 reach a terminal state before raising `AsyncJobTimeoutError`.
-                Defaults to 3600.
+                Must be finite and positive. Defaults to 3600.
             cancel_on_timeout (bool): Whether to request cancellation of the
                 job when `poll_timeout` elapses. Defaults to True, so that a
                 job you have given up on stops consuming server-side compute.
                 Set to False to poll in short increments -- calling `wait()`
                 again to resume -- which requires the job to still be running.
-                Cancellation is best-effort: if the request fails it is logged
-                as a warning and `AsyncJobTimeoutError` is raised regardless.
+                Cancellation is best-effort. Unknown or already terminal jobs
+                need no cleanup; other cancellation failures are logged as
+                warnings. `AsyncJobTimeoutError` is raised regardless.
 
         Returns:
             The job's parsed result (a DataFrame for forecast/cross_validation
@@ -139,6 +188,7 @@ class Job:
             for execute_step jobs).
 
         Raises:
+            ValueError: If the polling interval or timeout is invalid.
             AsyncJobError: If the job fails server-side.
             AsyncJobCancelledError: If the job reaches the `"cancelled"`
                 terminal state (e.g. after a successful `cancel()`).
@@ -152,6 +202,7 @@ class Job:
             for it after the status turns terminal, using these same settings
             again -- so the total wait can reach twice `poll_timeout`.
         """
+        _validate_poll_settings(poll_interval, poll_timeout)
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:
                 job_data = self._client._poll_job(

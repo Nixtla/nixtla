@@ -183,3 +183,10 @@ Each plot shows a different cross-validation window (or cutoff) for the time ser
 <Check>
 Congratulations! You have successfully generated quantile forecasts using TimeGPT. You also visualized historical quantile predictions and evaluated their performance through cross-validation.
 </Check>
+
+## When You Need Complete Future Paths
+
+Quantiles describe uncertainty separately at each forecast timestamp. If your
+decision depends on the sequence or cumulative total across the horizon, use
+[forecast simulation](/forecasting/probabilistic/simulation) to generate
+complete future trajectories.

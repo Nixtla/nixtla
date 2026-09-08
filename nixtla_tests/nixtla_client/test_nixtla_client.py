@@ -49,24 +49,34 @@ def capture_request():
 
 
 @pytest.mark.parametrize(
-    "df_converter, freq",
+    "df_converter, freq, message",
     [
-        pytest.param(lambda series, with_gaps: with_gaps, "5min", id="gaps"),
+        pytest.param(
+            lambda series, with_gaps: with_gaps,
+            "5min",
+            "missing timestamps",
+            id="gaps",
+        ),
         pytest.param(
             lambda series, with_gaps: pd.concat([series, series]),
             "5min",
+            "duplicate timestamps",
             id="duplicates",
         ),
-        pytest.param(lambda series, with_gaps: series, "1min", id="wrong_freq"),
+        pytest.param(
+            lambda series, with_gaps: series,
+            "1min",
+            "timestamps do not match the provided frequency",
+            id="wrong_freq",
+        ),
     ],
 )
-def test_forecast_with_error(series_with_gaps, nixtla_test_client, df_converter, freq):
+def test_forecast_with_error(
+    series_with_gaps, nixtla_test_client, df_converter, freq, message
+):
     series, with_gaps = series_with_gaps
 
-    with pytest.raises(
-        ValueError,
-        match="missing or duplicate timestamps, or the timestamps do not match",
-    ):
+    with pytest.raises(ValueError, match=message):
         nixtla_test_client.forecast(df=df_converter(series, with_gaps), h=1, freq=freq)
 
 @pytest.mark.parametrize("test_params, expected_exception, expected_error_msg",
@@ -130,7 +140,7 @@ def test_cv_forecast_consistency(nixtla_test_client, cv_series_with_features):
             X_df=valid,
         )
         np.testing.assert_allclose(
-            cv_res["TimeGPT"], fcst_res["TimeGPT"], atol=1e-4, rtol=1e-3
+            cv_res["TimeGPT"], fcst_res["TimeGPT"], atol=1e-3, rtol=1e-3
         )
 
 

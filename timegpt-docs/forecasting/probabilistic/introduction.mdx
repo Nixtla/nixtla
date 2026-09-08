@@ -1,11 +1,11 @@
 ---
 title: "Uncertainty Quantification with TimeGPT"
-description: "Learn how to generate quantile forecasts and prediction intervals to capture uncertainty in your forecasts."
+description: "Learn how to generate quantile forecasts, prediction intervals, and simulated sample paths to capture uncertainty in your forecasts."
 icon: "circle-question-mark"
 ---
 
 In time series forecasting, it is important to consider the full probability distribution of the predictions rather than a single point estimate. This provides a more accurate representation of the uncertainty around the forecasts and allows better decision-making.
-**TimeGPT** supports uncertainty quantification through quantile forecasts and prediction intervals.
+**TimeGPT** supports uncertainty quantification through quantile forecasts, prediction intervals, and forecast simulation. Quantiles and intervals describe the uncertainty at each future timestamp; simulation goes one step further and generates complete future paths, so you can answer questions about outcomes that span the whole horizon, such as total cost or the chance of ever crossing a threshold.
 
 ## Why Consider the Full Probability Distribution?
 
@@ -25,5 +25,8 @@ When you focus on a single point prediction, you lose valuable information about
   </Card>
   <Card title="Prediction Intervals" href="/forecasting/probabilistic/prediction_intervals">
     Discover how to create prediction intervals with **TimeGPT**.
+  </Card>
+  <Card title="Forecast Simulation" href="/forecasting/probabilistic/simulation">
+    Generate complete future paths for probability, risk, and scenario analysis.
   </Card>
 </CardGroup>

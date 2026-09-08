@@ -17,11 +17,14 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
+import random
 import time
 import warnings
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from enum import Enum
+from functools import partial
+from threading import Event
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -32,6 +35,7 @@ from typing import (
     Optional,
     TypeVar,
     Union,
+    get_args,
     overload,
 )
 
@@ -46,6 +50,7 @@ import zstandard as zstd
 from pydantic import AfterValidator, BaseModel, TypeAdapter
 from tenacity import (
     RetryCallState,
+    Retrying,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -64,6 +69,7 @@ from .async_job import (
     AsyncJobTimeoutError,
     Job,
     JobStatus,
+    _validate_poll_settings,
 )
 from .steps import (
     CONTENT_TYPE as _STEP_CONTENT_TYPE,
@@ -167,6 +173,14 @@ _FinetuneDepth = Literal[1, 2, 3, 4, 5]
 _Freq = Union[str, int, pd.offsets.BaseOffset]
 _FreqType = TypeVar("_FreqType", str, int, pd.offsets.BaseOffset)
 _ThresholdMethod = Literal["univariate", "multivariate"]
+_ExplainMethod = Literal["granger", "transfer_entropy"]
+_FeatureContributionsType = Literal[
+    "shapley", "intervention", "granger", "transfer_entropy"
+]
+# Only used to derive distinct in-range per-partition seeds; the seed's range
+# itself is validated server-side.
+_MIN_SEED = -(2**63)
+_MAX_SEED = 2**64 - 1
 
 
 class FinetunedModel(BaseModel, extra="allow"):  # type: ignore
@@ -236,7 +250,7 @@ _date_features_by_freq = {
 _RESULT_NOT_READY_CODES = (HTTPStatus.ACCEPTED, HTTPStatus.CONFLICT)
 
 
-def _is_retriable_error(exc: Exception) -> bool:
+def _is_retriable_error(exc: BaseException) -> bool:
     retriable_exceptions = (
         ConnectionResetError,
         httpcore.ConnectError,
@@ -301,6 +315,170 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     )
 
 
+# All async endpoints share submission, polling and cancellation. New tasks
+# use backoff and bounded poll retries; existing endpoints retain fixed polling.
+_AsyncJobTask = Literal["simulate", "explain"]
+_ASYNC_JOB_MAX_POLL_INTERVAL = 10.0
+_ASYNC_JOB_POLL_JITTER = 0.25
+# Client concurrency limit for all partitioned async requests. This bounds
+# submission pressure; it is not a guarantee of the deployment's team job cap.
+_MAX_CONCURRENT_ASYNC_JOBS = 5
+
+
+def _wait_for_poll(seconds: float, cancellation_event: Optional[Event]) -> bool:
+    """Wait for the next poll, returning whether cancellation was requested."""
+    if cancellation_event is None:
+        time.sleep(seconds)
+        return False
+    return cancellation_event.wait(seconds)
+
+
+def _parse_retry_after(headers: Any) -> Optional[float]:
+    """Return the `Retry-After` delay in seconds, if the header is present."""
+    try:
+        raw = headers.get("retry-after")
+    except AttributeError:
+        return None
+    if raw is None:
+        return None
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(seconds, 0.0) if math.isfinite(seconds) else None
+
+
+def _submit_retry_strategy(
+    max_retries: int,
+    retry_interval: int,
+    max_wait_time: int,
+    cancellation_event: Optional[Event] = None,
+):
+    """Retry policy for submitting an async job.
+
+    A submission that reached the server may already have created a job even
+    when the response was lost, so only failures that are known to precede
+    acceptance are retried: refusals because of the in-flight job cap (429) and
+    errors while connecting. Read timeouts and gateway errors are not retried.
+    """
+
+    def should_retry(exc: BaseException) -> bool:
+        connect_exceptions = (
+            httpcore.ConnectError,
+            httpx.ConnectError,
+            httpx.ConnectTimeout,
+        )
+        return isinstance(exc, connect_exceptions) or (
+            isinstance(exc, ApiError)
+            and exc.status_code == HTTPStatus.TOO_MANY_REQUESTS
+        )
+
+    last_error: Optional[BaseException] = None
+
+    def before_attempt(retry_state: RetryCallState) -> None:
+        if (
+            retry_state.attempt_number > 1
+            and time.monotonic() - retry_state.start_time >= max_wait_time
+        ):
+            assert last_error is not None
+            raise last_error
+
+    def wait_for(retry_state: RetryCallState) -> float:
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        delay = float(retry_interval)
+        if isinstance(exc, ApiError) and exc.retry_after is not None:
+            delay = exc.retry_after
+        remaining = max(
+            max_wait_time - (time.monotonic() - retry_state.start_time), 0.0
+        )
+        return min(delay, remaining)
+
+    def after_retry(retry_state: RetryCallState) -> None:
+        nonlocal last_error
+        assert retry_state.outcome is not None
+        last_error = retry_state.outcome.exception()
+        logger.warning(
+            f"Submission attempt {retry_state.attempt_number} failed with error: {last_error}"
+        )
+
+    def sleep(seconds: float) -> None:
+        if _wait_for_poll(seconds, cancellation_event):
+            raise CancelledError
+
+    return Retrying(
+        retry=retry_if_exception(should_retry),
+        wait=wait_for,
+        before=before_attempt,
+        after=after_retry,
+        stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
+        sleep=sleep,
+        reraise=True,
+    ).wraps
+
+
+def _is_retriable_poll_error(exc: BaseException) -> bool:
+    return _is_retriable_error(exc) or isinstance(
+        exc,
+        (
+            httpcore.TimeoutException,
+            httpx.TimeoutException,
+            httpcore.NetworkError,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+        ),
+    )
+
+
+def _poll_retry_strategy(
+    max_retries: Optional[int],
+    retry_interval: float,
+    max_wait_time: Optional[int],
+    deadline: Optional[float],
+    cancellation_event: Optional[Event] = None,
+):
+    """Retry status requests without sleeping beyond the job wait deadline."""
+
+    warned = False
+
+    def wait_for(_: RetryCallState) -> float:
+        wait = float(retry_interval)
+        if deadline is not None:
+            wait = min(wait, max(deadline - time.monotonic(), 0.0))
+        return wait
+
+    def should_stop(retry_state: RetryCallState) -> bool:
+        if max_retries is not None and retry_state.attempt_number >= max_retries:
+            return True
+        if (
+            max_wait_time is not None
+            and retry_state.seconds_since_start is not None
+            and retry_state.seconds_since_start >= max_wait_time
+        ):
+            return True
+        return deadline is not None and time.monotonic() >= deadline
+
+    def after_retry(retry_state: RetryCallState) -> None:
+        nonlocal warned
+        assert retry_state.outcome is not None
+        error = retry_state.outcome.exception()
+        log = logger.debug if warned else logger.warning
+        log(f"Polling attempt {retry_state.attempt_number} failed with error: {error}")
+        warned = True
+
+    def sleep(seconds: float) -> None:
+        if _wait_for_poll(seconds, cancellation_event):
+            raise CancelledError
+
+    return Retrying(
+        retry=retry_if_exception(_is_retriable_poll_error),
+        wait=wait_for,
+        after=after_retry,
+        stop=should_stop,
+        sleep=sleep,
+        reraise=True,
+    ).wraps
+
+
 def _maybe_infer_freq(
     df: DataFrame,
     freq: Optional[_FreqType],
@@ -329,6 +507,130 @@ def _maybe_infer_freq(
         )
     logger.info(f"Inferred freq: {inferred_freq}")
     return inferred_freq
+
+
+def _is_numeric_column(df: DataFrame, col: str) -> bool:
+    if isinstance(df, pd.DataFrame):
+        dtype = df[col].dtype
+        return pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_bool_dtype(
+            dtype
+        )
+    return df[col].dtype.is_numeric()
+
+
+def _features_with_missing_values(df: DataFrame, features: list[str]) -> list[str]:
+    if isinstance(df, pd.DataFrame):
+        missing = df[features].isna().any()
+        return [feature for feature in features if missing[feature]]
+    out = []
+    for feature in features:
+        col = df[feature]
+        n_missing = col.null_count()
+        # polars keeps nulls and NaNs distinct; both break lag computations.
+        if col.dtype.is_float():
+            n_missing += int(col.is_nan().sum())
+        if n_missing:
+            out.append(feature)
+    return out
+
+
+def _numeric_column_array(df: DataFrame, col: str) -> np.ndarray:
+    if not isinstance(df, pd.DataFrame):
+        return df[col].to_numpy()
+    target_dtype = df.dtypes[col].type
+    if np.issubdtype(target_dtype, np.floating):
+        return df[col].to_numpy(dtype=target_dtype, na_value=np.nan)
+    if df[col].isna().any():
+        return df[col].to_numpy(dtype=np.float64, na_value=np.nan)
+    return df[col].to_numpy(dtype=target_dtype)
+
+
+def _coerce_coupled_flag(value: Any) -> bool:
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise RuntimeError(
+            f"Simulation response reported a non-boolean `coupled` value: {value!r}."
+        )
+    return value
+
+
+def _has_duplicate_keys(df: DataFrame, id_col: str, time_col: str) -> bool:
+    if isinstance(df, pd.DataFrame):
+        return bool(df.duplicated(subset=[id_col, time_col]).any())
+    return df.n_unique(subset=[id_col, time_col]) != len(df)
+
+
+def _validate_freq_regularity(
+    df: DFType,
+    freq: _Freq,
+    id_col: str,
+    time_col: str,
+) -> None:
+    if isinstance(freq, (str, int)):
+        expected_ids_times = id_time_grid(
+            df,
+            freq=freq,
+            start="per_serie",
+            end="per_serie",
+            id_col=id_col,
+            time_col=time_col,
+        )
+        freq_ok = len(df) == len(expected_ids_times)
+    elif isinstance(freq, pd.offsets.BaseOffset):
+        if not isinstance(df, pd.DataFrame):
+            raise ValueError(
+                "pandas offsets are only supported for pandas dataframes, "
+                "please provide `freq` as a string for polars dataframes."
+            )
+        times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
+            ["min", "max", "size"]
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
+            expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
+        freq_ok = bool((expected_ends == times_by_id["max"]).all())
+    else:
+        raise ValueError(
+            "`freq` should be a string, integer or pandas offset, "
+            f"got {type(freq).__name__}."
+        )
+    if _has_duplicate_keys(df, id_col, time_col):
+        raise ValueError(
+            "Series contain duplicate timestamps. "
+            f"Each (`{id_col}`, `{time_col}`) pair must be unique."
+        )
+    if not freq_ok:
+        raise ValueError(
+            "Series contain missing timestamps, or the timestamps "
+            "do not match the provided frequency.\n"
+            "Please make sure that all series have a single observation from the first "
+            "to the last timestamp and that the provided frequency matches the timestamps'.\n"
+            "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
+            "for an end to end example."
+        )
+
+
+def _dataframe_keys_match(
+    actual: DFType,
+    expected: DFType,
+    id_col: str,
+    time_col: str,
+) -> bool:
+    if len(actual) != len(expected):
+        return False
+    expected_codes, id_vocabulary = pd.factorize(expected[id_col].to_numpy())
+    actual_codes = pd.Index(id_vocabulary).get_indexer(actual[id_col].to_numpy())
+    if (actual_codes < 0).any():
+        return False
+    actual_times = actual[time_col].to_numpy()
+    expected_times = expected[time_col].to_numpy()
+    actual_order = np.lexsort((actual_times, actual_codes))
+    expected_order = np.lexsort((expected_times, expected_codes))
+    return bool(
+        np.array_equal(actual_codes[actual_order], expected_codes[expected_order])
+        and np.array_equal(actual_times[actual_order], expected_times[expected_order])
+    )
 
 
 def _standardize_freq(freq: _Freq, processed: ufp.ProcessedDF) -> str:
@@ -659,7 +961,7 @@ def _extract_categorical_exog(
     dict[str, np.ndarray],
     list[str],
     list[str],
-    list[list],
+    Optional[DFType],
 ]:
     """Validate, extract, and strip categorical exogenous columns from df/X_df.
 
@@ -669,10 +971,10 @@ def _extract_categorical_exog(
         df_cat_vals: mapping col → raw values array for every col in categorical_exog_list.
         futr_cat_cols: cat cols found in X_df (treated as future categoricals).
         hist_cat_cols: cat cols not in X_df.
-        X_df_cat_future: sorted future values per futr_cat_col (empty when X_df is None).
+        X_df_cat_future: future categorical values with their ID and time keys.
     """
     if not categorical_exog_list:
-        return df, X_df, {}, [], [], []
+        return df, X_df, {}, [], [], None
 
     x_df_exog_cols = (
         {c for c in X_df.columns if c not in {id_col, time_col}}
@@ -706,11 +1008,9 @@ def _extract_categorical_exog(
         c: df[c].to_numpy() for c in categorical_exog_list
     }
 
-    X_df_cat_future: list[list] = []
+    X_df_cat_future: Optional[DFType] = None
     if futr_cat_cols and X_df is not None:
-        X_df_sorted = ensure_sorted(X_df, id_col=id_col, time_col=time_col)
-        for c in futr_cat_cols:
-            X_df_cat_future.append(X_df_sorted[c].tolist())
+        X_df_cat_future = X_df[[id_col, time_col, *futr_cat_cols]]
         X_df = X_df[[c for c in X_df.columns if c not in futr_cat_cols]]
 
     df = df[[c for c in df.columns if c not in set(categorical_exog_list)]]
@@ -778,6 +1078,69 @@ def _maybe_convert_level_to_quantiles(
     return df[out_cols]
 
 
+def _align_future_exog_order(
+    X_future: np.ndarray,
+    X_indptr: np.ndarray,
+    X_uids: Any,
+    uids: Any,
+    id_col: str,
+) -> np.ndarray:
+    if hasattr(X_uids, "to_numpy"):
+        x_uids_list = X_uids.to_numpy().tolist()
+    else:
+        x_uids_list = np.asarray(X_uids).tolist()
+    uids_list = uids.to_numpy().tolist()
+    if x_uids_list == uids_list:
+        return X_future
+    if set(x_uids_list) != set(uids_list):
+        missing = sorted(set(uids_list) - set(x_uids_list), key=str)
+        unexpected = sorted(set(x_uids_list) - set(uids_list), key=str)
+        raise ValueError(
+            f"`X_df` must contain the same values of `{id_col}` as `df`. "
+            f"Missing: {missing}. Unexpected: {unexpected}."
+        )
+    positions = {uid: pos for pos, uid in enumerate(x_uids_list)}
+    row_idxs = np.concatenate(
+        [
+            np.arange(X_indptr[pos], X_indptr[pos + 1], dtype=np.int64)
+            for pos in (positions[uid] for uid in uids_list)
+        ]
+    )
+    return X_future[:, row_idxs]
+
+
+def _align_future_categorical_exog(
+    X_df_cat_future: Optional[DFType],
+    uids: Any,
+    id_col: str,
+    time_col: str,
+) -> list[list]:
+    if X_df_cat_future is None:
+        return []
+    X_df_cat_future = ensure_time_dtype(X_df_cat_future, time_col=time_col)
+    X_df_cat_future = ensure_sorted(
+        X_df_cat_future,
+        id_col=id_col,
+        time_col=time_col,
+    )
+    ids = X_df_cat_future[id_col].to_numpy()
+    starts = np.append(0, np.flatnonzero(ids[1:] != ids[:-1]) + 1)
+    indptr = np.append(starts, len(ids))
+    x_uids = ids[starts]
+    cat_cols = [c for c in X_df_cat_future.columns if c not in (id_col, time_col)]
+    values = np.empty((len(cat_cols), len(X_df_cat_future)), dtype=object)
+    for position, col in enumerate(cat_cols):
+        values[position] = X_df_cat_future[col].to_numpy()
+    aligned = _align_future_exog_order(
+        X_future=values,
+        X_indptr=indptr,
+        X_uids=x_uids,
+        uids=uids,
+        id_col=id_col,
+    )
+    return [row.tolist() for row in aligned]
+
+
 def _preprocess(
     df: DFType,
     X_df: Optional[DFType],
@@ -811,13 +1174,112 @@ def _preprocess(
             time_col=time_col,
             target_col=None,
         )
-        X_future = processed_X.data.T
+        X_future = _align_future_exog_order(
+            X_future=processed_X.data.T,
+            X_indptr=processed_X.indptr,
+            X_uids=processed_X.uids,
+            uids=processed.uids,
+            id_col=id_col,
+        )
         futr_cols = [c for c in X_df.columns if c not in (id_col, time_col)]
     else:
         X_future = None
         futr_cols = None
     x_cols = [c for c in df.columns if c not in (id_col, time_col, target_col)]
     return processed, X_future, x_cols, futr_cols
+
+
+def _validate_future_exog_keys(
+    X_df: Optional[DFType],
+    expected: DataFrame,
+    h: int,
+    id_col: str,
+    time_col: str,
+) -> None:
+    if X_df is None:
+        return
+    X_df = ensure_time_dtype(X_df, time_col=time_col)
+    if not _dataframe_keys_match(
+        actual=X_df,
+        expected=expected,
+        id_col=id_col,
+        time_col=time_col,
+    ):
+        raise ValueError(
+            "`X_df` must contain exactly one row for every future "
+            f"({id_col}, {time_col}) pair in the {h}-step forecast horizon."
+        )
+
+
+def _sort_categorical_values(
+    df_cat_vals: dict[str, np.ndarray],
+    sort_idxs: Optional[np.ndarray],
+) -> dict[str, np.ndarray]:
+    if sort_idxs is None:
+        return dict(df_cat_vals)
+    return {col: vals[sort_idxs] for col, vals in df_cat_vals.items()}
+
+
+def _log_exog_features(
+    futr_cols: Optional[list[str]],
+    futr_cat_cols: list[str],
+    hist_exog_list: Optional[list[str]],
+    hist_cat_cols: list[str],
+) -> None:
+    if futr_cols is not None:
+        logger.info(f"Using future exogenous features: {futr_cols}")
+    if futr_cat_cols:
+        logger.info(f"Using future categorical exogenous features: {futr_cat_cols}")
+    if hist_exog_list:
+        logger.info(f"Using historical exogenous features: {hist_exog_list}")
+    if hist_cat_cols:
+        logger.info(f"Using historical categorical exogenous features: {hist_cat_cols}")
+
+
+def _build_exog_payload(
+    processed: ufp.ProcessedDF,
+    sorted_df_cat: dict[str, np.ndarray],
+    x_cols: list[str],
+    futr_cols: Optional[list[str]],
+    futr_cat_cols: list[str],
+    hist_cat_cols: list[str],
+    X_future: Optional[list],
+    X_df_cat_future: list[list],
+    has_categorical: bool,
+) -> tuple[Optional[list], Optional[list], Optional[list[int]], list[str]]:
+    n_futr_num = len(futr_cols) if futr_cols is not None else 0
+    n_futr_cat = len(futr_cat_cols)
+    n_hist_num = len(x_cols) - n_futr_num
+    n_hist_cat = len(hist_cat_cols)
+
+    cat_hist_rows: list[list] = [
+        sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
+    ]
+    if processed.data.shape[1] > 1 or cat_hist_rows:
+        num_rows = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
+        X: Optional[list] = (
+            num_rows[:n_futr_num]
+            + cat_hist_rows[:n_futr_cat]
+            + num_rows[n_futr_num:]
+            + cat_hist_rows[n_futr_cat:]
+        )
+    else:
+        X = None
+
+    if X_future is not None or X_df_cat_future:
+        X_future = (list(X_future) if X_future is not None else []) + X_df_cat_future
+
+    categorical_exog_payload: Optional[list[int]] = None
+    if has_categorical:
+        futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
+        hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
+        hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
+        categorical_exog_payload = futr_cat_indices + hist_cat_indices
+
+    feature_names = (
+        x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
+    )
+    return X, X_future, categorical_exog_payload, feature_names
 
 
 def _forecast_payload_to_in_sample(payload: dict, h: int, n_windows: int) -> dict:
@@ -855,7 +1317,6 @@ def _get_in_sample_horizon_and_windows(
     clean_ex_first: bool,
     level: Optional[list[Union[int, float]]],
 ) -> tuple[int, int]:
-
     # in-sample horizon and number of windows
     min_size = min(sizes)
     h = min(model_horizon, min_size - 1)
@@ -1092,12 +1553,18 @@ def _audit_negative_values(
 class ApiError(Exception):
     status_code: Optional[int]
     body: Any
+    retry_after: Optional[float]
 
     def __init__(
-        self, *, status_code: Optional[int] = None, body: Optional[Any] = None
+        self,
+        *,
+        status_code: Optional[int] = None,
+        body: Optional[Any] = None,
+        retry_after: Optional[float] = None,
     ):
         self.status_code = status_code
         self.body = body
+        self.retry_after = retry_after
 
     def __str__(self) -> str:
         return f"status_code: {self.status_code}, body: {self.body}"
@@ -1112,6 +1579,8 @@ class NixtlaClient:
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
+        async_job_wait_timeout: Optional[int] = 10 * 60,
+        async_job_poll_interval: float = 1.0,
     ):
         """
         Client to interact with the Nixtla API.
@@ -1130,7 +1599,10 @@ class NixtlaClient:
                 make when calling the API before giving up. It defines how
                 many times the client will retry the API call if it fails.
                 Default value is 6, indicating the client will attempt the
-                API call up to 6 times in total. Defaults to 60.
+                API call up to 6 times in total. Job submissions (including
+                `execute_step`) retry only connection failures and HTTP 429;
+                read timeouts and gateway errors are not retried because the
+                server may already have accepted the job.
             retry_interval (int, optional): The interval in seconds between
                 consecutive retry attempts. This is the waiting period before
                 the client tries to call the API again after a failed attempt.
@@ -1141,12 +1613,31 @@ class NixtlaClient:
                 giving up. This sets an upper limit on the cumulative
                 waiting time for all retry attempts. If this time is
                 exceeded, the client will stop retrying and raise an
-                exception. Default value is 360 seconds, meaning the
-                client will cease retrying if the total time spent on retries
-                exceeds 360 seconds. The client throws a ReadTimeout error
+                exception. Job-submission retry sleeps, including
+                `Retry-After`, are capped to the remaining budget; no new
+                attempt starts once that budget expires. An in-flight request
+                is governed by `timeout`. Default value is 360 seconds.
+                The client throws a ReadTimeout error
                 after 60 seconds of inactivity. If you want to catch these
                 errors, use max_wait_time >> 60. Defaults to 360.
+            async_job_wait_timeout (int, optional): Maximum time in seconds to
+                wait for an asynchronous job (`simulate`, `explain`) to
+                finish after successful submission, including the time it
+                spends queued on the server. Submission retries are excluded;
+                each partition gets its own timeout after submission. When
+                exceeded, the client requests the job's cancellation and
+                raises an `AsyncJobTimeoutError`. Set to `None` to
+                wait until the server reports a terminal status. Defaults
+                to 600.
+            async_job_poll_interval (float, optional): Initial interval in
+                seconds between two status checks of an asynchronous job. The
+                interval doubles after every check, up to 10 seconds.
+                Defaults to 1.
         """
+        if async_job_wait_timeout is not None and async_job_wait_timeout <= 0:
+            raise ValueError("`async_job_wait_timeout` must be positive or None.")
+        if async_job_poll_interval <= 0:
+            raise ValueError("`async_job_poll_interval` must be positive.")
         if api_key is None:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
@@ -1163,21 +1654,30 @@ class NixtlaClient:
             "headers": headers,
             "timeout": timeout,
         }
-        self._retry_strategy = _retry_strategy(
-            max_retries=max_retries,
-            retry_interval=retry_interval,
-            max_wait_time=max_wait_time,
-        )
+        self._retry_settings = {
+            "max_retries": max_retries,
+            "retry_interval": retry_interval,
+            "max_wait_time": max_wait_time,
+        }
+        self._retry_strategy = _retry_strategy(**self._retry_settings)
+        self._async_job_wait_timeout = async_job_wait_timeout
+        self._async_job_poll_interval = float(async_job_poll_interval)
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
 
-    def _make_request(
+    def _encode_payload(
         self,
-        client: httpx.Client,
-        endpoint: str,
         payload: dict[str, Any],
         multithreaded_compress: bool,
-    ) -> dict[str, Any]:
+        *,
+        task: str,
+    ) -> tuple[bytes, dict[str, str]]:
+        """Serialize `payload` and return the request body and headers.
+
+        `task` is the logical operation (`"forecast"`, `"simulate"`, ...) and
+        only drives the guidance given when the body exceeds the size limit.
+        """
+
         def ensure_contiguous_if_array(x):
             if not isinstance(x, np.ndarray):
                 return x
@@ -1206,6 +1706,22 @@ class NixtlaClient:
         content = orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
         content_size_mb = len(content) / 2**20
         if content_size_mb > 200:
+            if task == "explain":
+                raise ValueError(
+                    f"The payload is too large ({content_size_mb:.0f}MB, limit "
+                    "200MB). `explain` cannot be partitioned because the weights "
+                    "are pooled across all series. Reduce the number of series, "
+                    "the length of the history, or the number of features."
+                )
+            if task == "simulate" and payload.get("multivariate"):
+                raise ValueError(
+                    f"The payload is too large ({content_size_mb:.0f}MB, limit "
+                    "200MB). `multivariate=True` cannot be partitioned because "
+                    "cross-series coupling is computed across all series in a "
+                    "single request. Reduce the number of series or the length "
+                    "of the history, or set `multivariate=False` to allow "
+                    "partitioning."
+                )
             raise ValueError(
                 f"The payload is too large. Set num_partitions={math.ceil(content_size_mb / 200)}"
             )
@@ -1216,17 +1732,52 @@ class NixtlaClient:
             threads = -1 if multithreaded_compress else 0
             content = zstd.ZstdCompressor(level=1, threads=threads).compress(content)
             headers["content-encoding"] = "zstd"
-        resp = client.post(url=endpoint, content=content, headers=headers)
+        return content, headers
+
+    @staticmethod
+    def _parse_json_response(
+        resp: httpx.Response,
+        expected_status: Union[int, tuple[int, ...]] = HTTPStatus.OK,
+    ) -> Any:
         try:
             resp_body = orjson.loads(resp.content)
         except orjson.JSONDecodeError:
             raise ApiError(
                 status_code=resp.status_code,
                 body=f"Could not parse JSON: {resp.content}",
+                retry_after=_parse_retry_after(resp.headers),
             )
-        if resp.status_code not in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
-            raise ApiError(status_code=resp.status_code, body=resp_body)
-        if "data" in resp_body:
+        expected = (
+            (expected_status,)
+            if isinstance(expected_status, int)
+            else expected_status
+        )
+        if resp.status_code not in expected:
+            raise ApiError(
+                status_code=resp.status_code,
+                body=resp_body,
+                retry_after=_parse_retry_after(resp.headers),
+            )
+        return resp_body
+
+    def _make_request(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payload: dict[str, Any],
+        multithreaded_compress: bool,
+    ) -> dict[str, Any]:
+        content, headers = self._encode_payload(
+            payload,
+            multithreaded_compress,
+            task=endpoint.removeprefix("v2/").removesuffix("/async"),
+        )
+        resp = client.post(url=endpoint, content=content, headers=headers)
+        # async job submissions ({endpoint}/async) respond with 202 ACCEPTED
+        resp_body = self._parse_json_response(
+            resp, expected_status=(HTTPStatus.OK, HTTPStatus.ACCEPTED)
+        )
+        if isinstance(resp_body, dict) and "data" in resp_body:
             resp_body = resp_body["data"]
         return resp_body
 
@@ -1249,23 +1800,137 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         params: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
-        resp = client.get(endpoint, params=params)
-        try:
-            resp_body = resp.json()
-        except Exception:
-            raise ApiError(
-                status_code=resp.status_code,
-                body=f"Could not parse JSON: {resp.content}",
+        request_kwargs: dict[str, Any] = {"params": params}
+        if timeout is not None:
+            # Bound the request by the job deadline without increasing any
+            # shorter connection/read/write/pool timeout configured by the caller.
+            request_kwargs["timeout"] = httpx.Timeout(
+                **{
+                    phase: min(limit, timeout) if limit is not None else timeout
+                    for phase, limit in client.timeout.as_dict().items()
+                }
             )
-        if resp.status_code != 200:
-            raise ApiError(status_code=resp.status_code, body=resp_body)
-        return resp_body
+        resp = client.get(endpoint, **request_kwargs)
+        return self._parse_json_response(resp)
+
+    @staticmethod
+    def _validate_job_timeout(timeout_seconds: Optional[int]) -> None:
+        if timeout_seconds is None:
+            return
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or timeout_seconds <= 0
+        ):
+            raise ValueError("`timeout_seconds` must be a positive integer or None.")
+
+    def _collect_concurrent_results(
+        self,
+        requests: Sequence[Callable[[], dict[str, Any]]],
+        max_workers: int,
+        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        cancellation_event: Optional[Event] = None,
+    ) -> list[dict[str, Any]]:
+        from tqdm.auto import tqdm
+
+        results: list[dict[str, Any]] = [{} for _ in requests]
+        errors: list[BaseException] = []
+
+        def run(request: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            try:
+                return request()
+            except BaseException as exc:
+                if not isinstance(exc, CancelledError):
+                    errors.append(exc)
+                if cancellation_event is not None:
+                    # Signal before this worker can pick up another request.
+                    cancellation_event.set()
+                raise
+
+        executor = ThreadPoolExecutor(max_workers)
+        future2pos = {}
+        try:
+            future2pos = {
+                executor.submit(run, request): i for i, request in enumerate(requests)
+            }
+            for future in tqdm(as_completed(future2pos), total=len(future2pos)):
+                pos = future2pos[future]
+                res = future.result()
+                results[pos] = transform(res) if transform is not None else res
+        except BaseException as exc:
+            if cancellation_event is not None:
+                cancellation_event.set()
+            for future in future2pos:
+                future.cancel()
+            if isinstance(exc, CancelledError) and errors:
+                # A sibling's cancellation may finish before the failed
+                # future is collected. Preserve the original failure.
+                raise errors[0]
+            raise
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
+        return results
+
+    def _dispatch_partitioned_requests(
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        payloads: list[dict[str, Any]],
+        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        *,
+        is_async_job: bool = False,
+        poll_interval: float = 15,
+        poll_timeout: Optional[float] = 3600,
+        job_timeout_seconds: Optional[int] = None,
+        task: Optional[_AsyncJobTask] = None,
+    ) -> list[dict[str, Any]]:
+        # Each async worker completes its job before submitting another. On
+        # failure, stop queued submissions and cancel the other running jobs.
+        cancellation_event = Event() if is_async_job else None
+        requests = []
+        for payload in payloads:
+            if is_async_job:
+                request = partial(
+                    self._run_async_job,
+                    client,
+                    endpoint,
+                    payload,
+                    poll_interval=poll_interval,
+                    poll_timeout=poll_timeout,
+                    multithreaded_compress=False,
+                    job_timeout_seconds=job_timeout_seconds,
+                    task=task,
+                    cancellation_event=cancellation_event,
+                )
+            else:
+                request = partial(
+                    self._make_request_with_retries,
+                    client=client,
+                    endpoint=endpoint,
+                    payload=payload,
+                    multithreaded_compress=False,
+                )
+            requests.append(request)
+        max_workers = _MAX_CONCURRENT_ASYNC_JOBS if is_async_job else 10
+        return self._collect_concurrent_results(
+            requests,
+            max_workers=min(max_workers, len(payloads)),
+            transform=transform,
+            cancellation_event=cancellation_event,
+        )
 
     def _get_job_data(
-        self, client: httpx.Client, endpoint: str, job_id: str
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        job_id: str,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
-        return self._get_request(client, f"{endpoint}/jobs/{job_id}")
+        return self._get_request(client, f"{endpoint}/jobs/{job_id}", timeout=timeout)
 
     def _submit_job(
         self,
@@ -1273,11 +1938,27 @@ class NixtlaClient:
         endpoint: str,
         payload: dict[str, Any],
         multithreaded_compress: bool = True,
+        *,
+        cancellation_event: Optional[Event] = None,
     ) -> str:
-        submit_resp = self._make_request_with_retries(
-            client, f"{endpoint}/async", payload, multithreaded_compress
-        )
-        return submit_resp["job_id"]
+        # Retrying an ambiguous submission failure can create duplicate jobs.
+        def submit() -> dict[str, Any]:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            return self._make_request(
+                client, f"{endpoint}/async", payload, multithreaded_compress
+            )
+
+        body = _submit_retry_strategy(
+            **self._retry_settings, cancellation_event=cancellation_event
+        )(submit)()
+        job_id = body.get("job_id") if isinstance(body, dict) else None
+        if not isinstance(job_id, str) or not job_id:
+            raise RuntimeError(
+                f"Unexpected response when submitting the {endpoint} job: {body}"
+            )
+        logger.info(f"Submitted {endpoint} job {job_id}.")
+        return job_id
 
     def _poll_job(
         self,
@@ -1285,41 +1966,89 @@ class NixtlaClient:
         endpoint: str,
         job_id: str,
         poll_interval: float,
-        poll_timeout: float,
+        poll_timeout: Optional[float],
+        *,
+        task: Optional[_AsyncJobTask] = None,
+        cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
-        deadline = time.monotonic() + poll_timeout
+        """Return the successful status envelope without cancelling on timeout.
+
+        The caller owns cancellation so `Job.wait(cancel_on_timeout=False)`
+        stays resumable. `task` preserves simulate/explain's backoff, retry
+        budget and error details; existing jobs retain fixed-interval polling
+        and retry transient failures until their poll timeout.
+        """
+        _validate_poll_settings(
+            poll_interval, poll_timeout, allow_unbounded=task is not None
+        )
+        deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
+        interval = poll_interval
+
+        def check_wait() -> None:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            if deadline is not None and time.monotonic() >= deadline:
+                assert poll_timeout is not None
+                raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
+
+        def get_status() -> dict[str, Any]:
+            check_wait()
+            timeout = (
+                None if deadline is None else max(deadline - time.monotonic(), 0.0)
+            )
+            return self._get_job_data(client, endpoint, job_id, timeout=timeout)
+
+        get_status_with_retries = _poll_retry_strategy(
+            max_retries=self._retry_settings["max_retries"]
+            if task is not None
+            else None,
+            retry_interval=(
+                self._retry_settings["retry_interval"]
+                if task is not None
+                else poll_interval
+            ),
+            max_wait_time=self._retry_settings["max_wait_time"]
+            if task is not None
+            else None,
+            deadline=deadline,
+            cancellation_event=cancellation_event,
+        )(get_status)
         while True:
             try:
-                job_data = self._get_job_data(client, endpoint, job_id)
-            except Exception as e:
-                if not _is_retriable_error(e):
-                    raise
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AsyncJobTimeoutError(
-                        job_id=job_id, poll_timeout=poll_timeout
-                    ) from e
-                time.sleep(min(poll_interval, remaining))
-                continue
-
+                job_data = get_status_with_retries()
+            except Exception as exc:
+                if _is_retriable_poll_error(exc):
+                    check_wait()
+                raise
+            check_wait()
+            raw_status = job_data.get("status") if isinstance(job_data, dict) else None
             try:
-                status = JobStatus(job_data.get("status"))
+                status = JobStatus(raw_status)
             except ValueError:
                 raise AsyncJobError(
                     job_id=job_id,
-                    error=f"unexpected job status {job_data.get('status')!r}: {job_data}",
-                )
+                    task=task,
+                    error=f"unexpected job status {raw_status!r}: {job_data}",
+                ) from None
             if status == JobStatus.SUCCEEDED:
                 return job_data
-            if status == JobStatus.FAILED:
-                raise AsyncJobError(job_id=job_id, error=job_data.get("error"))
             if status == JobStatus.CANCELLED:
                 raise AsyncJobCancelledError(job_id=job_id)
-            # only PENDING/RUNNING remain here -- keep polling
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
-            time.sleep(min(poll_interval, remaining))
+            if status == JobStatus.FAILED:
+                raise AsyncJobError(
+                    job_id=job_id,
+                    task=task,
+                    status=status.value,
+                    error=job_data.get("error"),
+                )
+            sleep_for = interval
+            if task is not None:
+                sleep_for *= 1 + random.uniform(0, _ASYNC_JOB_POLL_JITTER)
+                interval = min(interval * 2, _ASYNC_JOB_MAX_POLL_INTERVAL)
+            if deadline is not None:
+                sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
+            if _wait_for_poll(sleep_for, cancellation_event):
+                raise CancelledError
 
     def _run_async_job(
         self,
@@ -1327,23 +2056,61 @@ class NixtlaClient:
         endpoint: str,
         payload: dict[str, Any],
         poll_interval: float,
-        poll_timeout: float,
+        poll_timeout: Optional[float],
         multithreaded_compress: bool = True,
         job_timeout_seconds: Optional[int] = None,
+        *,
+        task: Optional[_AsyncJobTask] = None,
+        cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
+        """Submit a job and return its result, cancelling abandoned jobs.
+
+        Each partition's wait timeout starts after successful submission,
+        excluding submission retries. If polling stops before a terminal
+        state is known, request cancellation without masking the original error.
+        """
+        _validate_poll_settings(
+            poll_interval, poll_timeout, allow_unbounded=task is not None
+        )
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise CancelledError
         payload = _with_job_options(payload, job_timeout_seconds)
-        job_id = self._submit_job(client, endpoint, payload, multithreaded_compress)
+        job_id = self._submit_job(
+            client,
+            endpoint,
+            payload,
+            multithreaded_compress,
+            cancellation_event=cancellation_event,
+        )
         try:
             job_data = self._poll_job(
-                client, endpoint, job_id, poll_interval, poll_timeout
+                client,
+                endpoint,
+                job_id,
+                poll_interval,
+                poll_timeout,
+                task=task,
+                cancellation_event=cancellation_event,
             )
-        except AsyncJobTimeoutError:
-            # This job's id is never surfaced to the caller, so if we don't cancel it
-            # here nobody can -- it would run to its server-side deadline unwatched.
-            # Other terminal states (failed/cancelled) need no cancellation.
-            self._cancel_job_best_effort(client, job_id, "client poll timeout")
+        except AsyncJobCancelledError:
+            raise  # The server has already cancelled the job.
+        except AsyncJobError as exc:
+            if exc.status not in ("failed", "cancelled", "succeeded"):
+                self._cancel_job_best_effort(client, job_id, "invalid job status")
             raise
-        return job_data["result"]
+        except BaseException:
+            self._cancel_job_best_effort(client, job_id, "abandoned wait")
+            raise
+        result = job_data.get("result")
+        if not isinstance(result, dict):
+            # Success is terminal even if the result is malformed.
+            raise AsyncJobError(
+                job_id=job_id,
+                task=task,
+                status="succeeded",
+                error="job succeeded but returned no result",
+            )
+        return result
 
     def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
         resp = client.post(f"v2/async/jobs/{job_id}/cancel")
@@ -1361,17 +2128,20 @@ class NixtlaClient:
     def _cancel_job_best_effort(
         self, client: httpx.Client, job_id: str, reason: str
     ) -> bool:
-        """Request cancellation, swallowing failures. Returns True if accepted.
+        """Request cancellation, swallowing failures. Return True if accepted.
 
-        Used on cleanup paths where an exception is already propagating: failing to
-        cancel must not mask it.
+        Unknown or terminal jobs need no cleanup. Return False for them so
+        `Job` does not incorrectly cache their status as cancelled.
         """
         try:
             self._cancel_job(client, job_id)
-        except Exception:
-            logger.warning(
-                "Failed to cancel job %s (%s)", job_id, reason, exc_info=True
-            )
+        except Exception as exc:
+            if isinstance(exc, ApiError) and exc.status_code in (
+                HTTPStatus.NOT_FOUND,
+                HTTPStatus.CONFLICT,
+            ):
+                return False
+            logger.warning("Failed to cancel job %s (%s)", job_id, reason, exc_info=True)
             return False
         return True
 
@@ -1415,15 +2185,9 @@ class NixtlaClient:
             _STEP_METADATA_HEADER: metadata,
         }
         resp = client.post(url=f"{endpoint}/async", content=body, headers=headers)
-        try:
-            resp_body = orjson.loads(resp.content)
-        except orjson.JSONDecodeError:
-            raise ApiError(
-                status_code=resp.status_code,
-                body=f"Could not parse JSON: {resp.content}",
-            )
-        if resp.status_code not in (HTTPStatus.OK, HTTPStatus.ACCEPTED):
-            raise ApiError(status_code=resp.status_code, body=resp_body)
+        resp_body = self._parse_json_response(
+            resp, expected_status=(HTTPStatus.OK, HTTPStatus.ACCEPTED)
+        )
         # Same envelope unwrap `_make_request` applies, so a wrapped body doesn't become a KeyError.
         if "data" in resp_body:
             resp_body = resp_body["data"]
@@ -1524,7 +2288,9 @@ class NixtlaClient:
             return _build_step_result(headers, content)
 
         with self._make_client(**self._client_kwargs) as client:
-            job_id = self._retry_strategy(self._submit_binary_job)(
+            job_id = _submit_retry_strategy(
+                **self._retry_settings, cancellation_event=None
+            )(self._submit_binary_job)(
                 client=client, endpoint=endpoint, metadata=metadata, body=body
             )
         return Job(client=self, job_id=job_id, endpoint=endpoint, get_result=get_result)
@@ -1539,45 +2305,15 @@ class NixtlaClient:
         _poll_timeout: float = 3600,
         _job_timeout_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
-        from tqdm.auto import tqdm
-
-        num_partitions = len(payloads)
-        results: list[dict[str, Any]] = [{} for _ in range(num_partitions)]
-        max_workers = min(10, num_partitions)
-        # NOTE: if one partition's job fails/times out, this still waits for
-        # every other in-flight partition to reach a terminal state before the
-        # exception surfaces (ThreadPoolExecutor.__exit__ -> shutdown(wait=True)).
-        # A timed-out partition cancels its own job (see `_run_async_job`), but
-        # there's still no cross-partition cancellation here: the siblings run on.
-        with ThreadPoolExecutor(max_workers) as executor:
-            if _is_async_job:
-                future2pos = {
-                    executor.submit(
-                        self._run_async_job,
-                        client=client,
-                        endpoint=endpoint,
-                        payload=payload,
-                        poll_interval=_poll_interval,
-                        poll_timeout=_poll_timeout,
-                        multithreaded_compress=False,
-                        job_timeout_seconds=_job_timeout_seconds,
-                    ): i
-                    for i, payload in enumerate(payloads)
-                }
-            else:
-                future2pos = {
-                    executor.submit(
-                        self._make_request_with_retries,
-                        client=client,
-                        endpoint=endpoint,
-                        payload=payload,
-                        multithreaded_compress=False,
-                    ): i
-                    for i, payload in enumerate(payloads)
-                }
-            for future in tqdm(as_completed(future2pos), total=len(future2pos)):
-                pos = future2pos[future]
-                results[pos] = future.result()
+        results = self._dispatch_partitioned_requests(
+            client,
+            endpoint,
+            payloads,
+            is_async_job=_is_async_job,
+            poll_interval=_poll_interval,
+            poll_timeout=_poll_timeout,
+            job_timeout_seconds=_job_timeout_seconds,
+        )
         resp = {"mean": np.hstack([res["mean"] for res in results])}
         first_res = results[0]
         for k in ("sizes", "anomaly"):
@@ -1616,6 +2352,75 @@ class NixtlaClient:
                 [np.stack(res["feature_contributions"], axis=1) for res in results]
             ).T
         return resp
+
+    def _make_partitioned_simulate_requests(
+        self,
+        client: httpx.Client,
+        payloads: list[dict[str, Any]],
+        n_paths: int,
+        h: int,
+        timeout_seconds: Optional[int] = None,
+    ) -> dict[str, Any]:
+        def _samples_to_array(res: dict[str, Any]) -> dict[str, Any]:
+            samples = res.get("samples")
+            if samples is not None:
+                try:
+                    res["samples"] = np.asarray(samples, dtype=np.float64)
+                except (TypeError, ValueError):
+                    pass  # the merge loop below raises the descriptive error
+            return res
+
+        results = self._dispatch_partitioned_requests(
+            client,
+            "v2/simulate",
+            payloads,
+            transform=_samples_to_array,
+            is_async_job=True,
+            poll_interval=self._async_job_poll_interval,
+            poll_timeout=self._async_job_wait_timeout,
+            job_timeout_seconds=timeout_seconds,
+            task="simulate",
+        )
+        blocks = []
+        sizes = []
+        for payload, res in zip(payloads, results):
+            n_series = len(payload["series"]["sizes"])
+            if res.get("n_paths") != n_paths or res.get("h") != h:
+                raise RuntimeError(
+                    "Simulation response metadata does not match the request."
+                )
+            try:
+                part = np.asarray(res.pop("samples", None), dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Simulation response contains non-numeric samples."
+                ) from exc
+            if part.size != n_paths * n_series * h:
+                raise RuntimeError(
+                    f"Simulation response contains {part.size:,} values; "
+                    f"expected {n_paths * n_series * h:,}."
+                )
+            # samples are [sample_id][series][h]; join partitions within each
+            # sample so the series stay in request order.
+            blocks.append(part.reshape(n_paths, n_series * h))
+            try:
+                sizes.append(np.asarray(res.get("sizes"), dtype=np.int64))
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Simulation response contains non-numeric sizes."
+                ) from exc
+        if any(_coerce_coupled_flag(res.get("coupled")) for res in results):
+            raise RuntimeError(
+                "Simulation response reported coupled paths for a partitioned "
+                "request."
+            )
+        return {
+            "samples": np.concatenate(blocks, axis=1).reshape(-1),
+            "sizes": np.hstack(sizes),
+            "n_paths": n_paths,
+            "h": h,
+            "coupled": False,
+        }
 
     def _maybe_override_model(self, model: _Model) -> _Model:
         if self._is_azure and model != "azureai":
@@ -1696,7 +2501,6 @@ class NixtlaClient:
         id_col: str,
         time_col: str,
         target_col: str,
-        model: _Model,
         validate_api_key: bool,
         freq: Optional[_FreqType],
     ) -> tuple[DFType, Optional[DFType], bool, _FreqType]:
@@ -1714,44 +2518,16 @@ class NixtlaClient:
             and time_col not in df
             and pd.api.types.is_datetime64_any_dtype(df.index)
         ):
-            df.index.name = time_col
-            df = df.reset_index()
+            df = df.rename_axis(time_col).reset_index()
         df = ensure_time_dtype(df, time_col=time_col)
         validate_format(df=df, id_col=id_col, time_col=time_col, target_col=target_col)
-        freq = _maybe_infer_freq(df, freq=freq, id_col=id_col, time_col=time_col)
-        if isinstance(freq, (str, int)):
-            expected_ids_times = id_time_grid(
-                df,
-                freq=freq,
-                start="per_serie",
-                end="per_serie",
-                id_col=id_col,
-                time_col=time_col,
-            )
-            freq_ok = len(df) == len(expected_ids_times)
-        elif isinstance(freq, pd.offsets.BaseOffset):
-            times_by_id = df.groupby(id_col, observed=True)[time_col].agg(
-                ["min", "max", "size"]
-            )
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
-                expected_ends = times_by_id["min"] + freq * (times_by_id["size"] - 1)
-            freq_ok = (expected_ends == times_by_id["max"]).all()
-        else:
-            raise ValueError(
-                "`freq` should be a string, integer or pandas offset, "
-                f"got {type(freq).__name__}."
-            )
-        if not freq_ok:
-            raise ValueError(
-                "Series contain missing or duplicate timestamps, or the timestamps "
-                "do not match the provided frequency.\n"
-                "Please make sure that all series have a single observation from the first "
-                "to the last timestamp and that the provided frequency matches the timestamps'.\n"
-                "You can refer to https://docs.nixtla.io/docs/tutorials-missing_values "
-                "for an end to end example."
-            )
-        return df, X_df, drop_id, freq
+        inferred_freq = _maybe_infer_freq(
+            df, freq=freq, id_col=id_col, time_col=time_col
+        )
+        _validate_freq_regularity(
+            df=df, freq=inferred_freq, id_col=id_col, time_col=time_col
+        )
+        return df, X_df, drop_id, inferred_freq
 
     def validate_api_key(self, log: bool = True) -> bool:
         """Check API key status.
@@ -1810,7 +2586,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=False,
-            model=model,
             freq=freq,
         )
 
@@ -2118,6 +2893,7 @@ class NixtlaClient:
         feature_contributions: bool,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
+        feature_contributions_type: _FeatureContributionsType,
         _job_timeout_seconds: Optional[int] = None,
         # Internal-only params used for the num_partitions/distributed async
         # fan-out; not part of the public API. NOTE: when _is_async_job=True,
@@ -2192,6 +2968,7 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                feature_contributions_type=feature_contributions_type,
                 _job_timeout_seconds=_job_timeout_seconds,
                 _is_async_job=_is_async_job,
                 _poll_interval=_poll_interval,
@@ -2228,6 +3005,7 @@ class NixtlaClient:
         feature_contributions: bool,
         model_parameters: _ExtraParamDataType,
         multivariate: bool,
+        feature_contributions_type: _FeatureContributionsType = "shapley",
     ) -> tuple[dict[str, Any], np.ndarray, int, int, Callable[..., Any]]:
         self.__dict__.pop("weights_x", None)
         self.__dict__.pop("feature_contributions", None)
@@ -2240,7 +3018,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
         df, X_df, df_cat_vals, futr_cat_cols, hist_cat_cols, X_df_cat_future = (
@@ -2283,15 +3060,31 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
         )
+        future_df = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=type(processed.uids)(processed.last_times),
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        _validate_future_exog_keys(
+            X_df=X_df,
+            expected=future_df,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        X_df_cat_future_values = _align_future_categorical_exog(
+            X_df_cat_future=X_df_cat_future,
+            uids=processed.uids,
+            id_col=id_col,
+            time_col=time_col,
+        )
 
         sorted_df_cat: dict[str, np.ndarray] = {}
         if categorical_exog_list:
-            for c, vals in df_cat_vals.items():
-                sorted_df_cat[c] = (
-                    vals[processed.sort_idxs]
-                    if processed.sort_idxs is not None
-                    else vals
-                )
+            sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
 
         standard_freq = _standardize_freq(freq, processed)
         model_input_size, model_horizon = self._get_model_params(model, standard_freq)
@@ -2326,48 +3119,24 @@ class NixtlaClient:
             orig_sort_idxs = processed.sort_idxs
             processed = _tail(processed, new_input_size)
 
-        n_futr_num = len(futr_cols) if futr_cols is not None else 0
-        n_futr_cat = len(futr_cat_cols)
-        n_hist_num = len(x_cols) - n_futr_num
-        n_hist_cat = len(hist_cat_cols)
-
-        cat_all_hist_rows: list[list] = [
-            sorted_df_cat[c].tolist() for c in futr_cat_cols + hist_cat_cols
-        ]
-
-        if processed.data.shape[1] > 1 or cat_all_hist_rows:
-            X_num = list(processed.data[:, 1:].T) if processed.data.shape[1] > 1 else []
-            futr_num_rows = X_num[:n_futr_num]
-            hist_num_rows = X_num[n_futr_num:]
-            futr_cat_hist_rows = cat_all_hist_rows[:n_futr_cat]
-            hist_cat_hist_rows = cat_all_hist_rows[n_futr_cat:]
-            X = futr_num_rows + futr_cat_hist_rows + hist_num_rows + hist_cat_hist_rows
-            if futr_cols is not None:
-                logger.info(f"Using future exogenous features: {futr_cols}")
-            if futr_cat_cols:
-                logger.info(
-                    f"Using future categorical exogenous features: {futr_cat_cols}"
-                )
-            if hist_exog_list:
-                logger.info(f"Using historical exogenous features: {hist_exog_list}")
-            if hist_cat_cols:
-                logger.info(
-                    f"Using historical categorical exogenous features: {hist_cat_cols}"
-                )
-        else:
-            X = None
-
-        if X_future is not None or X_df_cat_future:
-            X_future = (
-                list(X_future) if X_future is not None else []
-            ) + X_df_cat_future
-
-        categorical_exog_payload: Optional[list[int]] = None
-        if categorical_exog_list:
-            futr_cat_indices = list(range(n_futr_num, n_futr_num + n_futr_cat))
-            hist_cat_start = n_futr_num + n_futr_cat + n_hist_num
-            hist_cat_indices = list(range(hist_cat_start, hist_cat_start + n_hist_cat))
-            categorical_exog_payload = futr_cat_indices + hist_cat_indices
+        X, X_future, categorical_exog_payload, weights_x_cols = _build_exog_payload(
+            processed=processed,
+            sorted_df_cat=sorted_df_cat,
+            x_cols=x_cols,
+            futr_cols=futr_cols,
+            futr_cat_cols=futr_cat_cols,
+            hist_cat_cols=hist_cat_cols,
+            X_future=X_future,
+            X_df_cat_future=X_df_cat_future_values,
+            has_categorical=bool(categorical_exog_list),
+        )
+        if X is not None:
+            _log_exog_features(
+                futr_cols=futr_cols,
+                futr_cat_cols=futr_cat_cols,
+                hist_exog_list=hist_exog_list,
+                hist_cat_cols=hist_cat_cols,
+            )
 
         logger.info("Calling Forecast Endpoint...")
         sizes = np.diff(processed.indptr)
@@ -2398,12 +3167,10 @@ class NixtlaClient:
             "feature_contributions": feature_contributions and X is not None,
             "multivariate": multivariate,
         }
+        if feature_contributions:
+            payload["feature_contributions_type"] = feature_contributions_type
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
-
-        weights_x_cols = (
-            x_cols[:n_futr_num] + futr_cat_cols + x_cols[n_futr_num:] + hist_cat_cols
-        )
 
         def parse_result(
             resp: dict[str, Any],
@@ -2411,15 +3178,7 @@ class NixtlaClient:
             insample_feat_contributions: Optional[Any] = None,
         ) -> Any:
             # assemble result
-            out = ufp.make_future_dataframe(
-                uids=processed.uids,
-                last_times=type(processed.uids)(processed.last_times),
-                freq=freq,
-                h=h,
-                id_col=id_col,
-                time_col=time_col,
-            )
-            out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+            out = ufp.assign_columns(future_df, "TimeGPT", resp["mean"])
             out = _maybe_add_intervals(out, resp["intervals"])
             if add_history:
                 assert in_sample_resp is not None
@@ -2490,6 +3249,7 @@ class NixtlaClient:
         feature_contributions: bool = False,
         model_parameters: _ExtraParamDataType = None,
         multivariate: bool = False,
+        feature_contributions_type: _FeatureContributionsType = "shapley",
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
@@ -2584,14 +3344,16 @@ class NixtlaClient:
                 Number of partitions to use. If None, the number of partitions
                 will be equal to the available parallel resources in
                 distributed environments. Defaults to None.
-            feature_contributions (bool): Compute SHAP values.
-                Gives access to computed SHAP values to explain the impact
-                of features on the final predictions. Defaults to False.
+            feature_contributions (bool): Compute feature contributions and
+                store them in `self.feature_contributions`. Defaults to False.
             model_parameters (dict): The dictionary settings that determine
                 the behavior of the model. Default is None
             multivariate (bool): If True, enables multivariate predictions.
                 Defaults to False. Note: multivariate predictions are only
                 supported for a select set of TimeGPT models.
+            feature_contributions_type (str): Explanation used for feature
+                contributions. One of `"shapley"`, `"intervention"`,
+                `"granger"`, or `"transfer_entropy"`. Defaults to `"shapley"`.
 
         Returns:
             pandas, polars, dask or spark DataFrame or ray Dataset:
@@ -2631,6 +3393,7 @@ class NixtlaClient:
                 model=model,
                 num_partitions=num_partitions,
                 feature_contributions=feature_contributions,
+                feature_contributions_type=feature_contributions_type,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
                 _job_timeout_seconds=_job_timeout_seconds,
@@ -2664,6 +3427,7 @@ class NixtlaClient:
                 feature_contributions=feature_contributions,
                 model_parameters=model_parameters,
                 multivariate=multivariate,
+                feature_contributions_type=feature_contributions_type,
             )
         )
 
@@ -2919,6 +3683,558 @@ class NixtlaClient:
             "v2/forecast", payload, job_timeout_seconds, parse_result
         )
 
+    def simulate(
+        self,
+        df: DataFrame,
+        h: _PositiveInt,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        X_df: Optional[DataFrame] = None,
+        n_paths: _PositiveInt = 100,
+        quantiles: Optional[list[float]] = None,
+        seed: Optional[int] = None,
+        finetuned_model_id: Optional[str] = None,
+        clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        date_features: Union[bool, list[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        multivariate: bool = False,
+        num_partitions: Optional[_PositiveInt] = None,
+        timeout_seconds: Optional[int] = None,
+    ) -> DataFrame:
+        """Generate temporally correlated forecast sample paths.
+
+        The request runs as an asynchronous job on the server: it is submitted,
+        then polled until it finishes, so this call blocks until the paths are
+        available. See `async_job_wait_timeout` and `async_job_poll_interval`
+        on `NixtlaClient` to control the waiting behavior.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series data.
+                It must contain the time and target columns and may contain an
+                ID column and exogenous feature columns.
+            h (int): Number of future timesteps in every sample path.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps. If `None`, it is inferred from `df` (pandas only);
+                pass it explicitly for polars.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            X_df (pandas or polars DataFrame, optional): Future exogenous
+                values with ID and time columns.
+            n_paths (int): Number of paths generated for each series. Must be
+                between 1 and 10,000. Defaults to 100.
+            quantiles (list[float], optional): Strictly increasing marginal
+                quantiles inside `(0, 1)`. Between 2 and 200 values may be
+                provided. They refine the marginal distribution the paths are
+                drawn from and add no columns to the result. A wide grid also
+                counts towards a second size limit:
+                `n_series * h * (n_paths + len(quantiles))` may not exceed
+                10,000,000.
+            seed (int, optional): Random seed. Reusing a seed with the same
+                inputs produces the same paths. Must be between `-2**63` and
+                `2**64 - 1`. The seed drives both the coupled and the per-series
+                shuffle, so repeating a request with the same seed and a
+                different `multivariate` setting reorders the first series by
+                ID identically in both, and returns the very same paths for it
+                when its marginal forecast is unchanged too. Vary the seed
+                when comparing coupled against uncoupled paths.
+            finetuned_model_id (str, optional): ID of a previously fine-tuned
+                model.
+            clean_ex_first (bool): Clean exogenous signals before inference.
+                Defaults to True.
+            hist_exog_list (list[str], optional): Historical-only exogenous
+                feature names.
+            categorical_exog_list (list[str], optional): Categorical
+                exogenous feature names.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            date_features (bool or list, optional): Date-derived exogenous
+                features to add.
+            date_features_to_one_hot (bool or list[str]): Date features to
+                one-hot encode.
+            model (str): Model used to generate the marginal forecasts.
+                Defaults to `"timegpt-2.1"`.
+            multivariate (bool): Request coherent paths across series. The
+                returned `coupled` column reports whether cross-series
+                coupling was applied. Defaults to False.
+            num_partitions (int, optional): Split the series across this many
+                concurrent requests, which keeps large jobs under the request
+                size limit. Cannot be combined with `multivariate=True`, since
+                coupling is computed across the series in a single request.
+                Each partition is sent a distinct seed derived from `seed`, so
+                partitions never share their random draws and the call stays
+                reproducible, but a partitioned call returns different paths
+                than an unpartitioned one for the same `seed`. Defaults to
+                None (a single request). At most five partition jobs run
+                concurrently. If a partition fails, the client cancels sibling
+                jobs and stops queued submissions.
+            timeout_seconds (int, optional): Maximum time in seconds the
+                server may spend on the job (on each partition when
+                `num_partitions` is set). It may not exceed the limit of the
+                deployment. Defaults to None (the deployment's limit).
+
+        Returns:
+            pandas or polars DataFrame: Long-format sample paths with ID, time,
+                `sample_id`, `TimeGPT`, and `coupled` columns. It contains
+                `n_series * n_paths * h` rows. The ID column is omitted if `df`
+                did not contain one.
+
+        Raises:
+            ValueError: Invalid arguments, missing or duplicate timestamps,
+                or timestamps that do not match the provided frequency.
+            ApiError: An HTTP request failed, including an unsupported deployment.
+            AsyncJobError: The job failed or returned an invalid job response.
+            AsyncJobCancelledError: The job was cancelled on the server.
+            AsyncJobTimeoutError: The job did not finish within
+                `async_job_wait_timeout` seconds; cancellation was requested.
+        """
+        self._validate_job_timeout(timeout_seconds)
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`simulate` only supports pandas and polars dataframes.")
+        if X_df is not None and not isinstance(X_df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`X_df` must be a pandas or polars dataframe.")
+        if not isinstance(h, (int, np.integer)) or isinstance(h, bool):
+            raise ValueError("`h` must be a positive integer.")
+        h = int(h)
+        if h < 1:
+            raise ValueError("`h` must be a positive integer.")
+        if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
+            raise ValueError("`n_paths` must be a positive integer.")
+        n_paths = int(n_paths)
+        if n_paths < 1:
+            raise ValueError("`n_paths` must be a positive integer.")
+        if num_partitions is not None:
+            if not isinstance(num_partitions, (int, np.integer)) or isinstance(
+                num_partitions, bool
+            ):
+                raise ValueError("`num_partitions` must be a positive integer.")
+            num_partitions = int(num_partitions)
+            if num_partitions < 1:
+                raise ValueError("`num_partitions` must be a positive integer.")
+            if multivariate:
+                raise ValueError(
+                    "`num_partitions` cannot be combined with `multivariate=True`: "
+                    "cross-series coupling is computed across the series in a "
+                    "single request, so partitioning would silently return "
+                    "uncoupled paths."
+                )
+        if seed is not None:
+            if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
+                raise ValueError("`seed` must be an integer.")
+            seed = int(seed)
+        level, _ = _prepare_level_and_quantiles(None, quantiles)
+
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        df, X_df, drop_id, freq = self._run_validations(
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+            freq=freq,
+        )
+        (
+            df,
+            X_df,
+            df_cat_vals,
+            futr_cat_cols,
+            hist_cat_cols,
+            X_df_cat_future,
+        ) = _extract_categorical_exog(
+            df=df,
+            categorical_exog_list=categorical_exog_list,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            X_df=X_df,
+        )
+        numeric_hist_exog = (
+            [col for col in hist_exog_list if col not in hist_cat_cols]
+            if hist_exog_list
+            else hist_exog_list
+        )
+        df, X_df = _validate_exog(
+            df=df,
+            X_df=X_df,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            hist_exog=numeric_hist_exog,
+        )
+
+        logger.info("Preprocessing dataframes...")
+        processed, X_future, x_cols, futr_cols = _preprocess(
+            df=df,
+            X_df=X_df,
+            h=h,
+            freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        future_df = ufp.make_future_dataframe(
+            uids=processed.uids,
+            last_times=type(processed.uids)(processed.last_times),
+            freq=freq,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        _validate_future_exog_keys(
+            X_df=X_df,
+            expected=future_df,
+            h=h,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        X_df_cat_future_values = _align_future_categorical_exog(
+            X_df_cat_future=X_df_cat_future,
+            uids=processed.uids,
+            id_col=id_col,
+            time_col=time_col,
+        )
+        sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
+        standard_freq = _standardize_freq(freq, processed)
+        model_input_size, model_horizon = self._get_model_params(model, standard_freq)
+        if h > model_horizon:
+            logger.warning(
+                'The specified horizon "h" exceeds the model horizon, '
+                "this may lead to less accurate sample paths. "
+                "Please consider using a smaller horizon."
+            )
+        if not x_cols and not categorical_exog_list:
+            logger.info("Restricting input...")
+            new_input_size = _restrict_input_samples(
+                level=level,
+                input_size=model_input_size,
+                model_horizon=model_horizon,
+                h=h,
+            )
+            if multivariate:
+                new_input_size = max(new_input_size, h)
+            processed = _tail(processed, new_input_size)
+        X, X_future, categorical_exog_payload, _ = _build_exog_payload(
+            processed=processed,
+            sorted_df_cat=sorted_df_cat,
+            x_cols=x_cols,
+            futr_cols=futr_cols,
+            futr_cat_cols=futr_cat_cols,
+            hist_cat_cols=hist_cat_cols,
+            X_future=X_future,
+            X_df_cat_future=X_df_cat_future_values,
+            has_categorical=bool(categorical_exog_list),
+        )
+        if X is not None:
+            _log_exog_features(
+                futr_cols=futr_cols,
+                futr_cat_cols=futr_cat_cols,
+                hist_exog_list=hist_exog_list,
+                hist_cat_cols=hist_cat_cols,
+            )
+
+        sizes = np.diff(processed.indptr)
+        output_values = n_paths * len(sizes) * h
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+            "X_future": X_future,
+        }
+        if categorical_exog_payload is not None:
+            series_payload["categorical_exog"] = categorical_exog_payload
+        payload = {
+            "series": series_payload,
+            "model": model,
+            "h": h,
+            "freq": standard_freq,
+            "n_paths": n_paths,
+            "quantiles": quantiles,
+            "seed": seed,
+            "finetuned_model_id": finetuned_model_id,
+            "clean_ex_first": clean_ex_first,
+            "multivariate": multivariate,
+        }
+
+        logger.info("Calling Simulate Endpoint...")
+        with self._make_client(**self._client_kwargs) as client:
+            if num_partitions is None:
+                resp = self._run_async_job(
+                    client,
+                    "v2/simulate",
+                    payload,
+                    poll_interval=self._async_job_poll_interval,
+                    poll_timeout=self._async_job_wait_timeout,
+                    job_timeout_seconds=timeout_seconds,
+                    task="simulate",
+                )
+            else:
+                payloads = _partition_series(payload, num_partitions, h)
+                if seed is not None:
+                    seed_span = _MAX_SEED - _MIN_SEED + 1
+                    for i, part in enumerate(payloads[1:], start=1):
+                        part["seed"] = (seed - _MIN_SEED + i) % seed_span + _MIN_SEED
+                resp = self._make_partitioned_simulate_requests(
+                    client,
+                    payloads,
+                    n_paths=n_paths,
+                    h=h,
+                    timeout_seconds=timeout_seconds,
+                )
+
+        response_n_paths = resp.get("n_paths")
+        response_h = resp.get("h")
+        try:
+            response_sizes = np.asarray(resp.get("sizes"), dtype=np.int64)
+            samples = np.asarray(resp.pop("samples", None), dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Simulation response contains non-numeric sizes or samples."
+            ) from exc
+        expected_sizes = np.full(len(sizes), h)
+        if response_n_paths != n_paths or response_h != h:
+            raise RuntimeError(
+                "Simulation response metadata does not match the request."
+            )
+        if response_sizes.shape != expected_sizes.shape or not np.array_equal(
+            response_sizes, expected_sizes
+        ):
+            raise RuntimeError("Simulation response contains unexpected series sizes.")
+        if samples.ndim != 1 or samples.size != output_values:
+            raise RuntimeError(
+                f"Simulation response contains {samples.size:,} values; "
+                f"expected {output_values:,}."
+            )
+        coupled = _coerce_coupled_flag(resp.get("coupled"))
+
+        future_rows = len(future_df)
+        out = ufp.take_rows(
+            future_df, np.tile(np.arange(future_rows, dtype=np.int32), n_paths)
+        )
+        if isinstance(out, pd.DataFrame):
+            out = out.set_axis(pd.RangeIndex(len(out)), axis=0, copy=False)
+        out = ufp.assign_columns(
+            out,
+            "sample_id",
+            np.repeat(np.arange(n_paths, dtype=np.int64), future_rows),
+        )
+        out = ufp.assign_columns(out, "TimeGPT", samples)
+        out = ufp.assign_columns(out, "coupled", np.full(output_values, coupled))
+        return _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+
+    def explain(
+        self,
+        df: DataFrame,
+        method: _ExplainMethod = "granger",
+        features: Optional[list[str]] = None,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        timeout_seconds: Optional[int] = None,
+    ) -> DataFrame:
+        """Compute model-independent historical feature importance weights.
+
+        The returned weights describe lagged predictive relationships in the
+        supplied data. They do not establish that changing a feature will cause
+        the target to change.
+
+        The request runs as an asynchronous job on the server: it is submitted,
+        then polled until it finishes, so this call blocks until the weights
+        are available. See `async_job_wait_timeout` and
+        `async_job_poll_interval` on `NixtlaClient` to control the waiting
+        behavior.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series containing
+                the target and candidate feature columns.
+            method (str): `"granger"` for linear lagged relationships or
+                `"transfer_entropy"` for potentially nonlinear relationships.
+                Defaults to `"granger"`.
+            features (list[str], optional): Features to analyze. By default,
+                every column other than the ID, time, and target columns is
+                used. Missing feature values are allowed: rows with a missing
+                value in a lagged column are excluded from that feature's
+                weight estimation, which reduces the effective sample.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps, used to verify that every series is complete and
+                regularly spaced. Both methods are lag-based, so gaps or
+                duplicate timestamps distort the weights. If `None`, it is
+                inferred from `df` (pandas only); pass it explicitly for polars.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            categorical_exog_list (list[str], optional): Feature names that
+                should be treated as categorical.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            timeout_seconds (int, optional): Maximum time in seconds the
+                server may spend on the job. It may not exceed the limit of
+                the deployment. Defaults to None (the deployment's limit).
+
+        Returns:
+            pandas or polars DataFrame: One row per feature with `feature`,
+                `weight`, and `method` columns.
+
+        Raises:
+            ValueError: Invalid arguments, missing or duplicate timestamps,
+                or timestamps that do not match the provided frequency.
+            ApiError: An HTTP request failed, including an unsupported deployment.
+            AsyncJobError: The job failed or returned an invalid job response.
+            AsyncJobCancelledError: The job was cancelled on the server.
+            AsyncJobTimeoutError: The job did not finish within
+                `async_job_wait_timeout` seconds; cancellation was requested.
+        """
+        if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+            raise ValueError("`explain` only supports pandas and polars dataframes.")
+        if method not in get_args(_ExplainMethod):
+            raise ValueError("`method` must be 'granger' or 'transfer_entropy'.")
+        self._validate_job_timeout(timeout_seconds)
+        df, _, _, freq = self._run_validations(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=validate_api_key,
+            freq=freq,
+        )
+
+        base_columns = {id_col, time_col, target_col}
+        if features is None:
+            features = [col for col in df.columns if col not in base_columns]
+        else:
+            features = list(features)
+        if not features:
+            raise ValueError("`explain` requires at least one feature.")
+        if len(features) != len(set(features)):
+            raise ValueError("`features` must not contain duplicates.")
+        invalid_features = set(features) - set(df.columns)
+        if invalid_features:
+            raise ValueError(
+                f"The following features were not found in `df`: {invalid_features}."
+            )
+        reserved_features = set(features) & base_columns
+        if reserved_features:
+            raise ValueError(
+                "ID, time, and target columns cannot be explanation features: "
+                f"{reserved_features}."
+            )
+
+        categorical_exog_list = list(categorical_exog_list or [])
+        invalid_categorical = set(categorical_exog_list) - set(features)
+        if invalid_categorical:
+            raise ValueError(
+                "Every categorical feature must also be present in `features`: "
+                f"{invalid_categorical}."
+            )
+        undeclared_non_numeric = sorted(
+            col
+            for col in features
+            if col not in categorical_exog_list
+            and not _is_numeric_column(df=df, col=col)
+        )
+        if undeclared_non_numeric:
+            raise ValueError(
+                "The following features are not numeric: "
+                f"{undeclared_non_numeric}. Add them to `categorical_exog_list` "
+                "to treat them as categorical, or exclude them via `features`."
+            )
+        features_with_missing = _features_with_missing_values(df, features)
+        if features_with_missing:
+            logger.warning(
+                "The following features contain missing values: "
+                f"{features_with_missing}. Rows with a missing value in a "
+                "lagged column are excluded from that feature's weight "
+                "estimation, which reduces the effective sample."
+            )
+
+        processed = ufp.process_df(
+            df=df[[id_col, time_col, target_col]],
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        feature_rows: list[Any] = []
+        for feature in features:
+            is_categorical = feature in categorical_exog_list
+            if is_categorical:
+                values = df[feature].to_numpy()
+                if isinstance(df, pd.DataFrame):
+                    missing = pd.isna(values)
+                    if missing.any():
+                        values = values.astype(object, copy=True)
+                        values[missing] = None
+            else:
+                values = _numeric_column_array(df, feature)
+            if processed.sort_idxs is not None:
+                values = values[processed.sort_idxs]
+            feature_rows.append(values.tolist() if is_categorical else values)
+        categorical_positions = [
+            position
+            for position, feature in enumerate(features)
+            if feature in categorical_exog_list
+        ]
+        series_payload: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": np.diff(processed.indptr),
+            "X": feature_rows,
+        }
+        if categorical_positions:
+            series_payload["categorical_exog"] = categorical_positions
+        payload = {"series": series_payload, "method": method}
+
+        logger.info("Calling Explain Endpoint...")
+        with self._make_client(**self._client_kwargs) as client:
+            resp = self._run_async_job(
+                client,
+                "v2/explain",
+                payload,
+                poll_interval=self._async_job_poll_interval,
+                poll_timeout=self._async_job_wait_timeout,
+                job_timeout_seconds=timeout_seconds,
+                task="explain",
+            )
+
+        try:
+            weights = np.asarray(resp.get("weights"), dtype=np.float64)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Explain response contains non-numeric weights."
+            ) from exc
+        if weights.ndim != 1 or weights.size != len(features):
+            raise RuntimeError(
+                f"Explain response contains {weights.size} weights; "
+                f"expected {len(features)}."
+            )
+        response_method = resp.get("method")
+        if response_method != method:
+            raise RuntimeError("Explain response metadata does not match the request.")
+        return type(df)(
+            {
+                "feature": features,
+                "weight": weights,
+                "method": [response_method] * len(features),
+            }
+        )
+
     def _distributed_detect_anomalies(
         self,
         df: DistributedDFType,
@@ -3088,7 +4404,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
 
@@ -3412,7 +4727,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=False,
-            model=model,
             freq=freq,
         )
         logger.info("Preprocessing dataframes...")
@@ -3626,7 +4940,6 @@ class NixtlaClient:
             time_col=time_col,
             target_col=target_col,
             validate_api_key=validate_api_key,
-            model=model,
             freq=freq,
         )
         level, quantiles = _prepare_level_and_quantiles(level, quantiles)
@@ -4616,6 +5929,7 @@ def _forecast_wrapper(
     feature_contributions: bool,
     model_parameters: _ExtraParamDataType,
     multivariate: bool,
+    feature_contributions_type: _FeatureContributionsType,
     _is_async_job: bool = False,
     _poll_interval: float = 15,
     _poll_timeout: float = 3600,
@@ -4651,6 +5965,7 @@ def _forecast_wrapper(
         model=model,
         num_partitions=num_partitions,
         feature_contributions=feature_contributions,
+        feature_contributions_type=feature_contributions_type,
         model_parameters=model_parameters,
         multivariate=multivariate,
         _is_async_job=_is_async_job,

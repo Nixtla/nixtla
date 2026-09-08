@@ -6,16 +6,31 @@ icon: "store"
 
 ## Introduction
 
-Pricing decisions significantly impact retail demand. [TimeGPT](/introduction/about_timegpt) makes it possible to forecast product demand while incorporating price as a key factor, enabling retailers to evaluate how different pricing scenarios might affect sales. This approach offers valuable insights for strategic pricing decisions.
+Pricing decisions significantly impact retail demand. [TimeGPT](/introduction/about_timegpt) makes it possible to forecast product demand while incorporating price as a key factor, enabling retailers to explore how the forecast changes under different pricing assumptions.
 
-This tutorial demonstrates how to use TimeGPT for scenario analysis by forecasting demand under various pricing conditions. You'll learn to incorporate price data into forecasts and compare different pricing strategies to understand their impact on consumer demand.
+This tutorial demonstrates how to use TimeGPT for scenario analysis by forecasting demand under various pricing conditions. You'll learn to incorporate price data into forecasts and compare forecasts across different price assumptions.
+
+<Warning>
+**A scenario forecast is not a price-effect estimate.** Changing a future price
+and re-forecasting shows the model's conditional forecast given that price:
+a relationship learned from how price and demand moved together historically.
+In retail history, prices are rarely changed at random: markdowns respond to
+slow sales, and promotions are timed to seasons. The learned relationship
+therefore mixes the true effect of price with the pricing policy that set it,
+so the difference between two scenario forecasts can overstate or understate
+the real demand response to a price change. This is most pronounced for price moves outside the historically observed range.
+
+Use these scenarios to explore and stress-test assumptions, not to read off
+price elasticities. Before committing a pricing decision, validate the implied
+demand response with a price experiment or a holdout test.
+</Warning>
 
 ### What You'll Learn
 
 - How to forecast retail demand using price as an [exogenous variable](/forecasting/exogenous-variables/numeric_features)
 - How to run what-if scenarios with different pricing strategies
 - How to compare baseline, increased, and decreased price forecasts
-- How to interpret price sensitivity in demand forecasts
+- How to interpret scenario forecasts and why they are not price-elasticity estimates
 
 ## How to Forecast Sales with Pricing Scenarios
 
@@ -275,7 +290,12 @@ timegpt_fcst_df.head(10)
 | FOODS_1_129_CA_1 | 2016-05-31 | 0.833089 | 0.804500 | 1.327524 |
 | FOODS_1_129_CA_1 | 2016-06-01 | 0.855032 | 0.826443 | 1.349467 |
 
-As expected, demand increases when we reduce the price and decreases when we increase it. A cheaper product leads to higher sales and vice versa. 
+In this run, forecast demand increases when we reduce the price and decreases
+when we increase it: the direction most retailers would expect. Keep in mind
+that this reflects the association the model learned from this product's
+pricing history; as cautioned [above](#introduction), the size of the gap
+between the scenarios, and for some products even its direction, should not be
+read as the causal effect of the price change.
 
 Finally, let's plot the forecasts for our different pricing scenarios, showing how TimeGPT forecasts a different demand when the price of a set of products is changed.
 
@@ -295,12 +315,16 @@ In the graphs we can see that for specific products for certain periods the disc
 
 ## Conclusion
 
-What-if forecasting with TimeGPT enables data-driven pricing decisions by:
-- Modeling demand sensitivity to price changes
+What-if forecasting with TimeGPT supports pricing discussions by:
+- Exploring how the demand forecast changes under different price assumptions
 - Comparing multiple pricing scenarios simultaneously
 - Incorporating exogenous variables for realistic predictions
 
-This scenario analysis approach helps retailers optimize pricing strategies and maximize revenue while understanding demand elasticity.
+Scenario forecasts are a starting point for a pricing conversation, not a
+substitute for measuring price effects: the differences between scenarios
+reflect learned associations, and their magnitude and direction
+can differ from the true demand response. Validate promising scenarios with
+price experiments or holdout tests before acting on them.
 
 ### Next Steps
 
@@ -312,4 +336,5 @@ This scenario analysis approach helps retailers optimize pricing strategies and 
 ### Important Considerations
 
 - This method assumes that historical demand and price behaviour is predictive of future demand, and omits other factors affecting demand. To include these other factors, use additional exogenous variables that provide the model with more context about the factors influencing demand.
+- Because historical prices were typically set in response to demand rather than at random, the measured relationship between price and demand is an association, not a causal effect. Treat scenario differences as directional input for planning, and rely on experiments or basket-level analysis when you need to know why demand changed.
 - This method is sensitive to unmodelled events that affect the demand, such as sudden market shifts. To include those, use additional exogenous variables indicating such sudden shifts if they have been observed in the past too.

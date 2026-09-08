@@ -44,6 +44,7 @@ def test_forecast_wrapper_forwards_async_kwargs():
         feature_contributions=False,
         model_parameters=None,
         multivariate=False,
+        feature_contributions_type="shapley",
         _job_timeout_seconds=300,
         _is_async_job=True,
         _poll_interval=7,
@@ -87,6 +88,7 @@ def test_forecast_wrapper_defaults_are_sync():
         feature_contributions=False,
         model_parameters=None,
         multivariate=False,
+        feature_contributions_type="shapley",
     )
 
     kwargs = mock_client.forecast.call_args.kwargs

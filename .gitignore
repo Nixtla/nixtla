@@ -48,5 +48,8 @@ nbs/_extensions
 *.png
 # Docs film-grain texture — must be committed so Mintlify can serve /tex_noise.png
 !timegpt-docs/tex_noise.png
+# Rendered charts used by the simulation and explanation guides.
+!timegpt-docs/images/forecasting/
+!timegpt-docs/images/forecasting/*.png
 
 .coverage*
