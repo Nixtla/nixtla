@@ -41,7 +41,6 @@ polars = [
 
 [dependency-groups]
 dev = [
-    "datasetsforecast==0.0.8",
     "numba>=0.58.0",
     "pip",
     "pre-commit",

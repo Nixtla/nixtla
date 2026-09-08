@@ -4,7 +4,6 @@ from itertools import product
 from packaging.version import Version
 
 import dask.dataframe as dd
-import datasetsforecast.losses as ds_losses
 import fugue.api as fa
 import narwhals.stable.v2 as nw
 import numpy as np
@@ -12,7 +11,6 @@ import pandas as pd
 import polars as pl
 import polars.testing
 import pytest
-from datasetsforecast.evaluation import accuracy as ds_evaluate
 from pyspark.sql import SparkSession
 from dask.distributed import Client
 from fugue_dask import DaskExecutionEngine
@@ -527,65 +525,131 @@ def test_distributed_evaluate_weighted_mean_not_implemented(setup_series):
         )
 
 
-def daily_mase(y, y_hat, y_train):
-    return ds_losses.mase(y, y_hat, y_train, seasonality=7)
+def _reference_mase(y, y_hat, y_train, seasonality):
+    mae_val = np.abs(y - y_hat).mean()
+    scale = np.abs(y_train[:-seasonality] - y_train[seasonality:]).mean()
+    return mae_val / scale
 
 
-def test_datasets_evaluate(setup_series, setup_models, setup_metrics):
+def _reference_quantile_loss(y, y_hat, q):
+    delta = y - y_hat
+    return np.maximum(q * delta, (q - 1) * delta).mean()
+
+
+def _reference_mqloss(y, y_hat_qs, quantiles):
+    error = y[:, None] - y_hat_qs
+    return np.maximum(quantiles * error, (quantiles - 1) * error).mean()
+
+
+def _reference_scaled_crps(y, y_hat_qs, quantiles):
+    norm = np.abs(y).sum()
+    loss = _reference_mqloss(y, y_hat_qs, quantiles)
+    return 2 * loss * len(y) / (norm + np.finfo(float).eps)
+
+
+def test_losses_match_reference_implementation(setup_series, setup_models):
+    """Cross-check the losses against independent numpy reference formulas
+    (standard textbook/paper definitions), so correctness isn't only verified
+    against utilsforecast's own code."""
     level = [80, 95]
-    for agg_fn in [None, "mean"]:
-        uf_res = evaluate(
-            setup_series,
-            metrics=setup_metrics,
-            models=setup_models,
-            train_df=setup_series,
-            level=level,
-            agg_fn=agg_fn,
-        )
-        agg_by = None if agg_fn == "mean" else ["unique_id"]
-        ds_res = ds_evaluate(
-            setup_series,
-            metrics=[
-                ds_losses.mae,
-                ds_losses.mse,
-                ds_losses.rmse,
-                ds_losses.mape,
-                daily_mase,
-                ds_losses.smape,
-                ds_losses.quantile_loss,
-                ds_losses.mqloss,
-                ds_losses.coverage,
-                ds_losses.calibration,
-                ds_losses.scaled_crps,
-            ],
-            level=level,
-            Y_df=setup_series,
-            agg_by=agg_by,
-        )
-        ds_res["metric"] = ds_res["metric"].str.replace("-", "_")
-        ds_res["metric"] = ds_res["metric"].str.replace("q_", "q")
-        ds_res["metric"] = ds_res["metric"].str.replace("lv_", "level")
-        ds_res["metric"] = ds_res["metric"].str.replace("daily_mase", "mase")
-        # utils doesn't multiply pct metrics by 100
-        ds_res.loc[
-            ds_res["metric"].str.startswith("coverage"), ["model0", "model1"]
-        ] /= 100
-        ds_res.loc[ds_res["metric"].eq("mape"), ["model0", "model1"]] /= 100
-        # we report smape between 0 and 1 instead of 0-200
-        ds_res.loc[ds_res["metric"].eq("smape"), ["model0", "model1"]] /= 200
+    # quantiles for level 95 (lo, hi) then level 80 (lo, hi), same convention
+    # utilsforecast's evaluate() uses to derive quantiles from levels
+    quantiles = np.array([0.025, 0.1, 0.9, 0.975])
+    groups = dict(tuple(setup_series.groupby("unique_id")))
+    uids = sorted(groups)
 
-        ds_res = ds_res[uf_res.columns]
-        if agg_fn is None:
-            ds_res = ds_res.sort_values(["unique_id", "metric"])
-            uf_res = uf_res.sort_values(["unique_id", "metric"])
-        else:
-            ds_res = ds_res.sort_values("metric")
-            uf_res = uf_res.sort_values("metric")
+    def actual(fn, models, **kwargs):
+        res = fn(df=setup_series, models=models, **kwargs)
+        return nw.from_native(res).sort("unique_id")
 
-        pd.testing.assert_frame_equal(
-            uf_res.reset_index(drop=True),
-            ds_res.reset_index(drop=True),
+    for model in setup_models:
+        expected = {
+            "mae": [],
+            "mse": [],
+            "rmse": [],
+            "mape": [],
+            "smape": [],
+            "mase": [],
+            "mqloss": [],
+            "scaled_crps": [],
+        }
+        expected_ql = {q: [] for q in quantiles}
+        expected_cal = {q: [] for q in quantiles}
+        expected_cov = {lv: [] for lv in level}
+        for uid in uids:
+            g = groups[uid]
+            y = g["y"].to_numpy()
+            y_hat = g[model].to_numpy()
+            expected["mae"].append(np.abs(y - y_hat).mean())
+            expected["mse"].append(np.square(y - y_hat).mean())
+            expected["rmse"].append(np.sqrt(np.square(y - y_hat).mean()))
+            expected["mape"].append((np.abs(y - y_hat) / np.abs(y)).mean())
+            expected["smape"].append(
+                (np.abs(y - y_hat) / (np.abs(y) + np.abs(y_hat))).mean()
+            )
+            # train_df == df in this fixture, so y_train is the same y
+            expected["mase"].append(_reference_mase(y, y_hat, y, seasonality=7))
+
+            y_hat_qs = np.column_stack(
+                [
+                    g[f"{model}-lo-95"],
+                    g[f"{model}-lo-80"],
+                    g[f"{model}-hi-80"],
+                    g[f"{model}-hi-95"],
+                ]
+            )
+            for q, col in zip(quantiles, y_hat_qs.T):
+                expected_ql[q].append(_reference_quantile_loss(y, col, q))
+                expected_cal[q].append((y <= col).mean())
+            expected["mqloss"].append(_reference_mqloss(y, y_hat_qs, quantiles))
+            expected["scaled_crps"].append(
+                _reference_scaled_crps(y, y_hat_qs, quantiles)
+            )
+            for lv in level:
+                lo = g[f"{model}-lo-{lv}"].to_numpy()
+                hi = g[f"{model}-hi-{lv}"].to_numpy()
+                expected_cov[lv].append(np.mean((y >= lo) & (y <= hi)))
+
+        np.testing.assert_allclose(actual(mae, [model])[model], expected["mae"])
+        np.testing.assert_allclose(actual(mse, [model])[model], expected["mse"])
+        np.testing.assert_allclose(actual(rmse, [model])[model], expected["rmse"])
+        np.testing.assert_allclose(actual(mape, [model])[model], expected["mape"])
+        np.testing.assert_allclose(actual(smape, [model])[model], expected["smape"])
+        np.testing.assert_allclose(
+            actual(mase, [model], seasonality=7, train_df=setup_series)[model],
+            expected["mase"],
         )
+
+        for q in quantiles:
+            side = "lo" if q < 0.5 else "hi"
+            lv = 95 if q in (0.025, 0.975) else 80
+            col = f"{model}-{side}-{lv}"
+            np.testing.assert_allclose(
+                actual(quantile_loss, {model: col}, q=q)[model], expected_ql[q]
+            )
+            np.testing.assert_allclose(
+                actual(calibration, {model: col})[model], expected_cal[q]
+            )
+
+        mq_models = {
+            model: [
+                f"{model}-lo-95",
+                f"{model}-lo-80",
+                f"{model}-hi-80",
+                f"{model}-hi-95",
+            ]
+        }
+        np.testing.assert_allclose(
+            actual(mqloss, mq_models, quantiles=quantiles)[model], expected["mqloss"]
+        )
+        np.testing.assert_allclose(
+            actual(scaled_crps, mq_models, quantiles=quantiles)[model],
+            expected["scaled_crps"],
+        )
+        for lv in level:
+            np.testing.assert_allclose(
+                actual(coverage, [model], level=lv)[model], expected_cov[lv]
+            )
 
 
 @pytest.mark.skipif(
