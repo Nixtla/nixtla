@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Async job submissions, including `execute_step`, retry only connection failures and HTTP 429 responses. Read timeouts and gateway errors now fail immediately to avoid creating duplicate jobs. Retry sleeps respect the remaining `max_wait_time` budget.
+- Async partitioned requests share a limit of five concurrent jobs. A partition failure cancels sibling jobs and stops queued submissions. Synchronous partitioned requests also stop queued work after a failure.
+- `simulate` and `explain` use `AsyncJobTimeoutError` and `AsyncJobCancelledError`, consistently with existing async endpoints. `AsyncJobError.error` preserves the original server error.
+- Polling preserves permanent HTTP errors, cleans up jobs whose terminal state is unknown when blocking calls fail, and warns only once per job about transient polling failures. `Job.wait()` rejects non-finite or invalid polling settings.
+
 ## 0.6.6
 
 ### 🚀 Feature Enhancements

@@ -28,11 +28,18 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | api_key | Optional | None | The authorization api_key interacts with the Nixtla API.<br/>If not provided, will use the NIXTLA_API_KEY environment variable. |
 | base_url | Optional | None | Custom base_url.<br/>If not provided, will use the NIXTLA_BASE_URL environment variable. |
 | timeout | Optional | 60 | Request timeout in seconds. Set this to `None` to disable it. |
-| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up.<br/>It defines how many times the client will retry the API call if it fails.<br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total |
+| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up.<br/>It defines how many times the client will retry the API call if it fails.<br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total. Job submissions, including `execute_step`, retry only connection failures and HTTP 429. Read timeouts and gateway errors are not retried because the server may already have accepted the job. |
 | retry_interval | int | 10 | The interval in seconds between consecutive retry attempts.<br/>This is the waiting period before the client tries to call the API again after a failed attempt.<br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries. |
 | max_wait_time | int | 360 | The maximum total time in seconds that the client will spend on all retry attempts before giving up.<br/>This sets an upper limit on the cumulative waiting time for all retry attempts.<br/>If this time is exceeded, the client will stop retrying and raise an exception.<br/>Default value is 360 seconds, meaning the client will cease retrying if the total time<br/>spent on retries exceeds 360 seconds.<br/>The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to<br/>catch these errors, use max_wait_time \>\> 60. |
-| async_job_wait_timeout | Optional | 600 | Maximum time in seconds to wait for an asynchronous job (`simulate`, `explain`) to finish after successful submission, including queueing time on the server. Submission retries are excluded; each partition gets its own timeout after submission.<br/>When exceeded, the client requests the job's cancellation and raises a `TimeoutError`. Set to `None` to wait until the server reports a terminal status. |
+| async_job_wait_timeout | Optional | 600 | Maximum time in seconds to wait for an asynchronous job (`simulate`, `explain`) to finish after successful submission, including queueing time on the server. Submission retries are excluded; each partition gets its own timeout after submission.<br/>When exceeded, the client requests the job's cancellation and raises an `AsyncJobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
 | async_job_poll_interval | float | 1.0 | Initial interval in seconds between two status checks of an asynchronous job. The interval doubles after every check, up to 10 seconds. |
+
+Async partitioned requests run at most five jobs concurrently. A partition
+failure cancels sibling jobs and stops queued submissions. Synchronous
+partitioned requests also stop queued work after a failure.
+Submission retry sleeps, including `Retry-After`, are limited to the remaining
+`max_wait_time` budget; no further attempt starts once it expires. An in-flight
+request remains governed by the HTTP `timeout`.
 
 ------------------------------------------------------------------------
 
@@ -134,8 +141,11 @@ The request runs as an asynchronous job on the server: the client submits it,
 then polls its status until it finishes, so the call blocks until the paths are
 available. Use `async_job_wait_timeout` and `async_job_poll_interval` on
 `NixtlaClient` to control the waiting behavior. A job that fails on the server
-raises `nixtla.AsyncJobError`; one that outlives `async_job_wait_timeout` is
-cancelled and raises `TimeoutError`.
+raises `nixtla.AsyncJobError`. If the job outlives `async_job_wait_timeout`,
+the client requests cancellation and raises `nixtla.AsyncJobTimeoutError`.
+Server-side cancellation raises `nixtla.AsyncJobCancelledError`. Invalid inputs,
+including missing or duplicate timestamps, raise `ValueError`. HTTP failures
+raise `nixtla.ApiError`, preserving the server's error body.
 
 |  | **Type** | **Default** | **Details** |
 |---|---|---|---|
@@ -188,8 +198,11 @@ The request runs as an asynchronous job on the server: the client submits it,
 then polls its status until it finishes, so the call blocks until the weights
 are available. Use `async_job_wait_timeout` and `async_job_poll_interval` on
 `NixtlaClient` to control the waiting behavior. A job that fails on the server
-raises `nixtla.AsyncJobError`; one that outlives `async_job_wait_timeout` is
-cancelled and raises `TimeoutError`.
+raises `nixtla.AsyncJobError`. If the job outlives `async_job_wait_timeout`,
+the client requests cancellation and raises `nixtla.AsyncJobTimeoutError`.
+Server-side cancellation raises `nixtla.AsyncJobCancelledError`. Invalid inputs,
+including missing or duplicate timestamps, raise `ValueError`. HTTP failures
+raise `nixtla.ApiError`, preserving the server's error body.
 
 |  | **Type** | **Default** | **Details** |
 |---|---|---|---|

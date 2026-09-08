@@ -881,6 +881,7 @@ def test_run_async_job_omits_job_options_when_unset(monkeypatch):
 def test_make_partitioned_requests_forwards_the_job_timeout():
     client = _client()
     seen = []
+    events = []
 
     def fake_run_async_job(
         client,
@@ -890,8 +891,12 @@ def test_make_partitioned_requests_forwards_the_job_timeout():
         poll_timeout,
         multithreaded_compress=True,
         job_timeout_seconds=None,
-        **kwargs,
+        task=None,
+        cancellation_event=None,
     ):
+        assert task is None
+        assert cancellation_event is not None
+        events.append(cancellation_event)
         seen.append(job_timeout_seconds)
         return {"mean": [payload["idx"]], "intervals": None, "weights_x": None}
 
@@ -908,6 +913,8 @@ def test_make_partitioned_requests_forwards_the_job_timeout():
 
     # Per job, not per call: every partition is its own job and gets the full budget.
     assert seen == [300, 300, 300]
+
+    assert len({id(event) for event in events}) == 1
 
 
 def test_forecast_async_job_carries_the_job_timeout(monkeypatch):
@@ -1277,6 +1284,17 @@ def test_partition_failure_cancels_siblings_and_stops_queued_submissions(
     sibling_started = client_module.Event()
     submitted = []
     cancelled = []
+    sibling_polls = []
+    wait_outcomes = []
+
+    def bounded_wait(seconds, cancellation_event):
+        signalled = cancellation_event is not None and cancellation_event.wait(1)
+        wait_outcomes.append(signalled)
+        # Always release the worker, then assert it observed cancellation.
+        # A broken implementation must fail quickly rather than time out minutes later.
+        return True
+
+    monkeypatch.setattr(client_module, "_wait_for_poll", bounded_wait)
 
     def handle(request):
         if request.url.path.endswith("/async"):
@@ -1294,6 +1312,7 @@ def test_partition_failure_cancels_siblings_and_stops_queued_submissions(
         if request.url.path.endswith("/jobs/job-0"):
             assert sibling_started.wait(2)
             return httpx.Response(200, json={"status": "failed", "error": "boom"})
+        sibling_polls.append(request.url.path)
         sibling_started.set()
         if sibling_state == "poll_retry":
             return httpx.Response(503, json={"detail": "temporarily unavailable"})
@@ -1323,3 +1342,270 @@ def test_partition_failure_cancels_siblings_and_stops_queued_submissions(
     assert excinfo.value.error == "boom"
     assert sorted(submitted) == [0, 1]
     assert cancelled == ([] if sibling_state == "submit_retry" else ["job-1"])
+
+    assert all(wait_outcomes)
+    assert len(sibling_polls) == (0 if sibling_state == "submit_retry" else 1)
+
+
+@pytest.mark.parametrize("status_code", [401, 404])
+def test_job_wait_preserves_permanent_errors_after_deadline(monkeypatch, status_code):
+    import nixtla.nixtla_client as client_module
+
+    now = [0.0]
+    original = ApiError(status_code=status_code, body={"detail": "original error"})
+    client = _client()
+    client._cancel_job_best_effort = MagicMock()
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now[0])
+
+    def fail(*args, **kwargs):
+        now[0] = 2.0
+        raise original
+
+    client._get_job_data = fail
+    job = Job(
+        client=client,
+        job_id="job-1",
+        endpoint="v2/forecast",
+        get_result=lambda *_: None,
+    )
+    with pytest.raises(ApiError) as excinfo:
+        job.wait(poll_timeout=1)
+    assert excinfo.value is original
+    client._cancel_job_best_effort.assert_not_called()
+
+
+@pytest.mark.parametrize("task", [None, "simulate", "explain"])
+@pytest.mark.parametrize(
+    "failure",
+    ["retries_exhausted", "unknown_status", "no_result", "failed", "cancelled"],
+)
+def test_async_runner_cleans_up_only_jobs_with_unknown_terminal_state(task, failure):
+    client = _client(max_retries=2, retry_interval=0)
+    client._submit_job = MagicMock(return_value="job-1")
+    client._cancel_job_best_effort = MagicMock()
+    server_error = {"detail": "server error"}
+    if failure == "retries_exhausted":
+        original = ApiError(status_code=503, body=server_error)
+        client._get_job_data = MagicMock(side_effect=original)
+        expected = ApiError
+    else:
+        status = {"unknown_status": "unknown", "no_result": "succeeded"}.get(
+            failure, failure
+        )
+        client._get_job_data = MagicMock(
+            return_value={"status": status, "error": server_error}
+        )
+        expected = AsyncJobCancelledError if failure == "cancelled" else AsyncJobError
+    # Finite retry settings keep this test short for all policies.
+    if task is None and failure == "retries_exhausted":
+        # Legacy polling retries until the deadline. Use a permanent transport
+        # failure here; exhausted retries are exercised by the two new tasks.
+        original = ApiError(status_code=401, body=server_error)
+        client._get_job_data.side_effect = original
+
+    with pytest.raises(expected) as excinfo:
+        client._run_async_job(
+            MagicMock(),
+            "v2/forecast" if task is None else f"v2/{task}",
+            {},
+            0,
+            1,
+            task=task,
+        )
+    if failure in ("retries_exhausted", "unknown_status"):
+        client._cancel_job_best_effort.assert_called_once()
+    else:
+        client._cancel_job_best_effort.assert_not_called()
+    if failure == "failed":
+        assert excinfo.value.error is server_error
+        assert excinfo.value.status == "failed"
+    if failure == "retries_exhausted":
+        assert excinfo.value is original
+
+
+@pytest.mark.parametrize(
+    "value", [None, float("nan"), float("inf"), -float("inf"), 0, -1, True, "1"]
+)
+def test_job_wait_rejects_invalid_timeout_before_http(value):
+    client = _client()
+    client._make_client = MagicMock()
+    job = Job(
+        client=client,
+        job_id="job-1",
+        endpoint="v2/forecast",
+        get_result=lambda *_: None,
+    )
+    with pytest.raises(ValueError, match="poll_timeout"):
+        job.wait(poll_timeout=value)
+    client._make_client.assert_not_called()
+
+
+@pytest.mark.parametrize("value", [None, float("nan"), float("inf"), -1, True, "1"])
+def test_job_wait_rejects_invalid_interval_before_http(value):
+    client = _client()
+    client._make_client = MagicMock()
+    job = Job(
+        client=client,
+        job_id="job-1",
+        endpoint="v2/forecast",
+        get_result=lambda *_: None,
+    )
+    with pytest.raises(ValueError, match="poll_interval"):
+        job.wait(poll_interval=value)
+    client._make_client.assert_not_called()
+
+
+def test_legacy_polling_rejects_an_unbounded_timeout():
+    client = _client()
+    client._get_job_data = MagicMock()
+    with pytest.raises(ValueError, match="poll_timeout"):
+        client._poll_job(MagicMock(), "v2/forecast", "job-1", 0, None)
+    client._get_job_data.assert_not_called()
+
+
+@pytest.mark.parametrize("binary", [False, True])
+@pytest.mark.parametrize("retry_after", ["86400", "NaN", "Infinity"])
+def test_submit_retry_budget_bounds_waits_and_prevents_late_resubmission(
+    monkeypatch, binary, retry_after
+):
+    import nixtla.nixtla_client as client_module
+
+    now = [0.0]
+    waits = []
+    submitted = []
+    monkeypatch.setattr(client_module.time, "monotonic", lambda: now[0])
+
+    def wait(seconds, cancellation_event):
+        waits.append(seconds)
+        now[0] += seconds
+        return False
+
+    monkeypatch.setattr(client_module, "_wait_for_poll", wait)
+
+    def handle(request):
+        submitted.append(request)
+        now[0] += 1.0  # The first attempt consumes part of the retry budget.
+        return httpx.Response(
+            429, json={"detail": "job cap"}, headers={"Retry-After": retry_after}
+        )
+
+    client = _client(max_retries=3, retry_interval=30, max_wait_time=5)
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+    with pytest.raises(ApiError) as excinfo:
+        if binary:
+            client._submit_and_wrap_binary_job("v2/execute_step", "{}", b"payload")
+        else:
+            with client._make_client(**client._client_kwargs) as http:
+                client._submit_job(http, "v2/forecast", {})
+    assert excinfo.value.status_code == 429
+    assert waits == [4.0]
+    assert now[0] == 5.0
+    assert len(submitted) == 1
+
+
+@pytest.mark.parametrize("failure", ["read_timeout", "gateway", "connection"])
+def test_binary_submission_uses_safe_retry_policy(failure):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        if len(requests) == 1:
+            if failure == "read_timeout":
+                raise httpx.ReadTimeout("response lost")
+            if failure == "connection":
+                raise httpx.ConnectError("connection failed")
+            return httpx.Response(503, json={"detail": "upstream unavailable"})
+        return httpx.Response(202, json={"job_id": "es-1"})
+
+    client = _client(max_retries=3, retry_interval=0)
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+    if failure == "connection":
+        assert (
+            client._submit_and_wrap_binary_job(
+                "v2/execute_step", "{}", b"payload"
+            ).job_id
+            == "es-1"
+        )
+        assert len(requests) == 2
+    else:
+        with pytest.raises((ApiError, httpx.ReadTimeout)):
+            client._submit_and_wrap_binary_job("v2/execute_step", "{}", b"payload")
+        assert len(requests) == 1
+
+
+def test_collecting_cancelled_future_first_preserves_original_failure(monkeypatch):
+    import nixtla.nixtla_client as client_module
+
+    collected = []
+
+    def cancelled_first(futures):
+        for future in reversed(list(futures)):
+            collected.append(future)
+            yield future
+
+    monkeypatch.setattr(client_module, "as_completed", cancelled_first)
+    original = RuntimeError("first partition failed")
+    queued = MagicMock(return_value={})
+    with pytest.raises(RuntimeError) as excinfo:
+        _client()._collect_concurrent_results(
+            [lambda: _raise(original), queued],
+            max_workers=1,
+            cancellation_event=client_module.Event(),
+        )
+    assert excinfo.value is original
+    assert isinstance(collected[0].exception(), client_module.CancelledError)
+    queued.assert_not_called()
+
+
+@pytest.mark.parametrize("status_code", [404, 409])
+def test_job_wait_does_not_cache_cancelled_after_noop_cleanup(
+    monkeypatch, caplog, status_code
+):
+    def cancel(*args):
+        raise ApiError(status_code=status_code, body={"detail": "not cancellable"})
+
+    job = _timing_out_job(monkeypatch, cancel)
+    monkeypatch.setattr(
+        NixtlaClient, "_get_job_data", lambda *args: {"status": "succeeded"}
+    )
+    caplog.clear()
+    with caplog.at_level("WARNING"):
+        with pytest.raises(AsyncJobTimeoutError):
+            job.wait(poll_timeout=1)
+    assert job._status is None
+    assert caplog.records == []
+    assert job.status == "succeeded"
+
+
+def test_transient_poll_failures_warn_once_per_job(caplog):
+    import logging
+
+    client = _client()
+    responses = iter(
+        [
+            ApiError(status_code=503, body="temporary"),
+            {"status": "running"},
+            ApiError(status_code=503, body="temporary"),
+            {"status": "succeeded", "result": {}},
+        ]
+    )
+
+    def get(*args, **kwargs):
+        response = next(responses)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    client._get_job_data = get
+    with caplog.at_level("DEBUG", logger="nixtla.nixtla_client"):
+        client._poll_job(MagicMock(), "v2/forecast", "job-1", 0, 1)
+    levels = [
+        record.levelno
+        for record in caplog.records
+        if record.message.startswith("Polling attempt")
+    ]
+    assert levels == [logging.WARNING, logging.DEBUG]

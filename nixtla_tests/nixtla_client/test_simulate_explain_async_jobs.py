@@ -16,7 +16,13 @@ import pytest
 import zstandard as zstd
 
 import nixtla.nixtla_client as client_module
-from nixtla import ApiError, AsyncJobError, NixtlaClient
+from nixtla import (
+    ApiError,
+    AsyncJobCancelledError,
+    AsyncJobError,
+    AsyncJobTimeoutError,
+    NixtlaClient,
+)
 
 
 class FakeApi:
@@ -129,7 +135,6 @@ def no_sleep(monkeypatch):
         sleeps.append(seconds)
         return cancellation_event is not None and cancellation_event.is_set()
 
-    monkeypatch.setattr(client_module, "_sleep", sleeps.append)
     monkeypatch.setattr(client_module, "_wait_for_poll", wait_for_poll)
     return sleeps
 
@@ -300,22 +305,22 @@ def test_failed_job_raises_async_job_error_with_server_message():
     assert api.cancelled == []
 
 
-def test_cancelled_job_raises_async_job_error_even_without_message():
+def test_cancelled_job_raises_async_job_cancelled_error():
     api = FakeApi(task="explain", statuses=("cancelled",), error=None)
     client = api.make_client()
 
-    with pytest.raises(AsyncJobError, match="cancelled") as excinfo:
+    with pytest.raises(AsyncJobCancelledError, match="cancelled") as excinfo:
         client.explain(_explain_df())
 
-    assert excinfo.value.status == "cancelled"
-    assert excinfo.value.error is None
+    assert excinfo.value.job_id in api.jobs
+    assert api.cancelled == []
 
 
 def test_succeeded_job_without_result_raises():
     api = FakeApi(statuses=("succeeded",), result=None)
     client = api.make_client()
 
-    with pytest.raises(RuntimeError, match="returned no result"):
+    with pytest.raises(AsyncJobError, match="returned no result"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
 
@@ -323,9 +328,9 @@ def test_unknown_status_raises_instead_of_polling_forever():
     api = FakeApi(statuses=("exploded",))
     client = api.make_client()
 
-    with pytest.raises(RuntimeError, match="Unexpected status"):
+    with pytest.raises(AsyncJobError, match="unexpected job status"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-    assert len(api.polls) == 1
+    assert sum(request.method == "GET" for request in api.polls) == 1
 
 
 @pytest.mark.parametrize(
@@ -496,7 +501,7 @@ def test_404_while_polling_raises_immediately():
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
     assert excinfo.value.status_code == 404
-    assert len(api.polls) == 1
+    assert sum(request.method == "GET" for request in api.polls) == 1
 
 
 def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
@@ -505,7 +510,7 @@ def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
     clock = iter(range(0, 1000))
     monkeypatch.setattr(client_module.time, "monotonic", lambda: float(next(clock)))
 
-    with pytest.raises(TimeoutError, match="did not finish within 2 seconds") as excinfo:
+    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=2s") as excinfo:
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
     job_id = next(iter(api.jobs))
@@ -525,7 +530,7 @@ def test_success_response_received_after_wait_deadline_is_discarded():
     api.transport = httpx.MockTransport(handle)
     client = api.make_client(async_job_wait_timeout=0.001)
 
-    with pytest.raises(TimeoutError, match="did not finish within 0.001 seconds"):
+    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
     assert api.cancelled == [next(iter(api.jobs))]
@@ -547,7 +552,7 @@ def test_poll_retries_do_not_run_past_wait_deadline():
     api.transport = httpx.MockTransport(handle)
     client = api.make_client(async_job_wait_timeout=0.001, max_retries=3)
 
-    with pytest.raises(TimeoutError, match="did not finish within 0.001 seconds"):
+    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
     assert sum(request.method == "GET" for request in api.polls) == 1
