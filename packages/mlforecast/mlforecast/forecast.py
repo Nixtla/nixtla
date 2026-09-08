@@ -456,7 +456,7 @@ class MLForecast:
                 Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}'].
                 Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None.
             return_X_y (bool): Return a tuple with the features and the target. If False will return a single dataframe. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Only works for `return_X_y=True`. Defaults to True.
+            as_numpy (bool): Cast features to numpy array. Only works for `return_X_y=True`. Defaults to False.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
             validate_data (bool): Run data quality validations before preprocessing. Warns about missing dates and raises on duplicate rows. Defaults to True.
 
@@ -1159,7 +1159,7 @@ class MLForecast:
                 Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None.
             prediction_intervals (PredictionIntervals, optional): Configuration to calibrate prediction intervals (Conformal Prediction). Defaults to None.
             fitted (bool): Save in-sample predictions. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Defaults to True.
+            as_numpy (bool): Cast features to numpy array. Defaults to False.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
             models_fit_kwargs (dict, optional): Keyword arguments for each model's fit method. Defaults to None.
             validate_data (bool): Run data quality validations before fitting. Warns about missing dates and raises on duplicate rows. Defaults to True.
@@ -1912,7 +1912,7 @@ class MLForecast:
             level (list of ints or floats, optional): Confidence levels between 0 and 100 for prediction intervals. Defaults to None.
             input_size (int, optional): Maximum training samples per serie in each window. If None, will use an expanding window. Defaults to None.
             fitted (bool): Store the in-sample predictions. Defaults to False.
-            as_numpy (bool): Cast features to numpy array. Defaults to True.
+            as_numpy (bool): Cast features to numpy array. Defaults to False.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
             validate_data (bool): Run data quality validations on the full dataset before cross-validation. Warns about missing dates and raises on duplicate rows. Defaults to True.
 

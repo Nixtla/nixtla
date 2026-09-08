@@ -81,7 +81,7 @@ class DistributedMLForecast:
 
         Args:
             models (regressor or list of regressors): Models that will be trained and used to compute the forecasts.
-            freq (str or int, optional): Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series. Defaults to None.
+            freq (str or int): Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series.
             lags (list of int, optional): Lags of the target to use as features. Defaults to None.
             lag_transforms (dict of int to list of functions, optional): Mapping of target lags to their transformations. Defaults to None.
             date_features (list of str or callable, optional): Features computed from the dates. Can be pandas date attributes or functions that will take the dates as input.
