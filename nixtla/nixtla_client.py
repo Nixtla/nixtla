@@ -32,7 +32,6 @@ from typing import (
     Callable,
     Dict,
     Literal,
-    NoReturn,
     Optional,
     TypeVar,
     Union,
@@ -50,6 +49,7 @@ import zstandard as zstd
 from pydantic import AfterValidator, BaseModel, TypeAdapter
 from tenacity import (
     RetryCallState,
+    Retrying,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -248,7 +248,7 @@ _date_features_by_freq = {
 _RESULT_NOT_READY_CODES = (HTTPStatus.ACCEPTED, HTTPStatus.CONFLICT)
 
 
-def _is_retriable_error(exc: Exception) -> bool:
+def _is_retriable_error(exc: BaseException) -> bool:
     retriable_exceptions = (
         ConnectionResetError,
         httpcore.ConnectError,
@@ -313,12 +313,10 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     )
 
 
-# Asynchronous jobs (simulate, explain). The API accepts the request, returns a
+# Asynchronous jobs. The API accepts the request, returns a
 # job id and runs the work in a sandbox; the client polls the job until it
 # reaches a terminal status.
 _AsyncJobTask = Literal["simulate", "explain"]
-_ASYNC_JOB_PENDING_STATUSES = frozenset({"pending", "running"})
-_ASYNC_JOB_TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 _ASYNC_JOB_MAX_POLL_INTERVAL = 10.0
 _ASYNC_JOB_POLL_JITTER = 0.25
 # Concurrent partitions submitted at once. Deployments cap the number of jobs a
@@ -353,7 +351,12 @@ def _parse_retry_after(headers: Any) -> Optional[float]:
     return max(seconds, 0.0)
 
 
-def _submit_retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
+def _submit_retry_strategy(
+    max_retries: int,
+    retry_interval: int,
+    max_wait_time: int,
+    cancellation_event: Optional[Event] = None,
+):
     """Retry policy for submitting an async job.
 
     A submission that reached the server may already have created a job even
@@ -362,7 +365,7 @@ def _submit_retry_strategy(max_retries: int, retry_interval: int, max_wait_time:
     errors while connecting. Read timeouts and gateway errors are not retried.
     """
 
-    def should_retry(exc: Exception) -> bool:
+    def should_retry(exc: BaseException) -> bool:
         connect_exceptions = (
             httpcore.ConnectError,
             httpx.ConnectError,
@@ -380,29 +383,36 @@ def _submit_retry_strategy(max_retries: int, retry_interval: int, max_wait_time:
         return float(retry_interval)
 
     def after_retry(retry_state: RetryCallState) -> None:
+        assert retry_state.outcome is not None
         error = retry_state.outcome.exception()
         logger.error(
             f"Submission attempt {retry_state.attempt_number} failed with error: {error}"
         )
 
-    return retry(
+    def sleep(seconds: float) -> None:
+        if _wait_for_poll(seconds, cancellation_event):
+            raise CancelledError
+
+    return Retrying(
         retry=retry_if_exception(should_retry),
         wait=wait_for,
         after=after_retry,
         stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
+        sleep=sleep,
         reraise=True,
-    )
+    ).wraps
 
 
 def _poll_retry_strategy(
-    max_retries: int,
-    retry_interval: int,
-    max_wait_time: int,
+    max_retries: Optional[int],
+    retry_interval: float,
+    max_wait_time: Optional[int],
     deadline: Optional[float],
+    cancellation_event: Optional[Event] = None,
 ):
     """Retry status requests without sleeping beyond the job wait deadline."""
 
-    def should_retry(exc: Exception) -> bool:
+    def should_retry(exc: BaseException) -> bool:
         retriable_exceptions = (
             httpcore.TimeoutException,
             httpx.TimeoutException,
@@ -410,17 +420,7 @@ def _poll_retry_strategy(
             httpx.NetworkError,
             httpx.RemoteProtocolError,
         )
-        retriable_codes = {
-            HTTPStatus.REQUEST_TIMEOUT,
-            HTTPStatus.CONFLICT,
-            HTTPStatus.TOO_MANY_REQUESTS,
-            HTTPStatus.BAD_GATEWAY,
-            HTTPStatus.SERVICE_UNAVAILABLE,
-            HTTPStatus.GATEWAY_TIMEOUT,
-        }
-        return isinstance(exc, retriable_exceptions) or (
-            isinstance(exc, ApiError) and exc.status_code in retriable_codes
-        )
+        return _is_retriable_error(exc) or isinstance(exc, retriable_exceptions)
 
     def wait_for(_: RetryCallState) -> float:
         wait = float(retry_interval)
@@ -429,28 +429,35 @@ def _poll_retry_strategy(
         return wait
 
     def should_stop(retry_state: RetryCallState) -> bool:
-        if retry_state.attempt_number >= max_retries:
+        if max_retries is not None and retry_state.attempt_number >= max_retries:
             return True
         if (
-            retry_state.seconds_since_start is not None
+            max_wait_time is not None
+            and retry_state.seconds_since_start is not None
             and retry_state.seconds_since_start >= max_wait_time
         ):
             return True
         return deadline is not None and time.monotonic() >= deadline
 
     def after_retry(retry_state: RetryCallState) -> None:
+        assert retry_state.outcome is not None
         error = retry_state.outcome.exception()
         logger.error(
             f"Polling attempt {retry_state.attempt_number} failed with error: {error}"
         )
 
-    return retry(
+    def sleep(seconds: float) -> None:
+        if _wait_for_poll(seconds, cancellation_event):
+            raise CancelledError
+
+    return Retrying(
         retry=retry_if_exception(should_retry),
         wait=wait_for,
         after=after_retry,
         stop=should_stop,
+        sleep=sleep,
         reraise=True,
-    )
+    ).wraps
 
 
 def _maybe_infer_freq(
@@ -1737,14 +1744,16 @@ class NixtlaClient:
         multithreaded_compress: bool,
     ) -> dict[str, Any]:
         content, headers = self._encode_payload(
-            payload, multithreaded_compress, task=endpoint.removeprefix("v2/")
+            payload,
+            multithreaded_compress,
+            task=endpoint.removeprefix("v2/").removesuffix("/async"),
         )
         resp = client.post(url=endpoint, content=content, headers=headers)
         # async job submissions ({endpoint}/async) respond with 202 ACCEPTED
         resp_body = self._parse_json_response(
             resp, expected_status=(HTTPStatus.OK, HTTPStatus.ACCEPTED)
         )
-        if "data" in resp_body:
+        if isinstance(resp_body, dict) and "data" in resp_body:
             resp_body = resp_body["data"]
         return resp_body
 
@@ -1771,7 +1780,14 @@ class NixtlaClient:
     ) -> dict[str, Any]:
         request_kwargs: dict[str, Any] = {"params": params}
         if timeout is not None:
-            request_kwargs["timeout"] = timeout
+            # Bound the request by the job deadline without increasing any
+            # shorter connection/read/write/pool timeout configured by the caller.
+            request_kwargs["timeout"] = httpx.Timeout(
+                **{
+                    phase: min(limit, timeout) if limit is not None else timeout
+                    for phase, limit in client.timeout.as_dict().items()
+                }
+            )
         resp = client.get(endpoint, **request_kwargs)
         return self._parse_json_response(resp)
 
@@ -1786,201 +1802,55 @@ class NixtlaClient:
         ):
             raise ValueError("`timeout_seconds` must be a positive integer or None.")
 
-    def _submit_async_job(
-        self,
-        client: httpx.Client,
-        task: _AsyncJobTask,
-        payload: dict[str, Any],
-        *,
-        multithreaded_compress: bool = True,
-        timeout_seconds: Optional[int] = None,
-    ) -> str:
-        """Submit `payload` as an asynchronous `task` and return the job id."""
-        self._validate_job_timeout(timeout_seconds)
-        if timeout_seconds is not None:
-            payload = {**payload, "job_options": {"timeout_seconds": timeout_seconds}}
-        content, headers = self._encode_payload(
-            payload, multithreaded_compress, task=task
-        )
-        endpoint = f"v2/{task}/async"
-
-        def submit() -> Any:
-            resp = client.post(url=endpoint, content=content, headers=headers)
-            return self._parse_json_response(
-                resp, expected_status=HTTPStatus.ACCEPTED
-            )
-
-        body = _submit_retry_strategy(**self._retry_settings)(submit)()
-        job_id = body.get("job_id") if isinstance(body, dict) else None
-        if not isinstance(job_id, str) or not job_id:
-            raise RuntimeError(
-                f"Unexpected response when submitting the {task} job: {body}"
-            )
-        logger.info(f"Submitted {task} job {job_id}. Waiting for it to finish...")
-        return job_id
-
-    def _cancel_async_job(self, client: httpx.Client, job_id: str) -> None:
-        """Best-effort cancellation; never raises."""
-        try:
-            resp = client.post(url=f"v2/async/jobs/{job_id}/cancel")
-        except Exception as exc:  # noqa: BLE001 - cleanup must not mask the cause
-            logger.warning(f"Could not cancel job {job_id}: {exc}")
-            return
-        if resp.status_code not in (
-            HTTPStatus.ACCEPTED,
-            HTTPStatus.NOT_FOUND,  # unknown to the server, nothing to cancel
-            HTTPStatus.CONFLICT,  # already terminal
-        ):
-            logger.warning(
-                f"Could not cancel job {job_id}: status_code: {resp.status_code}, "
-                f"body: {resp.text}"
-            )
-
-    def _poll_async_job(
-        self,
-        client: httpx.Client,
-        task: _AsyncJobTask,
-        job_id: str,
-        *,
-        deadline: Optional[float],
-        cancellation_event: Optional[Event] = None,
-    ) -> dict[str, Any]:
-        """Poll `job_id` until it succeeds and return its result.
-
-        Raises `AsyncJobError` when the job fails or is cancelled and
-        `TimeoutError` when `deadline` (a `time.monotonic()` value) passes
-        first; in that case the job's cancellation is requested.
-        """
-        endpoint = f"v2/{task}/jobs/{job_id}"
-        interval = self._async_job_poll_interval
-
-        def raise_timeout() -> NoReturn:
-            self._cancel_async_job(client, job_id)
-            raise TimeoutError(
-                f"{task} job '{job_id}' did not finish within "
-                f"{self._async_job_wait_timeout} seconds; its cancellation "
-                "was requested. Increase `async_job_wait_timeout` or "
-                "reduce the size of the request."
-            )
-
-        def get_status() -> dict[str, Any]:
-            timeout = None
-            if deadline is not None:
-                timeout = deadline - time.monotonic()
-                if timeout <= 0:
-                    raise TimeoutError
-            return self._get_request(client, endpoint, timeout=timeout)
-
-        get_status_with_retries = _poll_retry_strategy(
-            **self._retry_settings, deadline=deadline
-        )(get_status)
-        try:
-            while True:
-                if cancellation_event is not None and cancellation_event.is_set():
-                    self._cancel_async_job(client, job_id)
-                    raise CancelledError
-                try:
-                    envelope = get_status_with_retries()
-                except TimeoutError:
-                    raise_timeout()
-                except Exception:
-                    if deadline is not None and time.monotonic() >= deadline:
-                        raise_timeout()
-                    raise
-                if deadline is not None and time.monotonic() >= deadline:
-                    raise_timeout()
-                status = envelope.get("status") if isinstance(envelope, dict) else None
-                if status == "succeeded":
-                    result = envelope.get("result")
-                    if not isinstance(result, dict):
-                        raise RuntimeError(
-                            f"{task} job '{job_id}' succeeded but returned no result."
-                        )
-                    return result
-                if status in _ASYNC_JOB_TERMINAL_STATUSES:
-                    error = envelope.get("error")
-                    raise AsyncJobError(
-                        job_id=job_id,
-                        task=task,
-                        status=status,
-                        error=str(error) if error is not None else None,
-                    )
-                if status not in _ASYNC_JOB_PENDING_STATUSES:
-                    raise RuntimeError(
-                        f"Unexpected status for {task} job '{job_id}': {envelope}"
-                    )
-                now = time.monotonic()
-                if deadline is not None and now >= deadline:
-                    raise_timeout()
-                sleep_for = interval * (1 + random.uniform(0, _ASYNC_JOB_POLL_JITTER))
-                if deadline is not None:
-                    sleep_for = min(sleep_for, max(deadline - now, 0.0))
-                if _wait_for_poll(sleep_for, cancellation_event):
-                    self._cancel_async_job(client, job_id)
-                    raise CancelledError
-                interval = min(interval * 2, _ASYNC_JOB_MAX_POLL_INTERVAL)
-        except KeyboardInterrupt:
-            self._cancel_async_job(client, job_id)
-            raise
-
-    def _run_async_task(
-        self,
-        client: httpx.Client,
-        task: _AsyncJobTask,
-        payload: dict[str, Any],
-        *,
-        multithreaded_compress: bool = True,
-        timeout_seconds: Optional[int] = None,
-        cancellation_event: Optional[Event] = None,
-    ) -> dict[str, Any]:
-        """Submit an asynchronous `task`, wait for it and return its result.
-
-        The wait timeout starts after successful submission, excluding
-        submission retries. Each partition has its own wait timeout.
-        """
-        if cancellation_event is not None and cancellation_event.is_set():
-            raise CancelledError
-        job_id = self._submit_async_job(
-            client,
-            task,
-            payload,
-            multithreaded_compress=multithreaded_compress,
-            timeout_seconds=timeout_seconds,
-        )
-        if cancellation_event is not None and cancellation_event.is_set():
-            self._cancel_async_job(client, job_id)
-            raise CancelledError
-        deadline = (
-            None
-            if self._async_job_wait_timeout is None
-            else time.monotonic() + self._async_job_wait_timeout
-        )
-        return self._poll_async_job(
-            client,
-            task,
-            job_id,
-            deadline=deadline,
-            cancellation_event=cancellation_event,
-        )
-
     def _collect_concurrent_results(
         self,
         requests: Sequence[Callable[[], dict[str, Any]]],
         max_workers: int,
         transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        cancellation_event: Optional[Event] = None,
     ) -> list[dict[str, Any]]:
         from tqdm.auto import tqdm
 
         results: list[dict[str, Any]] = [{} for _ in requests]
-        with ThreadPoolExecutor(max_workers) as executor:
+        errors: list[BaseException] = []
+
+        def run(request: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            try:
+                return request()
+            except BaseException as exc:
+                if not isinstance(exc, CancelledError):
+                    errors.append(exc)
+                if cancellation_event is not None:
+                    # Signal before this worker can pick up another request.
+                    cancellation_event.set()
+                raise
+
+        executor = ThreadPoolExecutor(max_workers)
+        future2pos = {}
+        try:
             future2pos = {
-                executor.submit(request): i for i, request in enumerate(requests)
+                executor.submit(run, request): i for i, request in enumerate(requests)
             }
             for future in tqdm(as_completed(future2pos), total=len(future2pos)):
                 pos = future2pos[future]
                 res = future.result()
                 results[pos] = transform(res) if transform is not None else res
+        except BaseException as exc:
+            if cancellation_event is not None:
+                cancellation_event.set()
+            for future in future2pos:
+                future.cancel()
+            if isinstance(exc, CancelledError) and errors:
+                # A sibling's cancellation may finish before the failed
+                # future is collected. Preserve the original failure.
+                raise errors[0]
+            raise
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
         return results
+
 
     def _dispatch_partitioned_requests(
         self,
@@ -1988,72 +1858,58 @@ class NixtlaClient:
         endpoint: str,
         payloads: list[dict[str, Any]],
         transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
+        *,
+        is_async_job: bool = False,
+        poll_interval: float = 15,
+        poll_timeout: Optional[float] = 3600,
+        job_timeout_seconds: Optional[int] = None,
+        task: Optional[_AsyncJobTask] = None,
     ) -> list[dict[str, Any]]:
-        requests = [
-            partial(
-                self._make_request_with_retries,
-                client=client,
-                endpoint=endpoint,
-                payload=payload,
-                multithreaded_compress=False,
-            )
-            for payload in payloads
-        ]
+        # Each async worker completes its job before submitting another. On
+        # failure, stop queued submissions and cancel the other running jobs.
+        cancellation_event = Event() if is_async_job else None
+        requests = []
+        for payload in payloads:
+            if is_async_job:
+                request = partial(
+                    self._run_async_job,
+                    client,
+                    endpoint,
+                    payload,
+                    poll_interval=poll_interval,
+                    poll_timeout=poll_timeout,
+                    multithreaded_compress=False,
+                    job_timeout_seconds=job_timeout_seconds,
+                    task=task,
+                    cancellation_event=cancellation_event,
+                )
+            else:
+                request = partial(
+                    self._make_request_with_retries,
+                    client=client,
+                    endpoint=endpoint,
+                    payload=payload,
+                    multithreaded_compress=False,
+                )
+            requests.append(request)
+        max_workers = _MAX_CONCURRENT_ASYNC_JOBS if is_async_job else 10
         return self._collect_concurrent_results(
-            requests, max_workers=min(10, len(payloads)), transform=transform
+            requests,
+            max_workers=min(max_workers, len(payloads)),
+            transform=transform,
+            cancellation_event=cancellation_event,
         )
 
-    def _dispatch_async_jobs(
-        self,
-        client: httpx.Client,
-        task: _AsyncJobTask,
-        payloads: list[dict[str, Any]],
-        transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
-        timeout_seconds: Optional[int] = None,
-    ) -> list[dict[str, Any]]:
-        # Every worker runs one job to completion before submitting the next,
-        # so at most `max_workers` jobs are in flight at any time. If one job
-        # fails, signal the other workers to cancel their server jobs and stop
-        # queued workers before they submit anything.
-        from tqdm.auto import tqdm
-
-        cancellation_event = Event()
-        results: list[dict[str, Any]] = [{} for _ in payloads]
-
-        def run(payload: dict[str, Any]) -> dict[str, Any]:
-            return self._run_async_task(
-                client,
-                task,
-                payload,
-                multithreaded_compress=False,
-                timeout_seconds=timeout_seconds,
-                cancellation_event=cancellation_event,
-            )
-
-        executor = ThreadPoolExecutor(
-            max_workers=min(_MAX_CONCURRENT_ASYNC_JOBS, len(payloads))
-        )
-        future2pos = {
-            executor.submit(run, payload): i for i, payload in enumerate(payloads)
-        }
-        try:
-            for future in tqdm(as_completed(future2pos), total=len(future2pos)):
-                pos = future2pos[future]
-                res = future.result()
-                results[pos] = transform(res) if transform is not None else res
-        except BaseException:
-            cancellation_event.set()
-            for future in future2pos:
-                future.cancel()
-            raise
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
-        return results
 
     def _get_job_data(
-        self, client: httpx.Client, endpoint: str, job_id: str
+        self,
+        client: httpx.Client,
+        endpoint: str,
+        job_id: str,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
-        return self._get_request(client, f"{endpoint}/jobs/{job_id}")
+        return self._get_request(client, f"{endpoint}/jobs/{job_id}", timeout=timeout)
+
 
     def _submit_job(
         self,
@@ -2061,11 +1917,28 @@ class NixtlaClient:
         endpoint: str,
         payload: dict[str, Any],
         multithreaded_compress: bool = True,
+        *,
+        cancellation_event: Optional[Event] = None,
     ) -> str:
-        submit_resp = self._make_request_with_retries(
-            client, f"{endpoint}/async", payload, multithreaded_compress
-        )
-        return submit_resp["job_id"]
+        # Retrying an ambiguous submission failure can create duplicate jobs.
+        def submit() -> dict[str, Any]:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            return self._make_request(
+                client, f"{endpoint}/async", payload, multithreaded_compress
+            )
+
+        body = _submit_retry_strategy(
+            **self._retry_settings, cancellation_event=cancellation_event
+        )(submit)()
+        job_id = body.get("job_id") if isinstance(body, dict) else None
+        if not isinstance(job_id, str) or not job_id:
+            raise RuntimeError(
+                f"Unexpected response when submitting the {endpoint} job: {body}"
+            )
+        logger.info(f"Submitted {endpoint} job {job_id}.")
+        return job_id
+
 
     def _poll_job(
         self,
@@ -2073,41 +1946,88 @@ class NixtlaClient:
         endpoint: str,
         job_id: str,
         poll_interval: float,
-        poll_timeout: float,
+        poll_timeout: Optional[float],
+        *,
+        task: Optional[_AsyncJobTask] = None,
+        cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
-        deadline = time.monotonic() + poll_timeout
+        """Return the successful status envelope without cancelling on timeout.
+
+        The caller owns cancellation so `Job.wait(cancel_on_timeout=False)`
+        stays resumable. `task` preserves simulate/explain's backoff, retry
+        budget and error details; existing jobs retain fixed-interval polling
+        and retry transient failures until their poll timeout.
+        """
+        deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
+        interval = poll_interval
+
+        def check_wait() -> None:
+            if cancellation_event is not None and cancellation_event.is_set():
+                raise CancelledError
+            if deadline is not None and time.monotonic() >= deadline:
+                assert poll_timeout is not None
+                raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
+
+        def get_status() -> dict[str, Any]:
+            check_wait()
+            timeout = None if deadline is None else max(deadline - time.monotonic(), 0.0)
+            return self._get_job_data(client, endpoint, job_id, timeout=timeout)
+
+        get_status_with_retries = _poll_retry_strategy(
+            max_retries=self._retry_settings["max_retries"] if task is not None else None,
+            retry_interval=(
+                self._retry_settings["retry_interval"]
+                if task is not None
+                else poll_interval
+            ),
+            max_wait_time=self._retry_settings["max_wait_time"]
+            if task is not None
+            else None,
+            deadline=deadline,
+            cancellation_event=cancellation_event,
+        )(get_status)
         while True:
             try:
-                job_data = self._get_job_data(client, endpoint, job_id)
-            except Exception as e:
-                if not _is_retriable_error(e):
-                    raise
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AsyncJobTimeoutError(
-                        job_id=job_id, poll_timeout=poll_timeout
-                    ) from e
-                time.sleep(min(poll_interval, remaining))
-                continue
-
+                job_data = get_status_with_retries()
+            except Exception:
+                check_wait()
+                raise
+            check_wait()
+            raw_status = job_data.get("status") if isinstance(job_data, dict) else None
             try:
-                status = JobStatus(job_data.get("status"))
+                status = JobStatus(raw_status)
             except ValueError:
+                if task is not None:
+                    raise RuntimeError(
+                        f"Unexpected status for {task} job '{job_id}': {job_data}"
+                    ) from None
                 raise AsyncJobError(
                     job_id=job_id,
-                    error=f"unexpected job status {job_data.get('status')!r}: {job_data}",
-                )
+                    error=f"unexpected job status {raw_status!r}: {job_data}",
+                ) from None
             if status == JobStatus.SUCCEEDED:
                 return job_data
-            if status == JobStatus.FAILED:
-                raise AsyncJobError(job_id=job_id, error=job_data.get("error"))
-            if status == JobStatus.CANCELLED:
-                raise AsyncJobCancelledError(job_id=job_id)
-            # only PENDING/RUNNING remain here -- keep polling
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
-            time.sleep(min(poll_interval, remaining))
+            if status.is_terminal:
+                error = job_data.get("error")
+                if task is not None:
+                    raise AsyncJobError(
+                        job_id=job_id,
+                        task=task,
+                        status=status.value,
+                        error=str(error) if error is not None else None,
+                    )
+                if status == JobStatus.CANCELLED:
+                    raise AsyncJobCancelledError(job_id=job_id)
+                raise AsyncJobError(job_id=job_id, error=error)
+            sleep_for = interval
+            if task is not None:
+                sleep_for *= 1 + random.uniform(0, _ASYNC_JOB_POLL_JITTER)
+                interval = min(interval * 2, _ASYNC_JOB_MAX_POLL_INTERVAL)
+            if deadline is not None:
+                sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
+            if _wait_for_poll(sleep_for, cancellation_event):
+                raise CancelledError
+
 
     def _run_async_job(
         self,
@@ -2115,23 +2035,58 @@ class NixtlaClient:
         endpoint: str,
         payload: dict[str, Any],
         poll_interval: float,
-        poll_timeout: float,
+        poll_timeout: Optional[float],
         multithreaded_compress: bool = True,
         job_timeout_seconds: Optional[int] = None,
+        *,
+        task: Optional[_AsyncJobTask] = None,
+        cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
+        """Submit a job and return its result, cancelling abandoned jobs.
+
+        Each partition's wait timeout starts after successful submission,
+        excluding submission retries. Existing jobs raise
+        `AsyncJobTimeoutError`; simulate/explain retain `TimeoutError`.
+        """
+        if cancellation_event is not None and cancellation_event.is_set():
+            raise CancelledError
         payload = _with_job_options(payload, job_timeout_seconds)
-        job_id = self._submit_job(client, endpoint, payload, multithreaded_compress)
+        job_id = self._submit_job(
+            client,
+            endpoint,
+            payload,
+            multithreaded_compress,
+            cancellation_event=cancellation_event,
+        )
         try:
             job_data = self._poll_job(
-                client, endpoint, job_id, poll_interval, poll_timeout
+                client,
+                endpoint,
+                job_id,
+                poll_interval,
+                poll_timeout,
+                task=task,
+                cancellation_event=cancellation_event,
             )
         except AsyncJobTimeoutError:
-            # This job's id is never surfaced to the caller, so if we don't cancel it
-            # here nobody can -- it would run to its server-side deadline unwatched.
-            # Other terminal states (failed/cancelled) need no cancellation.
             self._cancel_job_best_effort(client, job_id, "client poll timeout")
+            if task is not None:
+                raise TimeoutError(
+                    f"{task} job '{job_id}' did not finish within "
+                    f"{poll_timeout} seconds; its cancellation was requested. "
+                    "Increase `async_job_wait_timeout` or reduce the size of the request."
+                ) from None
             raise
-        return job_data["result"]
+        except (KeyboardInterrupt, CancelledError):
+            self._cancel_job_best_effort(client, job_id, "interrupted wait")
+            raise
+        result = job_data.get("result")
+        if not isinstance(result, dict):
+            raise RuntimeError(
+                f"{task or endpoint} job '{job_id}' succeeded but returned no result."
+            )
+        return result
+
 
     def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
         resp = client.post(f"v2/async/jobs/{job_id}/cancel")
@@ -2146,20 +2101,24 @@ class NixtlaClient:
                 body = f"Could not parse JSON: {resp.content}"
             raise ApiError(status_code=resp.status_code, body=body)
 
+
     def _cancel_job_best_effort(
         self, client: httpx.Client, job_id: str, reason: str
     ) -> bool:
-        """Request cancellation, swallowing failures. Returns True if accepted.
+        """Request cancellation, swallowing failures. Return True if accepted.
 
-        Used on cleanup paths where an exception is already propagating: failing to
-        cancel must not mask it.
+        Unknown or terminal jobs need no cleanup. Return False for them so
+        `Job` does not incorrectly cache their status as cancelled.
         """
         try:
             self._cancel_job(client, job_id)
-        except Exception:
-            logger.warning(
-                "Failed to cancel job %s (%s)", job_id, reason, exc_info=True
-            )
+        except Exception as exc:
+            if isinstance(exc, ApiError) and exc.status_code in (
+                HTTPStatus.NOT_FOUND,
+                HTTPStatus.CONFLICT,
+            ):
+                return False
+            logger.warning("Failed to cancel job %s (%s)", job_id, reason, exc_info=True)
             return False
         return True
 
@@ -2327,30 +2286,15 @@ class NixtlaClient:
         _poll_timeout: float = 3600,
         _job_timeout_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
-        # NOTE: if one partition's job fails/times out, this still waits for
-        # every other in-flight partition to reach a terminal state before the
-        # exception surfaces (ThreadPoolExecutor.__exit__ -> shutdown(wait=True)).
-        # A timed-out partition cancels its own job (see `_run_async_job`), but
-        # there's still no cross-partition cancellation here: the siblings run on.
-        if _is_async_job:
-            requests = [
-                partial(
-                    self._run_async_job,
-                    client=client,
-                    endpoint=endpoint,
-                    payload=payload,
-                    poll_interval=_poll_interval,
-                    poll_timeout=_poll_timeout,
-                    multithreaded_compress=False,
-                    job_timeout_seconds=_job_timeout_seconds,
-                )
-                for payload in payloads
-            ]
-            results = self._collect_concurrent_results(
-                requests, max_workers=min(10, len(payloads))
-            )
-        else:
-            results = self._dispatch_partitioned_requests(client, endpoint, payloads)
+        results = self._dispatch_partitioned_requests(
+            client,
+            endpoint,
+            payloads,
+            is_async_job=_is_async_job,
+            poll_interval=_poll_interval,
+            poll_timeout=_poll_timeout,
+            job_timeout_seconds=_job_timeout_seconds,
+        )
         resp = {"mean": np.hstack([res["mean"] for res in results])}
         first_res = results[0]
         for k in ("sizes", "anomaly"):
@@ -2407,12 +2351,16 @@ class NixtlaClient:
                     pass  # the merge loop below raises the descriptive error
             return res
 
-        results = self._dispatch_async_jobs(
+        results = self._dispatch_partitioned_requests(
             client,
-            "simulate",
+            "v2/simulate",
             payloads,
             transform=_samples_to_array,
-            timeout_seconds=timeout_seconds,
+            is_async_job=True,
+            poll_interval=self._async_job_poll_interval,
+            poll_timeout=self._async_job_wait_timeout,
+            job_timeout_seconds=timeout_seconds,
+            task="simulate",
         )
         blocks = []
         sizes = []
@@ -3998,8 +3946,14 @@ class NixtlaClient:
         logger.info("Calling Simulate Endpoint...")
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
-                resp = self._run_async_task(
-                    client, "simulate", payload, timeout_seconds=timeout_seconds
+                resp = self._run_async_job(
+                    client,
+                    "v2/simulate",
+                    payload,
+                    poll_interval=self._async_job_poll_interval,
+                    poll_timeout=self._async_job_wait_timeout,
+                    job_timeout_seconds=timeout_seconds,
+                    task="simulate",
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h)
@@ -4220,8 +4174,14 @@ class NixtlaClient:
 
         logger.info("Calling Explain Endpoint...")
         with self._make_client(**self._client_kwargs) as client:
-            resp = self._run_async_task(
-                client, "explain", payload, timeout_seconds=timeout_seconds
+            resp = self._run_async_job(
+                client,
+                "v2/explain",
+                payload,
+                poll_interval=self._async_job_poll_interval,
+                poll_timeout=self._async_job_wait_timeout,
+                job_timeout_seconds=timeout_seconds,
+                task="explain",
             )
 
         try:

@@ -14,11 +14,11 @@ def _client_with_response(response):
     client = NixtlaClient(api_key="test", max_retries=1)
     client._make_client = MagicMock()
     request = MagicMock(
-        side_effect=lambda _http, task, payload, **_kwargs: (
+        side_effect=lambda _http, _endpoint, payload, *, task, **_kwargs: (
             response(task, payload) if callable(response) else response
         )
     )
-    client._run_async_task = request
+    client._run_async_job = request
     return client, request
 
 
@@ -74,8 +74,8 @@ def test_explain_preserves_feature_order_and_sorts_observations():
             }
         ),
     )
-    _, task, payload = request.call_args.args
-    assert task == "explain"
+    _, endpoint, payload = request.call_args.args
+    assert endpoint == "v2/explain"
     assert "model" not in payload
     assert payload["method"] == "transfer_entropy"
     assert payload["series"]["sizes"].tolist() == [3, 3]

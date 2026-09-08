@@ -15,20 +15,11 @@ def _client_with_response(response, model_params=(28, 7)):
     client._make_client = MagicMock()
     client._get_model_params = MagicMock(return_value=model_params)
 
-    # Mirrors NixtlaClient._run_async_task: both the single-request and the
-    # partitioned path call it with positional client, task and payload.
-    def respond(
-        client=None,
-        task=None,
-        payload=None,
-        multithreaded_compress=True,
-        timeout_seconds=None,
-        cancellation_event=None,
-    ):
+    def respond(client=None, endpoint=None, payload=None, *, task=None, **kwargs):
         return response(task, payload) if callable(response) else response
 
     request = MagicMock(side_effect=respond)
-    client._run_async_task = request
+    client._run_async_job = request
     return client, request
 
 
@@ -105,8 +96,8 @@ def test_simulate_builds_sample_major_pandas_output_and_payload():
     assert result["coupled"].tolist() == [True] * 8
     assert result.groupby(["sample_id", "unique_id"], observed=True).size().eq(2).all()
 
-    _, task, payload = request.call_args.args
-    assert task == "simulate"
+    _, endpoint, payload = request.call_args.args
+    assert endpoint == "v2/simulate"
     assert "method" not in payload
     assert payload["model"] == "timegpt-1"
     assert payload["h"] == 2

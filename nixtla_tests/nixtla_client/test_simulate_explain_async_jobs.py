@@ -597,12 +597,14 @@ def test_partition_failure_signals_other_workers_to_stop():
         stopped.set()
         raise client_module.CancelledError
 
-    client._run_async_task = run
+    client._run_async_job = run
     with pytest.raises(RuntimeError, match="partition failed"):
-        client._dispatch_async_jobs(
+        client._dispatch_partitioned_requests(
             MagicMock(),
-            "simulate",
+            "v2/simulate",
             [{"position": 0}, {"position": 1}],
+            is_async_job=True,
+            task="simulate",
         )
 
     assert stopped.is_set()
@@ -611,22 +613,29 @@ def test_partition_failure_signals_other_workers_to_stop():
 def test_partition_cancellation_signal_cancels_submitted_job():
     api = FakeApi(statuses=("pending",))
     client = api.make_client()
-    job_id = "sm-00000000000000000000000000000000"
-    api.jobs[job_id] = 0
     cancellation_event = client_module.Event()
-    cancellation_event.set()
+    submit = client._submit_job
 
+    def submit_then_cancel(*args, **kwargs):
+        job_id = submit(*args, **kwargs)
+        cancellation_event.set()
+        return job_id
+
+    client._submit_job = submit_then_cancel
     with client._make_client(**client._client_kwargs) as http:
         with pytest.raises(client_module.CancelledError):
-            client._poll_async_job(
+            client._run_async_job(
                 http,
-                "simulate",
-                job_id,
-                deadline=None,
+                "v2/simulate",
+                {},
+                poll_interval=1,
+                poll_timeout=None,
+                task="simulate",
                 cancellation_event=cancellation_event,
             )
 
-    assert api.cancelled == [job_id]
+    assert api.cancelled == [next(iter(api.jobs))]
+    assert not any(request.method == "GET" for request in api.requests)
 
 
 @pytest.mark.parametrize("status_code", [HTTPStatus.ACCEPTED, HTTPStatus.NOT_FOUND, HTTPStatus.CONFLICT])
@@ -637,7 +646,7 @@ def test_cancel_is_best_effort_and_quiet_for_expected_statuses(status_code, capl
     client = NixtlaClient(api_key="test")
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            client._cancel_async_job(http, "sm-1")
+            client._cancel_job_best_effort(http, "sm-1", "test cleanup")
     assert caplog.records == []
 
 
@@ -648,8 +657,8 @@ def test_cancel_never_raises(caplog):
     client = NixtlaClient(api_key="test")
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            client._cancel_async_job(http, "sm-1")
-    assert "Could not cancel job sm-1" in caplog.text
+            client._cancel_job_best_effort(http, "sm-1", "test cleanup")
+    assert "Failed to cancel job sm-1" in caplog.text
 
 
 # --------------------------------------------------------------------------- #
