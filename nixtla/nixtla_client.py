@@ -317,7 +317,6 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
 # job id and runs the work in a sandbox; the client polls the job until it
 # reaches a terminal status.
 _AsyncJobTask = Literal["simulate", "explain"]
-_ASYNC_JOB_ID_PREFIXES: dict[str, str] = {"simulate": "sm", "explain": "ex"}
 _ASYNC_JOB_PENDING_STATUSES = frozenset({"pending", "running"})
 _ASYNC_JOB_TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 _ASYNC_JOB_MAX_POLL_INTERVAL = 10.0
@@ -325,7 +324,6 @@ _ASYNC_JOB_POLL_JITTER = 0.25
 # Concurrent partitions submitted at once. Deployments cap the number of jobs a
 # team may have pending or running; staying below it avoids a 429 storm.
 _MAX_CONCURRENT_ASYNC_JOBS = 5
-_ASYNC_JOBS_UNAVAILABLE_MARKER = "not available in this deployment"
 
 
 def _sleep(seconds: float) -> None:
@@ -1590,9 +1588,11 @@ class NixtlaClient:
                 errors, use max_wait_time >> 60. Defaults to 360.
             async_job_wait_timeout (int, optional): Maximum time in seconds to
                 wait for an asynchronous job (`simulate`, `explain`) to
-                finish, counted from its submission and including the time it
-                spends queued. When exceeded, the client requests the job's
-                cancellation and raises a `TimeoutError`. Set to `None` to
+                finish after successful submission, including the time it
+                spends queued on the server. Submission retries are excluded;
+                each partition gets its own timeout after submission. When
+                exceeded, the client requests the job's cancellation and
+                raises a `TimeoutError`. Set to `None` to
                 wait until the server reports a terminal status. Defaults
                 to 600.
             async_job_poll_interval (float, optional): Initial interval in
@@ -1807,24 +1807,9 @@ class NixtlaClient:
                 resp, expected_status=HTTPStatus.ACCEPTED
             )
 
-        try:
-            body = _submit_retry_strategy(**self._retry_settings)(submit)()
-        except ApiError as exc:
-            if (
-                exc.status_code == HTTPStatus.SERVICE_UNAVAILABLE
-                and _ASYNC_JOBS_UNAVAILABLE_MARKER in str(exc.body)
-            ):
-                raise ApiError(
-                    status_code=exc.status_code,
-                    body=(
-                        f"`{task}` runs as an asynchronous job, which this "
-                        f"deployment does not support: {exc.body}"
-                    ),
-                ) from exc
-            raise
+        body = _submit_retry_strategy(**self._retry_settings)(submit)()
         job_id = body.get("job_id") if isinstance(body, dict) else None
-        prefix = f"{_ASYNC_JOB_ID_PREFIXES[task]}-"
-        if not isinstance(job_id, str) or not job_id.startswith(prefix):
+        if not isinstance(job_id, str) or not job_id:
             raise RuntimeError(
                 f"Unexpected response when submitting the {task} job: {body}"
             )
@@ -1945,7 +1930,11 @@ class NixtlaClient:
         timeout_seconds: Optional[int] = None,
         cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
-        """Submit an asynchronous `task`, wait for it and return its result."""
+        """Submit an asynchronous `task`, wait for it and return its result.
+
+        The wait timeout starts after successful submission, excluding
+        submission retries. Each partition has its own wait timeout.
+        """
         if cancellation_event is not None and cancellation_event.is_set():
             raise CancelledError
         job_id = self._submit_async_job(
@@ -4129,6 +4118,8 @@ class NixtlaClient:
         """
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`explain` only supports pandas and polars dataframes.")
+        if method not in ("granger", "transfer_entropy"):
+            raise ValueError("`method` must be 'granger' or 'transfer_entropy'.")
         self._validate_job_timeout(timeout_seconds)
         df, _, _, freq = self._run_validations(
             df=df,

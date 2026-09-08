@@ -328,13 +328,43 @@ def test_unknown_status_raises_instead_of_polling_forever():
     assert len(api.polls) == 1
 
 
-def test_unexpected_submit_body_raises():
-    api = FakeApi(submit_responses=[(HTTPStatus.ACCEPTED, {"job_id": "fc-wrong"}, {})])
+@pytest.mark.parametrize(
+    "body", [{}, {"job_id": None}, {"job_id": ""}, {"job_id": 123}, []]
+)
+def test_unexpected_submit_body_raises(body):
+    api = FakeApi(submit_responses=[(HTTPStatus.ACCEPTED, body, {})])
     client = api.make_client()
 
     with pytest.raises(RuntimeError, match="Unexpected response"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
     assert api.polls == []
+
+
+@pytest.mark.parametrize("task", ["simulate", "explain"])
+@pytest.mark.parametrize("job_id", ["fc-wrong", "opaque-id"])
+def test_job_ids_are_opaque(task, job_id):
+    result = (
+        _simulate_result(n_series=1, n_paths=1, h=2)
+        if task == "simulate"
+        else {"weights": [0.75, 0.25], "method": "granger"}
+    )
+    api = FakeApi(
+        task=task,
+        statuses=("succeeded",),
+        result=result,
+        submit_responses=[(HTTPStatus.ACCEPTED, {"job_id": job_id}, {})],
+    )
+    api.jobs[job_id] = 0
+    client = api.make_client()
+
+    if task == "simulate":
+        out = client.simulate(_series_df(), h=2, freq="D", n_paths=1)
+        assert out["TimeGPT"].tolist() == result["samples"]
+    else:
+        out = client.explain(_explain_df())
+        assert out["weight"].tolist() == result["weights"]
+
+    assert [poll.url.path for poll in api.polls] == [f"/v2/{task}/jobs/{job_id}"]
 
 
 # --------------------------------------------------------------------------- #
@@ -414,40 +444,26 @@ def test_submit_429_exhausting_retries_raises_api_error():
     assert len(api.submits) == 2
 
 
-def test_submit_unavailable_503_fails_fast_with_actionable_message():
+@pytest.mark.parametrize("task", ["simulate", "explain"])
+@pytest.mark.parametrize(
+    "detail", ["Async jobs are not available in this deployment.", "upstream"]
+)
+def test_submit_503_preserves_server_error_without_retrying(task, detail):
+    body = {"detail": detail}
     api = FakeApi(
-        task="explain",
-        submit_responses=[
-            (
-                HTTPStatus.SERVICE_UNAVAILABLE,
-                {"detail": "Async jobs are not available in this deployment."},
-                {},
-            )
-        ]
-        * 3,
+        task=task,
+        submit_responses=[(HTTPStatus.SERVICE_UNAVAILABLE, body, {})] * 3,
     )
     client = api.make_client()
 
     with pytest.raises(ApiError) as excinfo:
-        client.explain(_explain_df())
+        if task == "simulate":
+            client.simulate(_series_df(), h=2, freq="D", n_paths=1)
+        else:
+            client.explain(_explain_df())
 
     assert excinfo.value.status_code == 503
-    assert "asynchronous job" in str(excinfo.value)
-    assert "not available in this deployment" in str(excinfo.value)
-    assert len(api.submits) == 1
-
-
-def test_submit_other_503_is_not_retried():
-    api = FakeApi(
-        submit_responses=[(HTTPStatus.SERVICE_UNAVAILABLE, {"detail": "upstream"}, {})]
-        * 3
-    )
-    client = api.make_client()
-
-    with pytest.raises(ApiError) as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
-
-    assert excinfo.value.status_code == 503
+    assert excinfo.value.body == body
     assert len(api.submits) == 1
 
 

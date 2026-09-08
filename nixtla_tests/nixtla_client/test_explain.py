@@ -145,6 +145,9 @@ def test_explain_polars_output_and_implicit_single_series_id():
 @pytest.mark.parametrize(
     "kwargs,match",
     [
+        ({"method": "grangre", "validate_api_key": True}, "`method` must be"),
+        ({"method": ""}, "`method` must be"),
+        ({"method": None}, "`method` must be"),
         ({"features": []}, "at least one"),
         ({"features": ["driver", "driver"]}, "duplicates"),
         ({"features": ["missing"]}, "not found"),
@@ -165,6 +168,7 @@ def test_explain_rejects_invalid_options_before_request(kwargs, match):
         client.explain(_explain_df(), **kwargs)
 
     request.assert_not_called()
+    client._make_client.assert_not_called()
 
 
 def test_explain_rejects_gapped_timestamps_before_request():
