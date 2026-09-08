@@ -29,6 +29,7 @@ import narwhals as nw
 import numpy as np
 import pandas as pd
 import utilsforecast.processing as ufp
+from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline
 from utilsforecast.compat import (
@@ -523,6 +524,15 @@ class TimeSeries:
             if bids is not None:
                 state.set_series_bucket_id(bids)
 
+    def _stateful_cores(self) -> List[Any]:
+        """Inner coreforecast transforms that carry a per-group accumulator."""
+        return [
+            core
+            for tfm in self._get_local_tfms(self.transforms).values()
+            if isinstance(tfm, _BaseLagTransform)
+            for core in tfm._stateful_core_tfms()
+        ]
+
     def _apply_keep_last_n(self) -> None:
         """Resolve ``keep_last_n`` and trim the stored history accordingly.
 
@@ -531,6 +541,10 @@ class TimeSeries:
         and trims the pooled states (finite-window states only). Must run after
         the lag transforms have computed their state, since local stateful
         transforms (Expanding*/EWM) warm their buffers from the full history.
+
+        The retention has a floor of one more than any stateful transform's lag,
+        including over an explicit ``keep_last_n``, so that ``update`` can always
+        advance the accumulators (see ``_advance_lag_transform_states``).
         """
         update_samples = [
             getattr(tfm, "update_samples", -1) for tfm in self.transforms.values()
@@ -543,6 +557,12 @@ class TimeSeries:
             # user didn't set keep_last_n and we can infer it from the transforms
             self.keep_last_n = max(update_samples)
         if self.keep_last_n is not None:
+            # a serie trimmed to exactly a stateful transform's lag is
+            # indistinguishable from one that's only that long, and ``update``
+            # has to tell them apart: the first has an accumulator to advance,
+            # the second none to start from
+            min_kept = max((core.lag + 1 for core in self._stateful_cores()), default=0)
+            self.keep_last_n = max(self.keep_last_n, min_kept)
             self.ga = self.ga.take_from_groups(slice(-self.keep_last_n, None))
             self._trim_pooled_states()
         for state in getattr(self, "_pooled_states", {}).values():
@@ -573,6 +593,95 @@ class TimeSeries:
         core_tfms = self._get_core_lag_tfms()
         if core_tfms:
             self._compute_transforms(core_tfms, updates_only=False)
+
+    def _advance_lag_transform_states(
+        self,
+        prev_ga: GroupedArray,
+        counts: np.ndarray,
+        values: np.ndarray,
+        new_groups: np.ndarray,
+    ) -> None:
+        """Fold observations appended by ``update`` into the stateful transforms.
+
+        ``Expanding*``/``ExponentiallyWeightedMean`` carry a running accumulator
+        (``stats_``) instead of recomputing from the stored array, and
+        coreforecast advances it by exactly one observation per ``update`` call,
+        reading the value ``lag`` positions from the end. ``TimeSeries.update``
+        appends several values at once, so the accumulators must be advanced
+        here, one appended timestamp at a time, or they'd stay ``counts`` values
+        behind (see #726). Recomputing instead isn't possible once an
+        accumulator has started, since ``keep_last_n`` has dropped the history
+        it summarizes; the series that haven't started are exactly the ones the
+        trim leaves whole, so those are recomputed.
+
+        Args:
+            prev_ga: The stored series *before* the new values were appended.
+            counts: Number of appended values per series, in the updated id
+                order (0 for series absent from the update).
+            values: The appended values, grouped by series in that same order.
+            new_groups: Mask over the updated id order marking series that
+                didn't exist before this update.
+        """
+        cores = self._stateful_cores()
+        if not cores:
+            return
+        max_lag = max(core.lag for core in cores)
+        dtype = self.ga.data.dtype
+        offsets = np.append(0, counts.cumsum())
+        existing = ~new_groups
+        existing_counts = counts[existing]
+        stored_lens = np.zeros(counts.size, dtype=np.int64)
+        stored_lens[existing] = np.diff(prev_ga.indptr)
+        # advance the pre-existing series first, while stats_ still has one row
+        # per group of prev_ga
+        if existing_counts.size and existing_counts.max() > 0:
+            n_prev = prev_ga.n_groups
+            k_max = int(existing_counts.max())
+            # per series: the last max_lag stored values followed by the
+            # appended ones. A series with less than max_lag stored values is
+            # padded with nans, which is what the reads past the start of a
+            # group return during prediction as well.
+            context = np.full((n_prev, max_lag + k_max), np.nan, dtype=dtype)
+            for group, i in enumerate(np.flatnonzero(existing)):
+                stored = prev_ga[group][-max_lag:]
+                context[group, max_lag - stored.size : max_lag] = stored
+                context[group, max_lag : max_lag + counts[i]] = values[
+                    offsets[i] : offsets[i + 1]
+                ]
+            indptr = np.arange(0, (n_prev + 1) * max_lag, max_lag, dtype=np.int32)
+            for j in range(k_max):
+                # groups of max_lag values ending on the j-th appended value, so
+                # that the read at position lag from the end lands on it
+                step = CoreGroupedArray(context[:, j : j + max_lag].ravel(), indptr)
+                # updates advance every group, so restore the ones that ran out
+                # of appended values
+                done = existing_counts <= j
+                for core in cores:
+                    kept = core.stats_[done].copy()
+                    core.update(step)
+                    # some transforms rebind stats_ instead of updating in place
+                    core.stats_[done] = kept
+        # a fit over at most ``lag`` values consumes none of them, and
+        # coreforecast leaves stats_ uninitialized until it consumes one, so
+        # those series (and every new one) take their state from a transform
+        # over their whole history, which is what a fit would have produced. The
+        # trim keeps every serie it touches longer than the lag, so a short one
+        # is always a serie we still hold in full.
+        for core in cores:
+            if new_groups.any():
+                stats = np.empty(
+                    (counts.size, *core.stats_.shape[1:]), dtype=core.stats_.dtype
+                )
+                stats[existing] = core.stats_
+                core.stats_ = stats
+            fresh = stored_lens <= core.lag
+            if not fresh.any():
+                continue
+            # self.ga already holds the appended values
+            sub = self.ga.take(np.flatnonzero(fresh))
+            primed = copy.deepcopy(core)
+            primed.transform(CoreGroupedArray(sub.data, sub.indptr.astype(np.int32)))
+            core.stats_[fresh] = primed.stats_
 
     def _check_aligned_ends(self) -> None:
         """Check that all series end at the same timestamp when using pooled lag transforms."""
@@ -2135,9 +2244,17 @@ class TimeSeries:
                 else:
                     df = tfm.update(df)
                 values = df[self.target_col].to_numpy()
+        # the outer join above can make the sizes float, which the offset
+        # arithmetic in _advance_lag_transform_states needs as integers
+        appended_counts = sizes["counts"].to_numpy().astype(np.int64)
+        new_groups_mask = new_groups.to_numpy()
+        prev_ga = self.ga
         self.ga = self.ga.append_several(
-            new_sizes=sizes["counts"].to_numpy().astype(np.int32),
+            new_sizes=appended_counts.astype(np.int32),
             new_values=values,
-            new_groups=new_groups.to_numpy(),
+            new_groups=new_groups_mask,
+        )
+        self._advance_lag_transform_states(
+            prev_ga, appended_counts, values, new_groups_mask
         )
         self._update_pooled_states(df, sizes, values)

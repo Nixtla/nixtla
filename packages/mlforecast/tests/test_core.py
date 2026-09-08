@@ -2154,7 +2154,6 @@ def test_keep_last_n_for_built_in_lag_transforms(series):
     assert ts.keep_last_n == 20
     ts.fit_transform(series, "unique_id", "ds", "y")
     assert ts.keep_last_n == 4
-    # we can't infer it for functions
     ts = TimeSeries(
         freq="D",
         lags=[1, 2],
@@ -2167,7 +2166,10 @@ def test_keep_last_n_for_built_in_lag_transforms(series):
     ts.fit_transform(series, "unique_id", "ds", "y", keep_last_n=20)
     assert ts.keep_last_n == 20
     ts.fit_transform(series, "unique_id", "ds", "y")
-    assert ts.keep_last_n == 4
+    # the expanding mean carries its own accumulator, but each update still
+    # reads the value 5 positions back, and one more has to survive so that a
+    # trimmed serie stays longer than the lag
+    assert ts.keep_last_n == 6
 
 
 # no target nulls when dropna=False

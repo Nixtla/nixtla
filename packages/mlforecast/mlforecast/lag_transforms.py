@@ -25,7 +25,7 @@ import copy
 import inspect
 import re
 import warnings
-from typing import Callable, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence
 
 import coreforecast.lag_transforms as core_tfms
 import numpy as np
@@ -35,6 +35,17 @@ from sklearn.base import BaseEstimator
 
 def _pascal2camel(pascal_str: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", pascal_str).lower()
+
+
+def _configured_lag_samples(tfm) -> int:
+    """``update_samples`` for a transform that only reads the value ``lag`` back.
+
+    -1 (keep everything) until the lag is known, i.e. before ``_set_core_tfm``.
+    """
+    core = getattr(tfm, "_core_tfm", None)
+    if core is None:
+        return -1
+    return core.lag
 
 
 def _normalize_columns(columns):
@@ -206,6 +217,20 @@ class _BaseLagTransform(BaseEstimator):
         out._core_tfm = self._core_tfm.take(idxs)
         return out
 
+    def _stateful_core_tfms(self) -> List[Any]:
+        """Inner coreforecast transforms that carry a per-group accumulator.
+
+        Only these need their state advanced when observations are appended
+        outside the recursive predict loop (``TimeSeries.update``); every other
+        transform recomputes from the stored array on each call. ``stats_`` is
+        only set by ``transform``, so this also skips transforms that were
+        never warmed up (e.g. the pooled ones).
+        """
+        core = getattr(self, "_core_tfm", None)
+        if core is not None and hasattr(core, "stats_"):
+            return [core]
+        return []
+
     @staticmethod
     def stack(transforms: Sequence["_BaseLagTransform"]) -> "_BaseLagTransform":
         out = copy.deepcopy(transforms[0])
@@ -308,15 +333,13 @@ class LookupLag(_BaseLagTransform):
 
     @property
     def update_samples(self) -> int:
-        if self._core_tfm is None:
-            return -1
         # LookupLag's pooled state is never trimmed under ``keep_last_n`` (it is
         # not finite-window; see ``_pooled_retention``), so it keeps full bucket
         # history at predict. This value only feeds the ``self.ga`` keep_last_n
         # inference and the regular-``ga`` core-``Lag`` output it governs -- which
         # the pooled result overwrites; pooled trimming ignores it. ``lag`` is the
         # minimal safe value.
-        return self._core_tfm.lag
+        return _configured_lag_samples(self)
 
     @property
     def _pooled_retention(self) -> Optional[int]:
@@ -669,7 +692,9 @@ class _ExpandingBase(_BaseLagTransform):
 
     @property
     def update_samples(self) -> int:
-        return 1
+        # The accumulator carries the history, but each update still reads the
+        # value `lag` positions back, so that many samples must survive the trim.
+        return _configured_lag_samples(self)
 
     @property
     def _pooled_retention(self) -> Optional[int]:
@@ -800,7 +825,9 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
 
     @property
     def update_samples(self) -> int:
-        return 1
+        # The accumulator carries the history, but each update still reads the
+        # value `lag` positions back, so that many samples must survive the trim.
+        return _configured_lag_samples(self)
 
     @property
     def _pooled_retention(self) -> Optional[int]:
@@ -854,7 +881,9 @@ class Offset(_BaseLagTransform):
 
     @property
     def update_samples(self) -> int:
-        return self.tfm.update_samples + self.n
+        # ``_set_core_tfm(lag + n)`` already bakes the offset into the inner
+        # transform's core lag, so adding ``n`` here would count it twice.
+        return self.tfm.update_samples
 
     @property
     def _pooled_retention(self) -> Optional[int]:
@@ -952,6 +981,9 @@ class Combine(_BaseLagTransform):
         out.tfm1 = self.tfm1.take(idxs)
         out.tfm2 = self.tfm2.take(idxs)
         return out
+
+    def _stateful_core_tfms(self) -> List[Any]:
+        return self.tfm1._stateful_core_tfms() + self.tfm2._stateful_core_tfms()
 
     @staticmethod
     def stack(transforms: Sequence["Combine"]) -> "Combine":
