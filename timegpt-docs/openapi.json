@@ -3,7 +3,7 @@
   "info": {
     "title": "Nixtla Forecast API",
     "description": "API for TimeGPT forecast. Just send your data as json and get results. We do the heavy lifting.",
-    "version": "0.4.1"
+    "version": "0.4.2"
   },
   "paths": {
     "/v2/forecast": {
@@ -935,6 +935,1217 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/v2/finetune/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async finetune job",
+        "description": "Queues a finetune job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/finetune/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_finetune_v2_finetune_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinetuneAsyncRequest",
+                "examples": [
+                  {
+                    "finetune_steps": 10,
+                    "freq": "MS",
+                    "model": "timegpt-1",
+                    "series": {
+                      "sizes": [
+                        36
+                      ],
+                      "y": [
+                        0,
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        6,
+                        7,
+                        8,
+                        9,
+                        10,
+                        11,
+                        12,
+                        13,
+                        14,
+                        15,
+                        16,
+                        17,
+                        18,
+                        19,
+                        20,
+                        21,
+                        22,
+                        23,
+                        24,
+                        25,
+                        26,
+                        27,
+                        28,
+                        29,
+                        30,
+                        31,
+                        32,
+                        33,
+                        34,
+                        35
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/finetune/async"
+      }
+    },
+    "/v2/finetune/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async finetune job status",
+        "description": "Returns the current state of a finetune job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_finetune_job_status_v2_finetune_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/forecast/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async forecast job",
+        "description": "Queues a forecast job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/forecast/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_forecast_v2_forecast_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForecastAsyncRequest",
+                "examples": [
+                  {
+                    "freq": "D",
+                    "h": 2,
+                    "series": {
+                      "sizes": [
+                        5,
+                        3
+                      ],
+                      "y": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        10,
+                        20,
+                        30
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/forecast/async"
+      }
+    },
+    "/v2/forecast/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async forecast job status",
+        "description": "Returns the current state of a forecast job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_forecast_job_status_v2_forecast_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/cross_validation/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async cross_validation job",
+        "description": "Queues a cross_validation job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/cross_validation/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_cross_validation_v2_cross_validation_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrossValidationAsyncRequest",
+                "examples": [
+                  {
+                    "freq": "D",
+                    "h": 2,
+                    "n_windows": 1,
+                    "series": {
+                      "sizes": [
+                        5,
+                        3
+                      ],
+                      "y": [
+                        1,
+                        2,
+                        3,
+                        4,
+                        5,
+                        10,
+                        20,
+                        30
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/cross_validation/async"
+      }
+    },
+    "/v2/cross_validation/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async cross_validation job status",
+        "description": "Returns the current state of a cross_validation job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_cross_validation_job_status_v2_cross_validation_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/anomaly_detection/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async anomaly_detection job",
+        "description": "Queues a anomaly_detection job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/anomaly_detection/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_anomaly_detection_v2_anomaly_detection_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnomalyDetectionAsyncRequest",
+                "examples": [
+                  {
+                    "detection_size": 5,
+                    "freq": "W",
+                    "h": 20,
+                    "level": 99,
+                    "series": {
+                      "sizes": [
+                        320
+                      ],
+                      "y": [
+                        12.0,
+                        12.99833416646828,
+                        13.986693307950611,
+                        14.955202066613396,
+                        15.894183423086506,
+                        16.794255386042032,
+                        17.646424733950354,
+                        18.442176872376912,
+                        19.173560908995228,
+                        19.833269096274833,
+                        20.414709848078964,
+                        20.912073600614356,
+                        21.320390859672266,
+                        21.63558185417193,
+                        21.854497299884603,
+                        21.974949866040546,
+                        21.995736030415053,
+                        21.916648104524686,
+                        21.73847630878195,
+                        21.463000876874144,
+                        21.092974268256818,
+                        20.632093666488736,
+                        20.0849640381959,
+                        19.457052121767198,
+                        18.754631805511508,
+                        17.984721441039564,
+                        17.15501371821464,
+                        16.2737988023383,
+                        15.349881501559047,
+                        14.39249329213982,
+                        13.411200080598672,
+                        12.415806624332905,
+                        11.416258565724199,
+                        10.422543058567513,
+                        9.444588979731684,
+                        8.492167723103801,
+                        7.574795567051475,
+                        6.701638590915066,
+                        5.8814210905728075,
+                        5.1223384081602585,
+                        4.4319750469207175,
+                        3.817228889355892,
+                        3.284242275864118,
+                        2.838340632505451,
+                        2.4839792611048406,
+                        2.22469882334903,
+                        2.0630899636653552,
+                        2.000767424358992,
+                        2.038353911641595,
+                        2.175473873756676,
+                        2.4107572533686152,
+                        2.741853176722678,
+                        3.1654534427984693,
+                        3.6773255777609926,
+                        4.2723551244401285,
+                        4.9445967442960805,
+                        5.6873336212767915,
+                        6.493144574023624,
+                        7.353978205862434,
+                        8.26123335169764,
+                        9.205845018010741,
+                        10.17837495727905,
+                        11.169105971825037,
+                        12.168139004843505,
+                        13.165492048504937,
+                        14.151199880878156,
+                        15.115413635133788,
+                        16.048499206165985,
+                        16.94113351138609,
+                        17.784397643882002,
+                        18.56986598718789,
+                        19.289690401258767,
+                        19.936678638491532,
+                        20.50436620628565,
+                        20.98708095811627,
+                        21.37999976774739,
+                        21.679196720314863,
+                        21.881682338770005,
+                        21.985433453746047,
+                        21.98941341839772,
+                        21.893582466233816,
+                        21.698898108450862,
+                        21.407305566797724,
+                        21.02171833756293,
+                        20.545989080882805,
+                        19.984871126234903,
+                        19.343970978741133,
+                        18.62969230082182,
+                        17.849171928917617,
+                        17.010208564578846,
+                        16.121184852417567,
+                        15.190983623493521,
+                        14.22889914100246,
+                        13.244544235070617,
+                        12.247754254533577,
+                        11.248488795381906,
+                        10.256732187770186,
+                        9.282393735890558,
+                        8.335208707480717,
+                        7.424641062246787,
+                        6.559788891106303,
+                        5.749293511071166,
+                        5.001253124064563,
+                        4.323141902364175,
+                        3.7217353091434635,
+                        3.2030424002833,
+                        2.772245783871927,
+                        2.433649837298116,
+                        2.1906376993350847,
+                        2.045637466936226,
+                        2.000097934492965,
+                        2.05447411796011,
+                        2.208222708486831,
+                        2.4598075009791103,
+                        2.8067147433532433,
+                        3.2454782531157154,
+                        3.771714050312921,
+                        4.380164160809679,
+                        5.064749152228776,
+                        5.818628877629667,
+                        6.634270819995651,
+                        7.503525354654001,
+                        8.41770717763173,
+                        9.36768208634199,
+                        10.343958245516905,
+                        11.336781026487992,
+                        12.336230472211385,
+                        13.33232041419944,
+                        14.315098251015389,
+                        15.274744391376931,
+                        16.20167036826641,
+                        17.086614643723752,
+                        17.920735147072243,
+                        18.695697621966023,
+                        19.403758899524487,
+                        20.03784426551621,
+                        20.59161814856497,
+                        21.059547423084627,
+                        21.436956694441047,
+                        21.72007501394976,
+                        21.906073556948705,
+                        21.993093887479176,
+                        21.980266527163614,
+                        21.86771964274613,
+                        21.656577765492774,
+                        21.34895055524683,
+                        20.947911721405035,
+                        20.457468311429334,
+                        19.882520673753163,
+                        19.22881349511976,
+                        18.502878401571166,
+                        17.71196869659987,
+                        16.86398688853798,
+                        15.96740573130612,
+                        15.031183567457022,
+                        14.064674819377966,
+                        13.077536522994423,
+                        12.079631837859356,
+                        11.080931497723183,
+                        10.091414186258106,
+                        9.120966833349346,
+                        8.179285828159909,
+                        7.275780136015339,
+                        6.4194772871322066,
+                        5.618933176520498,
+                        4.882146576308769,
+                        4.216479214657015,
+                        3.6285822198025315,
+                        3.1243296641849536,
+                        2.7087598726563034,
+                        2.3860250812044317,
+                        2.159349949183566,
+                        2.0309993395840387,
+                        2.002255689269889,
+                        2.073406195293673,
+                        2.243739945318424,
+                        2.5115550208187596,
+                        2.874175502088155,
+                        3.3279782051441877,
+                        3.8684288833851355,
+                        4.490127532283239,
+                        5.186862344445,
+                        5.951671775937159,
+                        6.776914103732684,
+                        7.6543437792810645,
+                        8.575193815303875,
+                        9.530263382633791,
+                        10.510009741858012,
+                        11.504643591216325,
+                        12.504226878068147,
+                        13.498772096629523,
+                        14.478342079829599,
+                        15.433149288198987,
+                        16.353653603728933,
+                        17.230657651576994,
+                        18.05539869719601,
+                        18.819636200681355,
+                        19.515734153521507,
+                        20.136737375071053,
+                        20.67644100641669,
+                        21.129452507276277,
+                        21.491245536478946,
+                        21.758205177669765,
+                        21.92766405835907,
+                        21.99792900142669,
+                        21.96829794278799,
+                        21.83906694618616,
+                        21.611527245021158,
+                        21.287952340772407,
+                        20.871575286923495,
+                        20.36655638536056,
+                        19.777941618010928,
+                        19.1116122290598,
+                        18.37422596150239,
+                        17.573150535176584,
+                        16.716390030941962,
+                        15.8125049165494,
+                        14.870526513277252,
+                        13.899866757954378,
+                        12.910224161998443,
+                        11.911486907095961,
+                        10.913634045759203,
+                        9.926635793932377,
+                        8.96035391188953,
+                        8.024443168785638,
+                        7.128254875394905,
+                        6.280743448904362,
+                        5.4903769433375045,
+                        4.76505243955755,
+                        4.112017140245813,
+                        3.537795958248294,
+                        3.0481263218031813,
+                        2.647900848054597,
+                        2.341118457639295,
+                        2.1308444187935063,
+                        2.0191797202060364,
+                        2.007240078633723,
+                        2.0951447910284404,
+                        2.2820155425613677,
+                        2.5659851824544564,
+                        2.9442163799337617,
+                        3.412929973900706,
+                        3.967442733060473,
+                        4.602214149221066,
+                        5.310901796219784,
+                        6.086424701348756,
+                        6.921034096093779,
+                        7.806390839267719,
+                        8.733648738952777,
+                        9.693542940726077,
+                        10.67648249902227,
+                        11.672646206691546,
+                        12.672080725254785,
+                        13.664800035371591,
+                        14.64088521384473,
+                        15.590583540221683,
+                        16.50440594275389,
+                        17.37322181006475,
+                        18.188350221200395,
+                        18.941646682522446,
+                        19.625584504796027,
+                        20.233330007380815,
+                        20.75881079810891,
+                        21.1967764466202,
+                        21.542850944926982,
+                        21.79357643103917,
+                        21.94644773877838,
+                        21.999937428570206,
+                        21.95351104911559,
+                        21.80763247745152,
+                        21.56375928404503,
+                        21.22432816923086,
+                        20.792730616507228,
+                        20.273279005953786,
+                        19.67116352635528,
+                        18.992400316550977,
+                        18.243771354163915,
+                        17.43275669232245,
+                        16.567459721441928,
+                        15.65652620282618,
+                        14.70905788307869,
+                        13.73452155245892,
+                        12.742654455843578,
+                        11.743367001394406,
+                        10.746643739035674,
+                        9.762443598132036,
+                        8.80060038115802,
+                        7.870724507594566,
+                        6.982106989794258,
+                        6.1436266002569955,
+                        5.363661157870324,
+                        4.650003819512223,
+                        4.009785213403841,
+                        3.4494021922292983,
+                        2.9744539178981313,
+                        2.589685916570465,
+                        2.2989426629281464,
+                        2.1051291674546437,
+                        2.010181950530505,
+                        2.0150496933618545,
+                        2.119683759071382,
+                        2.3230386786619484,
+                        2.6230825969972003,
+                        3.0168175744264527,
+                        3.5003095412067378,
+                        4.068727605427148,
+                        4.716392321684066,
+                        5.4368324382221225,
+                        6.222849555542682,
+                        7.066590050432248,
+                        7.9596235467693495,
+                        8.893027149056277,
+                        9.857474597041158,
+                        10.84332945062763,
+                        11.840741373999018,
+                        12.839744556917468,
+                        13.83035728980588,
+                        14.802681697690229,
+                        30,
+                        16.653884763549584
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/anomaly_detection/async"
+      }
+    },
+    "/v2/anomaly_detection/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async anomaly_detection job status",
+        "description": "Returns the current state of a anomaly_detection job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_anomaly_detection_job_status_v2_anomaly_detection_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/simulate/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async simulate job",
+        "description": "Queues a simulate job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/simulate/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_simulate_v2_simulate_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateAsyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/simulate/async"
+      }
+    },
+    "/v2/simulate/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async simulate job status",
+        "description": "Returns the current state of a simulate job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_simulate_job_status_v2_simulate_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/explain/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async explain job",
+        "description": "Queues a explain job and returns immediately with its `job_id`. The job runs in a sandbox; poll `GET /v2/explain/jobs/{job_id}` for its state and result. Accepts the same body as the synchronous endpoint plus an optional `job_options`.",
+        "operationId": "submit_async_explain_v2_explain_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExplainAsyncRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/explain/async"
+      }
+    },
+    "/v2/explain/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async explain job status",
+        "description": "Returns the current state of a explain job. `result` is populated once `status` is `succeeded`. A `job_id` belonging to a different task returns 404, so ids cannot be polled across endpoints.",
+        "operationId": "get_explain_job_status_v2_explain_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/execute_step/async": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Submit an async execute_step job",
+        "description": "Queues an execute_step job and returns immediately with its `job_id`. The body is a zip of parquet members and the call parameters travel in the `nixtla-metadata` header, not as JSON. Poll `GET /v2/execute_step/jobs/{job_id}` for its state, then fetch the zip from `/result` once it reads `succeeded`.",
+        "operationId": "submit_async_execute_step_v2_execute_step_async_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "x-fern-sdk-method-name": "v2/execute_step/async"
+      }
+    },
+    "/v2/execute_step/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Get async execute_step job status",
+        "description": "Returns the current state of an execute_step job. `result` stays null even when `succeeded`, because the output is a zip \u2014 fetch it from `GET /v2/execute_step/jobs/{job_id}/result` instead.",
+        "operationId": "get_execute_step_job_status_v2_execute_step_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/execute_step/jobs/{job_id}/result": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Download an async execute_step job result",
+        "description": "Returns the completed step's output as a zip of parquet members, with the sandbox's envelope in the `nixtla-metadata` response header. Valid once the status endpoint reads `succeeded`.",
+        "operationId": "get_execute_step_job_result_v2_execute_step_jobs__job_id__result_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The step's output zip.",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v2/async/jobs/status": {
+      "get": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Count your team's open async jobs",
+        "description": "Returns your team's open job counts as `{task: {pending, running}}`, with an entry for every async task even when it has no jobs. Only these two states are reported \u2014 a succeeded, failed or cancelled job leaves the counts rather than moving between them, so poll a task's status endpoint to see a terminal state. Counts are approximate: they are read from the orchestrator and cached briefly.",
+        "operationId": "get_async_jobs_status_v2_async_jobs_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/OpenJobCounts"
+                  },
+                  "type": "object",
+                  "title": "Response Get Async Jobs Status V2 Async Jobs Status Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v2/async/jobs/{job_id}/cancel": {
+      "post": {
+        "tags": [
+          "async jobs"
+        ],
+        "summary": "Cancel an async job",
+        "description": "Requests cancellation of any async job by `job_id`, whatever its task. Accepting the request does not guarantee the job stopped \u2014 poll the task's status endpoint until it reads `cancelled`. An unknown or foreign `job_id` returns 404.",
+        "operationId": "cancel_async_job_v2_async_jobs__job_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AsyncJobSubmitResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "x-fern-sdk-method-name": "v2/async/jobs/{job_id}/cancel"
       }
     }
   },
@@ -2428,6 +3639,955 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "AnomalyDetectionAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "detection_size": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Detection Size",
+            "description": "Window over which to detect anomalies starting from the end of the series. This window is not considered when calculating the anomaly threshold to avoid bias from abnormal samples, unless there are fewer than 6 * detection_size forecasted samples."
+          },
+          "threshold_method": {
+            "type": "string",
+            "enum": [
+              "univariate",
+              "multivariate"
+            ],
+            "title": "Threshold Method",
+            "description": "The thresholding method to detect anomalies",
+            "default": "univariate"
+          },
+          "h": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "H",
+            "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "clean_ex_first": {
+            "type": "boolean",
+            "title": "Clean Ex First",
+            "description": "A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.",
+            "default": true
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMaximum": 100.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "number",
+                "exclusiveMaximum": 100.0,
+                "minimum": 0.0
+              }
+            ],
+            "title": "Level",
+            "description": "Specifies the confidence level for the prediction interval used in anomaly detection. It is represented as a percentage between 0 and 100. For instance, a level of 95 indicates that the generated prediction interval captures the true future observation 95% of the time. Any observed values outside of this interval would be considered anomalies. A higher level leads to wider prediction intervals and potentially fewer detected anomalies, whereas a lower level results in narrower intervals and potentially more detected anomalies. Default: 99.",
+            "default": 99
+          },
+          "finetune_steps": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finetune Steps",
+            "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
+            "default": 0
+          },
+          "finetune_loss": {
+            "type": "string",
+            "enum": [
+              "default",
+              "mae",
+              "mse",
+              "rmse",
+              "mape",
+              "smape",
+              "poisson"
+            ],
+            "title": "Finetune Loss",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "default": "default"
+          },
+          "finetune_depth": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "title": "Finetune Depth",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
+            "default": 1
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "step_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Size",
+            "description": "Step size between each cross validation window. If None it will be equal to the forecasting horizon."
+          },
+          "hist_exog": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hist Exog",
+            "description": "Zero-based indices of the exogenous features to treat as historical."
+          },
+          "refit": {
+            "type": "boolean",
+            "title": "Refit",
+            "description": "Fine-tune the model in each window. If `False`, only fine-tunes on the first window. Only used if `finetune_steps` > 0.",
+            "default": true
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "Compute multivariate predictions across a batch of multiple time series. Requires all time series with overlapping dates. Note that this is only effective for timegpt-2.1 model and it has no effect on the other models. By default, the value is set to False.",
+            "default": false
+          },
+          "model_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Parameters",
+            "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq",
+          "detection_size",
+          "h"
+        ],
+        "title": "AnomalyDetectionAsyncRequest"
+      },
+      "AsyncJobOptions": {
+        "properties": {
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout Seconds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AsyncJobOptions"
+      },
+      "AsyncJobStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "AsyncJobStatus"
+      },
+      "AsyncJobStatusResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "The job this status describes."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AsyncJobStatus",
+            "description": "Lifecycle state; terminal states are succeeded, failed, cancelled."
+          },
+          "result": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result",
+            "description": "The task's output once succeeded; null while pending, and for binary tasks."
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "Failure detail when status is failed; otherwise null."
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "ISO-8601 timestamp of when the job was accepted."
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "ISO-8601 timestamp of the last state transition."
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "AsyncJobStatusResponse",
+        "description": "A job's current state, polled from the per-task status endpoint.\n\n`result` is populated only once `status` is `succeeded`, and stays null for a binary task whose\noutput is a zip \u2014 that arrives from the task's dedicated result endpoint instead."
+      },
+      "AsyncJobSubmitResponse": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id",
+            "description": "Identifier for the accepted job. Prefixed per task (e.g. `fc-` for forecast).",
+            "examples": [
+              "fc-4f2a1c9e8b7d4a6f9c3e1b5d7a9f2c4e"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "title": "AsyncJobSubmitResponse",
+        "description": "The 202 every async submit returns. Shared by all tasks \u2014 they differ in request, not reply."
+      },
+      "CrossValidationAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "n_windows": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "N Windows",
+            "description": "Number of windows to evaluate.",
+            "default": 1
+          },
+          "h": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "H",
+            "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
+          },
+          "full_history": {
+            "type": "boolean",
+            "title": "Full History",
+            "description": "Forecast across the entire series history (the `add_history` use case). The horizon and number of windows are derived server-side (any supplied `h` / `n_windows` are ignored), and the exogenous model is refit a bounded number of times to keep whole-history requests fast. Has no effect without exogenous features.",
+            "default": false
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "clean_ex_first": {
+            "type": "boolean",
+            "title": "Clean Ex First",
+            "description": "A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.",
+            "default": true
+          },
+          "level": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMaximum": 100.0,
+                      "minimum": 0.0
+                    },
+                    {
+                      "type": "number",
+                      "exclusiveMaximum": 100.0,
+                      "minimum": 0.0
+                    }
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level",
+            "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
+          },
+          "finetune_steps": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finetune Steps",
+            "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
+            "default": 0
+          },
+          "finetune_loss": {
+            "type": "string",
+            "enum": [
+              "default",
+              "mae",
+              "mse",
+              "rmse",
+              "mape",
+              "smape",
+              "poisson"
+            ],
+            "title": "Finetune Loss",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "default": "default"
+          },
+          "finetune_depth": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "title": "Finetune Depth",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
+            "default": 1
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "step_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Size",
+            "description": "Step size between each cross validation window. If None it will be equal to the forecasting horizon."
+          },
+          "hist_exog": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hist Exog",
+            "description": "Zero-based indices of the exogenous features to treat as historical."
+          },
+          "refit": {
+            "type": "boolean",
+            "title": "Refit",
+            "description": "Fine-tune the model in each window. If `False`, only fine-tunes on the first window. Only used if `finetune_steps` > 0.",
+            "default": true
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "Compute multivariate predictions across a batch of multiple time series. Requires all time series with overlapping dates. Note that this is only effective for timegpt-2.1 model and it has no effect on the other models. By default, the value is set to False.",
+            "default": false
+          },
+          "model_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Parameters",
+            "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
+          },
+          "feature_contributions": {
+            "type": "boolean",
+            "title": "Feature Contributions",
+            "description": "Compute the exogenous features contributions to the forecast.",
+            "default": false
+          },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq",
+          "h"
+        ],
+        "title": "CrossValidationAsyncRequest"
+      },
+      "ExplainAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithExogenous"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Method",
+            "description": "Model-agnostic causal analysis method used by the /v2/explain endpoint. Options are: 'granger' (default) and 'transfer_entropy'.",
+            "default": "granger"
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series"
+        ],
+        "title": "ExplainAsyncRequest"
+      },
+      "FinetuneAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "finetune_steps": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finetune Steps",
+            "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
+            "default": 10
+          },
+          "finetune_loss": {
+            "type": "string",
+            "enum": [
+              "default",
+              "mae",
+              "mse",
+              "rmse",
+              "mape",
+              "smape",
+              "poisson"
+            ],
+            "title": "Finetune Loss",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "default": "default"
+          },
+          "finetune_depth": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "title": "Finetune Depth",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
+            "default": 1
+          },
+          "output_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Model Id",
+            "description": "ID to assign to the finetuned model"
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "hist_exog": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hist Exog",
+            "description": "Zero-based indices of the exogenous features to treat as historical."
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "Compute multivariate predictions across a batch of multiple time series. Requires all time series with overlapping dates. Note that this is only effective for timegpt-2.1 model and it has no effect on the other models. By default, the value is set to False.",
+            "default": false
+          },
+          "model_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Parameters",
+            "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq"
+        ],
+        "title": "FinetuneAsyncRequest"
+      },
+      "ForecastAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "h": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "H",
+            "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "clean_ex_first": {
+            "type": "boolean",
+            "title": "Clean Ex First",
+            "description": "A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.",
+            "default": true
+          },
+          "level": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMaximum": 100.0,
+                      "minimum": 0.0
+                    },
+                    {
+                      "type": "number",
+                      "exclusiveMaximum": 100.0,
+                      "minimum": 0.0
+                    }
+                  ]
+                },
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level",
+            "description": "A list of values representing the prediction intervals. Each value is a percentage that indicates the level of certainty for the corresponding prediction interval. For example, [80, 90] defines 80% and 90% prediction intervals."
+          },
+          "finetune_steps": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Finetune Steps",
+            "description": "The number of tuning steps used to train the large time model on the data. Set this value to 0 for zero-shot inference, i.e., to make predictions without any further model tuning.",
+            "default": 0
+          },
+          "finetune_loss": {
+            "type": "string",
+            "enum": [
+              "default",
+              "mae",
+              "mse",
+              "rmse",
+              "mape",
+              "smape",
+              "poisson"
+            ],
+            "title": "Finetune Loss",
+            "description": "The loss used to train the large time model on the data. Select from ['default', 'mae', 'mse', 'rmse', 'mape', 'smape', 'poisson']. It will only be used if finetune_steps is larger than 0. Default is a robust loss function that is less sensitive to outliers.",
+            "default": "default"
+          },
+          "finetune_depth": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "title": "Finetune Depth",
+            "description": "The depth of the finetuning. Uses a scale from 1 to 5, where 1 means little finetuning, and 5 means that the entire model is finetuned. Note that this parameter is only effective for timegpt-1 and timegpt-1-long-horizon models; it has no effect on the other models. By default, the value is set to 1.",
+            "default": 1
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "feature_contributions": {
+            "type": "boolean",
+            "title": "Feature Contributions",
+            "description": "Compute the exogenous features contributions to the forecast.",
+            "default": false
+          },
+          "feature_contributions_type": {
+            "type": "string",
+            "enum": [
+              "shapley",
+              "intervention",
+              "granger",
+              "transfer_entropy"
+            ],
+            "title": "Feature Contributions Type",
+            "description": "Method used to compute feature contributions. Options are: 'shapley' (default), 'intervention', 'granger', 'transfer_entropy'. The methods differ in semantics: 'shapley' returns per-timestep contributions that sum to the forecast (last row = per-timestep base prediction); 'intervention' returns each feature's counterfactual effect (forecast minus forecast with that feature held at its baseline) and does NOT sum to the forecast; 'granger'/'transfer_entropy' allocate each series' forecast deviation from its mean proportionally to model-agnostic historical importance weights \u2014 the rows sum to the forecast by construction, but they are a proportional allocation describing relationships in the data, not a per-feature attribution of this specific forecast. Use the /v2/explain endpoint for standalone historical importance weights.",
+            "default": "shapley"
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "Compute multivariate predictions across a batch of multiple time series. Requires all time series with overlapping dates. Note that this is only effective for timegpt-2.1 model and it has no effect on the other models. By default, the value is set to False.",
+            "default": false
+          },
+          "model_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Parameters",
+            "description": "Optional dictionary of parameters to customize the behavior of the large time model. "
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq",
+          "h"
+        ],
+        "title": "ForecastAsyncRequest"
+      },
+      "OpenJobCounts": {
+        "properties": {
+          "pending": {
+            "type": "integer",
+            "title": "Pending",
+            "description": "Accepted but not yet started in a sandbox."
+          },
+          "running": {
+            "type": "integer",
+            "title": "Running",
+            "description": "Currently executing in a sandbox."
+          }
+        },
+        "type": "object",
+        "required": [
+          "pending",
+          "running"
+        ],
+        "title": "OpenJobCounts",
+        "description": "How many of one task's jobs are still open.\n\nOnly non-terminal states appear: the orchestrator counts open workflows, so a job that has\nsucceeded, failed or been cancelled leaves these counts entirely rather than moving between\nthem. Poll the task's status endpoint for a specific job's terminal state."
+      },
+      "SimulateAsyncRequest": {
+        "properties": {
+          "series": {
+            "$ref": "#/components/schemas/SeriesWithFutureExogenous"
+          },
+          "freq": {
+            "type": "string",
+            "title": "Freq",
+            "description": "The frequency of the data represented as a string. 'D' for daily, 'M' for monthly, 'H' for hourly, and 'W' for weekly frequencies are available."
+          },
+          "h": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "H",
+            "description": "The forecasting horizon. This represents the number of time steps into the future that the forecast should predict."
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model to use as a string. Common options are (but not restricted to) `timegpt-1` and `timegpt-1-long-horizon`. Full options vary by different users. Contact support@nixtla.io for more information. We recommend using `timegpt-1-long-horizon` for forecasting if you want to predict more than one seasonal period given the frequency of your data.",
+            "default": "timegpt-1"
+          },
+          "finetuned_model_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9\\-_]{1,36}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finetuned Model Id",
+            "description": "ID of previously finetuned model"
+          },
+          "clean_ex_first": {
+            "type": "boolean",
+            "title": "Clean Ex First",
+            "description": "A boolean flag that indicates whether the API should preprocess (clean) the exogenous signal before applying the large time model. If True, the exogenous signal is cleaned; if False, the exogenous variables are applied after the large time model.",
+            "default": true
+          },
+          "multivariate": {
+            "type": "boolean",
+            "title": "Multivariate",
+            "description": "When True, sample paths are coupled across series via a shared-template Schaake shuffle (path k reflects the same historical period for every series) \u2014 this applies to ALL models. Falls back to independent per-series paths when no NaN-free shared history window exists (see `coupled` in the response). Also enables the multivariate marginal forecast for models that support it (timegpt-2.1).",
+            "default": false
+          },
+          "n_paths": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "N Paths",
+            "description": "Number of sample paths to generate per series.",
+            "default": 100
+          },
+          "quantiles": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantiles",
+            "description": "Marginal quantile grid in (0, 1), strictly increasing, length in [2, 200]. Defaults to the model's native grid (native-quantile losses) or a dense grid (point-loss/conformal)."
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1.8446744073709552e+19,
+                "minimum": -9.223372036854776e+18
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed",
+            "description": "Random seed for reproducibility. When omitted, a fresh random seed is drawn, so repeated unseeded requests return different paths."
+          },
+          "job_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AsyncJobOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "series",
+          "freq",
+          "h"
+        ],
+        "title": "SimulateAsyncRequest"
       }
     },
     "securitySchemes": {
