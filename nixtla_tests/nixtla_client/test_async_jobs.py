@@ -352,8 +352,7 @@ SUBMIT_JOB_CASES = [
         (10_000, 12),
         id="cross_validation",
     ),
-    # The async route uses the post-rename endpoint name, so it deliberately
-    # differs from the `v2/online_anomaly_detection` path the sync method posts to.
+    # Deliberately not the sync method's endpoint; literal so it pins the wire value.
     pytest.param(
         "submit_anomaly_detection_job",
         "v2/anomaly_detection",
@@ -434,6 +433,9 @@ def _anomaly_detection_poll_response():
             "mean": list(range(detection_size)),
             "anomaly": [False] * detection_size,
             "anomaly_score": [0.0] * detection_size,
+            # Present on purpose in the univariate case, so `_check_anomaly_df`'s
+            # absence assertion fails instead of raising KeyError.
+            "accumulated_anomaly_score": [0.0] * detection_size,
             "intervals": None,
         },
     }
@@ -449,13 +451,13 @@ def _check_finetune_result(result):
     assert result == "abc123"
 
 
-def _check_point_forecast_df(result):
+def _check_mean_and_len(result):
     assert len(result) == 5
     assert result["TimeGPT"].tolist() == list(range(5))
 
 
 def _check_anomaly_df(result):
-    _check_point_forecast_df(result)
+    _check_mean_and_len(result)
     assert result["anomaly"].tolist() == [False] * 5
     assert result["anomaly_score"].tolist() == [0.0] * 5
     # univariate thresholding must not add the multivariate-only column
@@ -463,7 +465,9 @@ def _check_anomaly_df(result):
 
 
 def _check_multivariate_anomaly_df(result):
-    _check_point_forecast_df(result)
+    _check_mean_and_len(result)
+    assert result["anomaly"].tolist() == [False] * 5
+    assert result["anomaly_score"].tolist() == [0.0] * 5
     assert result["accumulated_anomaly_score"].tolist() == [0.0] * 5
 
 
@@ -481,7 +485,7 @@ WAIT_JOB_CASES = [
         lambda: {"df": _small_df(), "h": 5},
         (100, 12),
         _forecast_poll_response,
-        _check_point_forecast_df,
+        _check_mean_and_len,
         id="forecast",
     ),
     pytest.param(
@@ -489,7 +493,7 @@ WAIT_JOB_CASES = [
         lambda: {"df": _small_df(n=20), "h": 5},
         (10_000, 12),
         _cross_validation_poll_response,
-        _check_point_forecast_df,
+        _check_mean_and_len,
         id="cross_validation",
     ),
     pytest.param(
@@ -541,6 +545,11 @@ def test_submit_job_wait_returns_result(
     assert job.result is result
 
 
+# ---------------------------------------------------------------------------
+# submit_anomaly_detection_job specifics
+# ---------------------------------------------------------------------------
+
+
 def _normalize_payload(payload):
     """Make a payload comparable: numpy arrays -> lists, recursively."""
     if isinstance(payload, dict):
@@ -581,7 +590,6 @@ def test_submit_anomaly_detection_job_payload_matches_sync(monkeypatch):
     monkeypatch.setattr(
         NixtlaClient, "_make_request_with_retries", fake_make_request_with_retries
     )
-    _stub_job_status(monkeypatch, "pending")
     client = _client()
 
     client.submit_anomaly_detection_job(**call_kwargs)
@@ -1293,23 +1301,22 @@ def test_cross_validation_num_partitions_with_async_job(monkeypatch):
     assert len(out) == h * 2
 
 
-# `extra_kwargs` carries each method's other required arguments, so the call reaches
-# the dataframe-type guard instead of failing earlier on a missing argument.
+# `call_kwargs` supplies each method's required args so the call reaches the
+# dataframe-type guard. `submit_finetune_job` has no such guard, so it is absent.
 @pytest.mark.parametrize(
-    "method_name, extra_kwargs",
+    "method_name, call_kwargs",
     [
-        ("submit_forecast_job", {}),
-        ("submit_cross_validation_job", {}),
-        ("submit_anomaly_detection_job", {"detection_size": 5}),
+        ("submit_forecast_job", {"h": 5}),
+        ("submit_cross_validation_job", {"h": 5}),
+        ("submit_anomaly_detection_job", {"h": 5, "detection_size": 5}),
     ],
 )
-def test_submit_job_with_unrecognized_df_type_still_raises(method_name, extra_kwargs):
-    # These methods don't support distributed (dask/spark/ray) dataframes in this
-    # version — an arbitrary non-pandas/polars object should raise a clear
-    # ValueError rather than doing something undefined.
+def test_submit_job_with_unrecognized_df_type_still_raises(method_name, call_kwargs):
+    # No distributed (dask/spark/ray) support in this version, so a non-pandas/polars
+    # object must raise a clear ValueError.
     client = _client()
     with pytest.raises(ValueError, match=f"{method_name} only supports"):
-        getattr(client, method_name)(df=[1, 2, 3], h=5, **extra_kwargs)
+        getattr(client, method_name)(df=[1, 2, 3], **call_kwargs)
 
 
 @pytest.mark.parametrize(

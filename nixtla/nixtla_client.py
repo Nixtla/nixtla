@@ -324,6 +324,10 @@ _ASYNC_JOB_POLL_JITTER = 0.25
 # submission pressure; it is not a guarantee of the deployment's team job cap.
 _MAX_CONCURRENT_ASYNC_JOBS = 5
 
+# The server is mid-rename: the async route already uses the post-rename name
+_ANOMALY_DETECTION_ENDPOINT = "v2/anomaly_detection"
+_ONLINE_ANOMALY_DETECTION_ENDPOINT = "v2/online_anomaly_detection"
+
 
 def _wait_for_poll(seconds: float, cancellation_event: Optional[Event]) -> bool:
     """Wait for the next poll, returning whether cancellation was requested."""
@@ -2156,15 +2160,26 @@ class NixtlaClient:
         payload = _with_job_options(payload, job_timeout_seconds)
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, endpoint, payload)
+
+        def get_result(job_data: dict[str, Any], *_poll_settings: float) -> Any:
+            # A JSON result is inline in the status response, so there is nothing to wait
+            # for: the poll settings `Job` passes are accepted and ignored.
+            result = job_data.get("result")
+            if not isinstance(result, dict):
+                # Same guard as `_run_async_job`: a malformed success must not surface
+                # as a `TypeError` from inside `parse_result`.
+                raise AsyncJobError(
+                    job_id=job_id,
+                    status="succeeded",
+                    error="job succeeded but returned no result",
+                )
+            return parse_result(result)
+
         return Job(
             client=self,
             job_id=job_id,
             endpoint=endpoint,
-            # A JSON result is inline in the status response, so there is nothing to wait
-            # for: the poll settings `Job` passes are accepted and ignored.
-            get_result=lambda job_data, *_poll_settings: parse_result(
-                job_data["result"]
-            ),
+            get_result=get_result,
         )
 
     def _submit_binary_job(
@@ -4476,12 +4491,12 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
-                    client, "v2/anomaly_detection", payload
+                    client, _ANOMALY_DETECTION_ENDPOINT, payload
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/anomaly_detection", payloads
+                    client, _ANOMALY_DETECTION_ENDPOINT, payloads
                 )
 
         # assemble result
@@ -4573,7 +4588,7 @@ class NixtlaClient:
         )
         return fa.get_native_as_df(result_df)
 
-    def _prepare_online_anomaly_detection(
+    def _prepare_anomaly_detection(
         self,
         df: DFType,
         h: _PositiveInt,
@@ -4598,12 +4613,7 @@ class NixtlaClient:
         refit: bool,
         multivariate: bool,
     ) -> tuple[dict[str, Any], Callable[[dict[str, Any]], Any]]:
-        """Build the online anomaly detection payload and its result parser.
-
-        Shared by `detect_anomalies_online` and `submit_anomaly_detection_job` so the
-        two paths cannot drift: the payload is identical and `parse_result` assembles
-        the response the same way whether it arrived inline or from a finished job.
-        """
+        """Build the payload and result parser shared by the sync and submit paths."""
         self.__dict__.pop("weights_x", None)
         model = self._maybe_override_model(model)
         logger.info("Validating inputs...")
@@ -4634,6 +4644,11 @@ class NixtlaClient:
         if processed.sort_idxs is not None:
             targets = targets[processed.sort_idxs]
             times = times[processed.sort_idxs]
+        else:
+            # Own these: otherwise they are views into `df`, and `parse_result` can run
+            # long after submit returned, by which time `df` may have been mutated.
+            targets = targets.copy()
+            times = times.copy()
         X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
         sizes = np.diff(processed.indptr)
         if np.all(sizes <= 6 * detection_size):
@@ -4672,13 +4687,18 @@ class NixtlaClient:
         if model_parameters is not None:
             payload.update({"model_parameters": model_parameters})
 
+        # A `Job` holds `parse_result` until the caller drops it, so capturing
+        # `df`/`processed` would pin the whole input for that long.
+        df_cls = type(df)
+        uids = processed.uids
+
         def parse_result(resp: dict[str, Any]) -> Any:
             # assemble result
             idxs = np.array(resp["idxs"], dtype=np.int64)
             sizes = np.array(resp["sizes"], dtype=np.int64)
-            out = type(df)(
+            out = df_cls(
                 {
-                    id_col: ufp.repeat(processed.uids, sizes),
+                    id_col: ufp.repeat(uids, sizes),
                     time_col: times[idxs],
                     target_col: targets[idxs],
                 }
@@ -4690,7 +4710,8 @@ class NixtlaClient:
                 out = ufp.assign_columns(
                     out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
                 )
-            return _maybe_add_intervals(out, resp["intervals"])
+            # Optional in the response schema; `_maybe_add_intervals` no-ops on None.
+            return _maybe_add_intervals(out, resp.get("intervals"))
 
         return payload, parse_result
 
@@ -4851,7 +4872,7 @@ class NixtlaClient:
                 "Either set threshold_method to univariate "
                 "or set num_partitions to None."
             )
-        payload, parse_result = self._prepare_online_anomaly_detection(
+        payload, parse_result = self._prepare_anomaly_detection(
             df=df,
             h=h,
             detection_size=detection_size,
@@ -4879,12 +4900,12 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
-                    client, "v2/online_anomaly_detection", payload
+                    client, _ONLINE_ANOMALY_DETECTION_ENDPOINT, payload
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/online_anomaly_detection", payloads
+                    client, _ONLINE_ANOMALY_DETECTION_ENDPOINT, payloads
                 )
         return parse_result(resp)
 
@@ -5024,7 +5045,7 @@ class NixtlaClient:
             method_name="submit_anomaly_detection_job",
             sync_method_name="detect_anomalies_online()",
         )
-        payload, parse_result = self._prepare_online_anomaly_detection(
+        payload, parse_result = self._prepare_anomaly_detection(
             df=df,
             h=h,
             detection_size=detection_size,
@@ -5049,7 +5070,7 @@ class NixtlaClient:
             multivariate=multivariate,
         )
         return self._submit_and_wrap_job(
-            "v2/anomaly_detection", payload, job_timeout_seconds, parse_result
+            _ANOMALY_DETECTION_ENDPOINT, payload, job_timeout_seconds, parse_result
         )
 
     def _distributed_cross_validation(
