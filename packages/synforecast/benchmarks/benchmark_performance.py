@@ -1,7 +1,12 @@
 """Benchmark backend performance with optional save/compare support.
 
-Measures wall-clock time per generator and balanced_pool throughput grid.
-Can save results to JSON for cross-branch or cross-machine comparison.
+Measures wall-clock time per generator (every mechanism, including the
+meta-generators that only ``pretraining_pool`` adds), the ``balanced_pool``
+throughput grid, and the per-family cost breakdown of ``pretraining_pool``
+across series lengths. The breakdown shows how the meta-generators, chiefly
+KernelSynth with its O(n^3) Cholesky factorization, come to dominate the cost of
+a long-series corpus. Can save results to JSON for cross-branch or cross-machine
+comparison.
 
 Usage:
     # Run and display results
@@ -37,7 +42,7 @@ except ImportError:
 
 from _env import environment_metadata  # noqa: E402
 
-from synforecast import balanced_pool  # noqa: E402
+from synforecast import balanced_pool, pretraining_pool  # noqa: E402
 from synforecast.generators import (  # noqa: E402
     BoundedProcessGenerator,
     ChaoticSystemGenerator,
@@ -56,7 +61,9 @@ from synforecast.generators import (  # noqa: E402
     IntermittentDemandGenerator,
     IoTSensorGenerator,
     JumpDiffusionGenerator,
+    KernelSynthGenerator,
     LevyProcessGenerator,
+    MARGenerator,
     OrnsteinUhlenbeckGenerator,
     PoissonProcessGenerator,
     RandomWalkGenerator,
@@ -65,6 +72,8 @@ from synforecast.generators import (  # noqa: E402
     SeasonalGenerator,
     StateSpaceGenerator,
     StochasticVolatilityGenerator,
+    TCMGenerator,
+    TSIGenerator,
     VARGenerator,
     VitalSignsGenerator,
 )
@@ -196,7 +205,23 @@ GENERATORS: dict[str, tuple[type, dict]] = {
         ClickstreamGenerator,
         {"output_type": "sessions"},
     ),
+    # Meta-generators added by pretraining_pool. Each resamples its own
+    # configuration per series, so the defaults are the representative setting.
+    "TSI": (TSIGenerator, {}),
+    "TCM": (TCMGenerator, {}),
+    "KernelSynth": (KernelSynthGenerator, {}),
+    "MAR": (MARGenerator, {}),
 }
+
+# Families whose cost is broken out in the pretraining_pool section; every
+# other member of the pool is reported together as balanced_pool.
+META_FAMILIES: dict[str, type] = {
+    "TSI": TSIGenerator,
+    "TCM": TCMGenerator,
+    "KernelSynth": KernelSynthGenerator,
+    "MAR": MARGenerator,
+}
+BALANCED_LABEL = "balanced_pool"
 
 # Maximum lengths to avoid O(n^2)/O(n^3) blowups
 _MAX_LENGTHS: dict[str, int] = {
@@ -348,11 +373,106 @@ def benchmark_grid():
 
 
 # ---------------------------------------------------------------------------
+# 3. Pretraining pool cost breakdown
+# ---------------------------------------------------------------------------
+
+
+def _family_of(gen) -> str:
+    for label, cls in META_FAMILIES.items():
+        if isinstance(gen, cls):
+            return label
+    return BALANCED_LABEL
+
+
+def benchmark_pretraining_breakdown():
+    """Time one series from every pretraining_pool member at each length.
+
+    Returns ``{length: {family: {"time_ms": total, "instances": count}}}``,
+    where the meta-generator families are broken out and the remaining
+    balanced_pool members are summed under ``BALANCED_LABEL``.
+    """
+    print("=" * 72)
+    print("  PRETRAINING POOL COST BREAKDOWN  (one series per pool member)")
+    print("=" * 72)
+    print(f"  Lengths    : {SERIES_LENGTHS}")
+    print()
+
+    results: dict[str, dict[str, dict[str, float]]] = {}
+    for i, length in enumerate(SERIES_LENGTHS, start=1):
+        print(
+            f"\r  Benchmarking [{i}/{len(SERIES_LENGTHS)}] L={length:>5} ...",
+            end="",
+            flush=True,
+        )
+        pool = pretraining_pool(
+            min_length=length, max_length=length, freq="1d", seed=42
+        )
+        per_family: dict[str, dict[str, float]] = {}
+        for gen in pool:
+            t_ms = _time_fn(lambda: gen.generate_single_series(length), 1) * 1000
+            entry = per_family.setdefault(
+                _family_of(gen), {"time_ms": 0.0, "instances": 0}
+            )
+            entry["time_ms"] += t_ms
+            entry["instances"] += 1
+        results[str(length)] = per_family
+    print("\r" + " " * 60 + "\r", end="")
+
+    families = [*META_FAMILIES, BALANCED_LABEL]
+    first = results[str(SERIES_LENGTHS[0])]
+    labels = {f: f"{f} (x{int(first[f]['instances'])})" for f in families}
+    label_w = max(len(v) for v in labels.values()) + 2
+    col_w = 10
+
+    def _header(title: str) -> None:
+        print(f"  {title}")
+        print("  " + "=" * (label_w + col_w * len(SERIES_LENGTHS)))
+        header = f"{'Family':<{label_w}}"
+        for length in SERIES_LENGTHS:
+            header += f"{length:>{col_w}}"
+        print(f"  {header}")
+        print("  " + "-" * (label_w + col_w * len(SERIES_LENGTHS)))
+
+    _header("Time (ms) — one series from each instance, summed per family")
+    for f in families:
+        row = f"{labels[f]:<{label_w}}"
+        for length in SERIES_LENGTHS:
+            row += f"{results[str(length)][f]['time_ms']:>{col_w}.1f}"
+        print(f"  {row}")
+    row = f"{'Pool total':<{label_w}}"
+    for length in SERIES_LENGTHS:
+        total = sum(v["time_ms"] for v in results[str(length)].values())
+        row += f"{total:>{col_w}.1f}"
+    print(f"  {row}")
+    print()
+
+    _header("Share of pool time (%)")
+    for f in families:
+        row = f"{labels[f]:<{label_w}}"
+        for length in SERIES_LENGTHS:
+            total = sum(v["time_ms"] for v in results[str(length)].values())
+            share = 100 * results[str(length)][f]["time_ms"] / total
+            row += f"{share:>{col_w}.1f}"
+        print(f"  {row}")
+    print()
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Comparison
 # ---------------------------------------------------------------------------
 
 
-def print_comparison(gen_results, ref_gen, grid_results, ref_grid, ref_label):
+def print_comparison(
+    gen_results,
+    ref_gen,
+    grid_results,
+    ref_grid,
+    breakdown_results,
+    ref_breakdown,
+    ref_label,
+):
     # Per-generator comparison
     print("=" * 72)
     print(f"  PER-GENERATOR COMPARISON (current vs {ref_label})")
@@ -404,6 +524,35 @@ def print_comparison(gen_results, ref_gen, grid_results, ref_grid, ref_label):
             print(f"  {row}")
         print()
 
+    # Pretraining breakdown comparison
+    if ref_breakdown:
+        print("=" * 72)
+        print(
+            f"  PRETRAINING BREAKDOWN SPEEDUP (current vs {ref_label}) "
+            "— >1.0 means current is faster"
+        )
+        print("=" * 72)
+        col_w = 10
+        label_w = max(len(f) for f in [*META_FAMILIES, BALANCED_LABEL]) + 2
+        header = f"{'Family':<{label_w}}"
+        for length in SERIES_LENGTHS:
+            header += f"{length:>{col_w}}"
+        print(f"  {header}")
+        print("  " + "-" * (label_w + col_w * len(SERIES_LENGTHS)))
+        for f in [*META_FAMILIES, BALANCED_LABEL]:
+            row = f"{f:<{label_w}}"
+            for length in SERIES_LENGTHS:
+                t_cur = breakdown_results.get(str(length), {}).get(f, {})
+                t_ref = ref_breakdown.get(str(length), {}).get(f, {})
+                cur_ms = t_cur.get("time_ms")
+                ref_ms = t_ref.get("time_ms")
+                if cur_ms and ref_ms:
+                    row += f"{ref_ms / cur_ms:>{col_w - 1}.2f}x"
+                else:
+                    row += f"{'N/A':>{col_w}}"
+            print(f"  {row}")
+        print()
+
 
 # ---------------------------------------------------------------------------
 # Main
@@ -438,12 +587,14 @@ def main() -> None:
 
     gen_results = benchmark_generators()
     grid_results = benchmark_grid()
+    breakdown_results = benchmark_pretraining_breakdown()
 
     if args.save:
         data = {
             "environment": environment_metadata(),
             "generators": gen_results,
             "grid": grid_results,
+            "pretraining_breakdown": breakdown_results,
         }
         with open(args.save, "w") as f:
             json.dump(data, f, indent=2)
@@ -455,8 +606,15 @@ def main() -> None:
             ref = json.load(f)
         ref_gen = ref.get("generators", {})
         ref_grid = ref.get("grid", {})
+        ref_breakdown = ref.get("pretraining_breakdown", {})
         print_comparison(
-            gen_results, ref_gen, grid_results, ref_grid, args.compare_label
+            gen_results,
+            ref_gen,
+            grid_results,
+            ref_grid,
+            breakdown_results,
+            ref_breakdown,
+            args.compare_label,
         )
 
 
