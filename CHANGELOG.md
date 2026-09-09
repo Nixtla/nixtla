@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New `submit_anomaly_detection_job` submits online anomaly detection as a server-side job and returns a `Job` handle, the asynchronous counterpart to `detect_anomalies_online`. `num_partitions` is not supported; use `detect_anomalies_online` for distributed dataframes.
+- `detect_anomalies_online` accepts `finetuned_model_id` and `model_parameters`, which the API already supported but the client did not expose. Both are inserted mid-signature to match the parameter order used by `forecast` and `cross_validation`, so callers passing arguments **positionally** past `finetune_loss` must switch to keywords; its request body now also always carries `finetuned_model_id` (previously omitted when unset).
+- Async job results are validated before parsing: a job that reports success with a missing or non-object result now raises `AsyncJobError` instead of a `TypeError`, for every `submit_*_job` method.
 - Async job submissions, including `execute_step`, retry only connection failures and HTTP 429 responses. Read timeouts and gateway errors now fail immediately to avoid creating duplicate jobs. Retry sleeps respect the remaining `max_wait_time` budget.
 - Async partitioned requests share a limit of five concurrent jobs. A partition failure cancels sibling jobs and stops queued submissions. Synchronous partitioned requests also stop queued work after a failure.
 - `simulate` and `explain` use `AsyncJobTimeoutError` and `AsyncJobCancelledError`, consistently with existing async endpoints. `AsyncJobError.error` preserves the original server error.

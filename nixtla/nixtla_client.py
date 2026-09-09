@@ -324,6 +324,10 @@ _ASYNC_JOB_POLL_JITTER = 0.25
 # submission pressure; it is not a guarantee of the deployment's team job cap.
 _MAX_CONCURRENT_ASYNC_JOBS = 5
 
+# The server is mid-rename: the async route already uses the post-rename name
+_ANOMALY_DETECTION_ENDPOINT = "v2/anomaly_detection"
+_ONLINE_ANOMALY_DETECTION_ENDPOINT = "v2/online_anomaly_detection"
+
 
 def _wait_for_poll(seconds: float, cancellation_event: Optional[Event]) -> bool:
     """Wait for the next poll, returning whether cancellation was requested."""
@@ -2156,15 +2160,26 @@ class NixtlaClient:
         payload = _with_job_options(payload, job_timeout_seconds)
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, endpoint, payload)
+
+        def get_result(job_data: dict[str, Any], *_poll_settings: float) -> Any:
+            # A JSON result is inline in the status response, so there is nothing to wait
+            # for: the poll settings `Job` passes are accepted and ignored.
+            result = job_data.get("result")
+            if not isinstance(result, dict):
+                # Same guard as `_run_async_job`: a malformed success must not surface
+                # as a `TypeError` from inside `parse_result`.
+                raise AsyncJobError(
+                    job_id=job_id,
+                    status="succeeded",
+                    error="job succeeded but returned no result",
+                )
+            return parse_result(result)
+
         return Job(
             client=self,
             job_id=job_id,
             endpoint=endpoint,
-            # A JSON result is inline in the status response, so there is nothing to wait
-            # for: the poll settings `Job` passes are accepted and ignored.
-            get_result=lambda job_data, *_poll_settings: parse_result(
-                job_data["result"]
-            ),
+            get_result=get_result,
         )
 
     def _submit_binary_job(
@@ -4476,12 +4491,12 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
-                    client, "v2/anomaly_detection", payload
+                    client, _ANOMALY_DETECTION_ENDPOINT, payload
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/anomaly_detection", payloads
+                    client, _ANOMALY_DETECTION_ENDPOINT, payloads
                 )
 
         # assemble result
@@ -4517,10 +4532,12 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt,
         finetune_depth: _FinetuneDepth,
         finetune_loss: _Loss,
+        finetuned_model_id: Optional[str],
         hist_exog_list: Optional[list[str]],
         date_features: Union[bool, list[str]],
         date_features_to_one_hot: Union[bool, list[str]],
         model: _Model,
+        model_parameters: _ExtraParamDataType,
         refit: bool,
         num_partitions: Optional[int],
         multivariate: bool,
@@ -4556,10 +4573,12 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_loss=finetune_loss,
                 finetune_depth=finetune_depth,
+                finetuned_model_id=finetuned_model_id,
                 hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                model_parameters=model_parameters,
                 refit=refit,
                 num_partitions=None,
                 multivariate=multivariate,
@@ -4568,6 +4587,133 @@ class NixtlaClient:
             as_fugue=True,
         )
         return fa.get_native_as_df(result_df)
+
+    def _prepare_anomaly_detection(
+        self,
+        df: DFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _ThresholdMethod,
+        freq: Optional[_Freq],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        level: Union[int, float],
+        clean_ex_first: bool,
+        step_size: Optional[_PositiveInt],
+        finetune_steps: _NonNegativeInt,
+        finetune_depth: _FinetuneDepth,
+        finetune_loss: _Loss,
+        finetuned_model_id: Optional[str],
+        hist_exog_list: Optional[list[str]],
+        date_features: Union[bool, list[str]],
+        date_features_to_one_hot: Union[bool, list[str]],
+        model: _Model,
+        model_parameters: _ExtraParamDataType,
+        refit: bool,
+        multivariate: bool,
+    ) -> tuple[dict[str, Any], Callable[[dict[str, Any]], Any]]:
+        """Build the payload and result parser shared by the sync and submit paths."""
+        self.__dict__.pop("weights_x", None)
+        model = self._maybe_override_model(model)
+        logger.info("Validating inputs...")
+        df, _, drop_id, freq = self._run_validations(
+            df=df,
+            X_df=None,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            validate_api_key=False,
+            freq=freq,
+        )
+        logger.info("Preprocessing dataframes...")
+        processed, _, x_cols, _ = _preprocess(
+            df=df,
+            X_df=None,
+            h=0,
+            freq=freq,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+        )
+        standard_freq = _standardize_freq(freq, processed)
+        targets = _extract_target_array(df, target_col)
+        times = df[time_col].to_numpy()
+        if processed.sort_idxs is not None:
+            targets = targets[processed.sort_idxs]
+            times = times[processed.sort_idxs]
+        else:
+            # Own these: otherwise they are views into `df`, and `parse_result` can run
+            # long after submit returned, by which time `df` may have been mutated.
+            targets = targets.copy()
+            times = times.copy()
+        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
+        sizes = np.diff(processed.indptr)
+        if np.all(sizes <= 6 * detection_size):
+            logger.warn(
+                "Detection size is large. Using the entire series to compute the anomaly threshold..."
+            )
+        online_series: dict[str, Any] = {
+            "y": processed.data[:, 0],
+            "sizes": sizes,
+            "X": X,
+        }
+        # `times` is already sorted to match the payload row order
+        start_datetime = _times_to_iso(
+            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
+        )
+        if start_datetime is not None:
+            online_series["start_datetime"] = start_datetime
+        payload = {
+            "series": online_series,
+            "h": h,
+            "detection_size": detection_size,
+            "threshold_method": threshold_method,
+            "model": model,
+            "freq": standard_freq,
+            "clean_ex_first": clean_ex_first,
+            "level": level,
+            "step_size": step_size,
+            "finetune_steps": finetune_steps,
+            "finetune_loss": finetune_loss,
+            "finetune_depth": finetune_depth,
+            "finetuned_model_id": finetuned_model_id,
+            "refit": refit,
+            "hist_exog": hist_exog,
+            "multivariate": multivariate,
+        }
+        if model_parameters is not None:
+            payload.update({"model_parameters": model_parameters})
+
+        # A `Job` holds `parse_result` until the caller drops it, so capturing
+        # `df`/`processed` would pin the whole input for that long.
+        df_cls = type(df)
+        uids = processed.uids
+
+        def parse_result(resp: dict[str, Any]) -> Any:
+            # assemble result
+            idxs = np.array(resp["idxs"], dtype=np.int64)
+            sizes = np.array(resp["sizes"], dtype=np.int64)
+            out = df_cls(
+                {
+                    id_col: ufp.repeat(uids, sizes),
+                    time_col: times[idxs],
+                    target_col: targets[idxs],
+                }
+            )
+            out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
+            out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
+            out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
+            if threshold_method == "multivariate":
+                out = ufp.assign_columns(
+                    out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
+                )
+            # Optional in the response schema; `_maybe_add_intervals` no-ops on None.
+            return _maybe_add_intervals(out, resp.get("intervals"))
+
+        return payload, parse_result
 
     def detect_anomalies_online(
         self,
@@ -4585,10 +4731,12 @@ class NixtlaClient:
         finetune_steps: _NonNegativeInt = 0,
         finetune_depth: _FinetuneDepth = 1,
         finetune_loss: _Loss = "default",
+        finetuned_model_id: Optional[str] = None,
         hist_exog_list: Optional[list[str]] = None,
         date_features: Union[bool, list[str]] = False,
         date_features_to_one_hot: Union[bool, list[str]] = False,
         model: _Model = "timegpt-2.1",
+        model_parameters: _ExtraParamDataType = None,
         refit: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
         multivariate: bool = False,
@@ -4646,6 +4794,8 @@ class NixtlaClient:
             finetune_loss (str): Loss function to use for finetuning.
                 Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and
                 `smape`. Defaults to 'default'.
+            finetuned_model_id (str, optional): ID of previously fine-tuned model
+                to use. Defaults to None.
             hist_exog_list (list[str], optional): Column names of the historical
                 exogenous features. Defaults to None.
             date_features (bool or list[str] or callable, optional): Features
@@ -4664,6 +4814,8 @@ class NixtlaClient:
                 `timegpt-1-long-horizon` for forecasting if you want to
                 predict more than one seasonal period given the frequency of
                 your data. Defaults to 'timegpt-2.1'.
+            model_parameters (dict): The dictionary settings that determine
+                the behavior of the model. Default is None.
             refit (bool, optional): Fine-tune the model in each window. If
                 False, only fine-tunes on the first window. Only used if
                 finetune_steps > 0. Defaults to False.
@@ -4683,6 +4835,7 @@ class NixtlaClient:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with anomalies flagged by TimeGPT.
         """
+        extra_param_checker.validate_python(model_parameters)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies_online(
                 df=df,
@@ -4699,10 +4852,12 @@ class NixtlaClient:
                 finetune_steps=finetune_steps,
                 finetune_depth=finetune_depth,
                 finetune_loss=finetune_loss,
+                finetuned_model_id=finetuned_model_id,
                 hist_exog_list=hist_exog_list,
                 date_features=date_features,
                 date_features_to_one_hot=date_features_to_one_hot,
                 model=model,
+                model_parameters=model_parameters,
                 refit=refit,
                 num_partitions=num_partitions,
                 multivariate=multivariate,
@@ -4717,100 +4872,206 @@ class NixtlaClient:
                 "Either set threshold_method to univariate "
                 "or set num_partitions to None."
             )
-        self.__dict__.pop("weights_x", None)
-        model = self._maybe_override_model(model)
-        logger.info("Validating inputs...")
-        df, _, drop_id, freq = self._run_validations(
+        payload, parse_result = self._prepare_anomaly_detection(
             df=df,
-            X_df=None,
+            h=h,
+            detection_size=detection_size,
+            threshold_method=threshold_method,
+            freq=freq,
             id_col=id_col,
             time_col=time_col,
             target_col=target_col,
-            validate_api_key=False,
-            freq=freq,
-        )
-        logger.info("Preprocessing dataframes...")
-        processed, _, x_cols, _ = _preprocess(
-            df=df,
-            X_df=None,
-            h=0,
-            freq=freq,
+            level=level,
+            clean_ex_first=clean_ex_first,
+            step_size=step_size,
+            finetune_steps=finetune_steps,
+            finetune_depth=finetune_depth,
+            finetune_loss=finetune_loss,
+            finetuned_model_id=finetuned_model_id,
+            hist_exog_list=hist_exog_list,
             date_features=date_features,
             date_features_to_one_hot=date_features_to_one_hot,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
+            model=model,
+            model_parameters=model_parameters,
+            refit=refit,
+            multivariate=multivariate,
         )
-        standard_freq = _standardize_freq(freq, processed)
-        targets = _extract_target_array(df, target_col)
-        times = df[time_col].to_numpy()
-        if processed.sort_idxs is not None:
-            targets = targets[processed.sort_idxs]
-            times = times[processed.sort_idxs]
-        X, hist_exog = _process_exog_features(processed.data, x_cols, hist_exog_list)
-        sizes = np.diff(processed.indptr)
-        if np.all(sizes <= 6 * detection_size):
-            logger.warn(
-                "Detection size is large. Using the entire series to compute the anomaly threshold..."
-            )
         logger.info("Calling Online Anomaly Detector Endpoint...")
-        online_series: dict[str, Any] = {
-            "y": processed.data[:, 0],
-            "sizes": sizes,
-            "X": X,
-        }
-        # `times` is already sorted to match the payload row order
-        start_datetime = _times_to_iso(
-            times[processed.indptr[:-1]], _time_col_tz(df, time_col)
-        )
-        if start_datetime is not None:
-            online_series["start_datetime"] = start_datetime
-        payload = {
-            "series": online_series,
-            "h": h,
-            "detection_size": detection_size,
-            "threshold_method": threshold_method,
-            "model": model,
-            "freq": standard_freq,
-            "clean_ex_first": clean_ex_first,
-            "level": level,
-            "step_size": step_size,
-            "finetune_steps": finetune_steps,
-            "finetune_loss": finetune_loss,
-            "finetune_depth": finetune_depth,
-            "refit": refit,
-            "hist_exog": hist_exog,
-            "multivariate": multivariate,
-        }
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 resp = self._make_request_with_retries(
-                    client, "v2/online_anomaly_detection", payload
+                    client, _ONLINE_ANOMALY_DETECTION_ENDPOINT, payload
                 )
             else:
                 payloads = _partition_series(payload, num_partitions, h=0)
                 resp = self._make_partitioned_requests(
-                    client, "v2/online_anomaly_detection", payloads
+                    client, _ONLINE_ANOMALY_DETECTION_ENDPOINT, payloads
                 )
+        return parse_result(resp)
 
-        # assemble result
-        idxs = np.array(resp["idxs"], dtype=np.int64)
-        sizes = np.array(resp["sizes"], dtype=np.int64)
-        out = type(df)(
-            {
-                id_col: ufp.repeat(processed.uids, sizes),
-                time_col: times[idxs],
-                target_col: targets[idxs],
-            }
+    def submit_anomaly_detection_job(
+        self,
+        df: DFType,
+        h: _PositiveInt,
+        detection_size: _PositiveInt,
+        threshold_method: _ThresholdMethod = "univariate",
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        level: Union[int, float] = 99,
+        clean_ex_first: bool = True,
+        step_size: Optional[_PositiveInt] = None,
+        finetune_steps: _NonNegativeInt = 0,
+        finetune_depth: _FinetuneDepth = 1,
+        finetune_loss: _Loss = "default",
+        finetuned_model_id: Optional[str] = None,
+        hist_exog_list: Optional[list[str]] = None,
+        date_features: Union[bool, list[str]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        model_parameters: _ExtraParamDataType = None,
+        refit: bool = False,
+        multivariate: bool = False,
+        job_timeout_seconds: Optional[int] = None,
+    ) -> Job:
+        """Submit an online anomaly detection job to run asynchronously.
+
+        Unlike `detect_anomalies_online()`, this does not block until the job
+        finishes. It submits the job and immediately returns a `Job` handle;
+        call `job.wait()` to poll until it completes and get the resulting
+        DataFrame, or `job.cancel()` to request that the server stop it.
+
+        Not supported in this version: `num_partitions` (distributed/threaded
+        fan-out). Use `detect_anomalies_online()` for that.
+
+        Args:
+            df (pandas or polars DataFrame):
+                The DataFrame on which the function will operate. Expected
+                to contain at least the following columns:
+                - time_col:
+                    Column name in `df` that contains the time indices of the
+                    time series. This is typically a datetime column with
+                    regular intervals, e.g., hourly, daily, monthly data
+                    points.
+                - target_col:
+                    Column name in `df` that contains the target variable of
+                    the time series, i.e., the variable we wish to predict or
+                    analyze.
+                - id_col:
+                    Column name in `df` that identifies unique time series.
+                    Each unique value in this column corresponds to a unique
+                    time series.
+
+            h (int): Forecast horizon.
+            detection_size (int): The length of the sequence where anomalies
+                will be detected starting from the end of the dataset.
+            threshold_method (str, optional): The method used to calculate the
+                intervals for anomaly detection. Use `univariate` to flag
+                anomalies independently for each series in the dataset.
+                Use `multivariate` to have a global threshold across all series
+                in the dataset. For this method, all series must have the same
+                length. Defaults to 'univariate'.
+            freq (str, optional): Frequency of the data. By default, the freq
+                will be inferred automatically. See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+            id_col (str, optional): Column that identifies each series.
+                Defaults to 'unique_id'
+            time_col (str, optional): Column that identifies each timestep,
+                its values can be timestamps or integers. Defaults to 'ds'.
+            target_col (str, optional): Column that contains the target.
+                Defaults to 'y'.
+            level (float, optional):
+                Confidence level between 0 and 100 for detecting the anomalies.
+                Defaults to 99.
+            clean_ex_first (bool, optional): Clean exogenous signal before
+                making forecasts using TimeGPT. Defaults to True.
+            step_size (int, optional): Step size between each cross validation
+                window. If None it will be equal to `h`. Defaults to None.
+            finetune_steps (int): Number of steps used to finetune TimeGPT in
+                the new data. Defaults to 0.
+            finetune_depth (int): The depth of the finetuning. Uses a scale
+                from 1 to 5, where 1 means little finetuning, and 5 means that
+                the entire model is finetuned. Defaults to 1.
+            finetune_loss (str): Loss function to use for finetuning.
+                Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and
+                `smape`. Defaults to 'default'.
+            finetuned_model_id (str, optional): ID of previously fine-tuned model
+                to use. Defaults to None.
+            hist_exog_list (list[str], optional): Column names of the historical
+                exogenous features. Defaults to None.
+            date_features (bool or list[str] or callable, optional): Features
+                computed from the dates. Can be pandas date attributes
+                or functions that will take the dates as input. If True
+                automatically adds most used date features for the
+                frequency of `df`. Defaults to False.
+            date_features_to_one_hot (bool or list[str]): Apply one-hot
+                encoding to these date features. If
+                `date_features=True`, then all date features are
+                one-hot encoded by default. Defaults to False.
+            model (str, optional): Model to use as a string. Options are:
+                `timegpt-1`, and `timegpt-1-long-horizon`, `timegpt-2`,
+                `timegpt-2-mini`, `timegpt-2-pro`, `timegpt-2.1`.
+                We recommend using
+                `timegpt-1-long-horizon` for forecasting if you want to
+                predict more than one seasonal period given the frequency of
+                your data. Defaults to 'timegpt-2.1'.
+            model_parameters (dict): The dictionary settings that determine
+                the behavior of the model. Default is None.
+            refit (bool, optional): Fine-tune the model in each window. If
+                False, only fine-tunes on the first window. Only used if
+                finetune_steps > 0. Defaults to False.
+            multivariate (bool): If True, enables multivariate predictions.
+                Defaults to False. Note: multivariate predictions are only
+                supported for a select set of TimeGPT models. This variable
+                is different from the `threshold_method` parameter. The latter
+                controls the method used for anomaly detection (univariate vs
+                multivariate) whereas `multivariate` determines how the model
+                creates the predictions.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
+
+        Returns:
+            Job: Handle to the submitted job. `job.wait()` returns a pandas
+                or polars DataFrame with anomalies flagged by TimeGPT.
+        """
+        extra_param_checker.validate_python(model_parameters)
+        _ensure_local_dataframe(
+            df,
+            method_name="submit_anomaly_detection_job",
+            sync_method_name="detect_anomalies_online()",
         )
-        out = ufp.assign_columns(out, "TimeGPT", resp["mean"])
-        out = ufp.assign_columns(out, "anomaly", resp["anomaly"])
-        out = ufp.assign_columns(out, "anomaly_score", resp["anomaly_score"])
-        if threshold_method == "multivariate":
-            out = ufp.assign_columns(
-                out, "accumulated_anomaly_score", resp["accumulated_anomaly_score"]
-            )
-        return _maybe_add_intervals(out, resp["intervals"])
+        payload, parse_result = self._prepare_anomaly_detection(
+            df=df,
+            h=h,
+            detection_size=detection_size,
+            threshold_method=threshold_method,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            level=level,
+            clean_ex_first=clean_ex_first,
+            step_size=step_size,
+            finetune_steps=finetune_steps,
+            finetune_depth=finetune_depth,
+            finetune_loss=finetune_loss,
+            finetuned_model_id=finetuned_model_id,
+            hist_exog_list=hist_exog_list,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            model_parameters=model_parameters,
+            refit=refit,
+            multivariate=multivariate,
+        )
+        return self._submit_and_wrap_job(
+            _ANOMALY_DETECTION_ENDPOINT, payload, job_timeout_seconds, parse_result
+        )
 
     def _distributed_cross_validation(
         self,
@@ -6028,10 +6289,12 @@ def _detect_anomalies_online_wrapper(
     finetune_steps: _NonNegativeInt,
     finetune_depth: _FinetuneDepth,
     finetune_loss: _Loss,
+    finetuned_model_id: Optional[str],
     hist_exog_list: Optional[list[str]],
     date_features: Union[bool, list[str]],
     date_features_to_one_hot: Union[bool, list[str]],
     model: _Model,
+    model_parameters: _ExtraParamDataType,
     refit: bool,
     num_partitions: Optional[_PositiveInt],
     multivariate: bool,
@@ -6051,10 +6314,12 @@ def _detect_anomalies_online_wrapper(
         finetune_steps=finetune_steps,
         finetune_depth=finetune_depth,
         finetune_loss=finetune_loss,
+        finetuned_model_id=finetuned_model_id,
         hist_exog_list=hist_exog_list,
         date_features=date_features,
         date_features_to_one_hot=date_features_to_one_hot,
         model=model,
+        model_parameters=model_parameters,
         refit=refit,
         num_partitions=num_partitions,
         multivariate=multivariate,

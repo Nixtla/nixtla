@@ -2,7 +2,11 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from nixtla.nixtla_client import _cross_validation_wrapper, _forecast_wrapper
+from nixtla.nixtla_client import (
+    _cross_validation_wrapper,
+    _detect_anomalies_online_wrapper,
+    _forecast_wrapper,
+)
 
 
 def _small_df(n=20):
@@ -137,3 +141,44 @@ def test_cross_validation_wrapper_forwards_async_kwargs():
     assert kwargs["_poll_interval"] == 7
     assert kwargs["_poll_timeout"] == 42
     assert kwargs["_job_timeout_seconds"] == 300
+
+
+def test_detect_anomalies_online_wrapper_forwards_all_params():
+    # No async-job path here; this pins that the params Fugue passes through
+    # `_distributed_detect_anomalies_online` reach `detect_anomalies_online`.
+    mock_client = MagicMock()
+
+    _detect_anomalies_online_wrapper(
+        df=_small_df(),
+        client=mock_client,
+        h=5,
+        detection_size=5,
+        threshold_method="univariate",
+        freq="D",
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        level=99,
+        clean_ex_first=True,
+        step_size=None,
+        finetune_steps=0,
+        finetune_depth=1,
+        finetune_loss="default",
+        finetuned_model_id="ft-abc",
+        hist_exog_list=None,
+        date_features=False,
+        date_features_to_one_hot=False,
+        model="timegpt-2.1",
+        model_parameters={"foo": "bar"},
+        refit=False,
+        num_partitions=None,
+        multivariate=False,
+    )
+
+    mock_client.detect_anomalies_online.assert_called_once()
+    kwargs = mock_client.detect_anomalies_online.call_args.kwargs
+    assert kwargs["finetuned_model_id"] == "ft-abc"
+    assert kwargs["model_parameters"] == {"foo": "bar"}
+    assert kwargs["detection_size"] == 5
+    assert kwargs["threshold_method"] == "univariate"
+    assert kwargs["level"] == 99

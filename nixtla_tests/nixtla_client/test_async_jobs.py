@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import httpx
+import numpy as np
 import orjson
 import pandas as pd
 import pytest
@@ -323,7 +324,8 @@ def test_make_request_still_rejects_other_status_codes():
 
 
 # ---------------------------------------------------------------------------
-# submit_finetune_job / submit_forecast_job / submit_cross_validation_job
+# submit_finetune_job / submit_forecast_job / submit_cross_validation_job /
+# submit_anomaly_detection_job
 # ---------------------------------------------------------------------------
 
 # (method_name, endpoint, call_kwargs factory, _get_model_params return value or
@@ -349,6 +351,14 @@ SUBMIT_JOB_CASES = [
         lambda: {"df": _small_df(), "h": 5},
         (10_000, 12),
         id="cross_validation",
+    ),
+    # Deliberately not the sync method's endpoint; literal so it pins the wire value.
+    pytest.param(
+        "submit_anomaly_detection_job",
+        "v2/anomaly_detection",
+        lambda: {"df": _small_df(), "h": 5, "detection_size": 5},
+        None,
+        id="anomaly_detection",
     ),
 ]
 
@@ -413,13 +423,52 @@ def _cross_validation_poll_response():
     }
 
 
+def _anomaly_detection_poll_response():
+    n, detection_size = 20, 5
+    return {
+        "status": "succeeded",
+        "result": {
+            "idxs": list(range(n - detection_size, n)),
+            "sizes": [detection_size],
+            "mean": list(range(detection_size)),
+            "anomaly": [False] * detection_size,
+            "anomaly_score": [0.0] * detection_size,
+            # Present on purpose in the univariate case, so `_check_anomaly_df`'s
+            # absence assertion fails instead of raising KeyError.
+            "accumulated_anomaly_score": [0.0] * detection_size,
+            "intervals": None,
+        },
+    }
+
+
+def _anomaly_detection_multivariate_poll_response():
+    resp = _anomaly_detection_poll_response()
+    resp["result"]["accumulated_anomaly_score"] = [0.0] * 5
+    return resp
+
+
 def _check_finetune_result(result):
     assert result == "abc123"
 
 
-def _check_point_forecast_df(result):
+def _check_mean_and_len(result):
     assert len(result) == 5
     assert result["TimeGPT"].tolist() == list(range(5))
+
+
+def _check_anomaly_df(result):
+    _check_mean_and_len(result)
+    assert result["anomaly"].tolist() == [False] * 5
+    assert result["anomaly_score"].tolist() == [0.0] * 5
+    # univariate thresholding must not add the multivariate-only column
+    assert "accumulated_anomaly_score" not in result.columns
+
+
+def _check_multivariate_anomaly_df(result):
+    _check_mean_and_len(result)
+    assert result["anomaly"].tolist() == [False] * 5
+    assert result["anomaly_score"].tolist() == [0.0] * 5
+    assert result["accumulated_anomaly_score"].tolist() == [0.0] * 5
 
 
 WAIT_JOB_CASES = [
@@ -436,7 +485,7 @@ WAIT_JOB_CASES = [
         lambda: {"df": _small_df(), "h": 5},
         (100, 12),
         _forecast_poll_response,
-        _check_point_forecast_df,
+        _check_mean_and_len,
         id="forecast",
     ),
     pytest.param(
@@ -444,8 +493,29 @@ WAIT_JOB_CASES = [
         lambda: {"df": _small_df(n=20), "h": 5},
         (10_000, 12),
         _cross_validation_poll_response,
-        _check_point_forecast_df,
+        _check_mean_and_len,
         id="cross_validation",
+    ),
+    pytest.param(
+        "submit_anomaly_detection_job",
+        lambda: {"df": _small_df(n=20), "h": 5, "detection_size": 5},
+        None,
+        _anomaly_detection_poll_response,
+        _check_anomaly_df,
+        id="anomaly_detection",
+    ),
+    pytest.param(
+        "submit_anomaly_detection_job",
+        lambda: {
+            "df": _small_df(n=20),
+            "h": 5,
+            "detection_size": 5,
+            "threshold_method": "multivariate",
+        },
+        None,
+        _anomaly_detection_multivariate_poll_response,
+        _check_multivariate_anomaly_df,
+        id="anomaly_detection_multivariate",
     ),
 ]
 
@@ -473,6 +543,98 @@ def test_submit_job_wait_returns_result(
     check_result(result)
     assert job.status == "succeeded"
     assert job.result is result
+
+
+# ---------------------------------------------------------------------------
+# submit_anomaly_detection_job specifics
+# ---------------------------------------------------------------------------
+
+
+def _normalize_payload(payload):
+    """Make a payload comparable: numpy arrays -> lists, recursively."""
+    if isinstance(payload, dict):
+        return {k: _normalize_payload(v) for k, v in payload.items()}
+    if isinstance(payload, np.ndarray):
+        return payload.tolist()
+    if isinstance(payload, (list, tuple)):
+        return [_normalize_payload(v) for v in payload]
+    return payload
+
+
+def test_submit_anomaly_detection_job_payload_matches_sync(monkeypatch):
+    """`submit_anomaly_detection_job` must send what `detect_anomalies_online` sends.
+
+    Both build their request through `_prepare_online_anomaly_detection`, so this
+    pins that the two paths cannot drift apart. Only the endpoint differs: the
+    async route already uses the post-rename `v2/anomaly_detection` name.
+    """
+    call_kwargs = dict(
+        df=_small_df(n=20),
+        h=5,
+        detection_size=5,
+        freq="D",
+        finetuned_model_id="ft-abc",
+        model_parameters={"foo": "bar"},
+    )
+    captured = {}
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
+        captured["async"] = (endpoint, _normalize_payload(payload))
+        return "job-1"
+
+    def fake_make_request_with_retries(self, client, endpoint, payload, **kwargs):
+        captured["sync"] = (endpoint, _normalize_payload(payload))
+        return _anomaly_detection_poll_response()["result"]
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    monkeypatch.setattr(
+        NixtlaClient, "_make_request_with_retries", fake_make_request_with_retries
+    )
+    client = _client()
+
+    client.submit_anomaly_detection_job(**call_kwargs)
+    client.detect_anomalies_online(**call_kwargs)
+
+    async_endpoint, async_payload = captured["async"]
+    sync_endpoint, sync_payload = captured["sync"]
+
+    assert async_endpoint == "v2/anomaly_detection"
+    assert sync_endpoint == "v2/online_anomaly_detection"
+    # both newly exposed parameters actually reach the wire
+    assert async_payload["finetuned_model_id"] == "ft-abc"
+    assert async_payload["model_parameters"] == {"foo": "bar"}
+    assert async_payload == sync_payload
+
+
+def test_submit_anomaly_detection_job_omits_model_parameters_when_unset(monkeypatch):
+    # `model_parameters` is only sent when set, matching cross_validation.
+    captured = {}
+
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
+        captured["payload"] = payload
+        return "job-1"
+
+    monkeypatch.setattr(NixtlaClient, "_submit_job", fake_submit_job)
+    _stub_job_status(monkeypatch, "pending")
+    client = _client()
+
+    client.submit_anomaly_detection_job(df=_small_df(n=20), h=5, detection_size=5, freq="D")
+
+    assert "model_parameters" not in captured["payload"]
+    assert captured["payload"]["finetuned_model_id"] is None
+
+
+def test_submit_anomaly_detection_job_rejects_bad_model_parameters():
+    # Validated up front by `extra_param_checker`, before any request is built.
+    client = _client()
+    with pytest.raises(TypeError, match="Invalid value type"):
+        client.submit_anomaly_detection_job(
+            df=_small_df(n=20),
+            h=5,
+            detection_size=5,
+            freq="D",
+            model_parameters={"horizon": pd.DataFrame()},
+        )
 
 
 def test_job_cancel_calls_cancel_job(monkeypatch):
@@ -1139,14 +1301,22 @@ def test_cross_validation_num_partitions_with_async_job(monkeypatch):
     assert len(out) == h * 2
 
 
-@pytest.mark.parametrize("method_name", ["submit_forecast_job", "submit_cross_validation_job"])
-def test_submit_job_with_unrecognized_df_type_still_raises(method_name):
-    # submit_forecast_job/submit_cross_validation_job don't support distributed
-    # (dask/spark/ray) dataframes in this version — an arbitrary non-pandas/polars
-    # object should raise a clear ValueError rather than doing something undefined.
+# `call_kwargs` supplies each method's required args so the call reaches the
+# dataframe-type guard. `submit_finetune_job` has no such guard, so it is absent.
+@pytest.mark.parametrize(
+    "method_name, call_kwargs",
+    [
+        ("submit_forecast_job", {"h": 5}),
+        ("submit_cross_validation_job", {"h": 5}),
+        ("submit_anomaly_detection_job", {"h": 5, "detection_size": 5}),
+    ],
+)
+def test_submit_job_with_unrecognized_df_type_still_raises(method_name, call_kwargs):
+    # No distributed (dask/spark/ray) support in this version, so a non-pandas/polars
+    # object must raise a clear ValueError.
     client = _client()
     with pytest.raises(ValueError, match=f"{method_name} only supports"):
-        getattr(client, method_name)(df=[1, 2, 3], h=5)
+        getattr(client, method_name)(df=[1, 2, 3], **call_kwargs)
 
 
 @pytest.mark.parametrize(
