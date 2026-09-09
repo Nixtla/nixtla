@@ -1,0 +1,128 @@
+---
+title: "MAR"
+description: "Generate diverse mixtures of autoregressive processes and target time-series features."
+---
+
+`MARGenerator` draws mixture autoregressive (MAR) series for foundation-model
+pretraining. At each time step it selects an autoregressive component and uses
+that component's intercept, lag coefficients, and innovation scale:
+
+$$
+y_t = c_k + \sum_{i=1}^{p_k} \phi_{k,i} y_{t-i} + \sigma_k \varepsilon_t.
+$$
+
+The mixture autoregressive model is due to
+[Wong and Li (2000)](https://doi.org/10.1111/1467-9868.00222); the
+breadth-oriented sampling recipe follows
+[GRATIS](https://arxiv.org/abs/1903.02787). SynForecast samples stationary
+coefficients through partial autocorrelations and adds bounded retries,
+optional seasonal AR factors, and explicit output standardization.
+
+## Generate a diverse MAR pool
+
+Random mode samples a new configuration for every series. `seasonal_period`
+enables a seasonal AR factor for a random subset of components.
+
+```python
+from synforecast.generators import MARGenerator
+
+generator = MARGenerator(
+    min_length=168,
+    max_length=336,
+    freq="h",
+    max_components=4,
+    max_ar_order=6,
+    seasonal_period=24,
+    seed=42,
+)
+
+mar_df = generator.generate(n_series=1_000, n_jobs=-1)
+```
+
+Bulk `generate()` calls use the native Rust batch path and are deterministic
+for a fixed seed regardless of worker count. The native and Python reference
+paths implement the same model contract but use different RNG streams, so do
+not compare `generate()` output bit-for-bit with successive
+`generate_single_series()` calls.
+
+By default each accepted series is standardized to population mean zero and
+standard deviation one. Set `standardize=False` when component-implied levels
+and scales are part of the desired distribution.
+
+## Supply a fixed MAR model
+
+Fixed mode is enabled by supplying all four fixed fields together. Every AR
+component must be stationary and the mixture must be second-order stationary
+(Wong and Li 2000); weights are normalized during validation. `seasonal_period`
+has no effect in fixed mode. A fixed model whose simulation fails the finite,
+bounded, non-constant output guards raises a `ValueError` instead of silently
+returning noise.
+
+```python
+fixed = MARGenerator(
+    min_length=256,
+    max_length=256,
+    freq="D",
+    weights=[0.65, 0.35],
+    ar_coefficients=[[0.8], [0.35, -0.15]],
+    intercepts=[0.0, 0.5],
+    noise_scales=[0.4, 1.2],
+    standardize=False,
+    seed=7,
+)
+
+fixed_df = fixed.generate(n_series=20)
+```
+
+`weights`, `ar_coefficients`, `intercepts`, and `noise_scales` are an
+all-or-nothing group. Leaving all four unset selects random mode.
+
+## Target time-series features
+
+`tune_to_features` searches for one fixed MAR configuration whose realized
+features approach a target. Supported features are `spectral_entropy`,
+`trend_strength`, `seasonal_strength`, and `acf1`.
+
+```python
+targeted = MARGenerator.tune_to_features(
+    target_features={"acf1": 0.75, "spectral_entropy": 0.45},
+    min_length=96,
+    max_length=192,
+    freq="D",
+    n_generations=15,
+    population_size=30,
+    n_draws_per_candidate=3,
+    seed=42,
+)
+
+targeted_df = targeted.generate(n_series=100)
+print(targeted.tuning_diagnostics)
+```
+
+Candidate fitness is averaged over deterministic lengths spanning the requested
+range, and feature computation runs in Rust. Targets describe a distribution,
+not an exact per-series constraint: evaluate the realized feature distribution
+at the lengths and seeds used downstream. Seasonal-strength targeting also
+requires `seasonal_period` and at least two complete periods at `min_length`.
+
+::: {.callout-note}
+The search evaluates at most the product of `n_generations`,
+`population_size`, and `n_draws_per_candidate` simulated paths, stopping early
+once the best L2 feature distance is at or below `tolerance` (default `0.05`).
+Infeasible targets return the best candidate found within that fixed budget.
+`tuning_diagnostics` reports `best_distance`, `converged`, `generations_run`,
+and `candidates_evaluated`. The distance is the selected candidate's observed
+search fitness; evaluate fresh draws to measure performance on new samples.
+:::
+
+## When to use MAR
+
+Use MAR when you want many stationary or seasonally autoregressive shapes from
+a compact model family, or when a pretraining corpus needs controlled coverage
+of autocorrelation and entropy. For decomposed trend/seasonal/irregular
+compositions use [TSI](tsi); for random causal graphs and nonlinear lead-lag
+structure use [TCM](tcm); for Gaussian-process kernel compositions use
+[KernelSynth](kernel_synth).
+
+Full constructor parameters are listed in the
+[generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md).

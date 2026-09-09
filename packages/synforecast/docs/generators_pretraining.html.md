@@ -1,6 +1,6 @@
 ---
 title: Pretraining Generators
-description: TSI, TCM, and KernelSynth generators for foundation-model pretraining
+description: TSI, TCM, KernelSynth, and MAR generators for foundation-model pretraining
 ---
 
 ::: synforecast.generators.tsi.TSIGenerator
@@ -18,3 +18,10 @@ description: TSI, TCM, and KernelSynth generators for foundation-model pretraini
     options:
       members:
         - generate_single_series
+
+::: synforecast.generators.mar.MARGenerator
+    options:
+      members:
+        - generate_single_series
+        - tune_to_features
+        - tuning_diagnostics

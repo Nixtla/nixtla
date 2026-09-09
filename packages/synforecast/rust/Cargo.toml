@@ -20,6 +20,7 @@ rand_mt = "6"
 rand_distr = "0.6"
 num-complex = "0.4"
 rayon = "1.10"
+realfft = "3.5"
 
 [profile.release]
 opt-level = 3

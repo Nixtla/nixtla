@@ -252,8 +252,7 @@ pub fn energy_load(
 
         // Daily pattern
         if daily_pattern {
-            let daily_load;
-            if load_type == 0 {
+            let daily_load = if load_type == 0 {
                 // Residential: two Gaussian peaks (morning + evening)
                 let morning_peak = peak_amplitude
                     * (-((hour_of_day - morning_peak_hour) * (hour_of_day - morning_peak_hour))
@@ -265,18 +264,16 @@ pub fn energy_load(
                         as f64
                         / 8.0)
                         .exp();
-                daily_load = morning_peak + evening_peak;
+                morning_peak + evening_peak
             } else if load_type == 1 {
                 // Commercial: single broad peak during business hours
-                daily_load = daily_amplitude
-                    * (-((hour_of_day - 14) * (hour_of_day - 14)) as f64 / 50.0).exp();
+                daily_amplitude * (-((hour_of_day - 14) * (hour_of_day - 14)) as f64 / 50.0).exp()
             } else if load_type == 2 {
                 // Industrial: more constant with slight dip at night
-                daily_load = -daily_amplitude
-                    * (-((hour_of_day - 3) * (hour_of_day - 3)) as f64 / 20.0).exp();
+                -daily_amplitude * (-((hour_of_day - 3) * (hour_of_day - 3)) as f64 / 20.0).exp()
             } else {
-                daily_load = 0.0;
-            }
+                0.0
+            };
             load += daily_load;
         }
 

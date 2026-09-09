@@ -1,0 +1,96 @@
+---
+title: "Non-parametric augmentation"
+description: "Augment observed panels with moving-block bootstrap or DTW barycenters."
+---
+
+`SynAugment.mbb` and `SynAugment.dba` transform observed series directly. They
+do not fit a parametric generator and deliberately bypass the mean, standard
+deviation, and lag-1 autocorrelation pinning used by `SynAugment.augment`.
+
+Use only training observations as input. Augmenting from validation or test
+values leaks future information into model training.
+
+## Moving-block bootstrap
+
+MBB separates a series into classical moving-average trend, seasonal, and
+remainder components. It resamples overlapping remainder blocks and combines
+them with the original trend and seasonal components.
+
+```python
+from synforecast import SynAugment
+
+augmenter = SynAugment(seed=42)
+mbb_df = augmenter.mbb(
+    train_df,
+    n_augment=2,
+    seasonal_period=24,
+    block_size=12,
+    include_original=True,
+)
+```
+
+When `seasonal_period=None`, SynForecast attempts to detect a period. When
+`block_size=None`, it uses twice the detected period, or approximately the
+square root of the series length without seasonality. The effective block size
+is capped at `max(2, len(series) // 3)` so multiple blocks contribute even for
+short inputs.
+
+MBB is a good fit when local residual dependence matters and the observed trend
+and seasonal shape should remain anchored. Each input series needs at least four
+observations and one finite value. Missing values are interpolated before
+decomposition.
+
+## DTW barycenter averaging
+
+DBA creates a synthetic series around each usable reference series. It finds
+nearest neighbours with banded dynamic time warping (DTW), randomizes their
+weights, and iteratively computes a weighted barycenter.
+
+```python
+dba_df = augmenter.dba(
+    train_df,
+    n_augment=2,
+    n_neighbors=3,
+    n_iterations=5,
+    window_fraction=0.1,
+    scale="reference",
+    include_original=True,
+)
+```
+
+With `scale="reference"`, series are z-normalized for alignment and each
+barycenter is mapped back to its reference mean and standard deviation. Use
+`scale="none"` only when the panel already shares a meaningful common scale.
+The output length and timestamps follow the reference series, including when
+its neighbours have different lengths.
+
+DBA needs at least two usable series. DTW time and memory grow with series
+length times band width, so reduce `window_fraction`, `n_neighbors`, or
+`n_iterations` for long panels. Pairwise panel distances are computed once per
+call in bounded parallel chunks in native Rust. Only the requested nearest
+neighbors are retained, using O(number of series × `n_neighbors`) storage;
+distance computation still examines every pair. Series without a finite observation are
+skipped with a logged warning; `mbb` also skips series shorter than four
+observations.
+
+MBB computes its moving-average trend in linear time and reuses each source's
+decomposition across all requested copies.
+
+## Output contract
+
+Both methods:
+
+- return the same dataframe backend as the input unless `engine` is set;
+- copy all non-target columns from the source/reference series unchanged;
+- generate collision-safe string IDs such as `store_1_mbb_0` or
+  `store_1_dba_0`;
+- are deterministic for a fixed `SynAugment` seed; and
+- run decomposition, block sampling, DTW, and barycenter updates in native Rust.
+
+`include_original=False` returns only synthetic rows. Always compare augmented
+training against an observed-only baseline over temporal holdouts; neither
+method guarantees better forecast accuracy.
+
+See [SynAugment: data augmentation](augmentation) for fit-and-simulate and
+TSMixup workflows, and the [API reference](../../dataset.html) for every
+parameter.

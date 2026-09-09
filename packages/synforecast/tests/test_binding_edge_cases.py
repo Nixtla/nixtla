@@ -4,12 +4,125 @@ import numpy as np
 import pytest
 
 from synforecast._lib import (
+    augmentation,
     distributions,
     multivariate,
     pattern_injection,
     statistical,
     stochastic,
 )
+
+
+class TestAugmentationBindings:
+    """Validation and shape contracts for the native augmentation module."""
+
+    @pytest.mark.parametrize("period", [None, 7, 12])
+    def test_mbb_many_matches_independent_draws(self, period):
+        values = np.random.default_rng(12).normal(size=101)
+        seeds = [42, 7, 2**63 - 1]
+        copies = augmentation.moving_block_bootstrap_many(values, 6, seeds, period)
+        assert len(copies) == len(seeds)
+        for copy, seed in zip(copies, seeds, strict=True):
+            np.testing.assert_array_equal(
+                copy, augmentation.moving_block_bootstrap(values, 6, seed, period)
+            )
+
+    def test_mbb_many_rejects_invalid_block_size(self):
+        with pytest.raises(ValueError, match="block_size"):
+            augmentation.moving_block_bootstrap_many(np.arange(8.0), 9, [42])
+
+    def test_dtw_supports_unequal_lengths(self):
+        first = np.array([0.0, 1.0, 2.0])
+        second = np.array([0.0, 0.5, 1.0, 2.0])
+        distance, path = augmentation.dtw_alignment(first, second, 1)
+        assert np.isfinite(distance)
+        assert path[0] == (0, 0)
+        assert path[-1] == (2, 3)
+
+    def test_nearest_dtw_rejects_empty_or_nonfinite_series(self):
+        with pytest.raises(ValueError, match="non-empty|finite"):
+            augmentation.nearest_dtw_neighbors([np.ones(3), np.array([])], 0.5, 1)
+        with pytest.raises(ValueError, match="non-empty|finite"):
+            augmentation.nearest_dtw_neighbors(
+                [np.ones(3), np.array([0.0, np.nan, 1.0])], 0.5, 1
+            )
+
+    def test_nearest_dtw_single_series_has_no_neighbors(self):
+        assert augmentation.nearest_dtw_neighbors([np.arange(5.0)], 0.5, 1) == [[]]
+
+    @pytest.mark.parametrize("band", [-1, -10])
+    def test_dtw_rejects_negative_band(self, band):
+        values = np.arange(4.0)
+        with pytest.raises(ValueError, match="band must be non-negative"):
+            augmentation.dtw_alignment(values, values, band)
+
+    @pytest.mark.parametrize(
+        ("first", "second"),
+        [
+            (np.array([]), np.arange(3.0)),
+            (np.array([0.0, np.nan, 2.0]), np.arange(3.0)),
+        ],
+    )
+    def test_dtw_rejects_invalid_values(self, first, second):
+        with pytest.raises(ValueError):
+            augmentation.dtw_alignment(first, second)
+
+    def test_dba_preserves_reference_length_for_unequal_inputs(self):
+        reference = np.array([0.0, 1.0, 2.0, 1.0])
+        neighbors = [np.array([0.0, 0.5, 1.0, 2.0, 1.0])]
+        weights = np.array([0.75, 0.25])
+        result = augmentation.dba_barycenter(
+            reference, neighbors, weights, n_iterations=2, band=1
+        )
+        assert result.shape == reference.shape
+        assert np.all(np.isfinite(result))
+
+    @pytest.mark.parametrize(
+        ("weights", "n_iterations"),
+        [(np.array([1.0]), 2), (np.array([1.0, 1.0]), 0)],
+    )
+    def test_dba_rejects_invalid_configuration(self, weights, n_iterations):
+        reference = np.arange(4.0)
+        neighbors = [reference.copy()]
+        with pytest.raises(ValueError):
+            augmentation.dba_barycenter(
+                reference, neighbors, weights, n_iterations=n_iterations
+            )
+
+    def test_decomposition_reconstructs_input(self):
+        time = np.arange(48.0)
+        values = 0.1 * time + np.sin(2 * np.pi * time / 12)
+        trend, seasonal, remainder = augmentation.classical_decompose(values, 12)
+        np.testing.assert_allclose(trend + seasonal + remainder, values)
+
+    @pytest.mark.parametrize("period", [0, 1])
+    def test_decomposition_rejects_short_period(self, period):
+        with pytest.raises(ValueError, match="period must be >= 2"):
+            augmentation.classical_decompose(np.arange(8.0), period)
+
+    def test_feature_tuple_is_finite_for_constant_input(self):
+        features = augmentation.compute_features(np.ones(24), 12)
+        assert len(features) == 4
+        assert np.all(np.isfinite(features))
+        assert features[0] == 0.0
+        assert features[3] == 0.0
+
+    def test_moving_block_bootstrap_is_seeded(self):
+        values = np.sin(2 * np.pi * np.arange(48.0) / 12)
+        first = augmentation.moving_block_bootstrap(values, 6, 42, 12)
+        second = augmentation.moving_block_bootstrap(values, 6, 42, 12)
+        np.testing.assert_array_equal(first, second)
+
+    @pytest.mark.parametrize("block_size", [1, 9])
+    def test_moving_block_bootstrap_rejects_invalid_block_size(self, block_size):
+        with pytest.raises(ValueError, match="block_size"):
+            augmentation.moving_block_bootstrap(np.arange(8.0), block_size, 42)
+
+    def test_readonly_binding_rejects_noncontiguous_input(self):
+        values = np.arange(16.0).reshape(8, 2)[:, 0]
+        assert not values.flags.c_contiguous
+        with pytest.raises(TypeError):
+            augmentation.compute_features(values)
 
 
 class TestBindingNegativeLength:

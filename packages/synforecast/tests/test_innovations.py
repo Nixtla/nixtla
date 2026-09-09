@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from synforecast.generators import RandomWalkGenerator
+from synforecast.generators import MARGenerator, RandomWalkGenerator
 from tests.helpers import assert_distribution, assert_mean, assert_std
 
 N_SAMPLES = 100_000
@@ -136,6 +136,35 @@ class TestInnovationsThroughGenerators:
     """Innovations propagate correctly through generator pipelines."""
 
     BASE = {"min_length": 200, "max_length": 200, "freq": "D", "seed": 42}
+
+    @pytest.mark.stats
+    @pytest.mark.parametrize("case", DISTRIBUTIONS, ids=DIST_IDS)
+    @pytest.mark.parametrize("native", [False, True])
+    def test_mar_innovations_match_distribution_and_scale(self, case, native):
+        dist, params, frozen, kurtosis = case
+        generator = MARGenerator(
+            min_length=N_SAMPLES,
+            max_length=N_SAMPLES,
+            freq=1,
+            seed=42,
+            weights=[1.0],
+            ar_coefficients=[[0.0]],
+            intercepts=[1.25],
+            noise_scales=[SCALE],
+            standardize=False,
+            innovation_distribution=dist,
+            innovation_params=params,
+        )
+        values = (
+            generator.generate(1)["y"].to_numpy()
+            if native
+            else generator.generate_single_series(N_SAMPLES)
+        )
+        # With zero AR coefficients, centered observations are iid innovations.
+        samples = values - 1.25
+        assert_distribution(samples, frozen)
+        assert_mean(samples, 0.0, std=SCALE)
+        assert_std(samples, SCALE, kurtosis=kurtosis)
 
     @pytest.mark.parametrize(
         "dist,params",

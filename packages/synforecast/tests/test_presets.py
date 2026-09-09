@@ -171,7 +171,7 @@ class TestBalancedPool:
 class TestPretrainingPool:
     """Tests for the pretraining_pool function."""
 
-    META = {"TSIGenerator", "TCMGenerator", "KernelSynthGenerator"}
+    META = {"TSIGenerator", "TCMGenerator", "KernelSynthGenerator", "MARGenerator"}
 
     def test_includes_meta_and_balanced_by_default(self) -> None:
         from synforecast import pretraining_pool
@@ -181,7 +181,7 @@ class TestPretrainingPool:
         # Meta-generators that balanced_pool excludes are present...
         assert classes >= self.META
         # ...alongside the full balanced pool.
-        assert len(pool) == 42 + 3 * 3
+        assert len(pool) == 42 + 4 * 3
 
     def test_meta_only(self) -> None:
         from synforecast import pretraining_pool
@@ -193,7 +193,7 @@ class TestPretrainingPool:
             max_length=64,
             engine="polars",
         )
-        assert len(pool) == 6
+        assert len(pool) == 8
         assert {type(g).__name__ for g in pool} == self.META
 
     def test_all_seeds_unique(self) -> None:

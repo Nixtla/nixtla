@@ -11,7 +11,7 @@ repos:
     hooks:
       - id: rust-licenses
         name: regenerate Rust third-party license notices
-        entry: make rust_licenses
+        entry: bash -c 'PATH="${CARGO_HOME:-${HOME}/.cargo}/bin:${PATH}" make rust_licenses'
         language: system
         files: ^(rust/(Cargo\.(toml|lock)|about\.(hbs|toml))|synforecast/THIRD_PARTY_RUST\.md)$
         pass_filenames: false

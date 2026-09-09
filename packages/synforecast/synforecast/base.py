@@ -69,6 +69,7 @@ _GEN_TYPE_MAP: dict[str, int] = {
     "ClickstreamGenerator": 27,
     "TSIGenerator": 28,
     "TCMGenerator": 29,
+    "MARGenerator": 30,
 }
 
 

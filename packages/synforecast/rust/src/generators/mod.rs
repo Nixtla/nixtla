@@ -1,4 +1,5 @@
 pub mod domain;
+pub mod mar;
 pub mod multivariate;
 pub mod statistical;
 pub mod stochastic;

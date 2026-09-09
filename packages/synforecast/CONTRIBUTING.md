@@ -101,6 +101,9 @@ def test_moments() -> None:
 
 Statistical assertions in `tests/helpers.py` (`assert_mean`, `assert_std`, `assert_acf`, `assert_distribution`) use z-bounds derived from the estimator's sampling error; seed every generator so they are deterministic.
 
+For the MAR and augmentation kernels, [tests/README.md](tests/README.md) maps
+algorithms to their independent correctness checks and reproduction commands.
+
 Also cover parameter validation (invalid inputs raise), seed determinism, and integer `freq` where relevant.
 
 ### 4. Add an example

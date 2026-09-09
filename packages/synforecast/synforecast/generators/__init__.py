@@ -23,6 +23,7 @@ from synforecast.generators.iot_sensor import IoTSensorGenerator
 from synforecast.generators.jump_diffusion import JumpDiffusionGenerator
 from synforecast.generators.kernel_synth import KernelSynthGenerator
 from synforecast.generators.levy_process import LevyProcessGenerator
+from synforecast.generators.mar import MARGenerator
 from synforecast.generators.ornstein_uhlenbeck import OrnsteinUhlenbeckGenerator
 from synforecast.generators.poisson_process import PoissonProcessGenerator
 from synforecast.generators.random_walk import RandomWalkGenerator
@@ -73,4 +74,5 @@ __all__ = [
     "TSIGenerator",
     "TCMGenerator",
     "KernelSynthGenerator",
+    "MARGenerator",
 ]

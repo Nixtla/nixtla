@@ -7,8 +7,10 @@ import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoFrameT
 
-from synforecast._analysis import classify_series
+from synforecast._analysis import classify_series, detect_seasonality
+from synforecast._dtw import nearest_dtw_neighbors
 from synforecast._fitting import fit_generator_params
+from synforecast._lib import augmentation as _rs_augmentation
 from synforecast._lib import batch as _rs_batch
 from synforecast.base import (
     BaseGenerator,
@@ -243,18 +245,28 @@ class SynSet:
 class SynAugment:
     """Augment time series datasets with synthetic series.
 
-    Analyzes input time series, auto-selects appropriate generators based on
-    statistical properties, fits parameters, and generates statistically
-    similar synthetic series.
+    Four strategies share the same column contract and seeding:
 
-    The augmentation process:
+    - :meth:`augment` fits a parametric generator per series and simulates
+      from it (IDs ``"{original_id}_aug_{i}"``).
+    - :meth:`mixup` forms convex combinations of scaled series (mean absolute
+      scaling by default; z-normalization is optional)
+      (IDs ``"mixup_{i}"``).
+    - :meth:`mbb` bootstraps decomposition remainders in moving blocks
+      (IDs ``"{original_id}_mbb_{i}"``).
+    - :meth:`dba` averages nearest neighbours with DTW barycenters
+      (IDs ``"{original_id}_dba_{i}"``).
+
+    The fit-and-simulate process behind :meth:`augment`:
     1. For each unique series in the input DataFrame, analyze its statistical properties
     2. Auto-select the most appropriate generator (or use user override)
     3. Fit generator parameters to match the series' statistical fingerprint
     4. Generate n_augment synthetic series that preserve these properties
     5. Return combined DataFrame with original and synthetic series
 
-    Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
+    Series that are entirely missing (or, for :meth:`mbb`, shorter than four
+    observations) are skipped with a logged warning by :meth:`mixup`,
+    :meth:`mbb`, and :meth:`dba`.
 
     Args:
         id_col: Name of the ID column (default: 'unique_id')
@@ -362,6 +374,17 @@ class SynAugment:
             backend=backend,
         )
 
+    def _partition_series(self, frame: nw.DataFrame) -> dict[Any, nw.DataFrame]:
+        """Sort once, then take contiguous slices without per-ID panel scans."""
+        ordered = frame.sort([self.id_col, self.time_col])
+        ids = ordered[self.id_col].to_numpy()
+        boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
+        return {
+            ids[start]: ordered[int(start) : int(stop)]
+            for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True)
+            if start < stop
+        }
+
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
         """Analyze all series in DataFrame and return properties.
 
@@ -380,17 +403,17 @@ class SynAugment:
         df_nw = nw.from_native(df)
         self._validate_columns(df_nw)
 
-        results = {}
-        unique_ids = df_nw[self.id_col].unique().to_list()
+        return self._analyze_partitions(
+            self._partition_series(df_nw), df_nw[self.id_col].unique().to_list()
+        )
 
+    def _analyze_partitions(
+        self, partitions: dict[Any, nw.DataFrame], unique_ids: list[Any]
+    ) -> dict:
+        results = {}
         for series_id in unique_ids:
-            # Extract series values
             series_data = (
-                df_nw.filter(nw.col(self.id_col) == series_id)
-                .sort(self.time_col)
-                .select(self.target_col)
-                .to_numpy()
-                .flatten()
+                partitions[series_id].select(self.target_col).to_numpy().flatten()
             )
 
             # Classify and get properties
@@ -466,8 +489,9 @@ class SynAugment:
 
         generator_override = generator_override or {}
 
-        # First, analyze all series
-        analysis = self.analyze(df)
+        partitions = self._partition_series(df_nw)
+        unique_ids = df_nw[self.id_col].unique().to_list()
+        analysis = self._analyze_partitions(partitions, unique_ids)
 
         # Collect all series (original + augmented)
         all_dfs = [output_original]
@@ -476,13 +500,8 @@ class SynAugment:
         # made under on_error='ar1', reported once after the loop.
         fallbacks: list[tuple[str, str, str]] = []
 
-        unique_ids = df_nw[self.id_col].unique().to_list()
-
         for series_id in unique_ids:
-            # Get series data
-            series_df = df_nw.filter(nw.col(self.id_col) == series_id).sort(
-                self.time_col
-            )
+            series_df = partitions[series_id]
             series_values = series_df.select(self.target_col).to_numpy().flatten()
             timestamps = series_df.select(self.time_col).to_numpy().flatten()
 
@@ -533,6 +552,18 @@ class SynAugment:
         return result.to_native()
 
     @staticmethod
+    def _warn_skipped(method: str, skipped: list[Any]) -> None:
+        """Log one summary for series skipped as unusable by ``method``."""
+        if skipped:
+            logger.warning(
+                "%s skipped %d unusable series (entirely missing or too short): %s",
+                method,
+                len(skipped),
+                ", ".join(repr(series_id) for series_id in skipped[:10])
+                + (", ..." if len(skipped) > 10 else ""),
+            )
+
+    @staticmethod
     def _warn_fallbacks(fallbacks: list[tuple[str, str, str]], total: int) -> None:
         """Log one summary for AR(1) substitutions made during an API call."""
         if not fallbacks:
@@ -563,10 +594,15 @@ class SynAugment:
         return window
 
     @staticmethod
-    def _interpolate_missing(values: np.ndarray) -> np.ndarray | None:
+    def _interpolate_missing(
+        values: np.ndarray, *, series_id: Any = None
+    ) -> np.ndarray | None:
         """Linearly interpolate NaNs, or reject a series with no finite values."""
         if np.isinf(values).any():
-            raise ValueError("mixup source series must not contain infinite values")
+            source = (
+                "source series" if series_id is None else f"source series {series_id!r}"
+            )
+            raise ValueError(f"{source} must not contain infinite values")
         observed = ~np.isnan(values)
         if not observed.any():
             return None
@@ -575,6 +611,30 @@ class SynAugment:
 
         positions = np.arange(len(values))
         return np.interp(positions, positions[observed], values[observed])
+
+    @staticmethod
+    def _reserve_generated_id(proposed: str, reserved: set[str]) -> str:
+        """Reserve a generated ID, adding a numeric suffix on collision."""
+        candidate = proposed
+        suffix = 1
+        while candidate in reserved:
+            candidate = f"{proposed}_{suffix}"
+            suffix += 1
+        reserved.add(candidate)
+        return candidate
+
+    def _copy_reference_frames(
+        self,
+        reference: nw.DataFrame,
+        ids: list[str],
+        copies: list[np.ndarray],
+        backend: Any,
+    ) -> nw.DataFrame:
+        """Assemble all copies of one source in a single backend operation."""
+        return nw.concat([reference] * len(ids)).with_columns(
+            nw.new_series(self.id_col, np.repeat(ids, len(reference)), backend=backend),
+            nw.new_series(self.target_col, np.concatenate(copies), backend=backend),
+        )
 
     def mixup(
         self,
@@ -659,8 +719,10 @@ class SynAugment:
 
         # Cache each series' values and timestamps, sorted by time.
         series: dict[Any, tuple[np.ndarray, np.ndarray]] = {}
+        skipped: list[Any] = []
+        partitions = self._partition_series(df_nw)
         for series_id in unique_ids:
-            sdf = df_nw.filter(nw.col(self.id_col) == series_id).sort(self.time_col)
+            sdf = partitions[series_id]
             values = sdf.select(self.target_col).to_numpy().flatten().astype(float)
             timestamps = sdf.select(self.time_col).to_numpy().flatten()
             if (
@@ -668,9 +730,12 @@ class SynAugment:
                 and (values := self._interpolate_missing(values)) is not None
             ):
                 series[series_id] = (values, timestamps)
+            else:
+                skipped.append(series_id)
 
         usable_ids = list(series.keys())
         n_available = len(usable_ids)
+        self._warn_skipped("mixup", skipped)
         if n_available == 0:
             raise ValueError("no usable series to mix")
 
@@ -738,6 +803,355 @@ class SynAugment:
         result = _categorize_ids(nw.concat(frames), self.id_col)
 
         return result.to_native()
+
+    def mbb(
+        self,
+        df: IntoFrameT,
+        n_augment: int = 1,
+        seasonal_period: int | None = None,
+        block_size: int | None = None,
+        include_original: bool = True,
+    ) -> IntoFrameT:
+        """Bootstrap decomposition remainders with moving blocks.
+
+        This non-parametric augmenter follows the moving-block-bootstrap idea
+        used for forecasting by Bergmeir, Hyndman, and Benitez (2016,
+        https://doi.org/10.1016/j.ijforecast.2015.07.002) and the augmentation
+        recipe discussed by Bandara et al. (2021,
+        https://arxiv.org/abs/2008.02663). SynForecast uses a classical
+        moving-average decomposition rather than Box-Cox plus STL; its
+        defaults, block-size choice, and stability guards are its own design
+        rather than a reproduction of the reference code.
+
+        This method deliberately bypasses the ``_match_autocorrelation``
+        rescaling used by :meth:`augment`. Recombining a source's own trend and
+        seasonal components with bootstrapped remainder blocks already anchors
+        the result to that source; re-pinning mean and standard deviation would
+        distort the remainder variability.
+
+        Classical decomposition and moving-block sampling execute in native
+        Rust. Seed determinism is stable within this native path.
+
+        NaNs are interpolated before decomposition. Series without a finite
+        observation or with fewer than four observations are skipped with a
+        logged warning; at least one series must be usable. Additional
+        input columns are copied unchanged from each source series. The
+        effective block length, including an explicitly supplied
+        ``block_size``, is capped per source series at
+        ``max(2, len(series) // 3)``. This keeps multiple remainder blocks in
+        play for short inputs; request a smaller value when the exact block
+        length matters.
+
+        An explicit period requires at least two cycles per source. Shorter
+        sources use nonseasonal decomposition and are listed in a logged warning.
+        Infinite values reject the call with the offending series ID; NaNs
+        follow the interpolation/skip policy above.
+
+        Args:
+            df: Input frame containing the configured ID, time and target columns.
+            n_augment: Copies per usable source, from 1 to 1000 (default: 1).
+            seasonal_period: Period >= 2, or None to detect it per source.
+            block_size: Block length >= 2, or None for the period/length-based
+                default. Explicit lengths are also capped as described above.
+            include_original: Include unchanged original rows (default: True).
+
+        Returns:
+            Frame containing generated series and, optionally, original rows,
+            using the configured output engine or the input engine.
+
+        Raises:
+            ValueError: For invalid arguments, missing required columns, infinite
+                target values, or no usable source series.
+        """
+        if n_augment < 1:
+            raise ValueError("n_augment must be >= 1")
+        if n_augment > 1000:
+            raise ValueError("n_augment must be <= 1000 to prevent resource exhaustion")
+        if seasonal_period is not None and seasonal_period < 2:
+            raise ValueError("seasonal_period must be >= 2 when provided")
+        if block_size is not None and block_size < 2:
+            raise ValueError("block_size must be >= 2 when provided")
+
+        df_nw = nw.from_native(df)
+        self._validate_columns(df_nw)
+        out_engine: Any = (
+            self.engine if self.engine is not None else df_nw.implementation
+        )
+        output_original = self._to_output_backend(df_nw, out_engine)
+        unique_ids = sorted(df_nw[self.id_col].unique().to_list())
+        if not unique_ids:
+            raise ValueError("mbb requires at least 1 series")
+        reserved_ids = {str(series_id) for series_id in unique_ids}
+        synthetic_dfs: list[nw.DataFrame] = []
+        skipped: list[Any] = []
+        nonseasonal: list[Any] = []
+
+        partitions = self._partition_series(df_nw)
+        for series_id in unique_ids:
+            sdf = partitions[series_id]
+            raw_values = sdf.select(self.target_col).to_numpy().flatten().astype(float)
+            values = self._interpolate_missing(raw_values, series_id=series_id)
+            if values is None or len(values) < 4:
+                skipped.append(series_id)
+                continue
+            output_sdf = self._to_output_backend(sdf, out_engine)
+            period = (
+                seasonal_period
+                if seasonal_period is not None
+                else detect_seasonality(values)["period"]
+            )
+            if seasonal_period is not None and seasonal_period > len(values) // 2:
+                nonseasonal.append(series_id)
+            default_block = (
+                2 * period if period else max(2, int(round(len(values) ** 0.5)))
+            )
+            block = block_size if block_size is not None else default_block
+            block = min(block, max(2, len(values) // 3))
+
+            native_seeds = self.rng.integers(0, 2**63, size=n_augment).tolist()
+            generated_copies = _rs_augmentation.moving_block_bootstrap_many(
+                np.ascontiguousarray(values), block, native_seeds, period
+            )
+            generated_ids = [
+                self._reserve_generated_id(f"{series_id}_mbb_{i}", reserved_ids)
+                for i in range(n_augment)
+            ]
+            synthetic_dfs.append(
+                self._copy_reference_frames(
+                    output_sdf, generated_ids, generated_copies, out_engine
+                )
+            )
+
+        self._warn_skipped("mbb", skipped)
+        if nonseasonal:
+            logger.warning(
+                "mbb used nonseasonal decomposition for %s series with fewer than "
+                "two cycles of seasonal_period=%s; first IDs: %s",
+                len(nonseasonal),
+                seasonal_period,
+                nonseasonal[:5],
+            )
+        if len(skipped) == len(unique_ids):
+            raise ValueError(
+                "mbb requires at least 1 usable series (finite values, >= 4 rows)"
+            )
+
+        frames = [output_original] if include_original else []
+        frames.extend(synthetic_dfs)
+        time_dtype = output_original.schema[self.time_col]
+        frames = [
+            frame.with_columns(
+                nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
+                nw.col(self.target_col).cast(nw.Float64()),
+            )
+            for frame in frames
+        ]
+        return _categorize_ids(nw.concat(frames), self.id_col).to_native()
+
+    def dba(
+        self,
+        df: IntoFrameT,
+        n_augment: int = 1,
+        n_neighbors: int = 3,
+        n_iterations: int = 5,
+        window_fraction: float = 0.1,
+        scale: Literal["reference", "none"] = "reference",
+        include_original: bool = True,
+    ) -> IntoFrameT:
+        """Augment a panel with randomized nearest-neighbor DTW barycenters.
+
+        DBA comes from Petitjean, Ketterlin, and Gancarski (2011,
+        https://doi.org/10.1016/j.patcog.2010.09.013); nearest-neighbor weighted
+        augmentation follows Forestier et al. (2017,
+        https://doi.org/10.1109/ICDM.2017.106) and Bandara et al. (2021,
+        https://arxiv.org/abs/2008.02663). Neighbor weighting, per-copy weight
+        randomization, banded DTW, and z-normalized alignment are SynForecast's
+        own design rather than a reproduction of the reference code. Pairwise
+        panel distances are computed once per call in bounded parallel chunks,
+        retaining only the nearest neighbors per source. Neighbor storage is
+        O(number of series * n_neighbors); distance computation still examines
+        every pair. The band limits the otherwise quadratic alignment cost.
+
+        This panel-aware method caches every usable source series once and
+        deliberately bypasses ``_match_autocorrelation``. With the default
+        ``scale="reference"``, inputs are z-normalized for alignment and the
+        barycenter is mapped to the reference mean and standard deviation. That
+        is explicit reference anchoring, not the :meth:`augment` pinning path.
+        ``scale="none"`` averages raw values for panels already sharing scale.
+        Plain DBA is deterministic, so each requested copy randomizes the
+        reference and neighbor weights to create distinct augmentations.
+        Additional input columns are copied unchanged from the reference
+        series; DBA only barycenters the target column.
+
+        Copies share their initial alignment paths and refine in parallel in
+        native Rust. At most eight alignments/copies execute concurrently.
+        Parent storage per alignment, cached paths per copy and returned copies
+        per reference have separate 64 MiB limits; excessive requests raise
+        ValueError. Interrupts are checked
+        between work chunks. Seed
+        determinism is stable within this native path.
+
+        NaNs are interpolated; entirely missing sources are skipped with a
+        warning. Infinite values reject the call with the offending series ID.
+        Reference scaling preserves zero scale for constant sources, producing
+        constant copies. Sources with standard deviation below 1e-8 are listed
+        in a warning because their copies may add little or no variation.
+
+        Args:
+            df: Input frame containing the configured ID, time and target columns.
+            n_augment: Copies per usable reference, from 1 to 1000 (default: 1).
+            n_neighbors: Positive maximum neighbor count (default: 3), capped
+                at the number of other usable sources.
+            n_iterations: Barycenter updates, from 1 to 1000 (default: 5).
+            window_fraction: DTW band fraction in (0, 1] (default: 0.1).
+            scale: "reference" to restore reference scale (default), or "none"
+                to average raw values.
+            include_original: Include unchanged original rows (default: True).
+
+        Returns:
+            Frame containing generated series and, optionally, original rows,
+            using the configured output engine or the input engine.
+
+        Raises:
+            ValueError: For invalid arguments, missing required columns, infinite
+                target values, excessive alignment/output storage, or fewer
+                than two usable source series.
+        """
+        if n_augment < 1:
+            raise ValueError("n_augment must be >= 1")
+        if n_augment > 1000:
+            raise ValueError("n_augment must be <= 1000 to prevent resource exhaustion")
+        if n_neighbors < 1:
+            raise ValueError("n_neighbors must be >= 1")
+        if not 1 <= n_iterations <= 1000:
+            raise ValueError("n_iterations must be in [1, 1000]")
+        if not 0 < window_fraction <= 1:
+            raise ValueError("window_fraction must satisfy 0 < value <= 1")
+        if scale not in ("reference", "none"):
+            raise ValueError("scale must be one of 'reference', 'none'")
+
+        df_nw = nw.from_native(df)
+        self._validate_columns(df_nw)
+        out_engine: Any = (
+            self.engine if self.engine is not None else df_nw.implementation
+        )
+        output_original = self._to_output_backend(df_nw, out_engine)
+        unique_ids = sorted(df_nw[self.id_col].unique().to_list())
+        reserved_ids = {str(series_id) for series_id in unique_ids}
+        series: dict[Any, tuple[np.ndarray, nw.DataFrame]] = {}
+        aligned: dict[Any, np.ndarray] = {}
+        moments: dict[Any, tuple[float, float]] = {}
+        skipped: list[Any] = []
+        near_constant: list[Any] = []
+        partitions = self._partition_series(df_nw)
+        for series_id in unique_ids:
+            sdf = partitions[series_id]
+            raw_values = sdf.select(self.target_col).to_numpy().flatten().astype(float)
+            values = self._interpolate_missing(raw_values, series_id=series_id)
+            if values is None:
+                skipped.append(series_id)
+                continue
+            output_sdf = self._to_output_backend(sdf, out_engine)
+            mean = float(values.mean())
+            std = float(values.std())
+            if scale == "reference" and std < 1e-8:
+                near_constant.append(series_id)
+            divisor = std if std >= 1e-8 else 1.0
+            series[series_id] = (values, output_sdf)
+            moments[series_id] = (mean, std)
+            aligned[series_id] = (
+                (values - mean) / divisor if scale == "reference" else values
+            )
+        usable_ids = list(series)
+        self._warn_skipped("dba", skipped)
+        if near_constant:
+            logger.warning(
+                "dba reference scaling preserves near-zero scale for %s series; "
+                "copies may add little or no variation; first IDs: %s",
+                len(near_constant),
+                near_constant[:5],
+            )
+        if len(usable_ids) < 2:
+            raise ValueError("dba requires at least 2 usable series")
+
+        # Native ties use input index; sort by string ID to preserve the
+        # established neighbor ordering even when source IDs are numeric.
+        neighbor_order = sorted(usable_ids, key=str)
+        nearest = nearest_dtw_neighbors(
+            [aligned[series_id] for series_id in neighbor_order],
+            window_fraction,
+            n_neighbors,
+        )
+        nearest_by_id = dict(zip(neighbor_order, nearest, strict=True))
+        synthetic_dfs: list[nw.DataFrame] = []
+        for reference_id in usable_ids:
+            reference_values = aligned[reference_id]
+            neighbor_ids = [
+                neighbor_order[index] for index, _ in nearest_by_id[reference_id]
+            ]
+            neighbor_distances = np.array(
+                [distance for _, distance in nearest_by_id[reference_id]]
+            )
+            positive = neighbor_distances[neighbor_distances > 0]
+            if len(positive):
+                base_weights = np.exp(
+                    np.log(0.5) * neighbor_distances / float(positive.min())
+                )
+            else:
+                base_weights = np.ones(len(neighbor_ids))
+            neighbors = [aligned[series_id] for series_id in neighbor_ids]
+            max_length = max(
+                [len(reference_values), *[len(values) for values in neighbors]]
+            )
+            group_band = int(np.ceil(window_fraction * max_length))
+
+            generated_ids = []
+            copy_weights = []
+            for copy_index in range(n_augment):
+                generated_ids.append(
+                    self._reserve_generated_id(
+                        f"{reference_id}_dba_{copy_index}", reserved_ids
+                    )
+                )
+                reference_weight = float(self.rng.uniform(0.4, 0.7))
+                randomized = base_weights * self.rng.uniform(
+                    0.5, 1.5, len(base_weights)
+                )
+                neighbor_weights = (
+                    (1.0 - reference_weight) * randomized / randomized.sum()
+                )
+                copy_weights.append(
+                    np.concatenate(([reference_weight], neighbor_weights)).tolist()
+                )
+            copies = _rs_augmentation.dba_barycenters(
+                np.ascontiguousarray(reference_values),
+                [np.ascontiguousarray(v) for v in neighbors],
+                copy_weights,
+                n_iterations,
+                group_band,
+            )
+            if scale == "reference":
+                mean, std = moments[reference_id]
+                copies = [barycenter * std + mean for barycenter in copies]
+            synthetic_dfs.append(
+                self._copy_reference_frames(
+                    series[reference_id][1], generated_ids, copies, out_engine
+                )
+            )
+
+        frames = [output_original] if include_original else []
+        frames.extend(synthetic_dfs)
+        time_dtype = output_original.schema[self.time_col]
+        frames = [
+            frame.with_columns(
+                nw.col(self.id_col).cast(nw.String()),
+                nw.col(self.time_col).cast(time_dtype),
+                nw.col(self.target_col).cast(nw.Float64()),
+            )
+            for frame in frames
+        ]
+        return _categorize_ids(nw.concat(frames), self.id_col).to_native()
 
     def _generate_augmented_series(
         self,

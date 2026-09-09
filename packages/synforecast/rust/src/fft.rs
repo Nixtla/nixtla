@@ -1,5 +1,51 @@
+//! Fourier transforms: radix-2 Cooley-Tukey, Bluestein for arbitrary lengths,
+//! and RealFFT for the real half-spectrum. Bluestein (1968), "A linear filtering
+//! approach to the computation of the discrete Fourier transform", NEREM 10,
+//! pp. 218-219; bibliography: https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.CZT.html
+//! See GENERATORS.md for references and THIRD_PARTY_NOTICES.md for dependencies.
+
 use num_complex::Complex64;
+use realfft::{RealFftPlanner, RealToComplex};
+use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
+use std::sync::{Arc, Mutex, OnceLock};
+
+const REAL_FFT_PLAN_CACHE_CAPACITY: usize = 16;
+type RealFftPlan = Arc<dyn RealToComplex<f64>>;
+
+#[derive(Default)]
+struct RealFftPlanCache {
+    plans: HashMap<usize, RealFftPlan>,
+    order: VecDeque<usize>,
+}
+
+fn real_fft_plan(len: usize) -> RealFftPlan {
+    static CACHE: OnceLock<Mutex<RealFftPlanCache>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(RealFftPlanCache::default()));
+    let mut cache = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if let Some(plan) = cache.plans.get(&len).cloned() {
+        cache.order.retain(|cached_len| *cached_len != len);
+        cache.order.push_back(len);
+        return plan;
+    }
+
+    // Plans own their shared internal data, so the planner can be dropped.
+    // Creating it per cache miss keeps this cache genuinely bounded instead
+    // of retaining the planner's own unbounded history of requested lengths.
+    let mut planner = RealFftPlanner::<f64>::new();
+    let plan = planner.plan_fft_forward(len);
+    if cache.plans.len() == REAL_FFT_PLAN_CACHE_CAPACITY {
+        if let Some(evicted) = cache.order.pop_front() {
+            cache.plans.remove(&evicted);
+        }
+    }
+    cache.plans.insert(len, Arc::clone(&plan));
+    cache.order.push_back(len);
+    plan
+}
 
 /// Minimal radix-2 Cooley-Tukey FFT implementation.
 pub fn fft_radix2(x: &mut [Complex64], inverse: bool) {
@@ -51,13 +97,70 @@ pub fn fft_radix2(x: &mut [Complex64], inverse: bool) {
     }
 }
 
-/// Real-to-complex FFT
+/// Forward DFT of arbitrary length via Bluestein's chirp-z algorithm.
+///
+/// Reduces a length-`n` DFT to a convolution evaluated with a radix-2 FFT of
+/// size `next_pow2(2n - 1)`, so the cost is O(n log n) for every `n`.
+pub fn fft_bluestein(x: &[Complex64]) -> Vec<Complex64> {
+    let n = x.len();
+    if n <= 1 {
+        return x.to_vec();
+    }
+    let m = next_pow2(2 * n - 1);
+    let chirp: Vec<Complex64> = (0..n)
+        .map(|k| {
+            // Reduce k^2 mod 2n before scaling to keep the angle small.
+            let k2 = (k * k) % (2 * n);
+            let angle = -PI * k2 as f64 / n as f64;
+            Complex64::new(angle.cos(), angle.sin())
+        })
+        .collect();
+    let mut a = vec![Complex64::new(0.0, 0.0); m];
+    for k in 0..n {
+        a[k] = x[k] * chirp[k];
+    }
+    let mut b = vec![Complex64::new(0.0, 0.0); m];
+    b[0] = chirp[0].conj();
+    for k in 1..n {
+        b[k] = chirp[k].conj();
+        b[m - k] = chirp[k].conj();
+    }
+    fft_radix2(&mut a, false);
+    fft_radix2(&mut b, false);
+    for (av, bv) in a.iter_mut().zip(&b) {
+        *av *= bv;
+    }
+    fft_radix2(&mut a, true);
+    (0..n).map(|k| a[k] * chirp[k]).collect()
+}
+
+/// Real-to-complex FFT for any length (radix-2 when `n` is a power of two).
 pub fn rfft(data: &[f64]) -> Vec<Complex64> {
     let n = data.len();
     let mut x: Vec<Complex64> = data.iter().map(|&v| Complex64::new(v, 0.0)).collect();
-    fft_radix2(&mut x, false);
-    x.truncate(n); // keep full spectrum for irfft compatibility
-    x
+    if n.is_power_of_two() {
+        fft_radix2(&mut x, false);
+        x
+    } else {
+        fft_bluestein(&x)
+    }
+}
+
+/// Real-to-complex FFT retaining only the non-redundant half spectrum.
+///
+/// All lengths use a cached RealFFT plan, with output and scratch storage allocated
+/// per call so concurrent feature computations never share mutable buffers.
+pub fn rfft_half(data: &mut [f64]) -> Result<Vec<Complex64>, String> {
+    let n = data.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+    let plan = real_fft_plan(n);
+    let mut spectrum = plan.make_output_vec();
+    let mut scratch = plan.make_scratch_vec();
+    plan.process_with_scratch(data, &mut spectrum, &mut scratch)
+        .map_err(|error| format!("real FFT failed: {error}"))?;
+    Ok(spectrum)
 }
 
 /// Complex-to-real IFFT
@@ -149,6 +252,43 @@ mod tests {
             (time_energy - freq_energy).abs() < 1e-8,
             "Parseval: time={time_energy}, freq={freq_energy}"
         );
+    }
+
+    #[test]
+    fn test_bluestein_matches_naive_dft() {
+        for n in [3usize, 5, 7, 12, 100, 4095] {
+            let data: Vec<f64> = (0..n).map(|i| ((i * 7919) % 13) as f64 - 6.0).collect();
+            let fast = rfft(&data);
+            for k in [0, 1, n / 3, n / 2, n - 1] {
+                let mut acc = Complex64::new(0.0, 0.0);
+                for (i, &v) in data.iter().enumerate() {
+                    let angle = -2.0 * PI * (k as f64) * (i as f64) / n as f64;
+                    acc += Complex64::new(v * angle.cos(), v * angle.sin());
+                }
+                assert!(
+                    (fast[k] - acc).norm() < 1e-7 * n as f64,
+                    "n={n} k={k}: {:?} vs {:?}",
+                    fast[k],
+                    acc
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_half_spectrum_matches_full_transform() {
+        for n in [1usize, 2, 3, 63, 64, 1000, 1001, 4093, 4095, 4096] {
+            let data: Vec<f64> = (0..n).map(|i| ((i * 7919) % 13) as f64 - 6.0).collect();
+            let expected = rfft(&data);
+            let actual = rfft_half(&mut data.clone()).unwrap();
+            assert_eq!(actual.len(), n / 2 + 1);
+            for (bin, (&actual, &expected)) in actual.iter().zip(&expected).enumerate() {
+                assert!(
+                    (actual - expected).norm() < 1e-7 * n as f64,
+                    "n={n} bin={bin}: {actual:?} vs {expected:?}",
+                );
+            }
+        }
     }
 
     #[test]

@@ -3,6 +3,77 @@
 import numpy as np
 import numpy.typing as npt
 
+class augmentation:
+    @staticmethod
+    def dtw_alignment(
+        a: npt.NDArray[np.float64],
+        b: npt.NDArray[np.float64],
+        band: int | None = None,
+    ) -> tuple[float, list[tuple[int, int]]]: ...
+    @staticmethod
+    def dtw_distance(
+        a: npt.NDArray[np.float64],
+        b: npt.NDArray[np.float64],
+        band: int | None = None,
+    ) -> float: ...
+    @staticmethod
+    def nearest_dtw_neighbors(
+        series: list[npt.NDArray[np.float64]],
+        window_fraction: float,
+        n_neighbors: int,
+    ) -> list[list[tuple[int, float]]]: ...
+    @staticmethod
+    def dba_barycenter(
+        reference: npt.NDArray[np.float64],
+        neighbors: list[npt.NDArray[np.float64]],
+        weights: npt.NDArray[np.float64],
+        n_iterations: int,
+        band: int | None = None,
+    ) -> npt.NDArray[np.float64]: ...
+    @staticmethod
+    def dba_barycenters(
+        reference: npt.NDArray[np.float64],
+        neighbors: list[npt.NDArray[np.float64]],
+        weights: list[list[float]],
+        n_iterations: int,
+        band: int | None = None,
+    ) -> list[npt.NDArray[np.float64]]: ...
+    @staticmethod
+    def mar_features_batch(
+        scalars: list[list[float]],
+        arrays: list[list[list[float]]],
+        lengths: list[int],
+        seeds: list[list[int]],
+        period: int | None = None,
+        n_workers: int = 0,
+    ) -> list[list[list[float]] | None]: ...
+    @staticmethod
+    def classical_decompose(
+        values: npt.NDArray[np.float64], period: int | None = None
+    ) -> tuple[
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+        npt.NDArray[np.float64],
+    ]: ...
+    @staticmethod
+    def compute_features(
+        values: npt.NDArray[np.float64], period: int | None = None
+    ) -> tuple[float, float, float, float]: ...
+    @staticmethod
+    def moving_block_bootstrap(
+        values: npt.NDArray[np.float64],
+        block_size: int,
+        seed: int,
+        period: int | None = None,
+    ) -> npt.NDArray[np.float64]: ...
+    @staticmethod
+    def moving_block_bootstrap_many(
+        values: npt.NDArray[np.float64],
+        block_size: int,
+        seeds: list[int],
+        period: int | None = None,
+    ) -> list[npt.NDArray[np.float64]]: ...
+
 class pattern_injection:
     @staticmethod
     def add_changepoints(

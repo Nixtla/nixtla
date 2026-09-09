@@ -8,6 +8,7 @@
 
 use pyo3::prelude::*;
 
+pub mod augmentation;
 pub mod batch;
 pub mod bindings;
 pub mod distributions;
@@ -20,6 +21,7 @@ pub mod rng;
 #[pymodule]
 fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "SynForecast Rust accelerated generators")?;
+    bindings::augmentation::register(m)?;
     bindings::pattern_injection::register(m)?;
     bindings::distributions::register(m)?;
     bindings::statistical::register(m)?;

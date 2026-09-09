@@ -53,6 +53,7 @@
             "group": "Augmentation",
             "pages": [
               "docs/capabilities/augmentation.html",
+              "docs/capabilities/nonparametric_augmentation.html",
               "docs/capabilities/augmentation_real_data.html"
             ]
           },
@@ -122,7 +123,8 @@
             "pages": [
               "docs/generators/pretraining/tsi.html",
               "docs/generators/pretraining/tcm.html",
-              "docs/generators/pretraining/kernel_synth.html"
+              "docs/generators/pretraining/kernel_synth.html",
+              "docs/generators/pretraining/mar.html"
             ]
           }
         ]

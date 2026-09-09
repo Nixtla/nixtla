@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use rayon::prelude::*;
 
-use crate::generators::{domain, multivariate, statistical, stochastic, tcm, tsi, volatility};
+use crate::generators::{domain, mar, multivariate, statistical, stochastic, tcm, tsi, volatility};
 use crate::pattern_injection as pi;
 
 /// Return a cached rayon `ThreadPool` for the given worker count.
@@ -10,7 +10,7 @@ use crate::pattern_injection as pi;
 /// The pool is created once on first use and reused on subsequent calls with
 /// the same `n_workers` value.  If `n_workers` changes, the old pool is
 /// dropped and a new one is built.
-fn get_or_create_pool(n_workers: usize) -> Result<Arc<rayon::ThreadPool>, String> {
+pub(crate) fn get_or_create_pool(n_workers: usize) -> Result<Arc<rayon::ThreadPool>, String> {
     static CACHED: Mutex<Option<(usize, Arc<rayon::ThreadPool>)>> = Mutex::new(None);
     let mut guard = CACHED.lock().unwrap();
     if let Some((w, pool)) = guard.as_ref() {
@@ -55,6 +55,7 @@ pub const GEN_VITAL_SIGNS: i32 = 25;
 pub const GEN_CLICKSTREAM: i32 = 27;
 pub const GEN_TSI: i32 = 28;
 pub const GEN_TCM: i32 = 29;
+pub const GEN_MAR: i32 = 30;
 
 /// Per-series result returned from batch generation.
 #[derive(Debug)]
@@ -575,6 +576,16 @@ fn dispatch_generator(
             // ap: [edge_kind_ids, noise_type_ids]
             check_params!(sp, 13, ap, 2, "tcm");
             tcm::tcm(out, sp, &ap[0], &ap[1], seed);
+        }
+        GEN_MAR => {
+            // sp: [max_components, max_ar_order, seasonal_period,
+            //      weights_concentration, intercept_scale, noise_scale_lo,
+            //      noise_scale_hi, burn_in, standardize, fixed_mode,
+            //      innov_dist, innov_param]
+            // ap in fixed mode: [weights, orders, flattened_coefficients,
+            //                    intercepts, noise_scales]
+            check_params!(sp, 12, ap, 0, "mar");
+            mar::mar(out, sp, ap, seed)?;
         }
         _ => return Err(format!("unknown generator type: {gen_type}")),
     }
@@ -1187,6 +1198,20 @@ mod tests {
                 ],
                 vec![vec![0.0, 1.0, 2.0, 3.0, 4.0], vec![0.0, 1.0, 2.0]],
                 "tcm",
+            ),
+            (
+                GEN_MAR,
+                vec![
+                    3.0, 5.0, 12.0, 1.0, 1.0, 0.1, 2.0, 100.0, 1.0, 0.0, 0.0, 0.0,
+                ],
+                vec![],
+                "mar_random",
+            ),
+            (
+                GEN_MAR,
+                vec![3.0, 5.0, 0.0, 1.0, 1.0, 0.1, 2.0, 100.0, 0.0, 1.0, 0.0, 0.0],
+                vec![vec![1.0], vec![1.0], vec![0.7], vec![0.0], vec![1.0]],
+                "mar_fixed",
             ),
             (
                 GEN_STATE_SPACE,

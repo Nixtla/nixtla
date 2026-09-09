@@ -14,3 +14,6 @@ description: Dataset composition and augmentation
         - analyze
         - augment
         - augment_single_series
+        - mixup
+        - mbb
+        - dba

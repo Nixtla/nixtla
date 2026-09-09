@@ -20,6 +20,7 @@ from synforecast.generators.intermittent_demand import IntermittentDemandGenerat
 from synforecast.generators.iot_sensor import IoTSensorGenerator
 from synforecast.generators.kernel_synth import KernelSynthGenerator
 from synforecast.generators.levy_process import LevyProcessGenerator
+from synforecast.generators.mar import MARGenerator
 from synforecast.generators.regime_switching import RegimeSwitchingGenerator
 from synforecast.generators.sarima import SARIMAGenerator
 from synforecast.generators.tcm import TCMGenerator
@@ -366,7 +367,8 @@ def pretraining_pool(
     adds the diversity-targeted *meta-generators* that ``balanced_pool``
     deliberately excludes — ``TSIGenerator`` (randomized trend/seasonal/
     irregular composition), ``TCMGenerator`` (random temporal causal graphs),
-    and ``KernelSynthGenerator`` (samples from randomly composed GP kernels).
+    ``KernelSynthGenerator`` (samples from randomly composed GP kernels), and
+    ``MARGenerator`` (GRATIS-style mixtures of autoregressive components).
     Each resamples a fresh configuration per series, so a handful of instances
     spans a very wide distribution. By default it also includes the full
     ``balanced_pool`` so the corpus carries interpretable single-mechanism
@@ -417,7 +419,7 @@ def pretraining_pool(
 
     # Meta-generator seeds are offset well past balanced_pool's 0..41 range so
     # the two sets never collide when combined.
-    meta_classes = (TSIGenerator, TCMGenerator, KernelSynthGenerator)
+    meta_classes = (TSIGenerator, TCMGenerator, KernelSynthGenerator, MARGenerator)
     meta: list[BaseGenerator] = [
         cls(**base, seed=_seed(1000 + 100 * family + variant))
         for family, cls in enumerate(meta_classes)

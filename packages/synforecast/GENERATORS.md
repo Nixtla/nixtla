@@ -4,12 +4,12 @@ Reference for all synthetic time series generators in SynForecast, organized by 
 
 ## Overview
 
-SynForecast provides **31 generators** organized into five categories:
+SynForecast provides **32 generators** organized into five categories:
 - **Statistical** (5): Classical time series models
 - **Stochastic** (13): Stochastic process-based generators
 - **Multivariate** (3): Multi-dimensional time series
 - **Domain-Specific** (7): Industry/application-focused generators
-- **Pretraining** (3): Diversity-targeted generators for foundation-model corpora
+- **Pretraining** (4): Diversity-targeted generators for foundation-model corpora
 
 All generators share the same constructor and `generate()` interface. Constructors are keyword-only:
 
@@ -49,13 +49,108 @@ below states how far that verification reaches:
 |--------|------------|
 | Theory-tested (23) | RandomWalk, Seasonal, SARIMA, ETS, INAR, GARCH, OrnsteinUhlenbeck, GeometricBrownianMotion, JumpDiffusion, PoissonProcess, Cyclic, FractionalBrownianMotion, HawkesProcess, StochasticVolatility, RegimeSwitching, ChaoticSystem, BoundedProcess, LevyProcess, Copula, VAR, GaussianProcess, StateSpace, IntermittentDemand |
 | Simulator (5) | IoTSensor, EnergyLoad, DailyActiveUsers, VitalSigns, Clickstream |
-| Procedural (3) | TSI, TCM, KernelSynth (KernelSynth follows the published Chronos recipe) |
+| Procedural (4) | TSI, TCM, KernelSynth (published Chronos recipe), MAR (GRATIS recipe) |
 
-A note on `SynAugment`: augmented series match the source series' mean,
-standard deviation, and lag-1 autocorrelation **by construction** — a
-rescaling step pins them — so those matches are a property of the method,
-never evidence of fit quality. Distribution shape, higher-order dependence,
-and dynamics beyond lag 1 are not guaranteed.
+A note on `SynAugment`: fit-and-simulate outputs match the source series' mean,
+standard deviation, and lag-1 autocorrelation **by construction** through a
+rescaling step, so those matches are a property of that method, never evidence
+of fit quality. `mbb` and `dba` deliberately bypass this moment-pinning path:
+MBB rebuilds the source decomposition with resampled remainder blocks, while
+DBA's default maps a z-normalized barycenter back to the reference scale.
+Distribution shape and higher-order dependence are not guaranteed.
+
+---
+
+## Non-parametric Augmentation Methods
+
+### SynAugment.mbb
+
+`mbb` applies a moving block bootstrap to a classical-decomposition remainder,
+then restores the source trend and seasonal components. It follows Bergmeir,
+Hyndman, and Benitez (2016,
+[doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002))
+and Bandara et al. (2021,
+[arXiv:2008.02663](https://arxiv.org/abs/2008.02663)). The decomposition,
+defaults, block sizing, and guards are SynForecast's own design rather than a
+reproduction of the reference code. MBB bypasses moment pinning because its
+reconstructed source components already anchor each generated series and
+re-pinning would distort bootstrap-remainder variability.
+
+```python
+from synforecast import SynAugment
+
+augmented = SynAugment(seed=42).mbb(
+    train_df,
+    n_augment=2,
+    seasonal_period=24,
+    block_size=12,
+)
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_augment` | `1` | Synthetic copies generated for every input series |
+| `seasonal_period` | `None` | Fixed period; `None` enables period detection |
+| `block_size` | `None` | Requested remainder-block length; capped per series |
+| `include_original` | `True` | Include the input rows in the result |
+
+Series without a finite target or with fewer than four observations are
+skipped with a logged warning; at least one series must be usable. Missing
+targets are interpolated before decomposition. Non-target columns are copied
+from the source series.
+Infinite targets reject the call with the source ID. An explicit seasonal
+period needs two cycles per source; shorter sources use nonseasonal
+decomposition and are listed in a warning.
+The moving-average trend takes linear time, and decomposition is reused across
+all requested copies of a source.
+
+### SynAugment.dba
+
+`dba` uses panel-wide DTW nearest neighbours and weighted DTW barycenter
+averaging, based on Petitjean, Ketterlin, and Gancarski (2011,
+[doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)),
+Forestier et al. (2017,
+[doi:10.1109/ICDM.2017.106](https://doi.org/10.1109/ICDM.2017.106)), and Bandara
+et al. (2021, [arXiv:2008.02663](https://arxiv.org/abs/2008.02663)). Its
+neighbour weighting, randomization, banded DTW, and normalized alignment are
+SynForecast's own design rather than a reproduction of the reference code.
+DBA bypasses moment pinning: `scale="reference"` explicitly maps the normalized
+barycenter back to the reference scale, while `scale="none"` averages raw
+values.
+
+```python
+augmented = SynAugment(seed=42).dba(
+    train_df,
+    n_augment=2,
+    n_neighbors=3,
+    n_iterations=5,
+    window_fraction=0.1,
+    scale="reference",
+)
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_augment` | `1` | Synthetic copies generated around every usable reference |
+| `n_neighbors` | `3` | Nearest panel series included in each barycenter |
+| `n_iterations` | `5` | DBA refinement iterations, from 1 to 1000 |
+| `window_fraction` | `0.1` | DTW band width as a fraction of the longest series |
+| `scale` | `"reference"` | Reference normalization or raw-value averaging (`"none"`) |
+| `include_original` | `True` | Include the input rows in the result |
+
+DBA requires at least two usable series. Synthetic rows retain the reference
+timestamps and non-target columns. DTW and barycenter updates execute in native
+Rust. Reference scaling keeps constant sources constant; near-zero-scale
+references are listed in a warning because copies may add little variation.
+
+DBA evaluates each pair once in bounded chunks and retains only the requested
+nearest neighbors, using O(number of series × `n_neighbors`) neighbor storage.
+Pairwise distance computation still grows quadratically with the series count.
+Copies share their first alignment paths and refine in parallel. DTW parent
+storage, cached paths per copy, and batched output each have a 64 MiB limit;
+oversized requests raise `ValueError`. Python interrupts are checked between
+work chunks. Panel methods sort and partition once instead of filtering the
+whole frame for each source.
 
 ---
 
@@ -565,7 +660,7 @@ Designed for diverse pretraining corpora: each series samples a fresh random
 configuration, so a pool spans
 trend-only, pure-seasonal, causally-structured, and noise-dominated regimes.
 
-The `pretraining_pool()` preset collects these three meta-generators (plus the
+The `pretraining_pool()` preset collects these four meta-generators (plus the
 interpretable `balanced_pool` by default) into a breadth-maximizing corpus:
 
 ```python
@@ -637,6 +732,63 @@ bounded retries, divergence guards, and optional standardization.
 | `include_constant` | `True` | Include a constant kernel in the bank |
 | `standardize` | `True` | Standardize each series to zero mean, unit variance |
 
+### MARGenerator
+
+Samples a fresh mixture of stationary autoregressive components for every
+series. The mixture autoregressive model is due to Wong and Li (2000); the
+breadth-oriented sampling recipe follows GRATIS (Kang, Hyndman, and Li 2020).
+Component orders, mixture weights, intercepts, innovation scales, and optional
+seasonal AR factors vary between draws. SynForecast's PACF-based sampler and
+stability guards are its own design rather than a reproduction of the `gratis`
+R package. **Applications**: broad foundation-model pretraining.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_components` | `3` | Maximum number of mixture components (1-64) |
+| `max_ar_order` | `5` | Maximum non-seasonal AR order (1-100) |
+| `seasonal_period` | `None` | Optional multiplicative seasonal AR period (random mode only) |
+| `weights_concentration` | `1.0` | Symmetric Dirichlet concentration |
+| `intercept_scale` | `1.0` | Component-intercept sampling scale |
+| `noise_scale_range` | `(0.1, 2.0)` | Log-uniform innovation-scale range |
+| `burn_in` | `100` | Number of discarded simulation steps (0-1,000,000) |
+| `standardize` | `True` | Standardize each accepted series |
+| `weights` | `None` | Fixed positive component weights |
+| `ar_coefficients` | `None` | Fixed stationary AR coefficients by component; the mixture must also be second-order stationary |
+| `intercepts` | `None` | Fixed component intercepts |
+| `noise_scales` | `None` | Fixed positive innovation scales |
+
+`MARGenerator.tune_to_features` selects fixed parameters by seeded evolutionary
+search over the minimal GRATIS-style feature set. The search stops early once
+the best L2 feature distance is at or below `tolerance` (default `0.05`), so
+the `n_generations * population_size * n_draws_per_candidate` budget is an upper
+bound. In fixed mode, a configuration that fails the finite, bounded,
+non-constant output guards raises `ValueError` rather than substituting noise.
+Fixed mixtures use a numerical second-order stationarity check through effective
+AR order 32 (trailing zeros do not count), using NumPy only. Covariance powers
+can certify stability when the absolute row-sum bound of `T^n(I)` falls below
+one, or instability when its smallest eigenvalue exceeds one. Inconclusive
+checks and small models use NumPy's dense eigensolver on symmetric covariance
+coordinates (at most 528 × 528), avoiding periodic power-iteration ambiguity.
+Solver failures and nonfinite eigenvalues raise an error. The dense fallback
+costs more for unresolved models but adds no runtime dependency. Bounded caches reuse
+validation results for repeated candidates. Above 32, identical stable components
+or components whose absolute AR coefficients each sum to less than one are
+accepted. Other large mixtures raise a "could not verify" error; these sufficient
+conditions can reject valid mixtures. Feature search treats them as invalid
+candidates, so high-period searches may have fewer feasible candidates.
+The reported `tuning_diagnostics.best_distance` measures training draws; fresh
+draws can be farther from the target. An equal-budget random-search comparison
+is available in `benchmarks/benchmark_mar_targeting.py`; validation coverage is
+summarized in [tests/README.md](tests/README.md).
+Candidate simulations and feature computation run together in native Rust,
+parallelized with `n_jobs` (`-1` for the default pool). A failed candidate does
+not abort the population. Search lengths are limited to 1,000,000 observations.
+The returned generator retains `engine`, column names, `alias`, `start_datetime`,
+`standardize`, `burn_in`, and innovation options passed to `tune_to_features`.
+Simulation options also apply while scoring candidates. Pattern injection and
+search-owned parameter options are not accepted. Native search changes the
+seeded stream used by the former Python search; worker counts do not change it.
+
 ### Multivariatizer
 
 Not a generator: `synforecast.Multivariatizer` wraps any univariate
@@ -658,10 +810,12 @@ mv = Multivariatizer(
 df = mv.generate(n_series=4)
 ```
 
-TSI and TCM use the Rust batch path when the extension is available;
-KernelSynth is pure NumPy (it runs on the threaded fallback path). Reproduce
-performance measurements on your hardware with the scripts in `benchmarks/`;
-benchmark results are not API guarantees.
+TSI, TCM, and MAR use the Rust batch path for bulk `generate()` calls;
+KernelSynth runs through the threaded NumPy path. MAR feature computation and
+the MBB/DBA numeric kernels are also native. Rust and NumPy RNG streams provide
+seed determinism within their respective paths but are not bit-for-bit
+equivalent. Reproduce performance measurements on your hardware with the
+scripts in `benchmarks/`; benchmark results are not API guarantees.
 
 ---
 
@@ -700,6 +854,7 @@ benchmark results are not API guarantees.
 | TSI | Pretraining | Foundation models | Randomized trend/seasonal/irregular composition |
 | TCM | Pretraining | Foundation models | Random causal graphs, nonlinear lead-lag structure |
 | KernelSynth | Pretraining | Foundation models | GP samples from randomly composed kernels (Chronos recipe) |
+| MAR | Pretraining | Foundation models | Random mixtures of stationary AR components (GRATIS recipe), feature-targeted tuning |
 
 ---
 
@@ -731,9 +886,10 @@ directory for executable guides to each generator.
 
 ## References and attribution
 
-Unless noted otherwise, SynForecast implements the models and numerical methods
-independently. These are the primary sources for named models or algorithms;
-the KernelSynth entry explicitly identifies its reference implementation:
+These sources describe the mathematical basis of named models and algorithms.
+Implementation references and the limits of the source-provenance review are
+recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); citing an algorithm
+does not establish how its implementation was written.
 
 - Hyndman, Koehler, Ord, and Snyder (2008), *Forecasting with Exponential
   Smoothing: The State Space Approach*,
@@ -780,6 +936,50 @@ the KernelSynth entry explicitly identifies its reference implementation:
 - Ansari et al. (2025), “Chronos-2: From Univariate to Universal Forecasting,”
   [arXiv:2510.15821](https://arxiv.org/abs/2510.15821) (motivation for the
   cotemporaneous and sequential couplings in `Multivariatizer`).
+- Wong and Li (2000), “On a mixture autoregressive model,” Journal of the
+  Royal Statistical Society Series B 62(1),
+  [doi:10.1111/1467-9868.00222](https://doi.org/10.1111/1467-9868.00222)
+  (mixture autoregressive model and its second-order stationarity condition).
+- Kang, Hyndman, and Li (2020), “GRATIS: GeneRAting TIme Series with diverse
+  and controllable characteristics,”
+  [arXiv:1903.02787](https://arxiv.org/abs/1903.02787) (MAR simulation and
+  feature targeting). SynForecast's sampler and search are its own design,
+  not a reproduction of the `gratis` R package.
+- Durbin (1960), “The fitting of time-series models,”
+  [doi:10.2307/1401322](https://doi.org/10.2307/1401322)
+  (Levinson-Durbin recursion). The PACF-to-AR direction is also documented in
+  [statsmodels' inverse recursion API](https://www.statsmodels.org/stable/generated/statsmodels.tsa.stattools.levinson_durbin_pacf.html).
+  MAR's seasonal factor multiplies the nonseasonal and seasonal AR polynomials.
+- Wang, Smith, and Hyndman (2006), “Characteristic-based clustering for time
+  series data,” Data Mining and Knowledge Discovery 13(3), 335–364,
+  [author's paper](https://robjhyndman.com/papers/DMKD.pdf) (feature-based
+  characterization). The exact trend/seasonal strength ratios used here are
+  described in Hyndman and Athanasopoulos, *Forecasting: Principles and
+  Practice*, [STL features](https://otexts.com/fpp3/stlfeatures.html).
+  SynForecast uses [classical decomposition](https://otexts.com/fpp3/classical-decomposition.html)
+  with endpoint extension, not STL. Spectral entropy uses the demeaned,
+  unpadded one-sided periodogram, excludes DC, and normalizes Shannon entropy
+  by the log of the number of retained bins; this differs from smoothed-spectrum
+  estimators in other feature packages.
+- Bluestein (1968), “A linear filtering approach to the computation of the
+  discrete Fourier transform,” NEREM Record 10, 218–219 (arbitrary-length FFT),
+  also referenced in [SciPy's CZT documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.CZT.html).
+  Real half-spectrum transforms use the linked RealFFT dependency; see the
+  bundled Rust notices.
+- Bergmeir, Hyndman, and Benitez (2016), “Bagging exponential smoothing
+  methods using STL decomposition and Box-Cox transformation,”
+  [doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002),
+  and Bandara, Hewamalage, Liu, Kang, and Bergmeir (2021),
+  [arXiv:2008.02663](https://arxiv.org/abs/2008.02663) (MBB and DBA
+  augmentation).
+- Petitjean, Ketterlin, and Gancarski (2011), “A global averaging method for
+  dynamic time warping, with applications to clustering,”
+  [doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)
+  (DBA).
+- Forestier, Petitjean, Dau, Webb, and Keogh (2017), “Generating synthetic time
+  series to augment sparse datasets,”
+  [doi:10.1109/ICDM.2017.106](https://doi.org/10.1109/ICDM.2017.106)
+  (weighted-DBA augmentation).
 - Wichura (1988), “Algorithm AS 241: The Percentage Points of the Normal
   Distribution,” [doi:10.2307/2347330](https://doi.org/10.2307/2347330)
   (inverse-normal approximation in `_distributions.py`).

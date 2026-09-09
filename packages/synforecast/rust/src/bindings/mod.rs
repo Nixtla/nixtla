@@ -1,3 +1,4 @@
+pub mod augmentation;
 pub mod batch;
 pub mod distributions;
 pub mod domain;
