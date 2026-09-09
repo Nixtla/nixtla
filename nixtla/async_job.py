@@ -102,8 +102,8 @@ class AsyncJobCancelledError(Exception):
 
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, `submit_cross_validation_job`, or
-    `submit_execute_step_job`.
+    `submit_finetune_job`, `submit_cross_validation_job`,
+    `submit_anomaly_detection_job`, or `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
