@@ -1,80 +1,88 @@
 #pragma once
 
+#include <cassert>
+#include <span>
+#include <vector>
+
 #include "rolling.h"
 #include "stats.h"
 
+// The expanding statistics are the rolling ones with the whole group as the
+// window; that Window is built here from a group the driver already checked,
+// so it does not go through Window::Checked.
 namespace expanding {
+// agg is empty or has one element: the number of values the last mean was
+// taken over
 template <typename T>
-inline void MeanTransform(const T *data, int n, T *out, T *agg,
-                          bool skipna = false) {
+inline void MeanTransform(std::span<const T> data, std::span<T> out,
+                          std::span<T> agg, bool skipna = false) {
+  const index_t n = std::ssize(data);
   if (!skipna) {
-    // Fast path: original implementation
     T accum = static_cast<T>(0.0);
-    for (int i = 0; i < n; ++i) {
+    for (index_t i = 0; i < n; ++i) {
       accum += data[i];
       out[i] = accum / (i + 1);
     }
-    *agg = static_cast<T>(n);
-  } else {
-    // NaN-aware implementation
-    T accum = 0.0;
-    int valid_count = 0;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        accum += data[i];
-        valid_count++;
-      }
-      if (valid_count == 0) {
-        out[i] = std::numeric_limits<T>::quiet_NaN();
-      } else {
-        out[i] = accum / valid_count;
-      }
+    if (!agg.empty()) {
+      agg[0] = static_cast<T>(n);
     }
-    *agg = static_cast<T>(valid_count);
+    return;
+  }
+  T accum = 0.0;
+  index_t valid_count = 0;
+  for (index_t i = 0; i < n; ++i) {
+    if (!std::isnan(data[i])) {
+      accum += data[i];
+      valid_count++;
+    }
+    out[i] = valid_count == 0 ? kNaN<T> : accum / valid_count;
+  }
+  if (!agg.empty()) {
+    agg[0] = static_cast<T>(valid_count);
   }
 }
 
+// agg has three elements, see rolling::StdTransformWithStats
 template <typename T>
-inline void StdTransform(const T *data, int n, T *out, T *agg,
+inline void StdTransform(std::span<const T> data, std::span<T> out,
+                         std::span<T> agg, bool skipna = false) {
+  rolling::StdTransformWithStats(data, out, agg,
+                                 Window{std::ssize(data), 2, skipna});
+}
+
+template <typename T>
+inline void MinTransform(std::span<const T> data, std::span<T> out,
                          bool skipna = false) {
-  rolling::StdTransformWithStats(data, n, out, agg, true, n, 2, skipna);
+  rolling::MinTransform<T>(data, out, Window{std::ssize(data), 1, skipna});
 }
 
 template <typename T>
-inline void MinTransform(const T *data, int n, T *out, bool skipna = false) {
-  rolling::MinTransform<T>(data, n, out, n, 1, skipna);
+inline void MaxTransform(std::span<const T> data, std::span<T> out,
+                         bool skipna = false) {
+  rolling::MaxTransform<T>(data, out, Window{std::ssize(data), 1, skipna});
 }
 
 template <typename T>
-inline void MaxTransform(const T *data, int n, T *out, bool skipna = false) {
-  rolling::MaxTransform<T>(data, n, out, n, 1, skipna);
-};
-
-template <typename T>
-inline void QuantileTransform(const T *data, int n, T *out, T p,
+inline void QuantileTransform(std::span<const T> data, std::span<T> out, T p,
                               bool skipna = false) {
-  rolling::QuantileTransform(data, n, out, n, 1, p, skipna);
+  rolling::QuantileTransform(data, out, Window{std::ssize(data), 1, skipna}, p);
 }
 
 template <typename T>
-inline void QuantileUpdate(const T *data, int n, T *out, T p,
+inline void QuantileUpdate(std::span<const T> data, std::span<T> out, T p,
                            bool skipna = false) {
-  rolling::RequireProbability("p", p);
+  assert(p >= 0 && p <= 1);
+  std::vector<T> buffer;
   if (!skipna) {
-    std::vector<T> buffer(data, data + n);
-    *out = stats::Quantile(buffer.begin(), buffer.end(), p);
+    buffer.assign(data.begin(), data.end());
   } else {
-    std::vector<T> valid_data;
-    for (int i = 0; i < n; ++i) {
-      if (!std::isnan(data[i])) {
-        valid_data.push_back(data[i]);
-      }
-    }
-    if (valid_data.empty()) {
-      *out = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      *out = stats::Quantile(valid_data.begin(), valid_data.end(), p);
+    std::copy_if(data.begin(), data.end(), std::back_inserter(buffer),
+                 [](T x) { return !std::isnan(x); });
+    if (buffer.empty()) {
+      out[0] = kNaN<T>;
+      return;
     }
   }
+  out[0] = stats::Quantile(std::span<T>{buffer}, p);
 }
 } // namespace expanding

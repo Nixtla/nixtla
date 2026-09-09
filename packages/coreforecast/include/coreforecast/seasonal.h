@@ -3,27 +3,32 @@
 #include "common.h"
 #include "stl.hpp"
 
-#include <Eigen/Dense>
-
+#include <algorithm>
 #include <cmath>
+#include <span>
+#include <vector>
+
+#include "stats.h"
 
 namespace seasonal {
-template <typename T> void Difference(const T *data, int n, T *out, int d) {
+template <typename T>
+void Difference(std::span<const T> data, std::span<T> out, index_t d) {
+  const index_t n = std::ssize(data);
   if (d == 0) {
-    std::copy(data, data + n, out);
+    std::copy(data.begin(), data.end(), out.begin());
     return;
   }
   if (n < d) {
-    std::fill(out, out + n, std::numeric_limits<T>::quiet_NaN());
+    FillNaN(out);
     return;
   }
-  std::fill(out, out + d, std::numeric_limits<T>::quiet_NaN());
-  for (int i = d; i < n; ++i) {
+  FillNaN(out.first(d));
+  for (index_t i = d; i < n; ++i) {
     out[i] = data[i] - data[i - d];
   }
 }
 
-template <typename T> T SeasHeuristic(const T *x, size_t n, size_t period) {
+template <typename T> T SeasHeuristic(std::span<const T> x, index_t period) {
   constexpr size_t seasonal = 11;
   size_t trend_length =
       static_cast<size_t>(std::ceil(1.5 * period / (1.0 - 1.5 / seasonal)));
@@ -42,29 +47,32 @@ template <typename T> T SeasHeuristic(const T *x, size_t n, size_t period) {
                                .inner_loops(5)
                                .outer_loops(0)
                                .robust(false)
-                               .fit(x, n, period);
+                               .fit(x.data(), x.size(), period);
   return stl_fit.seasonal_strength();
 }
 
+// The lag in [2, max_lag] with the largest autocovariance of the first
+// differences, or 0 when there is nothing to work with. out has one element.
 template <typename T>
-void GreatestAutocovariance(const T *x, size_t n, T *out, size_t max_lag) {
-  Eigen::VectorX<T> resids(n);
-  Difference(x, n, resids.data(), 1);
-  indptr_t start = FirstNotNaN(resids.data(), n);
-  if (static_cast<size_t>(start) == n) {
-    *out = T{0};
+void GreatestAutocovariance(std::span<const T> x, std::span<T> out,
+                            index_t max_lag) {
+  std::vector<T> diffs(x.size());
+  Difference(x, std::span<T>{diffs}, 1);
+  const std::span<const T> all{diffs};
+  const std::span<const T> resids = all.subspan(FirstNotNaN(all));
+  const index_t n = std::ssize(resids);
+  if (n == 0) {
+    out[0] = T{0};
     return;
   }
-  n -= static_cast<size_t>(start);
-  resids = resids.tail(n).eval();
   max_lag = std::min(max_lag, n - 1);
-  std::pair<T, size_t> result{-std::numeric_limits<T>::infinity(), 0};
-  for (size_t i = 2; i < max_lag + 1; ++i) {
-    T cov = resids.head(n - i).dot(resids.tail(n - i));
+  std::pair<T, index_t> result{-std::numeric_limits<T>::infinity(), 0};
+  for (index_t i = 2; i < max_lag + 1; ++i) {
+    const T cov = stats::Dot(resids.first(n - i), resids.subspan(i));
     if (cov > result.first) {
       result = {cov, i};
     }
   }
-  *out = static_cast<T>(result.second);
+  out[0] = static_cast<T>(result.second);
 }
 } // namespace seasonal

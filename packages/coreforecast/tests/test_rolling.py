@@ -12,10 +12,10 @@ other_ops = [op for op in cf_rolling.__all__ if op not in quantile_ops]
 @pytest.mark.parametrize("op", other_ops)
 @pytest.mark.parametrize("min_samples", [None, 5])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_rolling(op, min_samples, dtype):
+def test_rolling(op, min_samples, dtype, rng):
     window_size = 10
     season_length = 4
-    x = np.random.rand(100).astype(dtype)
+    x = rng.random(100).astype(dtype)
     serie = pd.Series(x)
     if op.startswith("seasonal"):
         args = (season_length, window_size, min_samples)
@@ -36,11 +36,11 @@ def test_rolling(op, min_samples, dtype):
             n = season_length * (min_samples - 1)
         else:
             n = min_samples - 1
-        x2 = np.random.rand(n)
+        x2 = rng.random(n)
         res2 = getattr(cf_rolling, op)(x2, *args)
         np.testing.assert_array_equal(res2, np.full_like(x2, np.nan))
 
-        x3 = np.random.rand(n + 1)
+        x3 = rng.random(n + 1)
         res3 = getattr(cf_rolling, op)(x3, *args)
         assert np.sum(~np.isnan(res3)) == 1
 

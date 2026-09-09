@@ -85,13 +85,17 @@ def test_num_threads_is_mutable_at_runtime(grouped):
 
 
 class TestIndptrValidation:
-    def test_rejects_values_beyond_the_32_bit_range(self):
-        with pytest.raises(ValueError, match="32-bit"):
-            GroupedArray(np.zeros(3), np.array([0, 1, 2**31 + 5], dtype=np.int64))
+    def test_stores_indptr_as_int64(self):
+        # widened from int32 so an array is no longer capped at 2**31 elements;
+        # int64 rather than unsigned so arithmetic with numpy's default int
+        # stays integral instead of promoting to float64
+        ga = GroupedArray(np.zeros(3), np.array([0, 1, 3], dtype=np.int32))
+        assert np.asarray(ga.indptr).dtype == np.int64
 
-    def test_rejects_a_value_that_would_wrap_onto_the_data_size(self):
-        # 2**32 + 3 truncates to exactly 3, so the size check alone would pass it
-        with pytest.raises(ValueError, match="32-bit"):
+    def test_rejects_a_large_mismatched_last_element(self):
+        # used to be caught by the int32 range check; now it is just an offset
+        # that doesn't match the data
+        with pytest.raises(ValueError, match="Last element"):
             GroupedArray(np.zeros(3), np.array([0, 1, 2**32 + 3], dtype=np.int64))
 
     def test_rejects_a_mismatched_last_element(self):
@@ -101,14 +105,13 @@ class TestIndptrValidation:
     @pytest.mark.parametrize(
         "indptr,match",
         [
-            ([0, 2**31 + 100, 3], "32-bit"),  # wraps to a large negative offset
-            ([0, 2**32, 3], "32-bit"),  # wraps to zero
+            ([0, 2**31 + 100, 3], "non-decreasing"),  # beyond the last entry
             ([0, -1, 3], "non-negative"),  # negative outright
         ],
     )
     def test_rejects_out_of_range_intermediate_entries(self, indptr, match):
         # every entry is an offset into data, so checking only the last one
-        # leaves the rest free to wrap during the int32 cast
+        # leaves the rest free to point past it
         with pytest.raises(ValueError, match=match):
             GroupedArray(np.zeros(3), np.array(indptr, dtype=np.int64))
 
@@ -176,7 +179,7 @@ class TestIndptrValidation:
     def test_typed_constructors_validate_too(self, cls):
         # these are module attributes, so they must not bypass the checks the
         # GroupedArray factory applies
-        with pytest.raises(ValueError, match="32-bit"):
+        with pytest.raises(ValueError, match="Last element"):
             cls(np.zeros(3), np.array([0, 1, 2**31 + 5], dtype=np.int64), 1)
         with pytest.raises(ValueError, match="non-decreasing"):
             cls(np.zeros(6), np.array([0, 5, 2, 6], dtype=np.int64), 1)

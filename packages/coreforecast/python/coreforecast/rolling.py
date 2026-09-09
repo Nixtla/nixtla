@@ -169,7 +169,7 @@ def rolling_quantile(
     """
     if min_samples is None:
         min_samples = window_size
-    return _rolling.rolling_quantile(x, window_size, min_samples, p, skipna)
+    return _rolling.rolling_quantile(x, p, window_size, min_samples, skipna)
 
 
 @_seasonal_rolling_docstring
@@ -256,5 +256,5 @@ def seasonal_rolling_quantile(
     if min_samples is None:
         min_samples = window_size
     return _rolling.seasonal_rolling_quantile(
-        x, season_length, window_size, min_samples, p, skipna
+        x, p, season_length, window_size, min_samples, skipna
     )

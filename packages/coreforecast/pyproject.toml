@@ -29,6 +29,8 @@ dev = [
     "pip-licenses",
     "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git",
     "pytest-codspeed",
+    # for configuring the C++ tests (COREFORECAST_BUILD_TESTS) outside a wheel build
+    "pybind11",
 ]
 
 [project.urls]
@@ -44,7 +46,8 @@ build-backend = "scikit_build_core.build"
 build-dir = "build"
 build.verbose = true
 logging.level = "INFO"
-sdist.exclude = ["docs", "tests", "*.yml"]
+# doctest only serves tests/cpp, which is excluded too
+sdist.exclude = ["docs", "tests", "*.yml", "external_libs/doctest"]
 sdist.reproducible = true
 wheel.exclude = ["Release"]
 wheel.expand-macos-universal-tags = true

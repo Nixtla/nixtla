@@ -1,33 +1,36 @@
 #pragma once
 
 #include <algorithm>
+#include <span>
+
+#include "common.h"
 
 namespace grouped_array_functions {
 template <typename T>
-inline void IndexFromEnd(const T *data, int n, T *out, int k) {
-  if (k >= n) {
-    *out = std::numeric_limits<T>::quiet_NaN();
-  } else {
-    *out = data[n - 1 - k];
-  }
+inline void IndexFromEnd(std::span<const T> data, std::span<T> out, index_t k) {
+  const index_t n = std::ssize(data);
+  out[0] = k >= n ? kNaN<T> : data[n - 1 - k];
 }
 
-template <typename T> inline void Head(const T *data, int n, T *out, int k) {
-  int m = std::min(k, n);
-  std::copy(data, data + m, out);
-  std::fill(out + m, out + k, std::numeric_limits<T>::quiet_NaN());
-}
-
-template <typename T> inline void Tail(const T *data, int n, T *out, int k) {
-  int m = std::min(k, n);
-  std::fill(out, out + k - m, std::numeric_limits<T>::quiet_NaN());
-  std::copy(data + n - m, data + n, out + k - m);
+// out has k elements; the ones data can't fill are NaN
+template <typename T>
+inline void Head(std::span<const T> data, std::span<T> out, index_t k) {
+  const index_t m = std::min<index_t>(k, std::ssize(data));
+  std::copy_n(data.begin(), m, out.begin());
+  FillNaN(out.subspan(m));
 }
 
 template <typename T>
-inline void Append(const T *data, int n, const T *other_data, int other_n,
-                   T *out) {
-  std::copy(data, data + n, out);
-  std::copy(other_data, other_data + other_n, out + n);
+inline void Tail(std::span<const T> data, std::span<T> out, index_t k) {
+  const index_t m = std::min<index_t>(k, std::ssize(data));
+  FillNaN(out.first(k - m));
+  std::copy_n(data.end() - m, m, out.begin() + (k - m));
+}
+
+template <typename T>
+inline void Append(std::span<const T> data, std::span<const T> other,
+                   std::span<T> out) {
+  std::copy(data.begin(), data.end(), out.begin());
+  std::copy(other.begin(), other.end(), out.begin() + std::ssize(data));
 }
 } // namespace grouped_array_functions

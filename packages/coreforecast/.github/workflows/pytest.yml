@@ -129,6 +129,61 @@ jobs:
           LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)" \
             uv run --no-sync pytest tests -k "not efficiency"
 
+  cpp_tests:
+    name: Run the C++ kernel tests under the sanitizers on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # gcc + libstdc++ on Ubuntu, AppleClang + libc++ on macOS: the two
+      # differ on what they constant-fold, so a narrowing that gcc accepts
+      # in a braced initializer is an error under clang
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # only for pybind11's cmake config: find_package is unconditional even
+      # though the tests link nothing Python-side
+      - name: Install dependencies
+        run: uv sync --group dev --no-install-project
+
+      # Debug with the assertions on is the point: a kernel indexing past a
+      # span fails here, before any wheel is built. -Werror too, since this is
+      # the only place the test sources are compiled. _GLIBCXX_ASSERTIONS is
+      # libstdc++'s switch and _LIBCPP_HARDENING_MODE libc++'s; each ignores
+      # the other's. --no-sync so uv doesn't build and install the wheel just
+      # to print a path.
+      - name: Configure and build
+        run: |
+          cmake -S . -B build/cpp \
+            -DCOREFORECAST_BUILD_TESTS=ON \
+            -DCOREFORECAST_WERROR=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG" \
+            -Dpybind11_DIR="$(uv run --no-sync python -m pybind11 --cmakedir)"
+          cmake --build build/cpp --target kernel_tests --parallel
+
+      - name: Run
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build/cpp --output-on-failure
+
   run_benchmarks:
     runs-on: ubuntu-22.04
     steps:

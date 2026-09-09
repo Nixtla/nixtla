@@ -1,6 +1,7 @@
 import numpy as np
 
-_indptr_dtype = np.int32
+# what GroupedArray stores; any integer input is widened to it
+_indptr_dtype = np.int64
 
 
 def _diffs_to_indptr(diffs: np.ndarray) -> np.ndarray:

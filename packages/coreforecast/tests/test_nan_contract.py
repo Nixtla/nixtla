@@ -166,6 +166,34 @@ def test_zero_season_length_is_rejected():
 @pytest.mark.parametrize(
     "call",
     [
+        lambda: rolling_mean(np.array([np.nan, np.nan]), 0, 1),
+        lambda: rolling_quantile(np.array([np.nan]), 2.0, 3, 1),
+        lambda: seasonal_rolling_max(np.array([np.nan]), 0, 2, 1),
+        lambda: GroupedArray(np.array([]), [0])._rolling_mean(0, 0, 1),
+        lambda: GroupedArray(np.array([]), [0])._rolling_std_update(1, 3, 0),
+        lambda: GroupedArray(np.array([]), [0])._seasonal_rolling_min(0, 0, 2, 1),
+        lambda: GroupedArray(np.array([]), [0])._boxcox_guerrero(0, -1.0, 2.0),
+    ],
+    ids=[
+        "all_nan_window",
+        "all_nan_p",
+        "all_nan_season",
+        "empty_ga_window",
+        "empty_ga_min_samples",
+        "empty_ga_season",
+        "empty_ga_guerrero",
+    ],
+)
+def test_arguments_are_validated_before_any_group_runs(call):
+    # the checks used to live in the kernels, so input that never reached one
+    # (nothing but NaN, or no groups at all) accepted anything
+    with pytest.raises(ValueError, match="must be"):
+        call()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
         lambda ga, lag: ga._lag(lag),
         lambda ga, lag: ga._rolling_mean(lag, 2, 1),
         lambda ga, lag: ga._rolling_mean_update(lag, 2, 1),

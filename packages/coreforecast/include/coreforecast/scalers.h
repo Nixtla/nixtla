@@ -4,14 +4,14 @@
 #include "common.h"
 #include "stats.h"
 
-#include <Eigen/Dense>
-
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <iterator>
 #include <limits>
 #include <numeric>
 #include <ranges>
+#include <span>
 #include <vector>
 
 namespace scalers {
@@ -26,71 +26,70 @@ inline T CommonScalerInverseTransform(T data, T offset, T scale) {
 }
 
 // Applies stats_fn to the data, or to a NaN-free copy of it when skipna is set,
-// writing NaN stats when nothing valid remains.
+// writing NaN stats when nothing valid remains. stats has two elements.
 template <typename T, typename Fn>
-inline void WithSkipNA(const T *data, int n, T *stats, bool skipna,
+inline void WithSkipNA(std::span<const T> data, std::span<T> stats, bool skipna,
                        Fn stats_fn) {
   if (!skipna) {
-    stats_fn(data, n, stats);
+    stats_fn(data, stats);
     return;
   }
   std::vector<T> valid;
-  valid.reserve(n);
-  std::copy_if(data, data + n, std::back_inserter(valid),
+  valid.reserve(data.size());
+  std::copy_if(data.begin(), data.end(), std::back_inserter(valid),
                [](T x) { return !std::isnan(x); });
   if (valid.empty()) {
-    stats[0] = std::numeric_limits<T>::quiet_NaN();
-    stats[1] = std::numeric_limits<T>::quiet_NaN();
+    FillNaN(stats);
     return;
   }
-  stats_fn(valid.data(), static_cast<int>(valid.size()), stats);
+  stats_fn(std::span<const T>{valid}, stats);
 }
 
 template <typename T>
-inline void MinMaxScalerStats(const T *data, int n, T *stats,
+inline void MinMaxScalerStats(std::span<const T> data, std::span<T> stats,
                               bool skipna = false) {
-  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
-    auto [min, max] = std::ranges::minmax(std::ranges::subrange(d, d + m));
+  WithSkipNA(data, stats, skipna, [](std::span<const T> d, std::span<T> s) {
+    auto [min, max] = std::ranges::minmax(d);
     s[0] = min;
     s[1] = max - min;
   });
 }
 
 template <typename T>
-inline void StandardScalerStats(const T *data, int n, T *stats,
+inline void StandardScalerStats(std::span<const T> data, std::span<T> stats,
                                 bool skipna = false) {
-  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
-    const Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> v(d, m);
-    auto double_v = v.template cast<double>().array();
-    double mean = double_v.mean();
-    double std = std::sqrt((double_v - mean).square().mean());
+  WithSkipNA(data, stats, skipna, [](std::span<const T> d, std::span<T> s) {
+    const double mean = stats::Mean(d);
+    const double var = stats::SquaredDeviations(d, mean) / d.size();
     s[0] = static_cast<T>(mean);
-    s[1] = static_cast<T>(std);
+    s[1] = static_cast<T>(std::sqrt(var));
   });
 }
 
 template <typename T>
-inline void RobustScalerIqrStats(const T *data, int n, T *stats,
+inline void RobustScalerIqrStats(std::span<const T> data, std::span<T> stats,
                                  bool skipna = false) {
-  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
-    std::vector<T> buffer(d, d + m);
-    const T q1 = stats::Quantile(buffer.begin(), buffer.end(), T{0.25});
-    const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
-    const T q3 = stats::Quantile(buffer.begin(), buffer.end(), T{0.75});
+  WithSkipNA(data, stats, skipna, [](std::span<const T> d, std::span<T> s) {
+    std::vector<T> buffer(d.begin(), d.end());
+    const std::span<T> b{buffer};
+    const T q1 = stats::Quantile(b, T{0.25});
+    const T median = stats::Quantile(b, T{0.5});
+    const T q3 = stats::Quantile(b, T{0.75});
     s[0] = median;
     s[1] = q3 - q1;
   });
 }
 
 template <typename T>
-inline void RobustScalerMadStats(const T *data, int n, T *stats,
+inline void RobustScalerMadStats(std::span<const T> data, std::span<T> stats,
                                  bool skipna = false) {
-  WithSkipNA(data, n, stats, skipna, [](const T *d, int m, T *s) {
-    std::vector<T> buffer(d, d + m);
-    const T median = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+  WithSkipNA(data, stats, skipna, [](std::span<const T> d, std::span<T> s) {
+    std::vector<T> buffer(d.begin(), d.end());
+    const std::span<T> b{buffer};
+    const T median = stats::Quantile(b, T{0.5});
     std::transform(buffer.begin(), buffer.end(), buffer.begin(),
                    [median](auto x) { return std::abs(x - median); });
-    const T mad = stats::Quantile(buffer.begin(), buffer.end(), T{0.5});
+    const T mad = stats::Quantile(b, T{0.5});
     s[0] = median;
     s[1] = mad;
   });
@@ -110,41 +109,40 @@ T BoxCox_GuerreroCV(T lambda, const std::vector<T> &x_mean,
   if (x_std.size() - start_idx < 2) {
     return std::numeric_limits<T>::max();
   }
-  const Eigen::Map<const Eigen::VectorX<T>> mean_vec(x_mean.data() + start_idx,
-                                                     x_mean.size() - start_idx);
-  const Eigen::Map<const Eigen::VectorX<T>> std_vec(x_std.data() + start_idx,
-                                                    x_std.size() - start_idx);
-  auto x_rat =
-      std_vec.array() / (mean_vec.array().log() * (1.0 - lambda)).exp();
-  double mean = x_rat.mean();
-  double var = (x_rat.array() - mean).square().sum() / (x_rat.size() - 1);
+  const size_t m = x_std.size() - start_idx;
+  std::vector<T> x_rat(m);
+  for (size_t i = 0; i < m; ++i) {
+    x_rat[i] = x_std[start_idx + i] /
+               std::exp(std::log(x_mean[start_idx + i]) * (1 - lambda));
+  }
+  const double mean = stats::Mean<T>(x_rat);
+  const double var = stats::SquaredDeviations<T>(x_rat, mean) / (m - 1);
   return static_cast<T>(std::sqrt(var) / mean);
 }
 
+// out has one element
 template <typename T>
-void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
-                          T upper) {
-  RequirePositive("season_length", period);
+void BoxCoxLambdaGuerrero(std::span<const T> x, std::span<T> out,
+                          index_t period, T lower, T upper) {
+  assert(period > 0);
+  const index_t n = std::ssize(x);
   if (n <= 2 * period) {
-    *out = T{1.0};
+    out[0] = T{1.0};
     return;
   }
-  for (int i = 0; i < n; ++i) {
-    if (x[i] <= 0.0) {
-      lower = std::max(lower, T{0.0});
-      break;
-    }
+  if (std::any_of(x.begin(), x.end(), [](T v) { return v <= 0.0; })) {
+    lower = std::max(lower, T{0.0});
   }
-  int n_seasons = n / period;
-  int n_full = n_seasons * period;
+  const index_t n_seasons = n / period;
+  const index_t n_full = n_seasons * period;
   // build matrix with subseries having full periods
   auto x_mat = std::vector<T>(n_seasons * period);
-  std::copy(x + n - n_full, x + n, x_mat.begin());
+  std::copy(x.end() - n_full, x.end(), x_mat.begin());
   // means of subseries
   auto x_mean = std::vector<T>(n_seasons, 0.0);
-  auto x_n = std::vector<int>(n_seasons, 0);
-  for (int i = 0; i < n_seasons; ++i) {
-    for (int j = 0; j < period; ++j) {
+  auto x_n = std::vector<index_t>(n_seasons, 0);
+  for (index_t i = 0; i < n_seasons; ++i) {
+    for (index_t j = 0; j < period; ++j) {
       if (std::isnan(x_mat[i * period + j])) {
         continue;
       }
@@ -152,19 +150,19 @@ void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
       x_n[i]++;
     }
     if (x_n[i] == 0) {
-      x_mean[i] = std::numeric_limits<T>::quiet_NaN();
+      x_mean[i] = kNaN<T>;
     } else {
       x_mean[i] /= x_n[i];
     }
   }
   // stds of subseries
   auto x_std = std::vector<T>(x_mean.size(), 0.0);
-  for (size_t i = 0; i < x_std.size(); ++i) {
+  for (index_t i = 0; i < std::ssize(x_std); ++i) {
     if (std::isnan(x_mean[i]) || x_n[i] < 2) {
-      x_std[i] = std::numeric_limits<T>::quiet_NaN();
+      x_std[i] = kNaN<T>;
       continue;
     }
-    for (int j = 0; j < period; ++j) {
+    for (index_t j = 0; j < period; ++j) {
       if (std::isnan(x_mat[i * period + j])) {
         continue;
       }
@@ -174,12 +172,12 @@ void BoxCoxLambdaGuerrero(const T *x, int n, T *out, int period, T lower,
     x_std[i] = std::sqrt(x_std[i] / (x_n[i] - 1));
   }
   T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
-  *out = Brent(BoxCox_GuerreroCV<T>, lower, upper, tol, x_mean, x_std);
+  out[0] = Brent(BoxCox_GuerreroCV<T>, lower, upper, tol, x_mean, x_std);
 }
 
 template <typename T> inline T BoxCoxTransform(T x, T lambda, T /*unused*/) {
   if (lambda < 0 && x < 0) {
-    return std::numeric_limits<T>::quiet_NaN();
+    return kNaN<T>;
   }
   if (std::abs(lambda) < 1e-19) {
     return std::log(x);
@@ -193,7 +191,7 @@ template <typename T> inline T BoxCoxTransform(T x, T lambda, T /*unused*/) {
 template <typename T>
 inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
   if (lambda < 0 && lambda * x + 1 < 0) {
-    return std::numeric_limits<T>::quiet_NaN();
+    return kNaN<T>;
   }
   if (lambda == 0) {
     return std::exp(x);
@@ -204,25 +202,33 @@ inline T BoxCoxInverseTransform(T x, T lambda, T /*unused*/) {
   return -std::exp(std::log(-lambda * x - 1) / lambda);
 }
 
-template <typename T> T BoxCoxLogLik(T lambda, const T *data, int n) {
-  const Eigen::Map<const Eigen::VectorX<T>> v(data, n);
-  const auto logdata = v.array().log().template cast<double>();
+template <typename T> T BoxCoxLogLik(T lambda, std::span<const T> data) {
+  const index_t n = std::ssize(data);
+  std::vector<double> logdata(n);
+  for (index_t i = 0; i < n; ++i) {
+    logdata[i] = std::log(static_cast<double>(data[i]));
+  }
+  const std::span<const double> logs{logdata};
   double var;
   if (lambda == 0.0) {
-    double mean = logdata.array().mean();
-    var = (logdata.array() - mean).square().mean();
+    var = stats::SquaredDeviations(logs, stats::Mean(logs)) / n;
   } else {
-    auto transformed = (v.array().log() * lambda).exp() / lambda;
-    double mean = transformed.mean();
-    var = (transformed - mean).square().mean();
+    std::vector<T> transformed(n);
+    for (index_t i = 0; i < n; ++i) {
+      transformed[i] = std::exp(std::log(data[i]) * lambda) / lambda;
+    }
+    const std::span<const T> tr{transformed};
+    var = stats::SquaredDeviations(tr, stats::Mean(tr)) / n;
   }
-  return -static_cast<T>((lambda - 1) * logdata.sum() -
+  return -static_cast<T>((lambda - 1) * stats::Sum(logs) -
                          n / 2.0 * std::log(var));
 }
 
+// out has one element
 template <typename T>
-void BoxCoxLambdaLogLik(const T *x, int n, T *out, T lower, T upper) {
+void BoxCoxLambdaLogLik(std::span<const T> x, std::span<T> out, T lower,
+                        T upper) {
   T tol = std::pow(std::numeric_limits<T>::epsilon(), 0.25);
-  *out = Brent(BoxCoxLogLik<T>, lower, upper, tol, x, n);
+  out[0] = Brent(BoxCoxLogLik<T>, lower, upper, tol, x);
 }
 } // namespace scalers

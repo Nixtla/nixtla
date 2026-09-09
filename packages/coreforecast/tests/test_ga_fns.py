@@ -1,6 +1,25 @@
 import numpy as np
 import pytest
+from coreforecast._lib import rolling as _rolling
+from coreforecast._lib.grouped_array import _GroupedArrayFloat32, _GroupedArrayFloat64
 from coreforecast.grouped_array import GroupedArray
+
+
+@pytest.mark.parametrize("stat", ["mean", "std", "min", "max", "quantile"])
+def test_every_rolling_statistic_is_fully_registered(stat):
+    # the rolling entry points are generated per statistic, so a statistic that
+    # is left out of the binder list would only surface as an AttributeError in
+    # whoever calls it
+    for cls in (_GroupedArrayFloat32, _GroupedArrayFloat64):
+        for name in (
+            f"_rolling_{stat}",
+            f"_rolling_{stat}_update",
+            f"_seasonal_rolling_{stat}",
+            f"_seasonal_rolling_{stat}_update",
+        ):
+            assert callable(getattr(cls, name)), name
+    assert callable(getattr(_rolling, f"rolling_{stat}"))
+    assert callable(getattr(_rolling, f"seasonal_rolling_{stat}"))
 
 
 @pytest.mark.parametrize("dtype", ["float32", "float64"])

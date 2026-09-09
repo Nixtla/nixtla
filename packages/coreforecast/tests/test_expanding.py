@@ -11,8 +11,8 @@ other_ops = [op for op in cf_expanding.__all__ if op not in quantile_ops]
 
 @pytest.mark.parametrize("op", other_ops)
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-def test_expanding(op, dtype):
-    x = np.random.rand(100).astype(dtype)
+def test_expanding(op, dtype, rng):
+    x = rng.random(100).astype(dtype)
     serie = pd.Series(x)
     cf_res = getattr(cf_expanding, op)(x)
     pd_res = getattr(serie.expanding(), op.replace("expanding_", ""))()
