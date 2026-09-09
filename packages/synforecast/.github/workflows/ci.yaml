@@ -49,6 +49,7 @@ jobs:
           tests/test_generate_series.py::test_returns_long_format
           tests/test_notebook_examples.py
           tests/test_mar_native_search.py
+          tests/test_presets.py
 
   all-tests:
     runs-on: ${{ matrix.os }}

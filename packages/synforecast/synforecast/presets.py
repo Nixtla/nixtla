@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import pandas as pd
+from pandas.tseries import offsets as _offsets
+
 from synforecast.base import BaseGenerator
 from synforecast.generators.bounded_process import BoundedProcessGenerator
 from synforecast.generators.chaotic_system import ChaoticSystemGenerator
@@ -27,12 +30,81 @@ from synforecast.generators.tcm import TCMGenerator
 from synforecast.generators.tsi import TSIGenerator
 from synforecast.generators.vital_signs import VitalSignsGenerator
 
+# Steps per unit of the next-larger calendar cycle for each pandas offset
+# family. Matching on offset classes rather than alias strings keeps the lookup
+# stable across pandas versions, whose rule codes differ ("H"/"h", "T"/"min",
+# "A-DEC"/"YE-DEC").
+_CYCLE_STEPS: list[tuple[tuple[type[_offsets.BaseOffset], ...], int]] = [
+    ((_offsets.Second,), 60),  # seconds per minute
+    ((_offsets.Minute,), 60),  # minutes per hour
+    ((_offsets.Hour,), 24),  # hours per day
+    ((_offsets.Day,), 7),  # days per week
+    ((_offsets.BusinessDay, _offsets.CustomBusinessDay), 5),  # per week
+    ((_offsets.Week,), 52),  # weeks per year
+    ((_offsets.SemiMonthEnd, _offsets.SemiMonthBegin), 24),  # per year
+    (
+        (
+            _offsets.MonthEnd,
+            _offsets.MonthBegin,
+            _offsets.BusinessMonthEnd,
+            _offsets.BusinessMonthBegin,
+            _offsets.CustomBusinessMonthEnd,
+            _offsets.CustomBusinessMonthBegin,
+        ),
+        12,  # months per year
+    ),
+    (
+        (
+            _offsets.QuarterEnd,
+            _offsets.QuarterBegin,
+            _offsets.BQuarterEnd,
+            _offsets.BQuarterBegin,
+        ),
+        4,  # quarters per year
+    ),
+    (
+        (_offsets.YearEnd, _offsets.YearBegin, _offsets.BYearEnd, _offsets.BYearBegin),
+        1,  # no sub-annual cycle
+    ),
+]
+
+_DEFAULT_SEASONAL_PERIOD = 12
+
+
+def _seasonal_period_from_freq(
+    freq: str | int, default: int = _DEFAULT_SEASONAL_PERIOD
+) -> int:
+    """Conventional seasonal period, in time steps, for a frequency.
+
+    The period is the number of steps in the next-larger calendar cycle:
+    seconds per minute, minutes per hour, hours per day, days per week, and
+    weeks, months or quarters per year. Multiples divide the unit period, so
+    ``"15min"`` gives 4, ``"2h"`` gives 12 and ``"3MS"`` gives 4. Yearly data
+    has no sub-annual cycle and gives 1.
+
+    Args:
+        freq: Pandas offset alias or integer step.
+        default: Period for integer frequencies and offsets without a calendar
+            convention (e.g. milliseconds, business hours).
+
+    Returns:
+        Seasonal period, at least 1.
+    """
+    if isinstance(freq, int):
+        return default
+    offset = pd.tseries.frequencies.to_offset(freq)
+    for classes, unit_period in _CYCLE_STEPS:
+        if isinstance(offset, classes):
+            return max(1, round(unit_period / offset.n))
+    return default
+
 
 def balanced_pool(
     min_length: int = 200,
     max_length: int = 200,
     freq: str | int = "D",
     seed: int | None = 42,
+    seasonal_period: int | None = None,
     **base_kwargs: Any,
 ) -> list[BaseGenerator]:
     """Create a balanced pool of generators covering diverse temporal behaviors.
@@ -66,12 +138,24 @@ def balanced_pool(
         - Bounded/proportion data (Bounded Process, 2 models)
         - Heavy-tailed processes (Levy Process, 2 stability levels)
 
+    The seasonal variants (seasonal SARIMA, Holt-Winters ETS, seasonal
+    intermittent demand and the periodic Gaussian process) share one seasonal
+    period. Unless ``seasonal_period`` is given it is derived from ``freq``
+    as the number of steps in the next-larger calendar cycle: hourly data
+    gets 24, daily 7, business-daily 5, weekly 52, monthly 12, quarterly 4,
+    and multiples divide accordingly (``"15min"`` gives 4, ``"2h"`` gives 12).
+    Integer frequencies and offsets without a calendar convention fall back
+    to 12. Yearly data has no sub-annual cycle, so its period is 1 and the
+    seasonal variants reduce to their non-seasonal counterparts.
+
     Args:
         min_length: Minimum time series length for all generators.
         max_length: Maximum time series length for all generators.
         freq: Frequency for all generators, as a pandas offset alias or integer.
         seed: Base random seed. Each generator gets seed + i for reproducibility.
             Set to None for random seeds.
+        seasonal_period: Seasonal period, in time steps, for the seasonal
+            variants. Defaults to None, which derives it from ``freq``.
         **base_kwargs: Additional keyword arguments passed to all generators
             (e.g., engine, id_col, time_col, target_col).
 
@@ -89,6 +173,13 @@ def balanced_pool(
         "freq": freq,
     }
     base.update(base_kwargs)
+
+    if seasonal_period is None:
+        season = _seasonal_period_from_freq(freq)
+    elif seasonal_period < 1:
+        raise ValueError(f"seasonal_period must be >= 1, got {seasonal_period}")
+    else:
+        season = seasonal_period
 
     def _seed(i: int) -> int | None:
         return seed + i if seed is not None else None
@@ -135,7 +226,7 @@ def balanced_pool(
                 P=1,
                 D=0,
                 Q=0,
-                seasonal_period=12,
+                seasonal_period=season,
             ),
             # Airline model — classic seasonal integrated
             SARIMAGenerator(
@@ -147,7 +238,7 @@ def balanced_pool(
                 P=0,
                 D=1,
                 Q=1,
-                seasonal_period=12,
+                seasonal_period=season,
             ),
             # Stationary ARMA(2,2) — complex short-range dynamics
             SARIMAGenerator(
@@ -188,6 +279,7 @@ def balanced_pool(
                 error_type="add",
                 trend_type="add",
                 seasonal_type="add",
+                seasonal_period=season,
             ),
             # Multiplicative Holt-Winters
             ETSGenerator(
@@ -196,6 +288,7 @@ def balanced_pool(
                 error_type="mul",
                 trend_type="mul",
                 seasonal_type="mul",
+                seasonal_period=season,
                 level=100.0,
             ),
         ],
@@ -260,7 +353,10 @@ def balanced_pool(
                 **base, seed=_seed(19), intermittent_pattern="clustered"
             ),
             IntermittentDemandGenerator(
-                **base, seed=_seed(20), intermittent_pattern="seasonal"
+                **base,
+                seed=_seed(20),
+                intermittent_pattern="seasonal",
+                seasonal_period=season,
             ),
         ],
         # --- Energy Load: 2 consumption profiles ---
@@ -308,7 +404,7 @@ def balanced_pool(
             GaussianProcessGenerator(**base, seed=_seed(31), kernel="matern_2.5"),
             # Periodic — smooth exact periodicity
             GaussianProcessGenerator(
-                **base, seed=_seed(32), kernel="periodic", period=50.0
+                **base, seed=_seed(32), kernel="periodic", period=float(season)
             ),
         ],
         # --- Chaotic System: 3 deterministic systems ---
@@ -359,6 +455,7 @@ def pretraining_pool(
     seed: int | None = 42,
     include_balanced: bool = True,
     n_meta_variants: int = 3,
+    seasonal_period: int | None = None,
     **base_kwargs: Any,
 ) -> list[BaseGenerator]:
     """Create a breadth-maximizing pool for foundation-model pretraining.
@@ -390,6 +487,9 @@ def pretraining_pool(
             meta-generator (default 3). More instances give the meta-generators
             a larger share when series are spread evenly across the pool, as in
             :func:`generate_series`.
+        seasonal_period: Seasonal period for the seasonal variants of the
+            included :func:`balanced_pool`. Defaults to None, which derives it
+            from ``freq``.
         **base_kwargs: Additional keyword arguments passed to all generators
             (e.g., engine, id_col, time_col, target_col).
 
@@ -434,6 +534,7 @@ def pretraining_pool(
         max_length=max_length,
         freq=freq,
         seed=seed,
+        seasonal_period=seasonal_period,
         **base_kwargs,
     )
     return balanced + meta

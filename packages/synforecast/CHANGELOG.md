@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `balanced_pool` derives the seasonal period of its seasonal variants from
+  `freq` (hourly 24, daily 7, weekly 52, monthly 12, quarterly 4) instead of
+  hardcoding 12, and accepts an explicit `seasonal_period` override that
+  `pretraining_pool` forwards.
 - Added `MARGenerator` for GRATIS-style MAR simulation, including a validated
   fixed-parameter mode.
 - Added `MARGenerator.tune_to_features` and a minimal feature module for
