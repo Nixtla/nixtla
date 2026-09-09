@@ -2428,11 +2428,11 @@ Applies to:
 - portable-atomic-util 0.2.5
 - portable-atomic 1.13.1
 - proc-macro2 1.0.106
-- pyo3-build-config 0.29.0
-- pyo3-ffi 0.29.0
-- pyo3-macros-backend 0.29.0
-- pyo3-macros 0.29.0
-- pyo3 0.29.0
+- pyo3-build-config 0.29.2
+- pyo3-ffi 0.29.2
+- pyo3-macros-backend 0.29.2
+- pyo3-macros 0.29.2
+- pyo3 0.29.2
 - quote 1.0.44
 - r-efi 6.0.0
 - rand 0.10.2
