@@ -16,7 +16,7 @@ off the frame, so no plotting wrapper is required here.
 
 Examples
 --------
->>> from anomaly import detect_anomalies, load_actuals
+>>> from nixtla.snowflake import detect_anomalies, load_actuals
 >>> table = "DEMO.PUBLIC.EXAMPLE_ANOMALY_DATA"
 >>> actuals = load_actuals(session, table)
 >>> nixtla_client.plot(actuals)
