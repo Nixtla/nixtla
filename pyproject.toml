@@ -4,12 +4,10 @@ build-backend = "uv_build"
 
 [project]
 name = "nixtla"
-version = "0.9.0.dev1"
+version = "0.9.0"
 description = "Python SDK for Nixtla API (TimeGPT)"
-authors = [
-    {name = "Nixtla", email = "business@nixtla.io"}
-]
-license = {text = "Apache Software License 2.0"}
+authors = [{ name = "Nixtla", email = "business@nixtla.io" }]
+license = { text = "Apache Software License 2.0" }
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["time-series", "forecasting", "gpt"]
@@ -73,18 +71,9 @@ distributed = [
     "pandas<2.3",
     "ray<=2.56.1",
 ]
-plotting = [
-    "utilsforecast[plotting]",
-]
-date_extras = [
-    "holidays",
-    "pandas_market_calendars",
-]
-snowflake = [
-    "snowflake-snowpark-python",
-    "fire",
-    "rich",
-]
+plotting = ["utilsforecast[plotting]"]
+date_extras = ["holidays", "pandas_market_calendars"]
+snowflake = ["snowflake-snowpark-python", "fire", "rich"]
 
 [project.urls]
 Homepage = "https://github.com/Nixtla/nixtla/"
@@ -112,7 +101,7 @@ module-root = "."
 
 [tool.ruff.lint]
 select = [
-    "F",  # pyflakes
+    "F", # pyflakes
 ]
 
 [tool.pytest.ini_options]
@@ -128,10 +117,10 @@ addopts = [
     "--cov=python/statsforecast",
     "--cov-report=term-missing",
     "--cov-report=html",
-    "--cov-fail-under=80"
+    "--cov-fail-under=80",
 ]
 
 [tool.coverage.run]
 omit = [
-    "nixtla/scripts/snowflake_install_nixtla.py",  # Deployment script, not core library
+    "nixtla/scripts/snowflake_install_nixtla.py", # Deployment script, not core library
 ]
