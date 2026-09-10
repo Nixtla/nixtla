@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from unittest.mock import MagicMock
@@ -245,3 +246,26 @@ def test_client_version_header_not_registered_without_metadata(monkeypatch):
     monkeypatch.setattr("nixtla.nixtla_client._resolve_nixtla_client_version", lambda: None)
     client = NixtlaClient(api_key="dummy")
     assert "nixtla-client-version" not in client._client_kwargs["headers"]
+
+
+def _make_json_response(status_code: int, body: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.content = json.dumps(body).encode()
+    return resp
+
+
+def test_list_models_flattens_and_sorts_names():
+    """The endpoint nests names in objects so fields can be added later; the
+    client flattens them and sorts, independently of the server's order."""
+    client = NixtlaClient(api_key="dummy")
+    mock_http_client = MagicMock()
+    mock_http_client.get.return_value = _make_json_response(
+        200, {"models": [{"name": "timegpt-2"}, {"name": "timegpt-1"}]}
+    )
+    # route `with self._make_client(...) as client:` to the mock
+    client._make_client = MagicMock()
+    client._make_client.return_value.__enter__.return_value = mock_http_client
+
+    assert client.list_models() == ["timegpt-1", "timegpt-2"]
+    assert mock_http_client.get.call_args.args == ("/v2/models",)
