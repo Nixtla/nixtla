@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New `list_models()` returns the sorted model names your API key may use, each usable as the `model` argument of `forecast`, `cross_validation` and the other forecasting methods. It needs the `GET /v2/models` route, which is not deployed yet; until it ships the call raises `ApiError` with status 404.
 - New `submit_anomaly_detection_job` submits online anomaly detection as a server-side job and returns a `Job` handle, the asynchronous counterpart to `detect_anomalies_online`. `num_partitions` is not supported; use `detect_anomalies_online` for distributed dataframes.
 - `detect_anomalies_online` accepts `finetuned_model_id` and `model_parameters`, which the API already supported but the client did not expose. Both are inserted mid-signature to match the parameter order used by `forecast` and `cross_validation`, so callers passing arguments **positionally** past `finetune_loss` must switch to keywords; its request body now also always carries `finetuned_model_id` (previously omitted when unset).
 - Async job results are validated before parsing: a job that reports success with a missing or non-object result now raises `AsyncJobError` instead of a `TypeError`, for every `submit_*_job` method.

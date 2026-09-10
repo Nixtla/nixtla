@@ -2576,6 +2576,19 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             return self._get_request(client, "/usage")
 
+    def list_models(self) -> list[str]:
+        """List the models available to your API key.
+
+        Returns:
+            list of str: Model names, sorted. Each can be passed as the `model`
+                argument of `forecast`, `cross_validation`, `detect_anomalies`
+                and the other forecasting methods; a model absent from this
+                list is one those methods would reject.
+        """
+        with self._make_client(**self._client_kwargs) as client:
+            resp_body = self._retry_strategy(self._get_request)(client, "/v2/models")
+        return sorted(m["name"] for m in resp_body["models"])
+
     def _prepare_finetune_payload(
         self,
         df: DataFrame,
