@@ -11,14 +11,29 @@ from nixtla import NixtlaClient
 
 
 def _client_with_response(response):
+    """A client whose job submissions are answered with a canned result.
+
+    `explain` submits a server-side job and polls it, so both halves are
+    stubbed: the returned mock records the submitted payload (as
+    `call.args[2]`, like every other request path) and the canned response
+    comes back as the job's result.
+    """
     client = NixtlaClient(api_key="test", max_retries=1)
     client._make_client = MagicMock()
-    request = MagicMock(
-        side_effect=lambda _http, _endpoint, payload, *, task, **_kwargs: (
-            response(task, payload) if callable(response) else response
-        )
-    )
-    client._run_async_job = request
+    results = {}
+
+    def submit(_http_client, endpoint, payload, *args, **kwargs):
+        task = endpoint.rsplit("/", 1)[-1]
+        job_id = f"{task}-{len(results)}"
+        results[job_id] = response(task, payload) if callable(response) else response
+        return job_id
+
+    def poll(_http_client, _endpoint, job_id, *args, **kwargs):
+        return {"job_id": job_id, "status": "succeeded", "result": results[job_id]}
+
+    request = MagicMock(side_effect=submit)
+    client._submit_job = request
+    client._poll_job = poll
     return client, request
 
 
