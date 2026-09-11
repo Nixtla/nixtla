@@ -14,9 +14,11 @@ You do not need to make a forecast or provide future feature values.
 <Note>
 The analysis runs as an asynchronous job on the server. `NixtlaClient.explain()`
 submits the job and polls its status until the weights are ready, so the call
-blocks like any other client method. By default the client waits up to 10
-minutes; adjust `async_job_wait_timeout` and `async_job_poll_interval` when
-creating the `NixtlaClient` if you need a different behavior. A job that fails
+blocks like any other client method. By default the client polls on an
+adaptive cadence -- first after half a second, then doubling up to one check
+every 15 seconds -- and waits up to an hour; pass `poll_interval` for a fixed
+cadence or `poll_timeout` for a different ceiling, or use `NixtlaClient.submit_explain_job()` to get a
+`Job` handle back immediately and wait on it yourself. A job that fails
 on the server raises `nixtla.AsyncJobError` with the server's original error. Server-side cancellation raises
 `nixtla.AsyncJobCancelledError`; exceeding the client wait timeout raises
 `nixtla.AsyncJobTimeoutError` and requests cancellation.
