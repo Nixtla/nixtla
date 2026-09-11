@@ -16,9 +16,11 @@ Use `NixtlaClient.simulate()` to generate these paths.
 <Note>
 Simulation runs as an asynchronous job on the server. `NixtlaClient.simulate()`
 submits the job and polls its status until the paths are ready, so the call
-blocks like any other client method. By default the client waits up to 10
-minutes per job; adjust `async_job_wait_timeout` and `async_job_poll_interval`
-when creating the `NixtlaClient` if you need a different behavior. A job that
+blocks like any other client method. By default the client checks every 15
+seconds and waits up to an hour per job; pass `poll_interval` and
+`poll_timeout` if you need a different behavior, or use
+`NixtlaClient.submit_simulate_job()` to get a `Job` handle back immediately and
+wait on it yourself. A job that
 fails on the server raises `nixtla.AsyncJobError` with the server's original error. Server-side cancellation raises
 `nixtla.AsyncJobCancelledError`; exceeding the client wait timeout raises
 `nixtla.AsyncJobTimeoutError` and requests cancellation.

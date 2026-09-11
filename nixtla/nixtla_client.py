@@ -17,7 +17,6 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
-import random
 import time
 import warnings
 from collections.abc import Sequence
@@ -69,6 +68,8 @@ from .async_job import (
     AsyncJobTimeoutError,
     Job,
     JobStatus,
+    _DEFAULT_POLL_INTERVAL,
+    _DEFAULT_POLL_TIMEOUT,
     _validate_poll_settings,
 )
 from .steps import (
@@ -276,16 +277,73 @@ def _is_retriable_error(exc: BaseException) -> bool:
     )
 
 
+def _task_name(endpoint: str) -> str:
+    """The task an API route runs: `"v2/cross_validation/async"` -> `"cross_validation"`.
+
+    Every route is named after its task, so the endpoint a call already holds is the
+    label to put on its payload-size guidance and on the errors its job raises.
+    """
+    return endpoint.removeprefix("v2/").removesuffix("/async")
+
+
 def _validate_job_timeout_seconds(job_timeout_seconds: Optional[int]) -> None:
     """Reject a job timeout the server would refuse, before spending a round-trip on it.
 
     Kept identical in wording to the check `steps.build_request` runs for `execute_step`, which
-    validates separately because that module is a self-contained codec.
+    validates separately because that module is a self-contained codec. Every async task shares
+    this one check so the same bad value is reported the same way everywhere.
     """
-    if job_timeout_seconds is not None and job_timeout_seconds <= 0:
+    if job_timeout_seconds is None:
+        return
+    if (
+        isinstance(job_timeout_seconds, bool)
+        or not isinstance(job_timeout_seconds, int)
+        or job_timeout_seconds <= 0
+    ):
         raise ValueError(
             f"job_timeout_seconds must be positive, got {job_timeout_seconds!r}"
         )
+
+
+def _coerce_positive_int(value: Any, name: str) -> int:
+    """Return `value` as a plain `int`, rejecting anything that is not a positive integer.
+
+    Numpy integers are accepted and narrowed so the payload and the partitioned path
+    carry the same plain values; `bool` is not, being an `int` only by inheritance.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1:
+        raise ValueError(f"`{name}` must be a positive integer.")
+    return int(value)
+
+
+def _validate_simulate_args(
+    h: Any,
+    n_paths: Any,
+    seed: Any,
+    num_partitions: Any,
+    multivariate: bool,
+) -> tuple[int, int, Optional[int], Optional[int]]:
+    """Coerce and check `simulate`'s numeric arguments, shared by the sync and submit paths.
+
+    Returns them coerced to plain ints so the partitioned path and the payload agree on
+    the exact values a numpy integer would otherwise carry through.
+    """
+    h = _coerce_positive_int(h, "h")
+    n_paths = _coerce_positive_int(n_paths, "n_paths")
+    if num_partitions is not None:
+        num_partitions = _coerce_positive_int(num_partitions, "num_partitions")
+        if multivariate:
+            raise ValueError(
+                "`num_partitions` cannot be combined with `multivariate=True`: "
+                "cross-series coupling is computed across the series in a "
+                "single request, so partitioning would silently return "
+                "uncoupled paths."
+            )
+    if seed is not None:
+        if isinstance(seed, bool) or not isinstance(seed, (int, np.integer)):
+            raise ValueError("`seed` must be an integer.")
+        seed = int(seed)
+    return h, n_paths, seed, num_partitions
 
 
 def _with_job_options(
@@ -315,11 +373,11 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     )
 
 
-# All async endpoints share submission, polling and cancellation. New tasks
-# use backoff and bounded poll retries; existing endpoints retain fixed polling.
-_AsyncJobTask = Literal["simulate", "explain"]
-_ASYNC_JOB_MAX_POLL_INTERVAL = 10.0
-_ASYNC_JOB_POLL_JITTER = 0.25
+# All async endpoints share submission, polling and cancellation, including
+# the polling cadence: a fixed `poll_interval` with retries bounded by the
+# caller's `poll_timeout`. The defaults live next to `Job.wait`, which applies
+# the same ones.
+
 # Client concurrency limit for all partitioned async requests. This bounds
 # submission pressure; it is not a guarantee of the deployment's team job cap.
 _MAX_CONCURRENT_ASYNC_JOBS = 5
@@ -1583,8 +1641,6 @@ class NixtlaClient:
         max_retries: int = 6,
         retry_interval: int = 10,
         max_wait_time: int = 6 * 60,
-        async_job_wait_timeout: Optional[int] = 10 * 60,
-        async_job_poll_interval: float = 1.0,
     ):
         """
         Client to interact with the Nixtla API.
@@ -1624,24 +1680,12 @@ class NixtlaClient:
                 The client throws a ReadTimeout error
                 after 60 seconds of inactivity. If you want to catch these
                 errors, use max_wait_time >> 60. Defaults to 360.
-            async_job_wait_timeout (int, optional): Maximum time in seconds to
-                wait for an asynchronous job (`simulate`, `explain`) to
-                finish after successful submission, including the time it
-                spends queued on the server. Submission retries are excluded;
-                each partition gets its own timeout after submission. When
-                exceeded, the client requests the job's cancellation and
-                raises an `AsyncJobTimeoutError`. Set to `None` to
-                wait until the server reports a terminal status. Defaults
-                to 600.
-            async_job_poll_interval (float, optional): Initial interval in
-                seconds between two status checks of an asynchronous job. The
-                interval doubles after every check, up to 10 seconds.
-                Defaults to 1.
+
+        Note:
+            How long the client waits for a server-side asynchronous job is
+            set per call, not on the client: `poll_interval` and
+            `poll_timeout` on `simulate()`, `explain()` and `Job.wait()`.
         """
-        if async_job_wait_timeout is not None and async_job_wait_timeout <= 0:
-            raise ValueError("`async_job_wait_timeout` must be positive or None.")
-        if async_job_poll_interval <= 0:
-            raise ValueError("`async_job_poll_interval` must be positive.")
         if api_key is None:
             api_key = os.environ["NIXTLA_API_KEY"]
         if base_url is None:
@@ -1664,8 +1708,6 @@ class NixtlaClient:
             "max_wait_time": max_wait_time,
         }
         self._retry_strategy = _retry_strategy(**self._retry_settings)
-        self._async_job_wait_timeout = async_job_wait_timeout
-        self._async_job_poll_interval = float(async_job_poll_interval)
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
 
@@ -1774,7 +1816,7 @@ class NixtlaClient:
         content, headers = self._encode_payload(
             payload,
             multithreaded_compress,
-            task=endpoint.removeprefix("v2/").removesuffix("/async"),
+            task=_task_name(endpoint),
         )
         resp = client.post(url=endpoint, content=content, headers=headers)
         # async job submissions ({endpoint}/async) respond with 202 ACCEPTED
@@ -1818,17 +1860,6 @@ class NixtlaClient:
             )
         resp = client.get(endpoint, **request_kwargs)
         return self._parse_json_response(resp)
-
-    @staticmethod
-    def _validate_job_timeout(timeout_seconds: Optional[int]) -> None:
-        if timeout_seconds is None:
-            return
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, int)
-            or timeout_seconds <= 0
-        ):
-            raise ValueError("`timeout_seconds` must be a positive integer or None.")
 
     def _collect_concurrent_results(
         self,
@@ -1887,10 +1918,10 @@ class NixtlaClient:
         transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
         *,
         is_async_job: bool = False,
-        poll_interval: float = 15,
-        poll_timeout: Optional[float] = 3600,
+        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         job_timeout_seconds: Optional[int] = None,
-        task: Optional[_AsyncJobTask] = None,
+        task: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         # Each async worker completes its job before submitting another. On
         # failure, stop queued submissions and cancel the other running jobs.
@@ -1972,21 +2003,21 @@ class NixtlaClient:
         poll_interval: float,
         poll_timeout: Optional[float],
         *,
-        task: Optional[_AsyncJobTask] = None,
+        task: Optional[str] = None,
         cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
         """Return the successful status envelope without cancelling on timeout.
 
         The caller owns cancellation so `Job.wait(cancel_on_timeout=False)`
-        stays resumable. `task` preserves simulate/explain's backoff, retry
-        budget and error details; existing jobs retain fixed-interval polling
-        and retry transient failures until their poll timeout.
+        stays resumable. Every task polls the same way: a fixed
+        `poll_interval` between status checks, transient failures retried on
+        the client's retry budget, and nothing outliving `poll_timeout`.
+        `task` only labels the errors raised from here, and defaults to the
+        name the endpoint already carries.
         """
-        _validate_poll_settings(
-            poll_interval, poll_timeout, allow_unbounded=task is not None
-        )
+        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
+        task = task or _task_name(endpoint)
         deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
-        interval = poll_interval
 
         def check_wait() -> None:
             if cancellation_event is not None and cancellation_event.is_set():
@@ -2002,18 +2033,14 @@ class NixtlaClient:
             )
             return self._get_job_data(client, endpoint, job_id, timeout=timeout)
 
+        # One budget for every task: a run of transient status failures is
+        # bounded by the client's retry settings, and never outlives the
+        # caller's poll deadline. Each poll cycle gets a fresh budget, and
+        # retries keep the cadence the caller asked for.
         get_status_with_retries = _poll_retry_strategy(
-            max_retries=self._retry_settings["max_retries"]
-            if task is not None
-            else None,
-            retry_interval=(
-                self._retry_settings["retry_interval"]
-                if task is not None
-                else poll_interval
-            ),
-            max_wait_time=self._retry_settings["max_wait_time"]
-            if task is not None
-            else None,
+            max_retries=self._retry_settings["max_retries"],
+            retry_interval=poll_interval,
+            max_wait_time=self._retry_settings["max_wait_time"],
             deadline=deadline,
             cancellation_event=cancellation_event,
         )(get_status)
@@ -2045,10 +2072,7 @@ class NixtlaClient:
                     status=status.value,
                     error=job_data.get("error"),
                 )
-            sleep_for = interval
-            if task is not None:
-                sleep_for *= 1 + random.uniform(0, _ASYNC_JOB_POLL_JITTER)
-                interval = min(interval * 2, _ASYNC_JOB_MAX_POLL_INTERVAL)
+            sleep_for = poll_interval
             if deadline is not None:
                 sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
             if _wait_for_poll(sleep_for, cancellation_event):
@@ -2064,7 +2088,7 @@ class NixtlaClient:
         multithreaded_compress: bool = True,
         job_timeout_seconds: Optional[int] = None,
         *,
-        task: Optional[_AsyncJobTask] = None,
+        task: Optional[str] = None,
         cancellation_event: Optional[Event] = None,
     ) -> dict[str, Any]:
         """Submit a job and return its result, cancelling abandoned jobs.
@@ -2073,9 +2097,8 @@ class NixtlaClient:
         excluding submission retries. If polling stops before a terminal
         state is known, request cancellation without masking the original error.
         """
-        _validate_poll_settings(
-            poll_interval, poll_timeout, allow_unbounded=task is not None
-        )
+        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
+        task = task or _task_name(endpoint)
         if cancellation_event is not None and cancellation_event.is_set():
             raise CancelledError
         payload = _with_job_options(payload, job_timeout_seconds)
@@ -2155,13 +2178,15 @@ class NixtlaClient:
         payload: dict[str, Any],
         job_timeout_seconds: Optional[int],
         parse_result: Callable[..., Any],
+        *,
+        task: str,
     ) -> Job:
         _validate_job_timeout_seconds(job_timeout_seconds)
         payload = _with_job_options(payload, job_timeout_seconds)
         with self._make_client(**self._client_kwargs) as client:
             job_id = self._submit_job(client, endpoint, payload)
 
-        def get_result(job_data: dict[str, Any], *_poll_settings: float) -> Any:
+        def get_result(job_data: dict[str, Any], *_poll_settings: Any) -> Any:
             # A JSON result is inline in the status response, so there is nothing to wait
             # for: the poll settings `Job` passes are accepted and ignored.
             result = job_data.get("result")
@@ -2170,6 +2195,7 @@ class NixtlaClient:
                 # as a `TypeError` from inside `parse_result`.
                 raise AsyncJobError(
                     job_id=job_id,
+                    task=task,
                     status="succeeded",
                     error="job succeeded but returned no result",
                 )
@@ -2180,6 +2206,7 @@ class NixtlaClient:
             job_id=job_id,
             endpoint=endpoint,
             get_result=get_result,
+            task=task,
         )
 
     def _submit_binary_job(
@@ -2246,7 +2273,7 @@ class NixtlaClient:
         endpoint: str,
         job_id: str,
         poll_interval: float,
-        poll_timeout: float,
+        poll_timeout: Optional[float],
     ) -> tuple[httpx.Headers, bytes]:
         """Poll a binary job's result endpoint until the payload is served.
 
@@ -2256,7 +2283,7 @@ class NixtlaClient:
         waiting is not an error to log as one, and it should not spend the budget reserved for
         transient network failures. Those are still retried, by the same loop.
         """
-        deadline = time.monotonic() + poll_timeout
+        deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
         announced = False
         while True:
             try:
@@ -2267,22 +2294,28 @@ class NixtlaClient:
                 )
                 if not not_ready and not _is_retriable_error(e):
                     raise
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AsyncJobTimeoutError(
-                        job_id=job_id, poll_timeout=poll_timeout
-                    ) from e
+                sleep_for = poll_interval
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        assert poll_timeout is not None
+                        raise AsyncJobTimeoutError(
+                            job_id=job_id, poll_timeout=poll_timeout
+                        ) from e
+                    sleep_for = min(poll_interval, remaining)
                 if not announced:
                     # Once per wait, not once per attempt: `poll_interval` may be small.
                     logger.info("Waiting for the result of job %s...", job_id)
                     announced = True
-                time.sleep(min(poll_interval, remaining))
+                time.sleep(sleep_for)
 
     def _submit_and_wrap_binary_job(
         self,
         endpoint: str,
         metadata: str,
         body: bytes,
+        *,
+        task: str,
     ) -> Job:
         """Binary counterpart of `_submit_and_wrap_job`.
 
@@ -2291,7 +2324,9 @@ class NixtlaClient:
         """
 
         def get_result(
-            job_data: dict[str, Any], poll_interval: float, poll_timeout: float
+            job_data: dict[str, Any],
+            poll_interval: float,
+            poll_timeout: Optional[float],
         ) -> StepResult:
             # The status response leaves `result` null for these tasks; the payload is served
             # from the job's own result endpoint, which may not have it the instant the status
@@ -2308,7 +2343,13 @@ class NixtlaClient:
             )(self._submit_binary_job)(
                 client=client, endpoint=endpoint, metadata=metadata, body=body
             )
-        return Job(client=self, job_id=job_id, endpoint=endpoint, get_result=get_result)
+        return Job(
+            client=self,
+            job_id=job_id,
+            endpoint=endpoint,
+            get_result=get_result,
+            task=task,
+        )
 
     def _make_partitioned_requests(
         self,
@@ -2316,8 +2357,8 @@ class NixtlaClient:
         endpoint: str,
         payloads: list[dict[str, Any]],
         _is_async_job: bool = False,
-        _poll_interval: float = 15,
-        _poll_timeout: float = 3600,
+        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
         _job_timeout_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
         results = self._dispatch_partitioned_requests(
@@ -2374,7 +2415,9 @@ class NixtlaClient:
         payloads: list[dict[str, Any]],
         n_paths: int,
         h: int,
-        timeout_seconds: Optional[int] = None,
+        job_timeout_seconds: Optional[int],
+        poll_interval: float,
+        poll_timeout: Optional[float],
     ) -> dict[str, Any]:
         def _samples_to_array(res: dict[str, Any]) -> dict[str, Any]:
             samples = res.get("samples")
@@ -2391,9 +2434,9 @@ class NixtlaClient:
             payloads,
             transform=_samples_to_array,
             is_async_job=True,
-            poll_interval=self._async_job_poll_interval,
-            poll_timeout=self._async_job_wait_timeout,
-            job_timeout_seconds=timeout_seconds,
+            poll_interval=poll_interval,
+            poll_timeout=poll_timeout,
+            job_timeout_seconds=job_timeout_seconds,
             task="simulate",
         )
         blocks = []
@@ -2835,6 +2878,7 @@ class NixtlaClient:
             payload,
             job_timeout_seconds,
             lambda resp: resp["finetuned_model_id"],
+            task="finetune",
         )
 
     @overload
@@ -2932,8 +2976,8 @@ class NixtlaClient:
         # job completes, independent of poll_timeout.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = 15,
-        _poll_timeout: float = 3600,
+        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -3281,8 +3325,8 @@ class NixtlaClient:
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = 15,
-        _poll_timeout: float = 3600,
+        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
         # Per-job server-side time limit, applied to each job this call submits. Only valid with
         # _is_async_job.
         _job_timeout_seconds: Optional[int] = None,
@@ -3708,157 +3752,44 @@ class NixtlaClient:
             multivariate=multivariate,
         )
         return self._submit_and_wrap_job(
-            "v2/forecast", payload, job_timeout_seconds, parse_result
+            "v2/forecast", payload, job_timeout_seconds, parse_result, task="forecast"
         )
 
-    def simulate(
+    def _prepare_simulate(
         self,
         df: DataFrame,
-        h: _PositiveInt,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        X_df: Optional[DataFrame] = None,
-        n_paths: _PositiveInt = 100,
-        quantiles: Optional[list[float]] = None,
-        seed: Optional[int] = None,
-        finetuned_model_id: Optional[str] = None,
-        clean_ex_first: bool = True,
-        hist_exog_list: Optional[list[str]] = None,
-        categorical_exog_list: Optional[list[str]] = None,
-        validate_api_key: bool = False,
-        date_features: Union[bool, list[Union[str, Callable]]] = False,
-        date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-2.1",
-        multivariate: bool = False,
-        num_partitions: Optional[_PositiveInt] = None,
-        timeout_seconds: Optional[int] = None,
-    ) -> DataFrame:
-        """Generate temporally correlated forecast sample paths.
+        h: int,
+        freq: Optional[_Freq],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        X_df: Optional[DataFrame],
+        n_paths: int,
+        quantiles: Optional[list[float]],
+        seed: Optional[int],
+        finetuned_model_id: Optional[str],
+        clean_ex_first: bool,
+        hist_exog_list: Optional[list[str]],
+        categorical_exog_list: Optional[list[str]],
+        validate_api_key: bool,
+        date_features: Union[bool, list[Union[str, Callable]]],
+        date_features_to_one_hot: Union[bool, list[str]],
+        model: _Model,
+        multivariate: bool,
+        method_name: str,
+    ) -> tuple[dict[str, Any], Callable[[dict[str, Any]], Any]]:
+        """Build the payload and result parser shared by the sync and submit paths.
 
-        The request runs as an asynchronous job on the server: it is submitted,
-        then polled until it finishes, so this call blocks until the paths are
-        available. See `async_job_wait_timeout` and `async_job_poll_interval`
-        on `NixtlaClient` to control the waiting behavior.
-
-        Args:
-            df (pandas or polars DataFrame): Historical time series data.
-                It must contain the time and target columns and may contain an
-                ID column and exogenous feature columns.
-            h (int): Number of future timesteps in every sample path.
-            freq (str, int or pandas offset, optional): Frequency of the
-                timestamps. If `None`, it is inferred from `df` (pandas only);
-                pass it explicitly for polars.
-            id_col (str): Column that identifies each series. Defaults to
-                `"unique_id"`.
-            time_col (str): Column that identifies each timestep. Defaults to
-                `"ds"`.
-            target_col (str): Column that contains the target. Defaults to
-                `"y"`.
-            X_df (pandas or polars DataFrame, optional): Future exogenous
-                values with ID and time columns.
-            n_paths (int): Number of paths generated for each series. Must be
-                between 1 and 10,000. Defaults to 100.
-            quantiles (list[float], optional): Strictly increasing marginal
-                quantiles inside `(0, 1)`. Between 2 and 200 values may be
-                provided. They refine the marginal distribution the paths are
-                drawn from and add no columns to the result. A wide grid also
-                counts towards a second size limit:
-                `n_series * h * (n_paths + len(quantiles))` may not exceed
-                10,000,000.
-            seed (int, optional): Random seed. Reusing a seed with the same
-                inputs produces the same paths. Must be between `-2**63` and
-                `2**64 - 1`. The seed drives both the coupled and the per-series
-                shuffle, so repeating a request with the same seed and a
-                different `multivariate` setting reorders the first series by
-                ID identically in both, and returns the very same paths for it
-                when its marginal forecast is unchanged too. Vary the seed
-                when comparing coupled against uncoupled paths.
-            finetuned_model_id (str, optional): ID of a previously fine-tuned
-                model.
-            clean_ex_first (bool): Clean exogenous signals before inference.
-                Defaults to True.
-            hist_exog_list (list[str], optional): Historical-only exogenous
-                feature names.
-            categorical_exog_list (list[str], optional): Categorical
-                exogenous feature names.
-            validate_api_key (bool): Validate the API key before the request.
-                Defaults to False.
-            date_features (bool or list, optional): Date-derived exogenous
-                features to add.
-            date_features_to_one_hot (bool or list[str]): Date features to
-                one-hot encode.
-            model (str): Model used to generate the marginal forecasts.
-                Defaults to `"timegpt-2.1"`.
-            multivariate (bool): Request coherent paths across series. The
-                returned `coupled` column reports whether cross-series
-                coupling was applied. Defaults to False.
-            num_partitions (int, optional): Split the series across this many
-                concurrent requests, which keeps large jobs under the request
-                size limit. Cannot be combined with `multivariate=True`, since
-                coupling is computed across the series in a single request.
-                Each partition is sent a distinct seed derived from `seed`, so
-                partitions never share their random draws and the call stays
-                reproducible, but a partitioned call returns different paths
-                than an unpartitioned one for the same `seed`. Defaults to
-                None (a single request). At most five partition jobs run
-                concurrently. If a partition fails, the client cancels sibling
-                jobs and stops queued submissions.
-            timeout_seconds (int, optional): Maximum time in seconds the
-                server may spend on the job (on each partition when
-                `num_partitions` is set). It may not exceed the limit of the
-                deployment. Defaults to None (the deployment's limit).
-
-        Returns:
-            pandas or polars DataFrame: Long-format sample paths with ID, time,
-                `sample_id`, `TimeGPT`, and `coupled` columns. It contains
-                `n_series * n_paths * h` rows. The ID column is omitted if `df`
-                did not contain one.
-
-        Raises:
-            ValueError: Invalid arguments, missing or duplicate timestamps,
-                or timestamps that do not match the provided frequency.
-            ApiError: An HTTP request failed, including an unsupported deployment.
-            AsyncJobError: The job failed or returned an invalid job response.
-            AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within
-                `async_job_wait_timeout` seconds; cancellation was requested.
+        `h`, `n_paths` and `seed` are expected to have gone through
+        `_validate_simulate_args` already: the partitioned path needs the coerced
+        values before it can derive its per-partition seeds.
         """
-        self._validate_job_timeout(timeout_seconds)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            raise ValueError("`simulate` only supports pandas and polars dataframes.")
+            raise ValueError(
+                f"`{method_name}` only supports pandas and polars dataframes."
+            )
         if X_df is not None and not isinstance(X_df, (pd.DataFrame, pl_DataFrame)):
             raise ValueError("`X_df` must be a pandas or polars dataframe.")
-        if not isinstance(h, (int, np.integer)) or isinstance(h, bool):
-            raise ValueError("`h` must be a positive integer.")
-        h = int(h)
-        if h < 1:
-            raise ValueError("`h` must be a positive integer.")
-        if not isinstance(n_paths, (int, np.integer)) or isinstance(n_paths, bool):
-            raise ValueError("`n_paths` must be a positive integer.")
-        n_paths = int(n_paths)
-        if n_paths < 1:
-            raise ValueError("`n_paths` must be a positive integer.")
-        if num_partitions is not None:
-            if not isinstance(num_partitions, (int, np.integer)) or isinstance(
-                num_partitions, bool
-            ):
-                raise ValueError("`num_partitions` must be a positive integer.")
-            num_partitions = int(num_partitions)
-            if num_partitions < 1:
-                raise ValueError("`num_partitions` must be a positive integer.")
-            if multivariate:
-                raise ValueError(
-                    "`num_partitions` cannot be combined with `multivariate=True`: "
-                    "cross-series coupling is computed across the series in a "
-                    "single request, so partitioning would silently return "
-                    "uncoupled paths."
-                )
-        if seed is not None:
-            if not isinstance(seed, (int, np.integer)) or isinstance(seed, bool):
-                raise ValueError("`seed` must be an integer.")
-            seed = int(seed)
         level, _ = _prepare_level_and_quantiles(None, quantiles)
 
         model = self._maybe_override_model(model)
@@ -3974,7 +3905,6 @@ class NixtlaClient:
             )
 
         sizes = np.diff(processed.indptr)
-        output_values = n_paths * len(sizes) * h
         series_payload: dict[str, Any] = {
             "y": processed.data[:, 0],
             "sizes": sizes,
@@ -3996,130 +3926,176 @@ class NixtlaClient:
             "multivariate": multivariate,
         }
 
-        logger.info("Calling Simulate Endpoint...")
-        with self._make_client(**self._client_kwargs) as client:
-            if num_partitions is None:
-                resp = self._run_async_job(
-                    client,
-                    "v2/simulate",
-                    payload,
-                    poll_interval=self._async_job_poll_interval,
-                    poll_timeout=self._async_job_wait_timeout,
-                    job_timeout_seconds=timeout_seconds,
-                    task="simulate",
+        # A `Job` holds `parse_result` until the caller drops it, so only the
+        # scaffolding the output needs is captured, never `df` or `processed`.
+        n_series = len(sizes)
+        output_values = n_paths * n_series * h
+        expected_sizes = np.full(n_series, h)
+
+        def parse_result(resp: dict[str, Any]) -> Any:
+            response_n_paths = resp.get("n_paths")
+            response_h = resp.get("h")
+            try:
+                response_sizes = np.asarray(resp.get("sizes"), dtype=np.int64)
+                samples = np.asarray(resp.pop("samples", None), dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Simulation response contains non-numeric sizes or samples."
+                ) from exc
+            if response_n_paths != n_paths or response_h != h:
+                raise RuntimeError(
+                    "Simulation response metadata does not match the request."
                 )
-            else:
-                payloads = _partition_series(payload, num_partitions, h)
-                if seed is not None:
-                    seed_span = _MAX_SEED - _MIN_SEED + 1
-                    for i, part in enumerate(payloads[1:], start=1):
-                        part["seed"] = (seed - _MIN_SEED + i) % seed_span + _MIN_SEED
-                resp = self._make_partitioned_simulate_requests(
-                    client,
-                    payloads,
-                    n_paths=n_paths,
-                    h=h,
-                    timeout_seconds=timeout_seconds,
+            if response_sizes.shape != expected_sizes.shape or not np.array_equal(
+                response_sizes, expected_sizes
+            ):
+                raise RuntimeError(
+                    "Simulation response contains unexpected series sizes."
                 )
+            if samples.ndim != 1 or samples.size != output_values:
+                raise RuntimeError(
+                    f"Simulation response contains {samples.size:,} values; "
+                    f"expected {output_values:,}."
+                )
+            coupled = _coerce_coupled_flag(resp.get("coupled"))
 
-        response_n_paths = resp.get("n_paths")
-        response_h = resp.get("h")
-        try:
-            response_sizes = np.asarray(resp.get("sizes"), dtype=np.int64)
-            samples = np.asarray(resp.pop("samples", None), dtype=np.float64)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(
-                "Simulation response contains non-numeric sizes or samples."
-            ) from exc
-        expected_sizes = np.full(len(sizes), h)
-        if response_n_paths != n_paths or response_h != h:
-            raise RuntimeError(
-                "Simulation response metadata does not match the request."
+            future_rows = len(future_df)
+            out = ufp.take_rows(
+                future_df, np.tile(np.arange(future_rows, dtype=np.int32), n_paths)
             )
-        if response_sizes.shape != expected_sizes.shape or not np.array_equal(
-            response_sizes, expected_sizes
-        ):
-            raise RuntimeError("Simulation response contains unexpected series sizes.")
-        if samples.ndim != 1 or samples.size != output_values:
-            raise RuntimeError(
-                f"Simulation response contains {samples.size:,} values; "
-                f"expected {output_values:,}."
+            if isinstance(out, pd.DataFrame):
+                out = out.set_axis(pd.RangeIndex(len(out)), axis=0, copy=False)
+            out = ufp.assign_columns(
+                out,
+                "sample_id",
+                np.repeat(np.arange(n_paths, dtype=np.int64), future_rows),
             )
-        coupled = _coerce_coupled_flag(resp.get("coupled"))
+            out = ufp.assign_columns(out, "TimeGPT", samples)
+            out = ufp.assign_columns(out, "coupled", np.full(output_values, coupled))
+            return _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
 
-        future_rows = len(future_df)
-        out = ufp.take_rows(
-            future_df, np.tile(np.arange(future_rows, dtype=np.int32), n_paths)
-        )
-        if isinstance(out, pd.DataFrame):
-            out = out.set_axis(pd.RangeIndex(len(out)), axis=0, copy=False)
-        out = ufp.assign_columns(
-            out,
-            "sample_id",
-            np.repeat(np.arange(n_paths, dtype=np.int64), future_rows),
-        )
-        out = ufp.assign_columns(out, "TimeGPT", samples)
-        out = ufp.assign_columns(out, "coupled", np.full(output_values, coupled))
-        return _maybe_drop_id(df=out, id_col=id_col, drop=drop_id)
+        return payload, parse_result
 
-    def explain(
+    def simulate(
         self,
         df: DataFrame,
-        method: _ExplainMethod = "granger",
-        features: Optional[list[str]] = None,
+        h: _PositiveInt,
         freq: Optional[_Freq] = None,
         id_col: str = "unique_id",
         time_col: str = "ds",
         target_col: str = "y",
+        X_df: Optional[DataFrame] = None,
+        n_paths: _PositiveInt = 100,
+        quantiles: Optional[list[float]] = None,
+        seed: Optional[int] = None,
+        finetuned_model_id: Optional[str] = None,
+        clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
         categorical_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
-        timeout_seconds: Optional[int] = None,
+        date_features: Union[bool, list[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        multivariate: bool = False,
+        num_partitions: Optional[_PositiveInt] = None,
+        job_timeout_seconds: Optional[int] = None,
+        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     ) -> DataFrame:
-        """Compute model-independent historical feature importance weights.
-
-        The returned weights describe lagged predictive relationships in the
-        supplied data. They do not establish that changing a feature will cause
-        the target to change.
+        """Generate temporally correlated forecast sample paths.
 
         The request runs as an asynchronous job on the server: it is submitted,
-        then polled until it finishes, so this call blocks until the weights
-        are available. See `async_job_wait_timeout` and
-        `async_job_poll_interval` on `NixtlaClient` to control the waiting
-        behavior.
+        then polled until it finishes, so this call blocks until the paths are
+        available. Use `submit_simulate_job()` to get a `Job` handle back
+        immediately instead.
 
         Args:
-            df (pandas or polars DataFrame): Historical time series containing
-                the target and candidate feature columns.
-            method (str): `"granger"` for linear lagged relationships or
-                `"transfer_entropy"` for potentially nonlinear relationships.
-                Defaults to `"granger"`.
-            features (list[str], optional): Features to analyze. By default,
-                every column other than the ID, time, and target columns is
-                used. Missing feature values are allowed: rows with a missing
-                value in a lagged column are excluded from that feature's
-                weight estimation, which reduces the effective sample.
+            df (pandas or polars DataFrame): Historical time series data.
+                It must contain the time and target columns and may contain an
+                ID column and exogenous feature columns.
+            h (int): Number of future timesteps in every sample path.
             freq (str, int or pandas offset, optional): Frequency of the
-                timestamps, used to verify that every series is complete and
-                regularly spaced. Both methods are lag-based, so gaps or
-                duplicate timestamps distort the weights. If `None`, it is
-                inferred from `df` (pandas only); pass it explicitly for polars.
+                timestamps. If `None`, it is inferred from `df` (pandas only);
+                pass it explicitly for polars.
             id_col (str): Column that identifies each series. Defaults to
                 `"unique_id"`.
             time_col (str): Column that identifies each timestep. Defaults to
                 `"ds"`.
             target_col (str): Column that contains the target. Defaults to
                 `"y"`.
-            categorical_exog_list (list[str], optional): Feature names that
-                should be treated as categorical.
+            X_df (pandas or polars DataFrame, optional): Future exogenous
+                values with ID and time columns.
+            n_paths (int): Number of paths generated for each series. Must be
+                between 1 and 10,000. Defaults to 100.
+            quantiles (list[float], optional): Strictly increasing marginal
+                quantiles inside `(0, 1)`. Between 2 and 200 values may be
+                provided. They refine the marginal distribution the paths are
+                drawn from and add no columns to the result. A wide grid also
+                counts towards a second size limit:
+                `n_series * h * (n_paths + len(quantiles))` may not exceed
+                10,000,000.
+            seed (int, optional): Random seed. Reusing a seed with the same
+                inputs produces the same paths. Must be between `-2**63` and
+                `2**64 - 1`. The seed drives both the coupled and the per-series
+                shuffle, so repeating a request with the same seed and a
+                different `multivariate` setting reorders the first series by
+                ID identically in both, and returns the very same paths for it
+                when its marginal forecast is unchanged too. Vary the seed
+                when comparing coupled against uncoupled paths.
+            finetuned_model_id (str, optional): ID of a previously fine-tuned
+                model.
+            clean_ex_first (bool): Clean exogenous signals before inference.
+                Defaults to True.
+            hist_exog_list (list[str], optional): Historical-only exogenous
+                feature names.
+            categorical_exog_list (list[str], optional): Categorical
+                exogenous feature names.
             validate_api_key (bool): Validate the API key before the request.
                 Defaults to False.
-            timeout_seconds (int, optional): Maximum time in seconds the
-                server may spend on the job. It may not exceed the limit of
-                the deployment. Defaults to None (the deployment's limit).
+            date_features (bool or list, optional): Date-derived exogenous
+                features to add.
+            date_features_to_one_hot (bool or list[str]): Date features to
+                one-hot encode.
+            model (str): Model used to generate the marginal forecasts.
+                Defaults to `"timegpt-2.1"`.
+            multivariate (bool): Request coherent paths across series. The
+                returned `coupled` column reports whether cross-series
+                coupling was applied. Defaults to False.
+            num_partitions (int, optional): Split the series across this many
+                concurrent requests, which keeps large jobs under the request
+                size limit. Cannot be combined with `multivariate=True`, since
+                coupling is computed across the series in a single request.
+                Each partition is sent a distinct seed derived from `seed`, so
+                partitions never share their random draws and the call stays
+                reproducible, but a partitioned call returns different paths
+                than an unpartitioned one for the same `seed`. Defaults to
+                None (a single request). At most five partition jobs run
+                concurrently. If a partition fails, the client cancels sibling
+                jobs and stops queued submissions. Not supported by
+                `submit_simulate_job()`.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side (each
+                partition when `num_partitions` is set). This is separate from
+                `poll_timeout`, which only controls how long the client polls
+                locally. Capped by a server-side per-task maximum; requesting a
+                higher value raises `ApiError` (422) when submitting. Defaults
+                to the server's default for this task type if not specified.
+            poll_interval (float): Seconds to wait between job-status polls.
+                Must be finite and non-negative. Defaults to 15.
+            poll_timeout (float, optional): Maximum seconds to wait for the
+                job to reach a terminal state before raising
+                `AsyncJobTimeoutError`, measured from a successful submission
+                and including the time the job spends queued on the server.
+                Submission retries are excluded, and each partition gets its
+                own timeout. When it elapses the client requests the job's
+                cancellation. Set to `None` to wait until the server reports a
+                terminal status. Defaults to 3600.
 
         Returns:
-            pandas or polars DataFrame: One row per feature with `feature`,
-                `weight`, and `method` columns.
+            pandas or polars DataFrame: Long-format sample paths with ID, time,
+                `sample_id`, `TimeGPT`, and `coupled` columns. It contains
+                `n_series * n_paths * h` rows. The ID column is omitted if `df`
+                did not contain one.
 
         Raises:
             ValueError: Invalid arguments, missing or duplicate timestamps,
@@ -4127,14 +4103,207 @@ class NixtlaClient:
             ApiError: An HTTP request failed, including an unsupported deployment.
             AsyncJobError: The job failed or returned an invalid job response.
             AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within
-                `async_job_wait_timeout` seconds; cancellation was requested.
+            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+                seconds; cancellation was requested.
         """
+        _validate_job_timeout_seconds(job_timeout_seconds)
+        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
+        h, n_paths, seed, num_partitions = _validate_simulate_args(
+            h, n_paths, seed, num_partitions, multivariate
+        )
+        payload, parse_result = self._prepare_simulate(
+            df=df,
+            h=h,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            X_df=X_df,
+            n_paths=n_paths,
+            quantiles=quantiles,
+            seed=seed,
+            finetuned_model_id=finetuned_model_id,
+            clean_ex_first=clean_ex_first,
+            hist_exog_list=hist_exog_list,
+            categorical_exog_list=categorical_exog_list,
+            validate_api_key=validate_api_key,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            multivariate=multivariate,
+            method_name="simulate",
+        )
+
+        logger.info("Calling Simulate Endpoint...")
+        if num_partitions is None:
+            job = self._submit_and_wrap_job(
+                "v2/simulate",
+                payload,
+                job_timeout_seconds,
+                parse_result,
+                task="simulate",
+            )
+            # Abandoning the wait leaves the job burning server-side compute,
+            # so cancel it on the way out.
+            with job:
+                return job.wait(poll_interval, poll_timeout)
+
+        payloads = _partition_series(payload, num_partitions, h)
+        if seed is not None:
+            seed_span = _MAX_SEED - _MIN_SEED + 1
+            for i, part in enumerate(payloads[1:], start=1):
+                part["seed"] = (seed - _MIN_SEED + i) % seed_span + _MIN_SEED
+        with self._make_client(**self._client_kwargs) as client:
+            resp = self._make_partitioned_simulate_requests(
+                client,
+                payloads,
+                n_paths=n_paths,
+                h=h,
+                job_timeout_seconds=job_timeout_seconds,
+                poll_interval=poll_interval,
+                poll_timeout=poll_timeout,
+            )
+        return parse_result(resp)
+
+    def submit_simulate_job(
+        self,
+        df: DataFrame,
+        h: _PositiveInt,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        X_df: Optional[DataFrame] = None,
+        n_paths: _PositiveInt = 100,
+        quantiles: Optional[list[float]] = None,
+        seed: Optional[int] = None,
+        finetuned_model_id: Optional[str] = None,
+        clean_ex_first: bool = True,
+        hist_exog_list: Optional[list[str]] = None,
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        date_features: Union[bool, list[Union[str, Callable]]] = False,
+        date_features_to_one_hot: Union[bool, list[str]] = False,
+        model: _Model = "timegpt-2.1",
+        multivariate: bool = False,
+        job_timeout_seconds: Optional[int] = None,
+    ) -> Job:
+        """Submit a simulation job to run asynchronously.
+
+        Unlike `simulate()`, this does not block until the job finishes. It
+        submits the job and immediately returns a `Job` handle; call
+        `job.wait()` to poll until it completes and get the resulting
+        DataFrame, or `job.cancel()` to request that the server stop it.
+
+        Not supported in this version: `num_partitions` (concurrent fan-out).
+        Use `simulate()` for that.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series data.
+                It must contain the time and target columns and may contain an
+                ID column and exogenous feature columns.
+            h (int): Number of future timesteps in every sample path.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps. If `None`, it is inferred from `df` (pandas only);
+                pass it explicitly for polars.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            X_df (pandas or polars DataFrame, optional): Future exogenous
+                values with ID and time columns.
+            n_paths (int): Number of paths generated for each series. Must be
+                between 1 and 10,000. Defaults to 100.
+            quantiles (list[float], optional): Strictly increasing marginal
+                quantiles inside `(0, 1)`. Between 2 and 200 values may be
+                provided. They refine the marginal distribution the paths are
+                drawn from and add no columns to the result.
+            seed (int, optional): Random seed. Reusing a seed with the same
+                inputs produces the same paths. Must be between `-2**63` and
+                `2**64 - 1`.
+            finetuned_model_id (str, optional): ID of a previously fine-tuned
+                model.
+            clean_ex_first (bool): Clean exogenous signals before inference.
+                Defaults to True.
+            hist_exog_list (list[str], optional): Historical-only exogenous
+                feature names.
+            categorical_exog_list (list[str], optional): Categorical
+                exogenous feature names.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            date_features (bool or list, optional): Date-derived exogenous
+                features to add.
+            date_features_to_one_hot (bool or list[str]): Date features to
+                one-hot encode.
+            model (str): Model used to generate the marginal forecasts.
+                Defaults to `"timegpt-2.1"`.
+            multivariate (bool): Request coherent paths across series. The
+                returned `coupled` column reports whether cross-series
+                coupling was applied. Defaults to False.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
+
+        Returns:
+            Job: Handle to the submitted job. `job.wait()` returns a pandas or
+                polars DataFrame of long-format sample paths with ID, time,
+                `sample_id`, `TimeGPT`, and `coupled` columns.
+        """
+        h, n_paths, seed, _ = _validate_simulate_args(
+            h, n_paths, seed, None, multivariate
+        )
+        payload, parse_result = self._prepare_simulate(
+            df=df,
+            h=h,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            X_df=X_df,
+            n_paths=n_paths,
+            quantiles=quantiles,
+            seed=seed,
+            finetuned_model_id=finetuned_model_id,
+            clean_ex_first=clean_ex_first,
+            hist_exog_list=hist_exog_list,
+            categorical_exog_list=categorical_exog_list,
+            validate_api_key=validate_api_key,
+            date_features=date_features,
+            date_features_to_one_hot=date_features_to_one_hot,
+            model=model,
+            multivariate=multivariate,
+            method_name="submit_simulate_job",
+        )
+        return self._submit_and_wrap_job(
+            "v2/simulate", payload, job_timeout_seconds, parse_result, task="simulate"
+        )
+
+    def _prepare_explain(
+        self,
+        df: DataFrame,
+        method: _ExplainMethod,
+        features: Optional[list[str]],
+        freq: Optional[_Freq],
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        categorical_exog_list: Optional[list[str]],
+        validate_api_key: bool,
+        method_name: str,
+    ) -> tuple[dict[str, Any], Callable[[dict[str, Any]], Any]]:
+        """Build the payload and result parser shared by the sync and submit paths."""
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
-            raise ValueError("`explain` only supports pandas and polars dataframes.")
+            raise ValueError(
+                f"`{method_name}` only supports pandas and polars dataframes."
+            )
         if method not in get_args(_ExplainMethod):
             raise ValueError("`method` must be 'granger' or 'transfer_entropy'.")
-        self._validate_job_timeout(timeout_seconds)
         df, _, _, freq = self._run_validations(
             df=df,
             X_df=None,
@@ -4151,7 +4320,7 @@ class NixtlaClient:
         else:
             features = list(features)
         if not features:
-            raise ValueError("`explain` requires at least one feature.")
+            raise ValueError(f"`{method_name}` requires at least one feature.")
         if len(features) != len(set(features)):
             raise ValueError("`features` must not contain duplicates.")
         invalid_features = set(features) - set(df.columns)
@@ -4229,38 +4398,217 @@ class NixtlaClient:
             series_payload["categorical_exog"] = categorical_positions
         payload = {"series": series_payload, "method": method}
 
-        logger.info("Calling Explain Endpoint...")
-        with self._make_client(**self._client_kwargs) as client:
-            resp = self._run_async_job(
-                client,
-                "v2/explain",
-                payload,
-                poll_interval=self._async_job_poll_interval,
-                poll_timeout=self._async_job_wait_timeout,
-                job_timeout_seconds=timeout_seconds,
-                task="explain",
+        # A `Job` holds `parse_result` until the caller drops it, so the output
+        # frame is rebuilt from the feature names alone, never from `df`.
+        df_cls = type(df)
+
+        def parse_result(resp: dict[str, Any]) -> Any:
+            try:
+                weights = np.asarray(resp.get("weights"), dtype=np.float64)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    "Explain response contains non-numeric weights."
+                ) from exc
+            if weights.ndim != 1 or weights.size != len(features):
+                raise RuntimeError(
+                    f"Explain response contains {weights.size} weights; "
+                    f"expected {len(features)}."
+                )
+            response_method = resp.get("method")
+            if response_method != method:
+                raise RuntimeError(
+                    "Explain response metadata does not match the request."
+                )
+            return df_cls(
+                {
+                    "feature": features,
+                    "weight": weights,
+                    "method": [response_method] * len(features),
+                }
             )
 
-        try:
-            weights = np.asarray(resp.get("weights"), dtype=np.float64)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(
-                "Explain response contains non-numeric weights."
-            ) from exc
-        if weights.ndim != 1 or weights.size != len(features):
-            raise RuntimeError(
-                f"Explain response contains {weights.size} weights; "
-                f"expected {len(features)}."
-            )
-        response_method = resp.get("method")
-        if response_method != method:
-            raise RuntimeError("Explain response metadata does not match the request.")
-        return type(df)(
-            {
-                "feature": features,
-                "weight": weights,
-                "method": [response_method] * len(features),
-            }
+        return payload, parse_result
+
+    def explain(
+        self,
+        df: DataFrame,
+        method: _ExplainMethod = "granger",
+        features: Optional[list[str]] = None,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        job_timeout_seconds: Optional[int] = None,
+        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
+    ) -> DataFrame:
+        """Compute model-independent historical feature importance weights.
+
+        The returned weights describe lagged predictive relationships in the
+        supplied data. They do not establish that changing a feature will cause
+        the target to change.
+
+        The request runs as an asynchronous job on the server: it is submitted,
+        then polled until it finishes, so this call blocks until the weights
+        are available. Use `submit_explain_job()` to get a `Job` handle back
+        immediately instead.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series containing
+                the target and candidate feature columns.
+            method (str): `"granger"` for linear lagged relationships or
+                `"transfer_entropy"` for potentially nonlinear relationships.
+                Defaults to `"granger"`.
+            features (list[str], optional): Features to analyze. By default,
+                every column other than the ID, time, and target columns is
+                used. Missing feature values are allowed: rows with a missing
+                value in a lagged column are excluded from that feature's
+                weight estimation, which reduces the effective sample.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps, used to verify that every series is complete and
+                regularly spaced. Both methods are lag-based, so gaps or
+                duplicate timestamps distort the weights. If `None`, it is
+                inferred from `df` (pandas only); pass it explicitly for polars.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            categorical_exog_list (list[str], optional): Feature names that
+                should be treated as categorical.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side. This
+                is separate from `poll_timeout`, which only controls how long
+                the client polls locally. Capped by a server-side per-task
+                maximum; requesting a higher value raises `ApiError` (422) when
+                submitting. Defaults to the server's default for this task type
+                if not specified.
+            poll_interval (float): Seconds to wait between job-status polls.
+                Must be finite and non-negative. Defaults to 15.
+            poll_timeout (float, optional): Maximum seconds to wait for the
+                job to reach a terminal state before raising
+                `AsyncJobTimeoutError`, measured from a successful submission
+                and including the time the job spends queued on the server.
+                Submission retries are excluded. When it elapses the client
+                requests the job's cancellation. Set to `None` to wait until
+                the server reports a terminal status. Defaults to 3600.
+
+        Returns:
+            pandas or polars DataFrame: One row per feature with `feature`,
+                `weight`, and `method` columns.
+
+        Raises:
+            ValueError: Invalid arguments, missing or duplicate timestamps,
+                or timestamps that do not match the provided frequency.
+            ApiError: An HTTP request failed, including an unsupported deployment.
+            AsyncJobError: The job failed or returned an invalid job response.
+            AsyncJobCancelledError: The job was cancelled on the server.
+            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+                seconds; cancellation was requested.
+        """
+        _validate_job_timeout_seconds(job_timeout_seconds)
+        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
+        payload, parse_result = self._prepare_explain(
+            df=df,
+            method=method,
+            features=features,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            categorical_exog_list=categorical_exog_list,
+            validate_api_key=validate_api_key,
+            method_name="explain",
+        )
+
+        logger.info("Calling Explain Endpoint...")
+        job = self._submit_and_wrap_job(
+            "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
+        )
+        # Abandoning the wait leaves the job burning server-side compute, so
+        # cancel it on the way out.
+        with job:
+            return job.wait(poll_interval, poll_timeout)
+
+    def submit_explain_job(
+        self,
+        df: DataFrame,
+        method: _ExplainMethod = "granger",
+        features: Optional[list[str]] = None,
+        freq: Optional[_Freq] = None,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        categorical_exog_list: Optional[list[str]] = None,
+        validate_api_key: bool = False,
+        job_timeout_seconds: Optional[int] = None,
+    ) -> Job:
+        """Submit an explanation job to run asynchronously.
+
+        Unlike `explain()`, this does not block until the job finishes. It
+        submits the job and immediately returns a `Job` handle; call
+        `job.wait()` to poll until it completes and get the resulting
+        DataFrame, or `job.cancel()` to request that the server stop it.
+
+        The returned weights describe lagged predictive relationships in the
+        supplied data. They do not establish that changing a feature will cause
+        the target to change.
+
+        Args:
+            df (pandas or polars DataFrame): Historical time series containing
+                the target and candidate feature columns.
+            method (str): `"granger"` for linear lagged relationships or
+                `"transfer_entropy"` for potentially nonlinear relationships.
+                Defaults to `"granger"`.
+            features (list[str], optional): Features to analyze. By default,
+                every column other than the ID, time, and target columns is
+                used.
+            freq (str, int or pandas offset, optional): Frequency of the
+                timestamps, used to verify that every series is complete and
+                regularly spaced. If `None`, it is inferred from `df` (pandas
+                only); pass it explicitly for polars.
+            id_col (str): Column that identifies each series. Defaults to
+                `"unique_id"`.
+            time_col (str): Column that identifies each timestep. Defaults to
+                `"ds"`.
+            target_col (str): Column that contains the target. Defaults to
+                `"y"`.
+            categorical_exog_list (list[str], optional): Feature names that
+                should be treated as categorical.
+            validate_api_key (bool): Validate the API key before the request.
+                Defaults to False.
+            job_timeout_seconds (int, optional): Maximum seconds the server
+                allows this job to run before terminating it server-side.
+                This is separate from `poll_timeout` in `Job.wait()`, which
+                only controls how long the client polls locally. Capped by a
+                server-side per-task maximum; requesting a higher value
+                raises `ApiError` (422) when submitting. Defaults to the
+                server's default for this task type if not specified.
+
+        Returns:
+            Job: Handle to the submitted job. `job.wait()` returns a pandas or
+                polars DataFrame with one row per feature and `feature`,
+                `weight`, and `method` columns.
+        """
+        payload, parse_result = self._prepare_explain(
+            df=df,
+            method=method,
+            features=features,
+            freq=freq,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            categorical_exog_list=categorical_exog_list,
+            validate_api_key=validate_api_key,
+            method_name="submit_explain_job",
+        )
+        return self._submit_and_wrap_job(
+            "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
         )
 
     def _distributed_detect_anomalies(
@@ -5083,7 +5431,11 @@ class NixtlaClient:
             multivariate=multivariate,
         )
         return self._submit_and_wrap_job(
-            _ANOMALY_DETECTION_ENDPOINT, payload, job_timeout_seconds, parse_result
+            _ANOMALY_DETECTION_ENDPOINT,
+            payload,
+            job_timeout_seconds,
+            parse_result,
+            task="anomaly_detection",
         )
 
     def _distributed_cross_validation(
@@ -5123,8 +5475,8 @@ class NixtlaClient:
         # job completes, independent of poll_timeout.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = 15,
-        _poll_timeout: float = 3600,
+        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -5382,8 +5734,8 @@ class NixtlaClient:
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = 15,
-        _poll_timeout: float = 3600,
+        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
         # Per-job server-side time limit, applied to each job this call submits. Only valid with
         # _is_async_job.
         _job_timeout_seconds: Optional[int] = None,
@@ -5744,7 +6096,11 @@ class NixtlaClient:
             categorical_exog_list=categorical_exog_list,
         )
         return self._submit_and_wrap_job(
-            "v2/cross_validation", payload, job_timeout_seconds, parse_result
+            "v2/cross_validation",
+            payload,
+            job_timeout_seconds,
+            parse_result,
+            task="cross_validation",
         )
 
     def submit_execute_step_job(
@@ -5836,7 +6192,9 @@ class NixtlaClient:
             data=data,
             job_timeout_seconds=job_timeout_seconds,
         )
-        return self._submit_and_wrap_binary_job("v2/execute_step", metadata, body)
+        return self._submit_and_wrap_binary_job(
+            "v2/execute_step", metadata, body, task="execute_step"
+        )
 
     def plot(
         self,

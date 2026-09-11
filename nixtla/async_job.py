@@ -7,6 +7,12 @@ if TYPE_CHECKING:
     from .nixtla_client import NixtlaClient
 
 
+# Defaults every async task polls with: a status check every 15 seconds, giving up
+# after an hour. `simulate()` and `explain()` expose the same two numbers.
+_DEFAULT_POLL_INTERVAL = 15.0
+_DEFAULT_POLL_TIMEOUT = 3600.0
+
+
 def _validate_poll_settings(
     poll_interval: float, poll_timeout: Optional[float], *, allow_unbounded: bool = False
 ) -> None:
@@ -40,6 +46,15 @@ class JobStatus(str, Enum):
         return self in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED)
 
 
+def _terminal_status(status: Optional[str]) -> Optional[JobStatus]:
+    """The `JobStatus` `status` names, or `None` when it is unknown or not terminal."""
+    try:
+        parsed = JobStatus(status)
+    except ValueError:
+        return None
+    return parsed if parsed.is_terminal else None
+
+
 class AsyncJobError(RuntimeError):
     """Raised when a job fails or returns an invalid response.
 
@@ -47,9 +62,10 @@ class AsyncJobError(RuntimeError):
         job_id (str): Identifier of the job on the server.
         error (Any): Original error reported by the server, or a description
             of an invalid response.
-        task (str, optional): Task the job ran (e.g. `"simulate"`, `"explain"`);
-            set by the task-style endpoints, `None` for forecast/finetune/
-            cross_validation jobs.
+        task (str, optional): Task the job ran (e.g. `"forecast"`,
+            `"simulate"`, `"explain"`). Every job submitted through this
+            client carries one; `None` only when a caller builds the error
+            itself without naming a task.
         status (str, optional): Known terminal status, such as `"failed"` or
             `"succeeded"`. None when the terminal state is unknown.
     """
@@ -103,7 +119,8 @@ class AsyncJobCancelledError(Exception):
 class Job:
     """Handle to a server-side async job submitted via `submit_forecast_job`,
     `submit_finetune_job`, `submit_cross_validation_job`,
-    `submit_anomaly_detection_job`, or `submit_execute_step_job`.
+    `submit_anomaly_detection_job`, `submit_simulate_job`,
+    `submit_explain_job`, or `submit_execute_step_job`.
 
     `status` queries the server for the job's current status; call `wait()`
     to block until it reaches a terminal state and get its result, or
@@ -120,7 +137,8 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        get_result: Callable[[dict[str, Any], float, float], Any],
+        get_result: Callable[[dict[str, Any], float, Optional[float]], Any],
+        task: Optional[str] = None,
     ):
         """
         Args:
@@ -129,8 +147,11 @@ class Job:
                 read it out of the job-status response's `result` field and ignore the poll
                 settings; tasks whose result is binary (`execute_step` returns a zip) leave
                 `result` null there and use them to poll their own result endpoint.
+            task: Name of the task the job runs (`"forecast"`, `"simulate"`, ...),
+                used to label `AsyncJobError` messages.
         """
         self.job_id = job_id
+        self.task = task
         self.result: Any = None
         self._status: Optional[JobStatus] = None
         self._client = client
@@ -161,8 +182,8 @@ class Job:
 
     def wait(
         self,
-        poll_interval: float = 15,
-        poll_timeout: float = 3600,
+        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         cancel_on_timeout: bool = True,
     ) -> Any:
         """Poll the job until it reaches a terminal state and return its result.
@@ -170,9 +191,11 @@ class Job:
         Args:
             poll_interval (float): Seconds to wait between job-status polls.
                 Must be finite and non-negative. Defaults to 15.
-            poll_timeout (float): Maximum seconds to wait for the job to
-                reach a terminal state before raising `AsyncJobTimeoutError`.
-                Must be finite and positive. Defaults to 3600.
+            poll_timeout (float, optional): Maximum seconds to wait for the
+                job to reach a terminal state before raising
+                `AsyncJobTimeoutError`. Must be finite and positive, or `None`
+                to poll until the server reports a terminal status. Defaults
+                to 3600.
             cancel_on_timeout (bool): Whether to request cancellation of the
                 job when `poll_timeout` elapses. Defaults to True, so that a
                 job you have given up on stops consuming server-side compute.
@@ -183,9 +206,9 @@ class Job:
                 warnings. `AsyncJobTimeoutError` is raised regardless.
 
         Returns:
-            The job's parsed result (a DataFrame for forecast/cross_validation
-            jobs, a fine-tuned model id string for finetune jobs, a `StepResult`
-            for execute_step jobs).
+            The job's parsed result (a DataFrame for forecast/cross_validation/
+            anomaly-detection/simulate/explain jobs, a fine-tuned model id
+            string for finetune jobs, a `StepResult` for execute_step jobs).
 
         Raises:
             ValueError: If the polling interval or timeout is invalid.
@@ -202,7 +225,7 @@ class Job:
             for it after the status turns terminal, using these same settings
             again -- so the total wait can reach twice `poll_timeout`.
         """
-        _validate_poll_settings(poll_interval, poll_timeout)
+        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:
                 job_data = self._client._poll_job(
@@ -211,10 +234,23 @@ class Job:
                     self.job_id,
                     poll_interval,
                     poll_timeout,
+                    task=self.task,
                 )
             except AsyncJobTimeoutError:
                 if cancel_on_timeout:
                     self._cancel_best_effort("client poll timeout")
+                raise
+            except AsyncJobCancelledError:
+                # The server already reported the terminal state; re-querying
+                # `status` cannot tell us anything new.
+                self._status = JobStatus.CANCELLED
+                raise
+            except AsyncJobError as exc:
+                # A terminal status the server reported is already final; an
+                # error without one leaves the job's state unknown.
+                status = _terminal_status(exc.status)
+                if status is not None:
+                    self._status = status
                 raise
         # `_poll_job` returns only on success; every other terminal state raises.
         self._status = JobStatus.SUCCEEDED
@@ -246,5 +282,17 @@ class Job:
         if exc_type is None:
             return
         if self._status is not None and self._status.is_terminal:
+            return
+        if isinstance(exc_val, (AsyncJobCancelledError, AsyncJobTimeoutError)):
+            # `wait()` already settled both: a cancelled job is terminal, and a
+            # timed-out one was either cancelled there or deliberately left
+            # running by `cancel_on_timeout=False`.
+            return
+        if (
+            isinstance(exc_val, AsyncJobError)
+            and _terminal_status(exc_val.status) is not None
+        ):
+            # The server reached a terminal state on its own; there is nothing
+            # left to cancel.
             return
         self._cancel_best_effort("exception cleanup")

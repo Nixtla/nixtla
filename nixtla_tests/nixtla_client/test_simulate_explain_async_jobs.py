@@ -4,6 +4,7 @@ The API accepts the request with a job id (202), the client polls the job's
 status until it is terminal and reads the result from the status envelope.
 """
 
+import inspect
 import json
 from http import HTTPStatus
 from unittest.mock import MagicMock
@@ -193,9 +194,8 @@ def test_simulate_submits_then_polls_until_succeeded(no_sleep):
     assert "job_options" not in body
     job_id = next(iter(api.jobs))
     assert [p.url.path for p in api.polls] == [f"/v2/simulate/jobs/{job_id}"] * 3
-    # slept between the three polls, backing off from the initial interval
-    assert len(no_sleep) == 2
-    assert no_sleep[1] > no_sleep[0]
+    # slept between the three polls, at the fixed interval every task uses
+    assert no_sleep == [client_module._DEFAULT_POLL_INTERVAL] * 2
     assert api.cancelled == []
 
 
@@ -219,24 +219,26 @@ def test_explain_submits_without_model_header_and_reads_result():
     assert api.polls[0].url.path.startswith("/v2/explain/jobs/ex-")
 
 
-def test_timeout_seconds_is_forwarded_as_job_options():
+def test_job_timeout_seconds_is_forwarded_as_job_options():
     api = FakeApi(result=_simulate_result(1, 1, 2))
     client = api.make_client()
 
-    client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, timeout_seconds=120)
+    client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=120)
 
     assert api.decode(api.submits[0])["job_options"] == {"timeout_seconds": 120}
 
 
 @pytest.mark.parametrize("bad", [0, -5, True, 1.5, "10"])
-def test_invalid_timeout_seconds_is_rejected_before_any_request(bad):
+def test_invalid_job_timeout_seconds_is_rejected_before_any_request(bad):
     api = FakeApi(result=_simulate_result(1, 1, 2))
     client = api.make_client()
 
-    with pytest.raises(ValueError, match="timeout_seconds"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, timeout_seconds=bad)
-    with pytest.raises(ValueError, match="timeout_seconds"):
-        client.explain(_explain_df(), timeout_seconds=bad)
+    with pytest.raises(ValueError, match="job_timeout_seconds"):
+        client.simulate(
+            df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=bad
+        )
+    with pytest.raises(ValueError, match="job_timeout_seconds"):
+        client.explain(_explain_df(), job_timeout_seconds=bad)
     assert api.requests == []
 
 
@@ -506,12 +508,12 @@ def test_404_while_polling_raises_immediately():
 
 def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
     api = FakeApi(statuses=("pending",))
-    client = api.make_client(async_job_wait_timeout=2)
+    client = api.make_client()
     clock = iter(range(0, 1000))
     monkeypatch.setattr(client_module.time, "monotonic", lambda: float(next(clock)))
 
     with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=2s") as excinfo:
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=2)
 
     job_id = next(iter(api.jobs))
     assert job_id in str(excinfo.value)
@@ -528,10 +530,10 @@ def test_success_response_received_after_wait_deadline_is_discarded():
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
-    client = api.make_client(async_job_wait_timeout=0.001)
+    client = api.make_client()
 
     with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=0.001)
 
     assert api.cancelled == [next(iter(api.jobs))]
 
@@ -550,10 +552,10 @@ def test_poll_retries_do_not_run_past_wait_deadline():
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
-    client = api.make_client(async_job_wait_timeout=0.001, max_retries=3)
+    client = api.make_client(max_retries=3)
 
     with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
-        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=0.001)
 
     assert sum(request.method == "GET" for request in api.polls) == 1
     assert api.cancelled == [next(iter(api.jobs))]
@@ -561,9 +563,11 @@ def test_poll_retries_do_not_run_past_wait_deadline():
 
 def test_wait_timeout_none_polls_until_terminal():
     api = FakeApi(statuses=("pending",) * 30 + ("succeeded",), result=_simulate_result(1, 1, 2))
-    client = api.make_client(async_job_wait_timeout=None)
+    client = api.make_client()
 
-    out = client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
+    out = client.simulate(
+        df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=None
+    )
 
     assert len(out) == 2
     assert len(api.polls) == 31
@@ -700,16 +704,36 @@ def test_async_job_error_message_and_attributes():
 
 
 @pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"async_job_wait_timeout": 0},
-        {"async_job_wait_timeout": -1},
-        {"async_job_poll_interval": 0},
-    ],
+    "name", ["async_job_wait_timeout", "async_job_poll_interval"]
 )
-def test_constructor_rejects_non_positive_async_settings(kwargs):
-    with pytest.raises(ValueError):
-        NixtlaClient(api_key="test", **kwargs)
+def test_constructor_no_longer_takes_per_client_poll_settings(name):
+    """Polling is configured per call, so these are not client-level settings."""
+    with pytest.raises(TypeError, match=name):
+        NixtlaClient(api_key="test", **{name: 1})
+
+
+@pytest.mark.parametrize("bad", [-1, float("nan"), float("inf"), True, "1"])
+def test_invalid_poll_interval_is_rejected_before_any_request(bad):
+    api = FakeApi(result=_simulate_result(1, 1, 2))
+    client = api.make_client()
+
+    with pytest.raises(ValueError, match="poll_interval"):
+        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_interval=bad)
+    with pytest.raises(ValueError, match="poll_interval"):
+        client.explain(_explain_df(), poll_interval=bad)
+    assert api.requests == []
+
+
+@pytest.mark.parametrize("bad", [0, -1, float("nan"), float("inf"), "1"])
+def test_invalid_poll_timeout_is_rejected_before_any_request(bad):
+    api = FakeApi(result=_simulate_result(1, 1, 2))
+    client = api.make_client()
+
+    with pytest.raises(ValueError, match="poll_timeout"):
+        client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=bad)
+    with pytest.raises(ValueError, match="poll_timeout"):
+        client.explain(_explain_df(), poll_timeout=bad)
+    assert api.requests == []
 
 
 def test_sync_endpoints_still_use_make_request():
@@ -750,3 +774,136 @@ def test_status_envelope_is_json_from_the_fixture():
         job_id = http.post("/v2/explain/async", content=b"{}").json()["job_id"]
         envelope = json.loads(http.get(f"/v2/explain/jobs/{job_id}").content)
     assert set(envelope) == {"job_id", "status", "result", "error", "created_at", "updated_at"}
+
+
+# --------------------------------------------------------------------------- #
+# submit_*_job: the same tasks, handed back as a Job                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_submit_simulate_job_returns_a_handle_without_polling():
+    api = FakeApi(result=_simulate_result(n_series=1, n_paths=2, h=3))
+    client = api.make_client()
+
+    job = client.submit_simulate_job(df=_series_df(), h=3, freq="D", n_paths=2)
+
+    assert job.job_id in api.jobs
+    assert job.task == "simulate"
+    # submitting must not wait for the job
+    assert api.polls == []
+    assert api.decode(api.submits[0])["n_paths"] == 2
+
+    out = job.wait(poll_interval=0)
+    assert len(out) == 6
+    assert out["TimeGPT"].tolist() == list(range(6))
+    assert job.status == "succeeded"
+
+
+def test_submit_explain_job_returns_a_handle_without_polling():
+    api = FakeApi(
+        task="explain",
+        result={"weights": [0.75, 0.25], "feature_names": None, "method": "granger"},
+    )
+    client = api.make_client()
+
+    job = client.submit_explain_job(_explain_df(), features=["driver", "noise"])
+
+    assert job.job_id in api.jobs
+    assert job.task == "explain"
+    assert api.polls == []
+
+    out = job.wait(poll_interval=0)
+    assert out["feature"].tolist() == ["driver", "noise"]
+    assert out["weight"].tolist() == [0.75, 0.25]
+
+
+@pytest.mark.parametrize("task", ["simulate", "explain"])
+def test_submit_job_payload_matches_the_blocking_call(task):
+    """The submit and blocking paths build one payload, so results cannot drift."""
+    if task == "simulate":
+        api = FakeApi(result=_simulate_result(1, 1, 2))
+        kwargs = dict(df=_series_df(), h=2, freq="D", n_paths=1, seed=7)
+        blocking, submit = NixtlaClient.simulate, NixtlaClient.submit_simulate_job
+    else:
+        api = FakeApi(
+            task="explain", result={"weights": [1.0], "method": "granger"}
+        )
+        kwargs = dict(df=_explain_df(), features=["driver"])
+        blocking, submit = NixtlaClient.explain, NixtlaClient.submit_explain_job
+    client = api.make_client()
+
+    blocking(client, **kwargs)
+    submit(client, **kwargs)
+
+    sync_body, async_body = (api.decode(s) for s in api.submits)
+    assert sync_body == async_body
+
+
+@pytest.mark.parametrize("task", ["simulate", "explain"])
+def test_submit_job_forwards_job_timeout_seconds(task):
+    api = FakeApi(task=task, result=None)
+    client = api.make_client()
+
+    if task == "simulate":
+        client.submit_simulate_job(
+            df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=90
+        )
+    else:
+        client.submit_explain_job(_explain_df(), job_timeout_seconds=90)
+
+    assert api.decode(api.submits[0])["job_options"] == {"timeout_seconds": 90}
+
+
+@pytest.mark.parametrize("bad", [0, -5, True, 1.5, "10"])
+def test_submit_job_rejects_an_invalid_job_timeout(bad):
+    api = FakeApi(result=_simulate_result(1, 1, 2))
+    client = api.make_client()
+
+    with pytest.raises(ValueError, match="job_timeout_seconds"):
+        client.submit_simulate_job(
+            df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=bad
+        )
+    with pytest.raises(ValueError, match="job_timeout_seconds"):
+        client.submit_explain_job(_explain_df(), job_timeout_seconds=bad)
+    assert api.requests == []
+
+
+def test_submit_simulate_job_has_no_partitioning():
+    """`num_partitions` fans out across several jobs, which one handle cannot represent."""
+    assert "num_partitions" in inspect.signature(NixtlaClient.simulate).parameters
+    assert (
+        "num_partitions"
+        not in inspect.signature(NixtlaClient.submit_simulate_job).parameters
+    )
+
+
+@pytest.mark.parametrize(
+    "method", ["submit_simulate_job", "submit_explain_job"]
+)
+def test_submit_job_rejects_distributed_dataframes(method):
+    api = FakeApi()
+    client = api.make_client()
+    kwargs = {"h": 2, "freq": "D"} if "simulate" in method else {}
+
+    with pytest.raises(ValueError, match="pandas and polars"):
+        getattr(client, method)(df=MagicMock(), **kwargs)
+    assert api.requests == []
+
+
+@pytest.mark.parametrize("task", ["simulate", "explain"])
+def test_failed_submitted_job_raises_labelled_error(task):
+    api = FakeApi(task=task, statuses=("running", "failed"), error="boom")
+    client = api.make_client()
+
+    if task == "simulate":
+        job = client.submit_simulate_job(df=_series_df(), h=2, freq="D", n_paths=1)
+    else:
+        job = client.submit_explain_job(_explain_df())
+
+    with pytest.raises(AsyncJobError, match=f"{task} job") as excinfo:
+        job.wait(poll_interval=0)
+    assert excinfo.value.task == task
+    assert excinfo.value.error == "boom"
+    # the server reached a terminal state on its own; nothing to clean up
+    assert api.cancelled == []
+    assert job.status == "failed"

@@ -547,7 +547,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(
             NixtlaClient,
@@ -570,7 +570,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded"},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded"},
         )
         monkeypatch.setattr(
             NixtlaClient,
@@ -647,7 +647,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
 
@@ -675,7 +675,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
 
@@ -697,7 +697,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", never_ready)
 
@@ -717,7 +717,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", boom)
 
@@ -743,7 +743,7 @@ class TestResult:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {"status": "succeeded", "result": None},
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
         )
         monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky)
 
@@ -783,7 +783,7 @@ class TestJobSurface:
         monkeypatch.setattr(
             NixtlaClient,
             "_poll_job",
-            lambda self, c, e, j, pi, pt: {
+            lambda self, c, e, j, pi, pt, **kw: {
                 "status": "succeeded",
                 "result": {"finetuned_model_id": "model-abc"},
             },

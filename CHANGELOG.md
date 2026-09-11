@@ -2,14 +2,19 @@
 
 ## Unreleased
 
-- New `list_models()` returns the sorted model names your API key may use, each usable as the `model` argument of `forecast`, `cross_validation` and the other forecasting methods. It needs the `GET /v2/models` route, which is not deployed yet; until it ships the call raises `ApiError` with status 404.
-- New `submit_anomaly_detection_job` submits online anomaly detection as a server-side job and returns a `Job` handle, the asynchronous counterpart to `detect_anomalies_online`. `num_partitions` is not supported; use `detect_anomalies_online` for distributed dataframes.
-- `detect_anomalies_online` accepts `finetuned_model_id` and `model_parameters`, which the API already supported but the client did not expose. Both are inserted mid-signature to match the parameter order used by `forecast` and `cross_validation`, so callers passing arguments **positionally** past `finetune_loss` must switch to keywords; its request body now also always carries `finetuned_model_id` (previously omitted when unset).
-- Async job results are validated before parsing: a job that reports success with a missing or non-object result now raises `AsyncJobError` instead of a `TypeError`, for every `submit_*_job` method.
-- Async job submissions, including `execute_step`, retry only connection failures and HTTP 429 responses. Read timeouts and gateway errors now fail immediately to avoid creating duplicate jobs. Retry sleeps respect the remaining `max_wait_time` budget.
-- Async partitioned requests share a limit of five concurrent jobs. A partition failure cancels sibling jobs and stops queued submissions. Synchronous partitioned requests also stop queued work after a failure.
-- `simulate` and `explain` use `AsyncJobTimeoutError` and `AsyncJobCancelledError`, consistently with existing async endpoints. `AsyncJobError.error` preserves the original server error.
-- Polling preserves permanent HTTP errors, cleans up jobs whose terminal state is unknown when blocking calls fail, and warns only once per job about transient polling failures. `Job.wait()` rejects non-finite or invalid polling settings.
+### Added
+
+- **Asynchronous jobs.** Long-running work can now run server-side without blocking the client. `submit_forecast_job()`, `submit_cross_validation_job()`, `submit_finetune_job()`, `submit_anomaly_detection_job()`, `submit_simulate_job()` and `submit_explain_job()` return a `Job` handle instead of a result: `job.wait()` blocks until it finishes, `job.status` reports progress, and `job.cancel()` asks the server to stop. Polling is set per call with `poll_interval` and `poll_timeout` — a status check every 15 seconds, giving up after an hour, or `poll_timeout=None` to wait until the server reports a terminal status — while `job_timeout_seconds` caps the time the server itself spends. A `Job` used as a context manager cancels the job if you leave the block early. `Job`, `JobStatus`, `AsyncJobError`, `AsyncJobTimeoutError`, `AsyncJobCancelledError` and `ApiError` are exported from the package root.
+- **Forecast simulation.** `simulate()` draws temporally correlated sample paths for each series and returns them in long format with a `sample_id` column. `multivariate=True` requests paths that stay coherent across series, and `num_partitions` splits large jobs across concurrent requests to stay under the request size limit.
+- **Feature explanations.** `explain()` computes model-independent feature importance weights from the supplied history, using `"granger"` for linear lagged relationships or `"transfer_entropy"` for potentially nonlinear ones. The weights describe predictive relationships, not causal ones.
+- **TSMP steps.** `submit_execute_step_job()` runs one TSMP top-level API call server-side and returns a `StepResult`. Tables are referenced from `params` with `nixtla.ref(key)`, and one step's `data` can be passed straight into the next, so calls chain without any file or byte handling.
+- **`list_models()`** returns the sorted model names your API key may use, each usable as the `model` argument of `forecast()`, `cross_validation()` and the other forecasting methods. It needs the `GET /v2/models` route, which is not deployed yet; until it ships the call raises `ApiError` with status 404.
+- `detect_anomalies_online()` accepts `finetuned_model_id` and `model_parameters`, which the API already supported but the client did not expose.
+
+### Changed
+
+- **Breaking:** `detect_anomalies_online()` takes its two new arguments mid-signature, matching the parameter order `forecast()` and `cross_validation()` use. Callers passing arguments **positionally** past `finetune_loss` must switch to keywords. Its request body now always carries `finetuned_model_id`, which was previously omitted when unset.
+- A failed partition now stops queued `num_partitions` work instead of letting the remaining requests run to completion.
 
 ## 0.6.6
 
