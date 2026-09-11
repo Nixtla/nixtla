@@ -32,9 +32,14 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
 How long the client waits for a server-side asynchronous job is set per call,
 not on the client: pass `poll_interval` and `poll_timeout` to `simulate()`,
-`explain()`, or `Job.wait()`. They default to a status check every 15 seconds
-and a one-hour ceiling; `poll_timeout=None` waits until the server reports a
+`explain()`, or `Job.wait()`. By default polling is adaptive -- the first status
+check comes after half a second and the interval doubles up to one check every
+15 seconds -- under a one-hour ceiling. An explicit `poll_interval` is a fixed
+cadence instead, and `poll_timeout=None` waits until the server reports a
 terminal status.
+
+The `submit_*_job` methods below submit the same work without waiting for it,
+returning a `Job` handle.
 
 Async partitioned requests run at most five jobs concurrently. A partition
 failure cancels sibling jobs and stops queued submissions. Synchronous
@@ -134,7 +139,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 >     validate_api_key=False, date_features=False,
 >     date_features_to_one_hot=False, model="timegpt-2.1",
 >     multivariate=False, num_partitions=None,
->     job_timeout_seconds=None, poll_interval=15.0, poll_timeout=3600.0
+>     job_timeout_seconds=None, poll_interval=None, poll_timeout=3600.0
 > )
 > ```
 
@@ -174,7 +179,7 @@ raise `nixtla.ApiError`, preserving the server's error body.
 | multivariate | bool | False | Request coherent paths across series. The returned `coupled` column reports whether cross-series coupling was applied. |
 | num_partitions | int | None | Split the series across this many concurrent requests to keep large jobs under the request size limit. Cannot be combined with `multivariate=True`. Each partition receives a distinct seed derived from `seed`, so the call stays reproducible, but a partitioned call returns different paths than an unpartitioned one for the same `seed`. |
 | job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job (on each partition when `num_partitions` is set). It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
-| poll_interval | float | 15.0 | Seconds between two status checks of the job. |
+| poll_interval | float | None | Seconds between two status checks of the job, held fixed. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds, so a short job returns promptly and a long one still polls cheaply. |
 | poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. Submission retries are excluded; each partition gets its own timeout. When it elapses the client requests cancellation and raises `AsyncJobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
 | **Returns** | **pandas or polars DataFrame** |  | **Long-form paths containing the ID and time columns, `sample_id`, `TimeGPT`, and `coupled`. The dataframe contains `n_series * n_paths * h` rows. The ID column is omitted if `df` did not contain one.** |
 
@@ -194,7 +199,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 >     df, method="granger", features=None, freq=None,
 >     id_col="unique_id", time_col="ds", target_col="y",
 >     categorical_exog_list=None, validate_api_key=False,
->     job_timeout_seconds=None, poll_interval=15.0, poll_timeout=3600.0
+>     job_timeout_seconds=None, poll_interval=None, poll_timeout=3600.0
 > )
 > ```
 
@@ -223,7 +228,7 @@ raise `nixtla.ApiError`, preserving the server's error body.
 | categorical_exog_list | list[str] | None | Feature names to treat as categorical. Every name must also appear in `features`. |
 | validate_api_key | bool | False | Validate the API key before sending the request. |
 | job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
-| poll_interval | float | 15.0 | Seconds between two status checks of the job. |
+| poll_interval | float | None | Seconds between two status checks of the job, held fixed. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds, so a short job returns promptly and a long one still polls cheaply. |
 | poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. When it elapses the client requests cancellation and raises `AsyncJobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
 | **Returns** | **pandas or polars DataFrame** |  | **One row per feature with `feature`, `weight`, and `method` columns. Weights are nonnegative and sum to one.** |
 
@@ -516,3 +521,301 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | engine | Literal | matplotlib | Library used to plot. ‘matplotlib’, ‘plotly’ or ‘plotly-resampler’. |
 | resampler_kwargs | Optional | None | Kwargs to be passed to plotly-resampler constructor.<br/>For further customization (“show_dash”) call the method,<br/>store the plotting object and add the extra arguments to<br/>its `show_dash` method. |
 | ax | Union | None | Object where plots will be added. |
+
+------------------------------------------------------------------------
+
+# Asynchronous jobs
+
+Every long-running task can be started without waiting for it. The
+`submit_*_job` methods below send the same request their blocking counterparts
+do and return a `Job` handle as soon as the server has accepted it, so
+you can submit work, do something else, and collect the result later.
+
+Each takes the same arguments as the method it mirrors, minus the ones that only
+mean something to a call that blocks — there is no `num_partitions`, because a
+partitioned call fans out across several jobs and has no single handle to give
+back, and no `poll_interval` or `poll_timeout`, which belong to `Job.wait()`.
+Use the blocking method when you want partitioning.
+
+Submission is retried only for failures that are known to precede acceptance
+(connection errors and HTTP 429); a read timeout or gateway error is not
+retried, because the server may already have created the job.
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_forecast_job
+
+> ```text
+> NixtlaClient.submit_forecast_job (
+>     df, h, freq=None, id_col="unique_id", time_col="ds",
+>     target_col="y", X_df=None, level=None, quantiles=None,
+>     finetune_steps=0, finetune_depth=1, finetune_loss="default",
+>     finetuned_model_id=None, clean_ex_first=True, hist_exog_list=None,
+>     categorical_exog_list=None, validate_api_key=False,
+>     date_features=False, date_features_to_one_hot=False,
+>     model="timegpt-2.1", feature_contributions=False,
+>     model_parameters=None, multivariate=False, job_timeout_seconds=None
+> )
+> ```
+
+*Submit a forecasting job and return a handle to it without waiting.*
+
+Arguments are those of `NixtlaClient.forecast`, except
+that `add_history` and `num_partitions` are not supported.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the forecast as a pandas or polars DataFrame.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_cross_validation_job
+
+> ```text
+> NixtlaClient.submit_cross_validation_job (
+>     df, h, freq=None, id_col="unique_id", time_col="ds",
+>     target_col="y", level=None, quantiles=None, validate_api_key=False,
+>     n_windows=1, step_size=None, finetune_steps=0, finetune_depth=1,
+>     finetune_loss="default", finetuned_model_id=None, refit=True,
+>     clean_ex_first=True, hist_exog_list=None, date_features=False,
+>     date_features_to_one_hot=False, model="timegpt-2.1",
+>     model_parameters=None, multivariate=False,
+>     categorical_exog_list=None, job_timeout_seconds=None
+> )
+> ```
+
+*Submit a cross-validation job and return a handle to it without waiting.*
+
+Arguments are those of
+`NixtlaClient.cross_validation`, except that
+`num_partitions` is not supported.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the cross-validation results as a pandas or polars DataFrame.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_anomaly_detection_job
+
+> ```text
+> NixtlaClient.submit_anomaly_detection_job (
+>     df, h, detection_size, threshold_method="univariate", freq=None,
+>     id_col="unique_id", time_col="ds", target_col="y", level=99,
+>     clean_ex_first=True, step_size=None, finetune_steps=0,
+>     finetune_depth=1, finetune_loss="default", finetuned_model_id=None,
+>     hist_exog_list=None, date_features=False,
+>     date_features_to_one_hot=False, model="timegpt-2.1",
+>     model_parameters=None, refit=False, multivariate=False,
+>     job_timeout_seconds=None
+> )
+> ```
+
+*Submit an online anomaly-detection job and return a handle to it without waiting.*
+
+Arguments are those of `NixtlaClient.detect_anomalies_online`, except that
+`num_partitions` is not supported.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the anomalies as a pandas or polars DataFrame.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_finetune_job
+
+> ```text
+> NixtlaClient.submit_finetune_job (
+>     df, freq=None, id_col="unique_id", time_col="ds", target_col="y",
+>     finetune_steps=10, finetune_depth=1, finetune_loss="default",
+>     output_model_id=None, finetuned_model_id=None, model="timegpt-2.1",
+>     job_timeout_seconds=None
+> )
+> ```
+
+*Submit a fine-tuning job and return a handle to it without waiting.*
+
+Arguments are those of `NixtlaClient.finetune`.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the fine-tuned model id as a string.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_simulate_job
+
+> ```text
+> NixtlaClient.submit_simulate_job (
+>     df, h, freq=None, id_col="unique_id", time_col="ds",
+>     target_col="y", X_df=None, n_paths=100, quantiles=None, seed=None,
+>     finetuned_model_id=None, clean_ex_first=True, hist_exog_list=None,
+>     categorical_exog_list=None, validate_api_key=False,
+>     date_features=False, date_features_to_one_hot=False,
+>     model="timegpt-2.1", multivariate=False, job_timeout_seconds=None
+> )
+> ```
+
+*Submit a simulation job and return a handle to it without waiting.*
+
+Arguments are those of `NixtlaClient.simulate`, except
+that `num_partitions` is not supported — use `simulate()` to partition a large
+request.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the sample paths as a pandas or polars DataFrame.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_explain_job
+
+> ```text
+> NixtlaClient.submit_explain_job (
+>     df, method="granger", features=None, freq=None,
+>     id_col="unique_id", time_col="ds", target_col="y",
+>     categorical_exog_list=None, validate_api_key=False,
+>     job_timeout_seconds=None
+> )
+> ```
+
+*Submit a feature-importance job and return a handle to it without waiting.*
+
+Arguments are those of `NixtlaClient.explain`.
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns the weights as a pandas or polars DataFrame.** |
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## NixtlaClient.submit_execute_step_job
+
+> ```text
+> NixtlaClient.submit_execute_step_job (
+>     func_name, params, data=None, job_timeout_seconds=None
+> )
+> ```
+
+*Run one TSMP top-level API call server-side and return a handle to it without waiting.*
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| func_name | str |  | Name of the TSMP top-level API call to run. |
+| params | dict |  | Arguments for the call. Reference a table from `data` with `nixtla.ref(key)`. |
+| data | dict | None | Tables the call reads, keyed by the name `nixtla.ref` refers to. One step's result `data` can be passed straight in here, so calls chain without any file or byte handling. |
+| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
+| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns a `StepResult`.** |
+
+Unlike the other tasks, this job's result is binary and is served from its own
+endpoint rather than inlined into the status response. `job.wait()` therefore
+polls twice — once for the status, then for the payload — so a wait can take up
+to twice `poll_timeout`.
+
+------------------------------------------------------------------------
+
+<a
+href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
+target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
+
+## Job
+
+*Handle to a server-side asynchronous job.*
+
+Returned by every `submit_*_job` method; not constructed directly. Importable
+from the package root as `nixtla.Job`.
+
+|  | **Type** | **Details** |
+|---|---|---|
+| job_id | str | Identifier of the job on the server. |
+| task | str | Task the job runs, e.g. `"forecast"` or `"simulate"`. Labels the errors the job raises. |
+| result | Any | The result, once `wait()` has returned it; `None` before that. |
+| status | JobStatus | Current status. Queries the server unless a terminal status is already known, since a finished job's status cannot change again. |
+
+### Job.wait
+
+> ```text
+> Job.wait (poll_interval=None, poll_timeout=3600.0, cancel_on_timeout=True)
+> ```
+
+*Poll the job until it reaches a terminal state and return its result.*
+
+|  | **Type** | **Default** | **Details** |
+|---|---|---|---|
+| poll_interval | float | None | Seconds between two status checks, held fixed. Must be finite and non-negative. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds. |
+| poll_timeout | float | 3600.0 | Maximum seconds to wait for a terminal state before raising `AsyncJobTimeoutError`. Must be finite and positive, or `None` to poll until the server reports a terminal status. |
+| cancel_on_timeout | bool | True | Whether to request cancellation when `poll_timeout` elapses, so a job you have given up on stops consuming server-side compute. Set to `False` to poll in short increments and call `wait()` again to resume. |
+| **Returns** | **Any** |  | **A DataFrame for forecast, cross-validation, anomaly-detection, simulate and explain jobs; a fine-tuned model id for finetune jobs; a `StepResult` for execute_step jobs.** |
+
+Raises `AsyncJobError` if the job fails server-side, `AsyncJobCancelledError` if
+it reaches the `cancelled` state, and `AsyncJobTimeoutError` if `poll_timeout`
+elapses first. `poll_timeout` bounds the client's polling only: with
+`cancel_on_timeout=False` the job keeps running server-side until its own
+deadline. A run of transient status-check failures does not end the wait — the
+client keeps polling while there is time left, and reports the last such failure
+as the cause if the wait times out.
+
+### Job.cancel
+
+> ```text
+> Job.cancel ()
+> ```
+
+*Request cancellation of the job.*
+
+### Job as a context manager
+
+If an exception propagates out of the `with` block while the job is still
+running, cancellation is requested automatically as best-effort cleanup. A block
+left without an exception cancels nothing, and neither does an exception raised
+by a job that has already reached a terminal state. An error raised by a
+*different* job settles nothing about this one, so it is cleaned up as normal.
+
+```python
+with client.submit_forecast_job(df=df, h=12, freq="D") as job:
+    fcst = job.wait()
+```
+
+------------------------------------------------------------------------
+
+## JobStatus
+
+*Status of a server-side job.*
+
+`PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED` and `CANCELLED`. Each compares equal
+to its lowercase string, so `job.status == "succeeded"` works. `SUCCEEDED`,
+`FAILED` and `CANCELLED` are terminal.

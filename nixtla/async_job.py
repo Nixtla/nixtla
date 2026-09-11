@@ -1,28 +1,63 @@
 from enum import Enum
 import math
 from numbers import Real
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional
 
 if TYPE_CHECKING:
     from .nixtla_client import NixtlaClient
 
 
-# Defaults every async task polls with: a status check every 15 seconds, giving up
-# after an hour. `simulate()` and `explain()` expose the same two numbers.
-_DEFAULT_POLL_INTERVAL = 15.0
+# Defaults every async task polls with: an adaptive cadence, giving up after an
+# hour. `simulate()` and `explain()` expose the same two settings.
+_DEFAULT_POLL_INTERVAL: Optional[float] = None
 _DEFAULT_POLL_TIMEOUT = 3600.0
+
+# The adaptive cadence `poll_interval=None` selects: check again after half a
+# second, then double until settling at one check every 15 seconds. A job that
+# finishes in a couple of seconds is noticed almost immediately; an hour-long
+# one costs no more status requests than the old fixed 15-second interval did.
+_POLL_BACKOFF_START = 0.5
+_POLL_BACKOFF_CAP = 15.0
+
+# Floor on the wait before re-polling an endpoint that just failed. A
+# `poll_interval` of 0 asks for a tight status loop against a healthy server; it
+# is not a licence to hammer a broken one, and without a floor here a run of
+# gateway errors would spin as fast as the CPU allows until `poll_timeout`.
+_MIN_POLL_RETRY_INTERVAL = 0.5
+
+
+def _poll_intervals(poll_interval: Optional[float]) -> Iterator[float]:
+    """Seconds to wait before each successive status check.
+
+    An explicit `poll_interval` is a fixed cadence, repeated forever. The
+    default (`None`) backs off from `_POLL_BACKOFF_START` to
+    `_POLL_BACKOFF_CAP` instead.
+    """
+    if poll_interval is not None:
+        while True:
+            yield poll_interval
+    wait = _POLL_BACKOFF_START
+    while True:
+        yield wait
+        wait = min(wait * 2, _POLL_BACKOFF_CAP)
 
 
 def _validate_poll_settings(
-    poll_interval: float, poll_timeout: Optional[float], *, allow_unbounded: bool = False
+    poll_interval: Optional[float],
+    poll_timeout: Optional[float],
+    *,
+    allow_unbounded: bool = False,
 ) -> None:
-    if (
+    if poll_interval is not None and (
         isinstance(poll_interval, bool)
         or not isinstance(poll_interval, Real)
         or not math.isfinite(poll_interval)
         or poll_interval < 0
     ):
-        raise ValueError("`poll_interval` must be a finite, non-negative number.")
+        raise ValueError(
+            "`poll_interval` must be a finite, non-negative number, "
+            "or None to poll on the adaptive cadence."
+        )
     if poll_timeout is None and allow_unbounded:
         return
     if (
@@ -137,7 +172,7 @@ class Job:
         client: "NixtlaClient",
         job_id: str,
         endpoint: str,
-        get_result: Callable[[dict[str, Any], float, Optional[float]], Any],
+        get_result: Callable[[dict[str, Any], Optional[float], Optional[float]], Any],
         task: Optional[str] = None,
     ):
         """
@@ -182,15 +217,20 @@ class Job:
 
     def wait(
         self,
-        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
         poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         cancel_on_timeout: bool = True,
     ) -> Any:
         """Poll the job until it reaches a terminal state and return its result.
 
         Args:
-            poll_interval (float): Seconds to wait between job-status polls.
-                Must be finite and non-negative. Defaults to 15.
+            poll_interval (float, optional): Seconds to wait between job-status
+                polls, held fixed. Must be finite and non-negative. Defaults to
+                `None`, which polls on an adaptive cadence instead: the first
+                check comes after half a second and the interval doubles up to
+                one check every 15 seconds, so a job that finishes quickly is
+                noticed quickly without a long one polling any more often than
+                it needs to.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
                 `AsyncJobTimeoutError`. Must be finite and positive, or `None`
@@ -275,6 +315,16 @@ class Job:
             if self._client._cancel_job_best_effort(http_client, self.job_id, reason):
                 self._status = JobStatus.CANCELLED
 
+    def _raised_by_this_job(self, exc_val: BaseException) -> bool:
+        """Whether `exc_val` is this job's own error rather than a sibling's.
+
+        Every async-job error carries the `job_id` it came from. Nested `with`
+        blocks put a sibling's error on the outer job's way out, and an error
+        that says nothing about this job says nothing about whether it still
+        needs cancelling.
+        """
+        return getattr(exc_val, "job_id", None) == self.job_id
+
     def __enter__(self) -> "Job":
         return self
 
@@ -283,13 +333,17 @@ class Job:
             return
         if self._status is not None and self._status.is_terminal:
             return
-        if isinstance(exc_val, (AsyncJobCancelledError, AsyncJobTimeoutError)):
+        if isinstance(
+            exc_val, (AsyncJobCancelledError, AsyncJobTimeoutError)
+        ) and self._raised_by_this_job(exc_val):
             # `wait()` already settled both: a cancelled job is terminal, and a
             # timed-out one was either cancelled there or deliberately left
-            # running by `cancel_on_timeout=False`.
+            # running by `cancel_on_timeout=False`. A sibling's timeout settles
+            # nothing here, so it falls through to the cleanup below.
             return
         if (
             isinstance(exc_val, AsyncJobError)
+            and self._raised_by_this_job(exc_val)
             and _terminal_status(exc_val.status) is not None
         ):
             # The server reached a terminal state on its own; there is nothing

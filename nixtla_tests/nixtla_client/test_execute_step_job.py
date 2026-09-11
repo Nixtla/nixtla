@@ -752,6 +752,73 @@ class TestResult:
         assert res["result"].num_rows == 3
 
 
+    def test_an_endpoint_that_only_ever_fails_gives_up_without_a_timeout(
+        self, monkeypatch
+    ):
+        """`poll_timeout=None` bounds the wait for a result that is still being
+        assembled, but it must not turn a broken endpoint into an infinite loop.
+
+        Nothing else bounds this: with no deadline and `poll_interval=0` the
+        loop would spin on 502s for as long as the process lives.
+        """
+        attempts = []
+
+        def always_bad_gateway(self, client, endpoint, job_id):
+            attempts.append(job_id)
+            raise ApiError(status_code=502, body={"detail": "bad gateway"})
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", always_bad_gateway)
+
+        job = _client(max_retries=3, retry_interval=0).submit_execute_step_job(
+            **_call_kwargs()
+        )
+        with pytest.raises(ApiError) as exc:
+            job.wait(poll_interval=0, poll_timeout=None)
+
+        assert exc.value.status_code == 502
+        assert len(attempts) == 3
+
+    def test_a_result_still_being_assembled_outlasts_the_transient_budget(
+        self, monkeypatch
+    ):
+        """"Not ready" is a polling state, not a failure, so it must not spend
+        the budget that bounds genuine network errors -- and an occasional 502
+        in between must not either, as long as the endpoint keeps answering."""
+        body = _pack({"result": _tagged_table()})
+        attempts = []
+
+        def slow_with_hiccups(self, client, endpoint, job_id):
+            attempts.append(job_id)
+            if len(attempts) >= 12:
+                return {}, body
+            if len(attempts) % 4 == 0:
+                raise ApiError(status_code=502, body={"detail": "bad gateway"})
+            raise ApiError(status_code=202, body={"detail": "not ready"})
+
+        _stub_submit_binary(monkeypatch)
+        monkeypatch.setattr(
+            NixtlaClient,
+            "_poll_job",
+            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+        )
+        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", slow_with_hiccups)
+
+        res = (
+            _client(max_retries=3, retry_interval=0)
+            .submit_execute_step_job(**_call_kwargs())
+            .wait(poll_interval=0, poll_timeout=None)
+        )
+
+        assert len(attempts) == 12
+        assert res["result"].num_rows == 3
+
+
 # ---------------------------------------------------------------------------
 # the shared Job surface still works for this job type
 # ---------------------------------------------------------------------------

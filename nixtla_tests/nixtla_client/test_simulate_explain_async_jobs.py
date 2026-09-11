@@ -194,8 +194,8 @@ def test_simulate_submits_then_polls_until_succeeded(no_sleep):
     assert "job_options" not in body
     job_id = next(iter(api.jobs))
     assert [p.url.path for p in api.polls] == [f"/v2/simulate/jobs/{job_id}"] * 3
-    # slept between the three polls, at the fixed interval every task uses
-    assert no_sleep == [client_module._DEFAULT_POLL_INTERVAL] * 2
+    # slept between the three polls, on the adaptive cadence every task uses
+    assert no_sleep == [0.5, 1.0]
     assert api.cancelled == []
 
 

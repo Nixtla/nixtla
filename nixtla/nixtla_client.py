@@ -70,6 +70,8 @@ from .async_job import (
     JobStatus,
     _DEFAULT_POLL_INTERVAL,
     _DEFAULT_POLL_TIMEOUT,
+    _MIN_POLL_RETRY_INTERVAL,
+    _poll_intervals,
     _validate_poll_settings,
 )
 from .steps import (
@@ -374,7 +376,8 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
 
 
 # All async endpoints share submission, polling and cancellation, including
-# the polling cadence: a fixed `poll_interval` with retries bounded by the
+# the polling cadence: `poll_interval` between status checks -- fixed when the
+# caller gives one, adaptive when it is `None` -- with retries bounded by the
 # caller's `poll_timeout`. The defaults live next to `Job.wait`, which applies
 # the same ones.
 
@@ -493,17 +496,26 @@ def _is_retriable_poll_error(exc: BaseException) -> bool:
 
 def _poll_retry_strategy(
     max_retries: Optional[int],
-    retry_interval: float,
+    retry_interval: Callable[[], float],
     max_wait_time: Optional[int],
     deadline: Optional[float],
     cancellation_event: Optional[Event] = None,
 ):
-    """Retry status requests without sleeping beyond the job wait deadline."""
+    """Retry status requests without sleeping beyond the job wait deadline.
+
+    `retry_interval` is read per attempt because the polling cadence can be
+    adaptive: a transient failure is retried at whatever interval the wait has
+    backed off to, not at a cadence fixed when the wait began.
+
+    `max_retries` bounds one run of consecutive failures, not the whole wait:
+    `_poll_job` resumes polling afterwards when it still has deadline left, so a
+    patch of gateway errors no longer ends an hour-long wait.
+    """
 
     warned = False
 
     def wait_for(_: RetryCallState) -> float:
-        wait = float(retry_interval)
+        wait = float(retry_interval())
         if deadline is not None:
             wait = min(wait, max(deadline - time.monotonic(), 0.0))
         return wait
@@ -1918,7 +1930,7 @@ class NixtlaClient:
         transform: Optional[Callable[[dict[str, Any]], dict[str, Any]]] = None,
         *,
         is_async_job: bool = False,
-        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
         poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         job_timeout_seconds: Optional[int] = None,
         task: Optional[str] = None,
@@ -2000,7 +2012,7 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         job_id: str,
-        poll_interval: float,
+        poll_interval: Optional[float],
         poll_timeout: Optional[float],
         *,
         task: Optional[str] = None,
@@ -2009,22 +2021,36 @@ class NixtlaClient:
         """Return the successful status envelope without cancelling on timeout.
 
         The caller owns cancellation so `Job.wait(cancel_on_timeout=False)`
-        stays resumable. Every task polls the same way: a fixed
-        `poll_interval` between status checks, transient failures retried on
-        the client's retry budget, and nothing outliving `poll_timeout`.
-        `task` only labels the errors raised from here, and defaults to the
-        name the endpoint already carries.
+        stays resumable. Every task polls the same way: `poll_interval` between
+        status checks -- fixed when given, adaptive when `None` -- transient
+        failures retried on the client's retry budget, and nothing outliving
+        `poll_timeout`. `task` only labels the errors raised from here, and
+        defaults to the name the endpoint already carries.
         """
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         task = task or _task_name(endpoint)
         deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
+        # The cadence is shared between the sleep after a non-terminal status
+        # and the sleep between retries of a failed status check, so a retry
+        # never polls faster than the wait has settled to.
+        intervals = _poll_intervals(poll_interval)
+        current_interval = next(intervals)
+        retry_floor = max(
+            self._retry_settings["retry_interval"], _MIN_POLL_RETRY_INTERVAL
+        )
+        # The last transient failure, if any, so that a wait spent retrying a
+        # flapping server times out saying so rather than reporting only that
+        # the job never finished.
+        last_poll_error: Optional[BaseException] = None
 
         def check_wait() -> None:
             if cancellation_event is not None and cancellation_event.is_set():
                 raise CancelledError
             if deadline is not None and time.monotonic() >= deadline:
                 assert poll_timeout is not None
-                raise AsyncJobTimeoutError(job_id=job_id, poll_timeout=poll_timeout)
+                raise AsyncJobTimeoutError(
+                    job_id=job_id, poll_timeout=poll_timeout
+                ) from last_poll_error
 
         def get_status() -> dict[str, Any]:
             check_wait()
@@ -2033,13 +2059,22 @@ class NixtlaClient:
             )
             return self._get_job_data(client, endpoint, job_id, timeout=timeout)
 
+        def _sleep_between_polls(interval: float) -> float:
+            """Wait out `interval`, clamped to the deadline, and return the next one."""
+            sleep_for = interval
+            if deadline is not None:
+                sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
+            if _wait_for_poll(sleep_for, cancellation_event):
+                raise CancelledError
+            return next(intervals)
+
         # One budget for every task: a run of transient status failures is
         # bounded by the client's retry settings, and never outlives the
         # caller's poll deadline. Each poll cycle gets a fresh budget, and
-        # retries keep the cadence the caller asked for.
+        # retries keep whatever cadence the wait has settled to.
         get_status_with_retries = _poll_retry_strategy(
             max_retries=self._retry_settings["max_retries"],
-            retry_interval=poll_interval,
+            retry_interval=lambda: current_interval,
             max_wait_time=self._retry_settings["max_wait_time"],
             deadline=deadline,
             cancellation_event=cancellation_event,
@@ -2048,9 +2083,22 @@ class NixtlaClient:
             try:
                 job_data = get_status_with_retries()
             except Exception as exc:
-                if _is_retriable_poll_error(exc):
-                    check_wait()
-                raise
+                if not _is_retriable_poll_error(exc):
+                    raise
+                last_poll_error = exc
+                # The inner budget bounds one run of failures; the wait itself
+                # is bounded by `poll_timeout`. A patch of gateway errors should
+                # not end an hour-long wait -- which, in a partitioned fan-out,
+                # would also cancel the job and its siblings -- so keep polling
+                # while there is deadline left. Without a deadline there is
+                # nothing left to bound the retrying, so the error propagates.
+                check_wait()
+                if deadline is None:
+                    raise
+                current_interval = _sleep_between_polls(
+                    max(current_interval, retry_floor)
+                )
+                continue
             check_wait()
             raw_status = job_data.get("status") if isinstance(job_data, dict) else None
             try:
@@ -2072,18 +2120,14 @@ class NixtlaClient:
                     status=status.value,
                     error=job_data.get("error"),
                 )
-            sleep_for = poll_interval
-            if deadline is not None:
-                sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
-            if _wait_for_poll(sleep_for, cancellation_event):
-                raise CancelledError
+            current_interval = _sleep_between_polls(current_interval)
 
     def _run_async_job(
         self,
         client: httpx.Client,
         endpoint: str,
         payload: dict[str, Any],
-        poll_interval: float,
+        poll_interval: Optional[float],
         poll_timeout: Optional[float],
         multithreaded_compress: bool = True,
         job_timeout_seconds: Optional[int] = None,
@@ -2272,19 +2316,30 @@ class NixtlaClient:
         client: httpx.Client,
         endpoint: str,
         job_id: str,
-        poll_interval: float,
+        poll_interval: Optional[float],
         poll_timeout: Optional[float],
     ) -> tuple[httpx.Headers, bytes]:
         """Poll a binary job's result endpoint until the payload is served.
 
         A succeeded job's result is not necessarily available the instant its status says so, and
         the endpoint answers `_RESULT_NOT_READY_CODES` until it is. That is a polling state, not a
-        failure, so it gets its own bounded loop here rather than going through `_retry_strategy`:
-        waiting is not an error to log as one, and it should not spend the budget reserved for
-        transient network failures. Those are still retried, by the same loop.
+        failure, so it gets its own loop here rather than going through `_retry_strategy`: waiting
+        is not an error to log as one, and it should not spend the budget reserved for transient
+        network failures.
+
+        The two are bounded differently, as they are in `_poll_job`. Waiting for a result that is
+        still being assembled is bounded only by `poll_timeout`, which `Job.wait(poll_timeout=None)`
+        may leave unset. A run of transient network failures is bounded by the client's
+        `max_retries` regardless, so an endpoint that never answers cannot spin here forever, and
+        its sleeps never fall below the client's `retry_interval` even when `poll_interval` is 0.
+        Any answer at all, "not ready" included, clears that budget.
         """
         deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
+        intervals = _poll_intervals(poll_interval)
+        max_retries = self._retry_settings["max_retries"]
+        retry_interval = self._retry_settings["retry_interval"]
         announced = False
+        failures = 0
         while True:
             try:
                 return self._get_job_result_bytes(client, endpoint, job_id)
@@ -2292,9 +2347,18 @@ class NixtlaClient:
                 not_ready = (
                     isinstance(e, ApiError) and e.status_code in _RESULT_NOT_READY_CODES
                 )
-                if not not_ready and not _is_retriable_error(e):
+                if not not_ready and not _is_retriable_poll_error(e):
                     raise
-                sleep_for = poll_interval
+                sleep_for = next(intervals)
+                if not_ready:
+                    failures = 0
+                else:
+                    failures += 1
+                    if failures >= max_retries:
+                        raise
+                    # Never retry a failing endpoint faster than the client
+                    # would retry any other request.
+                    sleep_for = max(sleep_for, retry_interval)
                 if deadline is not None:
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
@@ -2302,7 +2366,7 @@ class NixtlaClient:
                         raise AsyncJobTimeoutError(
                             job_id=job_id, poll_timeout=poll_timeout
                         ) from e
-                    sleep_for = min(poll_interval, remaining)
+                    sleep_for = min(sleep_for, remaining)
                 if not announced:
                     # Once per wait, not once per attempt: `poll_interval` may be small.
                     logger.info("Waiting for the result of job %s...", job_id)
@@ -2325,7 +2389,7 @@ class NixtlaClient:
 
         def get_result(
             job_data: dict[str, Any],
-            poll_interval: float,
+            poll_interval: Optional[float],
             poll_timeout: Optional[float],
         ) -> StepResult:
             # The status response leaves `result` null for these tasks; the payload is served
@@ -2357,8 +2421,8 @@ class NixtlaClient:
         endpoint: str,
         payloads: list[dict[str, Any]],
         _is_async_job: bool = False,
-        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
-        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
+        _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         _job_timeout_seconds: Optional[int] = None,
     ) -> dict[str, Any]:
         results = self._dispatch_partitioned_requests(
@@ -2416,7 +2480,7 @@ class NixtlaClient:
         n_paths: int,
         h: int,
         job_timeout_seconds: Optional[int],
-        poll_interval: float,
+        poll_interval: Optional[float],
         poll_timeout: Optional[float],
     ) -> dict[str, Any]:
         def _samples_to_array(res: dict[str, Any]) -> dict[str, Any]:
@@ -2976,8 +3040,8 @@ class NixtlaClient:
         # job completes, independent of poll_timeout.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
-        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
+        _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -3325,8 +3389,8 @@ class NixtlaClient:
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
-        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
+        _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         # Per-job server-side time limit, applied to each job this call submits. Only valid with
         # _is_async_job.
         _job_timeout_seconds: Optional[int] = None,
@@ -3999,7 +4063,7 @@ class NixtlaClient:
         multivariate: bool = False,
         num_partitions: Optional[_PositiveInt] = None,
         job_timeout_seconds: Optional[int] = None,
-        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
         poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     ) -> DataFrame:
         """Generate temporally correlated forecast sample paths.
@@ -4080,8 +4144,11 @@ class NixtlaClient:
                 locally. Capped by a server-side per-task maximum; requesting a
                 higher value raises `ApiError` (422) when submitting. Defaults
                 to the server's default for this task type if not specified.
-            poll_interval (float): Seconds to wait between job-status polls.
-                Must be finite and non-negative. Defaults to 15.
+            poll_interval (float, optional): Seconds to wait between job-status
+                polls, held fixed. Must be finite and non-negative. Defaults to
+                `None`, which polls on an adaptive cadence instead: the first
+                check comes after half a second and the interval doubles up to
+                one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
                 `AsyncJobTimeoutError`, measured from a successful submission
@@ -4441,7 +4508,7 @@ class NixtlaClient:
         categorical_exog_list: Optional[list[str]] = None,
         validate_api_key: bool = False,
         job_timeout_seconds: Optional[int] = None,
-        poll_interval: float = _DEFAULT_POLL_INTERVAL,
+        poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
         poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     ) -> DataFrame:
         """Compute model-independent historical feature importance weights.
@@ -4488,8 +4555,11 @@ class NixtlaClient:
                 maximum; requesting a higher value raises `ApiError` (422) when
                 submitting. Defaults to the server's default for this task type
                 if not specified.
-            poll_interval (float): Seconds to wait between job-status polls.
-                Must be finite and non-negative. Defaults to 15.
+            poll_interval (float, optional): Seconds to wait between job-status
+                polls, held fixed. Must be finite and non-negative. Defaults to
+                `None`, which polls on an adaptive cadence instead: the first
+                check comes after half a second and the interval doubles up to
+                one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
                 `AsyncJobTimeoutError`, measured from a successful submission
@@ -5475,8 +5545,8 @@ class NixtlaClient:
         # job completes, independent of poll_timeout.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
-        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
+        _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     ) -> DistributedDFType:
         import fugue.api as fa
 
@@ -5734,8 +5804,8 @@ class NixtlaClient:
         # Internal-only params used by the num_partitions/distributed async fan-out.
         *,
         _is_async_job: bool = False,
-        _poll_interval: float = _DEFAULT_POLL_INTERVAL,
-        _poll_timeout: float = _DEFAULT_POLL_TIMEOUT,
+        _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+        _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
         # Per-job server-side time limit, applied to each job this call submits. Only valid with
         # _is_async_job.
         _job_timeout_seconds: Optional[int] = None,
@@ -6563,8 +6633,8 @@ def _forecast_wrapper(
     multivariate: bool,
     feature_contributions_type: _FeatureContributionsType,
     _is_async_job: bool = False,
-    _poll_interval: float = 15,
-    _poll_timeout: float = 3600,
+    _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+    _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     _job_timeout_seconds: Optional[int] = None,
 ) -> pd.DataFrame:
     if "_in_sample" in df:
@@ -6725,8 +6795,8 @@ def _cross_validation_wrapper(
     multivariate: bool,
     categorical_exog_list: Optional[list[str]] = None,
     _is_async_job: bool = False,
-    _poll_interval: float = 15,
-    _poll_timeout: float = 3600,
+    _poll_interval: Optional[float] = _DEFAULT_POLL_INTERVAL,
+    _poll_timeout: Optional[float] = _DEFAULT_POLL_TIMEOUT,
     _job_timeout_seconds: Optional[int] = None,
 ) -> pd.DataFrame:
     return client.cross_validation(
