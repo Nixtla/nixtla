@@ -19,11 +19,11 @@ holdout:
 
 ## Integration guides
 
-- [NeuralForecast](neuralforecast.ipynb): zero-shot synthetic pretraining and
+- [NeuralForecast](./neuralforecast.html): zero-shot synthetic pretraining and
   synthetic pretraining followed by fine-tuning.
-- [MLForecast](mlforecast.ipynb): global training with augmentation and
+- [MLForecast](./mlforecast.html): global training with augmentation and
   zero-shot transfer through `predict(new_df=...)`.
-- [StatsForecast](statsforecast.ipynb): local-model behavior and a
+- [StatsForecast](./statsforecast.html): local-model behavior and a
   synthetic-history ensemble instead of transferable pretraining.
 
 All three use the classic Box–Jenkins airline passenger series, reserve its

@@ -86,6 +86,6 @@ releases, so pin a version if you depend on exact generated values.
 
 ## Next
 
-- [Quick start](quickstart) — generate a panel and control the generators.
-- [Balanced pool](../capabilities/balanced_pool) — what `generate_series` draws
+- [Quick start](./quickstart.html) — generate a panel and control the generators.
+- [Balanced pool](../capabilities/balanced_pool.html) — what `generate_series` draws
   from by default.

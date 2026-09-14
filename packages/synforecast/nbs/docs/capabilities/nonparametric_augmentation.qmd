@@ -91,6 +91,6 @@ Both methods:
 training against an observed-only baseline over temporal holdouts; neither
 method guarantees better forecast accuracy.
 
-See [SynAugment: data augmentation](augmentation) for fit-and-simulate and
+See [SynAugment: data augmentation](./augmentation.html) for fit-and-simulate and
 TSMixup workflows, and the [API reference](../../dataset.html) for every
 parameter.

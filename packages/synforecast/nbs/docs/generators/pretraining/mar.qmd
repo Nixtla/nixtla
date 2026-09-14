@@ -120,9 +120,9 @@ search fitness; evaluate fresh draws to measure performance on new samples.
 Use MAR when you want many stationary or seasonally autoregressive shapes from
 a compact model family, or when a pretraining corpus needs controlled coverage
 of autocorrelation and entropy. For decomposed trend/seasonal/irregular
-compositions use [TSI](tsi); for random causal graphs and nonlinear lead-lag
-structure use [TCM](tcm); for Gaussian-process kernel compositions use
-[KernelSynth](kernel_synth).
+compositions use [TSI](./tsi.html); for random causal graphs and nonlinear lead-lag
+structure use [TCM](./tcm.html); for Gaussian-process kernel compositions use
+[KernelSynth](./kernel_synth.html).
 
 Full constructor parameters are listed in the
 [generator reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md).
