@@ -71,6 +71,27 @@ class CodeTimer:
             )
 
 
+def _is_bottom_identity(B: np.ndarray, n: int) -> bool:
+    """Check that the bottom block of a dense summing matrix is an identity matrix.
+
+    Args:
+        B (np.ndarray): Bottom block of a summing matrix S.
+        n (int): Number of bottom-level series.
+
+    Returns:
+        (bool): True if `B` is an `n` x `n` identity matrix.
+    """
+    if B.shape != (n, n):
+        return False
+    # Fast path: `aggregate` emits an exact 0/1 matrix, so this settles the
+    # common case without allocating the n x n temporaries `np.allclose` needs.
+    if np.count_nonzero(B) == n and np.all(np.diagonal(B) == 1.0):
+        return True
+    # Fall back to a tolerant comparison, so summing matrices built by the user
+    # that carry floating point noise stay acceptable.
+    return bool(np.allclose(B, np.eye(n)))
+
+
 def _construct_adjacency_matrix(
     S: sparse.csr_matrix, tags: dict[str, np.ndarray]
 ) -> sparse.csr_matrix:
@@ -356,6 +377,9 @@ def aggregate(
             id_col=_id_col,
             backend=backend,
         )
+        # Built by one-hot encoding the bottom level, so the bottom block is an
+        # identity matrix by construction and needs no further validation.
+        S_df._bottom_identity_verified = True
 
     return Y_df, S_df, tags
 
@@ -1070,6 +1094,8 @@ class SMatrix:
         self.id_col = id_col
         self.backend = backend
         self._col_index = {name: i for i, name in enumerate(col_labels)}
+        self._bottom_identity_verified = False
+        self._bottom_identity_cacheable = True
         # Lazily cached representations
         self._dense: np.ndarray | None = None
         self._csr: sparse.csr_matrix | None = None
@@ -1082,31 +1108,52 @@ class SMatrix:
     def check_bottom_identity(self) -> bool:
         """Check that the bottom n_bottom x n_bottom block of S is an identity matrix.
 
-        Uses sparse operations to avoid dense allocations.
+        Uses sparse operations to avoid dense allocations. Successful checks
+        are cached, and matrices built by `aggregate` are trusted by
+        construction, because an ``SMatrix`` is commonly reused across calls
+        to `HierarchicalReconciliation.reconcile`. Once :meth:`to_sparse`
+        exposes the mutable backing matrix, caching is disabled and every call
+        revalidates the bottom block.
         """
+        cacheable = getattr(self, "_bottom_identity_cacheable", True)
+        if cacheable and getattr(self, "_bottom_identity_verified", False):
+            return True
+
         n_bottom = self._sparse.shape[1]
         bottom_block = self._sparse[-n_bottom:, :]
         bottom_coo = bottom_block.tocoo()
-        return (
+        is_identity = (
             bottom_coo.shape[0] == bottom_coo.shape[1]
             and bottom_coo.nnz == n_bottom
             and np.allclose(bottom_coo.data, 1.0)
             and np.array_equal(bottom_coo.row, bottom_coo.col)
         )
+        self._bottom_identity_verified = is_identity if cacheable else False
+        return is_identity
 
     def clear_cache(self) -> None:
-        """Release cached dense, CSR, and DataFrame representations.
+        """Release cached representations and identity verification.
 
         Call this after reconciliation to free memory when the
         ``SMatrix`` is long-lived but cached representations are no
-        longer needed.
+        longer needed. This does not re-enable identity caching after the
+        mutable matrix returned by :meth:`to_sparse` has been exposed.
         """
         self._dense = None
         self._csr = None
         self._frames = {}
+        self._bottom_identity_verified = False
 
     def to_sparse(self) -> sparse.csc_matrix:
-        """Return the underlying sparse matrix (zero-copy)."""
+        """Return the underlying sparse matrix (zero-copy).
+
+        Because the returned matrix is mutable, calling this method permanently
+        disables bottom-identity caching for this ``SMatrix``. Subsequent
+        reconciliations revalidate the bottom block, including mutations made
+        through references retained by the caller.
+        """
+        self._bottom_identity_verified = False
+        self._bottom_identity_cacheable = False
         return self._sparse
 
     def to_csr(self) -> sparse.csr_matrix:

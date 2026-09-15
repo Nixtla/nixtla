@@ -1177,6 +1177,7 @@ def test_smatrix_check_bottom_identity_rejects_bad_matrix():
     )
 
     assert not smat.check_bottom_identity()
+    assert not smat._bottom_identity_verified
 
     # Passing to reconcile should raise ValueError
     Y_hat_df = pd.DataFrame({
@@ -1191,3 +1192,208 @@ def test_smatrix_check_bottom_identity_rejects_bad_matrix():
             S_df=smat,
             tags={"top": np.array(["top"]), "mid": np.array(["mid"]), "bottom": np.array(["a", "b", "c"])},
         )
+
+
+def test_reconcile_rejects_bad_dense_bottom_identity_block():
+    """A malformed dense summing matrix is never accepted."""
+    S_df = pd.DataFrame(
+        {
+            "unique_id": ["top", "mid", "a", "b", "c"],
+            "a": [1.0, 1.0, 0.0, 0.0, 0.0],
+            "b": [1.0, 1.0, 1.0, 1.0, 0.0],
+            "c": [1.0, 0.0, 0.0, 0.0, 1.0],
+        }
+    )
+    Y_hat_df = pd.DataFrame(
+        {
+            "unique_id": ["top", "mid", "a", "b", "c"],
+            "ds": [1, 1, 1, 1, 1],
+            "model": [6.0, 3.0, 1.0, 2.0, 3.0],
+        }
+    )
+    tags = {
+        "top": np.array(["top"]),
+        "mid": np.array(["mid"]),
+        "bottom": np.array(["a", "b", "c"]),
+    }
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def test_aggregate_marks_sparse_summing_matrix_as_verified(tourism_df, hiers_strictly):
+    """Sparse summing matrices created by aggregate need no identity recheck."""
+    _, S_df, _ = aggregate(tourism_df, hiers_strictly, sparse_s=True)
+
+    assert S_df._bottom_identity_verified
+
+
+def test_smatrix_caches_successful_bottom_identity_check():
+    """A manually created valid SMatrix validates once and caches the result."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    smat = SMatrix(
+        sparse_matrix=sp.eye(3, format="csc"),
+        row_labels=np.array(["a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    assert not smat._bottom_identity_verified
+    assert smat.check_bottom_identity()
+    assert smat._bottom_identity_verified
+    assert smat.check_bottom_identity()
+
+    smat.clear_cache()
+    assert not smat._bottom_identity_verified
+
+
+def _dense_identity_case(bottom_block: np.ndarray):
+    """Build a small strict hierarchy whose bottom block is `bottom_block`."""
+    upper = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    S = np.vstack([upper, bottom_block])
+    ids = ["total", "mid1", "mid2", "a", "b", "c"]
+    S_df = pd.DataFrame(
+        {"unique_id": ids, **{c: S[:, i] for i, c in enumerate(["a", "b", "c"])}}
+    )
+    Y_hat_df = pd.DataFrame(
+        {
+            "unique_id": ids,
+            "ds": [1] * len(ids),
+            "model": [6.0, 3.0, 3.0, 1.0, 2.0, 3.0],
+        }
+    )
+    tags = {
+        "total": np.array(["total"]),
+        "mid": np.array(["mid1", "mid2"]),
+        "bottom": np.array(["a", "b", "c"]),
+    }
+    return S_df, Y_hat_df, tags
+
+
+@pytest.mark.parametrize(
+    "add_noise",
+    [
+        pytest.param(lambda B: B * (1.0 - 1e-9), id="diagonal_just_below_one"),
+        pytest.param(lambda B: B + 1e-12 * (1.0 - np.eye(3)), id="tiny_off_diagonal"),
+    ],
+)
+def test_reconcile_accepts_dense_bottom_identity_within_tolerance(add_noise):
+    """Floating point noise within tolerance must stay acceptable.
+
+    The fast path only settles exact 0/1 matrices; anything else has to fall
+    back to a tolerant comparison, otherwise user-built summing matrices that
+    reconciled fine before would start raising.
+    """
+    S_df, Y_hat_df, tags = _dense_identity_case(add_noise(np.eye(3)))
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    result = hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+    assert len(result) == len(Y_hat_df)
+
+
+def test_reconcile_rejects_extra_off_diagonal_one():
+    """An intact diagonal does not excuse an extra off-diagonal entry."""
+    bottom_block = np.eye(3)
+    bottom_block[0, 1] = 1.0
+    S_df, Y_hat_df, tags = _dense_identity_case(bottom_block)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def test_reconcile_rejects_dense_summing_matrix_with_too_few_rows():
+    """A summing matrix shorter than its bottom level reports the identity error."""
+    S_df = pd.DataFrame(
+        {
+            "unique_id": ["total", "a"],
+            "a": [1.0, 1.0],
+            "b": [1.0, 0.0],
+            "c": [1.0, 0.0],
+        }
+    )
+    Y_hat_df = pd.DataFrame(
+        {"unique_id": ["total", "a"], "ds": [1, 1], "model": [6.0, 1.0]}
+    )
+    tags = {"total": np.array(["total"]), "bottom": np.array(["a", "b", "c"])}
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def _to_sparse_pandas(S_df, fill_value):
+    """Convert the bottom-level columns of `S_df` to a pandas sparse dtype."""
+    S_df = S_df.copy()
+    for col in ["a", "b", "c"]:
+        S_df[col] = pd.arrays.SparseArray(S_df[col].to_numpy(), fill_value=fill_value)
+    assert all(
+        str(dtype).startswith("Sparse") for dtype in S_df[["a", "b", "c"]].dtypes
+    )
+    return S_df
+
+
+@pytest.mark.parametrize(
+    "fill_value",
+    [
+        pytest.param(0.0, id="zero_fill_uses_sparse_path"),
+        # The default fill value cannot be converted to COO, so this exercises
+        # the fall-through to the dense path rather than raising from pandas.
+        pytest.param(np.nan, id="nan_fill_falls_back_to_dense_path"),
+    ],
+)
+def test_reconcile_checks_bottom_identity_of_sparse_pandas_summing_matrix(fill_value):
+    """The sparse pandas branch accepts a valid block and rejects a corrupted one."""
+    S_df, Y_hat_df, tags = _dense_identity_case(np.eye(3))
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    result = hrec.reconcile(
+        Y_hat_df=Y_hat_df, S_df=_to_sparse_pandas(S_df, fill_value), tags=tags
+    )
+    assert len(result) == len(Y_hat_df)
+
+    bad_block = np.eye(3)
+    bad_block[0, 0] = 0.0
+    bad_block[0, 1] = 1.0
+    S_bad, Y_hat_bad, tags_bad = _dense_identity_case(bad_block)
+
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_bad,
+            S_df=_to_sparse_pandas(S_bad, fill_value),
+            tags=tags_bad,
+        )
+
+
+def test_smatrix_revalidates_bottom_identity_after_sparse_matrix_is_exposed():
+    """An exposed mutable sparse matrix disables identity-result caching."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    smat = SMatrix(
+        sparse_matrix=sp.eye(3, format="csc"),
+        row_labels=np.array(["a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+    assert smat.check_bottom_identity()
+
+    # Keep the zero-copy reference across checks to ensure later mutations are
+    # visible even if the matrix was valid during an intervening check.
+    sparse_matrix = smat.to_sparse()
+    assert smat.check_bottom_identity()
+    assert not smat._bottom_identity_verified
+
+    sparse_matrix.data[0] = 0.0
+
+    assert not smat.check_bottom_identity()

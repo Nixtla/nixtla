@@ -571,6 +571,7 @@ def test_aggregate_temporal_sparse(tourism_df, hiers_strictly):
     Y_sparse, S_sparse, tags_sparse = aggregate_temporal(Y_df_cs, spec_te, sparse_s=True)
 
     assert isinstance(S_sparse, SMatrix)
+    assert S_sparse._bottom_identity_verified
     np.testing.assert_array_equal(
         S_dense.values, S_sparse.to_frame(backend="pandas").values
     )
