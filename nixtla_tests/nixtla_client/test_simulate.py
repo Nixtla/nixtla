@@ -8,6 +8,7 @@ import polars as pl
 import pytest
 
 from nixtla import NixtlaClient
+from nixtla.jobs import _transport
 
 
 def _client_with_response(response, model_params=(28, 7)):
@@ -15,7 +16,7 @@ def _client_with_response(response, model_params=(28, 7)):
 
     `simulate` and `explain` submit a server-side job and poll it, so both
     halves are stubbed: the returned mock records the submitted payload (as
-    `call.args[2]`, like every other request path) and the canned response
+    `call.args[3]`) and the canned response
     comes back as the job's result.
     """
     client = NixtlaClient(api_key="test", max_retries=1)
@@ -23,24 +24,36 @@ def _client_with_response(response, model_params=(28, 7)):
     client._get_model_params = MagicMock(return_value=model_params)
     results = {}
 
-    def submit(_http_client, endpoint, payload, *args, **kwargs):
+    def submit(_client, _http_client, endpoint, payload, *args, **kwargs):
         task = endpoint.rsplit("/", 1)[-1]
         job_id = f"{task}-{len(results)}"
         results[job_id] = response(task, payload) if callable(response) else response
         return job_id
 
-    def poll(_http_client, _endpoint, job_id, *args, **kwargs):
+    def poll(_client, _http_client, _endpoint, job_id, *args, **kwargs):
         return {"job_id": job_id, "status": "succeeded", "result": results[job_id]}
 
     request = MagicMock(side_effect=submit)
-    client._submit_job = request
-    client._poll_job = poll
+    _transport.submit_job = request
+    _transport.poll_job = poll
     return client, request
 
 
+
+@pytest.fixture(autouse=True)
+def _restore_transport():
+    """Undo the module-level stubs `_client_with_response` installs.
+
+    Submitting and polling are free functions on `_transport`, not methods,
+    so a stub is global rather than per-client and has to be put back.
+    """
+    original = (_transport.submit_job, _transport.poll_job)
+    yield
+    _transport.submit_job, _transport.poll_job = original
+
 def _payload_of(call):
-    if len(call.args) > 2:
-        return call.args[2]
+    if len(call.args) > 3:
+        return call.args[3]
     return call.kwargs["payload"]
 
 
@@ -111,7 +124,7 @@ def test_simulate_builds_sample_major_pandas_output_and_payload():
     assert result["coupled"].tolist() == [True] * 8
     assert result.groupby(["sample_id", "unique_id"], observed=True).size().eq(2).all()
 
-    _, endpoint, payload = request.call_args.args
+    _, _, endpoint, payload = request.call_args.args
     assert endpoint == "v2/simulate"
     assert "method" not in payload
     assert payload["model"] == "timegpt-1"
@@ -169,7 +182,7 @@ def test_simulate_preserves_future_historical_and_categorical_feature_order():
         categorical_exog_list=["event", "segment"],
     )
 
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     series = payload["series"]
     assert [
         row.tolist() if isinstance(row, np.ndarray) else row for row in series["X"]
@@ -216,7 +229,7 @@ def test_simulate_sorts_categorical_history_for_unsorted_multi_series_input():
         categorical_exog_list=["segment"],
     )
 
-    series = request.call_args.args[2]["series"]
+    series = request.call_args.args[3]["series"]
     assert series["sizes"].tolist() == [3, 3]
     assert series["y"].tolist() == [1.0, 2.0, 3.0, 10.0, 20.0, 30.0]
     numeric, categorical = series["X"]
@@ -255,7 +268,7 @@ def test_simulate_polars_categorical_and_future_exog():
     )
 
     assert isinstance(result, pl.DataFrame)
-    series = request.call_args.args[2]["series"]
+    series = request.call_args.args[3]["series"]
     assert series["categorical_exog"] == [1]
     assert [
         row.tolist() if isinstance(row, np.ndarray) else row for row in series["X"]
@@ -284,7 +297,7 @@ def test_simulate_mirrors_server_coupled_false_for_multivariate_request():
         _series_df(n_series=2, n=4), h=2, freq="D", n_paths=1, multivariate=True
     )
 
-    assert request.call_args.args[2]["multivariate"] is True
+    assert request.call_args.args[3]["multivariate"] is True
     assert result["coupled"].tolist() == [False] * 4
 
 
@@ -460,7 +473,7 @@ def test_simulate_aligns_future_exog_when_category_orders_differ():
 
     client.simulate(df=df, X_df=X_df, h=2, freq="D", n_paths=1)
 
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     # history is ordered id-0 then id-1, so the future rows must be too
     assert [list(row) for row in payload["series"]["X_future"]] == [
         [10.0, 11.0, 20.0, 21.0]
@@ -472,7 +485,7 @@ def test_simulate_leaves_missing_seed_unset_for_server():
 
     client.simulate(_series_df(), h=2, freq="D", n_paths=1)
 
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     assert payload["seed"] is None
     assert "method" not in payload
 
@@ -512,7 +525,7 @@ def test_simulate_accepts_seed_boundaries(seed):
 
     client.simulate(_series_df(), h=2, freq="D", n_paths=1, seed=seed)
 
-    assert request.call_args.args[2]["seed"] == seed
+    assert request.call_args.args[3]["seed"] == seed
 
 
 @pytest.mark.parametrize(

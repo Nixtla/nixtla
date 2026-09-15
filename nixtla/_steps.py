@@ -14,7 +14,6 @@ the previous step's output as an untyped table.
 
 import io
 import json
-import logging
 import zipfile
 from collections.abc import Iterable, Mapping
 from pathlib import PurePosixPath
@@ -24,12 +23,10 @@ import narwhals as nw
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from ._http import logger
+
 if TYPE_CHECKING:
     import pandas as pd
-
-__all__ = ["StepResult", "ref"]
-
-logger = logging.getLogger(__name__)
 
 METADATA_HEADER = "nixtla-metadata"
 CONTENT_TYPE = "application/zip"
