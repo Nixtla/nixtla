@@ -44,7 +44,7 @@ from ._job import (
     Job,
     JobStatus,
 )
-from ..steps import (
+from .._steps import (
     CONTENT_TYPE as _STEP_CONTENT_TYPE,
     METADATA_HEADER as _STEP_METADATA_HEADER,
     StepResult,

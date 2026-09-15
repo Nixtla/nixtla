@@ -71,6 +71,7 @@ from ._preprocessing import (
     _validate_freq_regularity,
     _validate_simulate_args,
 )
+from ._steps import StepResult, ref
 from ._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
@@ -102,10 +103,6 @@ from .jobs._job import (
     _DEFAULT_POLL_INTERVAL,
     _DEFAULT_POLL_TIMEOUT,
     _validate_poll_settings,
-)
-from .steps import (
-    StepResult,
-    ref,
 )
 
 if TYPE_CHECKING:

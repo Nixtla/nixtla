@@ -28,7 +28,7 @@ from .._types import (
     _ThresholdMethod,
     extra_param_checker,
 )
-from ..steps import build_request as _build_step_request
+from .._steps import build_request as _build_step_request
 
 if TYPE_CHECKING:
     from ..nixtla_client import NixtlaClient

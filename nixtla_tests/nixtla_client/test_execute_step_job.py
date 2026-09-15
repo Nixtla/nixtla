@@ -1,4 +1,4 @@
-"""Tests for `jobs.execute_step()` and the `nixtla.steps` codec.
+"""Tests for `jobs.execute_step()` and the `nixtla._steps` codec.
 
 These live apart from `test_async_jobs.py` rather than joining its `SUBMIT_JOB_CASES` /
 `WAIT_JOB_CASES` tables: those tables monkeypatch `_transport.submit_job`, and execute_step goes
@@ -30,7 +30,7 @@ from nixtla.nixtla_client import (
     NixtlaClient,
     _is_retriable_error,
 )
-from nixtla.steps import (
+from nixtla._steps import (
     CONTENT_TYPE,
     HEADER_BUDGET,
     MAX_MEMBERS,
@@ -257,7 +257,7 @@ class TestCodec:
     def test_build_result_tolerates_an_unusable_metadata_header(self, value, caplog):
         # A result whose tables came back intact should not be discarded because the metadata
         # describing it is unusable -- the caller can still read everything from `.data`.
-        with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
+        with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
             res = build_result(
                 httpx.Headers({METADATA_HEADER: value}), _pack({"r": _tagged_table()})
             )
@@ -274,7 +274,7 @@ class TestCodec:
                 zf.writestr("result.parquet", src.read("result.parquet"))
             zf.writestr("manifest.json", b"{}")
 
-        with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
+        with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
             tables = _unpack(buf.getvalue())
 
         assert set(tables) == {"result"}
@@ -373,7 +373,7 @@ class TestValidation:
         def boom(*args, **kwargs):
             raise AssertionError("no table should be converted")
 
-        monkeypatch.setattr("nixtla.steps.to_arrow", boom)
+        monkeypatch.setattr("nixtla._steps.to_arrow", boom)
         with pytest.raises(ValueError, match="not supplied"):
             _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("absent")})
@@ -382,7 +382,7 @@ class TestValidation:
     def test_rejects_a_body_over_the_server_limit(self, monkeypatch):
         # Without this the request is accepted and only reported as a failed job later, so the
         # error would surface long after the call that caused it.
-        monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 128)
+        monkeypatch.setattr("nixtla._steps.MAX_BODY_BYTES", 128)
         with pytest.raises(ValueError, match="over the 128-byte limit"):
             _client().jobs.execute_step(**_call_kwargs())
 
@@ -487,7 +487,7 @@ class TestSubmit:
         # spend bandwidth for nothing.
         sent = []
         _stub_submit_binary(monkeypatch, capture=sent)
-        with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
+        with caplog.at_level(logging.WARNING, logger="nixtla.nixtla_client"):
             job = _client().jobs.execute_step(
                 **_call_kwargs(data={"panel": _small_df(), "spare": _small_df()})
             )
@@ -503,7 +503,7 @@ class TestSubmit:
     ):
         # Previously a big spare table could push a chained call over MAX_BODY_BYTES on its own.
         _stub_submit_binary(monkeypatch)
-        monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 4096)
+        monkeypatch.setattr("nixtla._steps.MAX_BODY_BYTES", 4096)
         job = _client().jobs.execute_step(
             **_call_kwargs(data={"panel": _small_df(), "spare": _small_df(n=50_000)})
         )
