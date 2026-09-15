@@ -6,6 +6,7 @@ from .jobs import (
     JobTimeoutError,
     Job,
     JobStatus,
+    JobSummary,
 )
 from .nixtla_client import ApiError, NixtlaClient
 from ._steps import StepResult, ref
@@ -18,6 +19,7 @@ __all__ = [
     "JobTimeoutError",
     "Job",
     "JobStatus",
+    "JobSummary",
     "NixtlaClient",
     "StepResult",
     "ref",

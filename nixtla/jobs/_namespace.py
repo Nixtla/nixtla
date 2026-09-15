@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from utilsforecast.compat import DataFrame, DFType
 
 from . import _transport
-from ._job import Job
+from ._job import Job, JobStatus, JobSummary
 from ..nixtla_client import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ensure_local_dataframe,
@@ -31,6 +31,10 @@ from .._steps import build_request as _build_step_request
 
 if TYPE_CHECKING:
     from ..nixtla_client import NixtlaClient
+
+
+# Largest page `GET v2/async/jobs` will serve.
+_MAX_PAGE_SIZE = 200
 
 
 class Jobs:
@@ -964,3 +968,114 @@ class Jobs:
         return _transport.submit_and_wrap_binary_job(
             self._client, "v2/execute_step", metadata, body, task="execute_step"
         )
+
+    def list(
+        self,
+        status: Optional[list[Union[str, JobStatus]]] = None,
+        task: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> list[JobSummary]:
+        """List your team's jobs, newest first.
+
+        Use it to recover a `job_id` whose `Job` you no longer hold, then pass that
+        id to `retrieve()` to poll, wait on or cancel it.
+
+        Args:
+            status: Statuses to list. Defaults to the server's own default of
+                pending plus running, so terminal jobs need an explicit
+                `status=["succeeded", "failed", "cancelled"]`.
+            task: Keep only jobs for this task (`"forecast"`, `"cross_validation"`,
+                ...). Filtered client-side; the endpoint has no task parameter.
+            limit: Stop after this many rows. `None` fetches every page.
+
+        Returns:
+            list of JobSummary: Newest first, across pages as well as within one.
+
+        Note:
+            A terminal job stays listed only for the orchestrator's retention window
+            (currently about a week), so a job's absence here is not evidence it
+            never existed.
+        """
+        if limit is not None and limit <= 0:
+            raise ValueError(f"limit must be positive, got {limit!r}")
+        statuses = [JobStatus(s).value for s in status] if status else None
+        if task is not None and task not in _transport._TASK_ENDPOINTS:
+            raise ValueError(
+                f"unknown task {task!r}; expected one of "
+                f"{sorted(_transport._TASK_ENDPOINTS)}"
+            )
+
+        summaries: list[JobSummary] = []
+        page_token: Optional[str] = None
+        with self._client._make_client(**self._client._client_kwargs) as client:
+            while True:
+                body = _transport.list_jobs(
+                    self._client,
+                    client,
+                    statuses=statuses,
+                    # Ask for no more than is wanted. Capped at the server's own
+                    # maximum; `task` filters after the fact, so a filtered call
+                    # still has to read full pages to find enough rows.
+                    page_size=(
+                        min(limit, _MAX_PAGE_SIZE)
+                        if limit is not None and task is None
+                        else None
+                    ),
+                    page_token=page_token,
+                )
+                for row in body.get("jobs") or []:
+                    if task is not None and row.get("task_name") != task:
+                        continue
+                    summaries.append(
+                        JobSummary(
+                            job_id=row["job_id"],
+                            task_name=row.get("task_name"),
+                            status=JobStatus(row["status"]),
+                            created_at=row["created_at"],
+                        )
+                    )
+                    if limit is not None and len(summaries) >= limit:
+                        return summaries
+                # Page until the token is null, never until a page looks short: a
+                # page can come back short, or empty, and still have more behind it.
+                page_token = body.get("next_page_token")
+                if not page_token:
+                    return summaries
+
+    def retrieve(self, job_id: str) -> Job:
+        """A `Job` handle for work this process did not submit.
+
+        The task is read from the `job_id`'s own prefix, so this costs no request.
+        The handle behaves like a submitted one -- `status`, `wait()`, `cancel()`
+        and the context manager all work.
+
+        Args:
+            job_id: Identifier of the job, as `list()` reports it.
+
+        Returns:
+            Job: Handle whose `wait()` returns the server's **raw result dict**, not
+                the parsed dataframe the original call would have returned. The keys
+                are the task's own: `mean`/`intervals` for `forecast`, plus
+                `sizes`/`idxs` for `cross_validation` and `anomaly_detection`,
+                `samples` for `simulate`, `weights`/`feature_names` for `explain`,
+                and `finetuned_model_id` for `finetune`. `execute_step` is the one
+                exception: its result carries its own schema, so `wait()` returns the
+                same `StepResult` a submitted job would.
+
+        Raises:
+            ValueError: If `job_id` carries no recognised task prefix.
+
+        Note:
+            Values in those arrays run in **sorted series-id order** -- the order
+            `sorted(df[id_col].unique())` gives -- grouped by `sizes` where the task
+            reports it. That is what lets a caller who still holds the input frame put
+            the labels back on. The ids themselves are never sent to the server, which
+            is why they cannot come back with the result.
+        """
+        task = _transport._task_from_job_id(job_id)
+        if task is None:
+            raise ValueError(
+                f"unrecognised job_id {job_id!r}: expected an id beginning with one of "
+                f"{sorted(_transport._JOB_ID_PREFIXES)} followed by '-'"
+            )
+        return _transport.wrap_retrieved_job(self._client, job_id, task)

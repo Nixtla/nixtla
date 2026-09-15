@@ -64,6 +64,59 @@ def _task_name(endpoint: str) -> str:
     return endpoint.removeprefix("v2/").removesuffix("/async")
 
 
+# Prefix every `job_id` carries, naming the task that produced it. The server builds
+# ids as `f"{prefix}-{uuid4().hex}"`, so the task is readable from the id alone and
+# `retrieve()` needs no round trip to work out which endpoint to poll.
+_JOB_ID_PREFIXES = {
+    "ft": "finetune",
+    "fc": "forecast",
+    "cv": "cross_validation",
+    "ad": "anomaly_detection",
+    "sm": "simulate",
+    "ex": "explain",
+    "es": "execute_step",
+}
+
+# Route each task polls. `anomaly_detection` is the one asymmetry: the async route is
+# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` its blocking sibling
+# (`detect_anomalies_online()`) posts to.
+_TASK_ENDPOINTS = {task: f"v2/{task}" for task in _JOB_ID_PREFIXES.values()}
+
+# The only task whose result is binary: its status envelope leaves `result` null and
+# the zip comes from the task's own result endpoint instead.
+_BINARY_TASKS = frozenset({"execute_step"})
+
+
+def _task_from_job_id(job_id: str) -> Optional[str]:
+    """The task a `job_id` belongs to, from its prefix, or `None` if unrecognised."""
+    prefix, sep, _ = job_id.partition("-")
+    if not sep:
+        return None
+    return _JOB_ID_PREFIXES.get(prefix)
+
+
+def list_jobs(
+    nixtla_client: "NixtlaClient",
+    client: httpx.Client,
+    statuses: Optional[list[str]] = None,
+    page_size: Optional[int] = None,
+    page_token: Optional[str] = None,
+) -> dict[str, Any]:
+    """One page of the team's jobs from `GET v2/async/jobs`.
+
+    `statuses` goes on the wire as a repeated `status` parameter, which httpx builds
+    from the list. Omitting it leaves the server's default of pending plus running.
+    """
+    params: dict[str, Any] = {}
+    if statuses:
+        params["status"] = statuses
+    if page_size is not None:
+        params["page_size"] = page_size
+    if page_token is not None:
+        params["page_token"] = page_token
+    return nixtla_client._get_request(client, "v2/async/jobs", params=params or None)
+
+
 def _validate_job_timeout_seconds(job_timeout_seconds: Optional[int]) -> None:
     """Reject a job timeout the server would refuse, before spending a round-trip on it.
 
@@ -492,6 +545,55 @@ def cancel_job_best_effort(client: httpx.Client, job_id: str, reason: str) -> bo
         logger.warning("Failed to cancel job %s (%s)", job_id, reason, exc_info=True)
         return False
     return True
+
+
+def wrap_retrieved_job(nixtla_client: "NixtlaClient", job_id: str, task: str) -> Job:
+    """A `Job` for work this process did not submit, built from `job_id` alone.
+
+    The result comes back unparsed. Every `parse_result` in `nixtla_client` closes over
+    request-side state -- the series ids, the column names, the dataframe flavour -- and
+    none of that is ever sent to the server, so there is nothing here to rebuild a frame
+    from. `execute_step` is the exception only because its result carries its own schema.
+    """
+    endpoint = _TASK_ENDPOINTS[task]
+
+    if task in _BINARY_TASKS:
+
+        def get_result(
+            job_data: dict[str, Any],
+            poll_interval: Optional[float],
+            poll_timeout: Optional[float],
+        ) -> Any:
+            with nixtla_client._make_client(**nixtla_client._client_kwargs) as client:
+                headers, content = wait_for_job_result_bytes(
+                    nixtla_client, client, endpoint, job_id, poll_interval, poll_timeout
+                )
+            return _build_step_result(headers, content)
+
+    else:
+
+        def get_result(
+            job_data: dict[str, Any],
+            poll_interval: Optional[float],
+            poll_timeout: Optional[float],
+        ) -> Any:
+            result = job_data.get("result")
+            if not isinstance(result, dict):
+                raise JobError(
+                    job_id=job_id,
+                    task=task,
+                    status="succeeded",
+                    error="job succeeded but returned no result",
+                )
+            return result
+
+    return Job(
+        client=nixtla_client,
+        job_id=job_id,
+        endpoint=endpoint,
+        get_result=get_result,
+        task=task,
+    )
 
 
 def submit_and_wrap_job(

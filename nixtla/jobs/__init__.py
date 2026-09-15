@@ -10,6 +10,7 @@ from ._job import (
     JobCancelledError,
     JobError,
     JobStatus,
+    JobSummary,
     JobTimeoutError,
 )
 from ._namespace import Jobs
@@ -19,6 +20,7 @@ __all__ = [
     "JobCancelledError",
     "JobError",
     "JobStatus",
+    "JobSummary",
     "JobTimeoutError",
     "Jobs",
 ]
