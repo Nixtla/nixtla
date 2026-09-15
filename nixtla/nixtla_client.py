@@ -19,7 +19,6 @@ import math
 import os
 from collections.abc import Sequence
 from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
-from enum import Enum
 from functools import partial
 from threading import Event
 from typing import (
@@ -47,11 +46,9 @@ from tenacity import (
     wait_fixed,
 )
 from utilsforecast.compat import DataFrame, DFType, pl_DataFrame
-from utilsforecast.preprocessing import fill_gaps
-from utilsforecast.processing import ensure_sorted
 from utilsforecast.validation import ensure_time_dtype, validate_format
 
-from . import _payloads
+from . import _audit, _payloads
 from .jobs import Jobs, _transport
 from ._http import (
     _is_retriable_error,
@@ -128,6 +125,7 @@ if TYPE_CHECKING:
         import triad
     except ModuleNotFoundError:
         pass
+
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
 
@@ -151,114 +149,6 @@ def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
         stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
         reraise=True,
     )
-
-
-class AuditDataSeverity(Enum):
-    """Enum class to indicate audit data severity levels"""
-
-    FAIL = "Fail"  # Indicates a critical issue that requires immediate attention
-    CASE_SPECIFIC = "Case Specific"  # Indicates an issue that may be acceptable in specific contexts
-    PASS = "Pass"  # Indicates that the data is acceptable
-
-
-def _audit_duplicate_rows(
-    df: AnyDFType,
-    id_col: str = "unique_id",
-    time_col: str = "ds",
-) -> tuple[AuditDataSeverity, AnyDFType]:
-    if isinstance(df, pd.DataFrame):
-        duplicates = df.duplicated(subset=[id_col, time_col], keep=False)
-        if duplicates.any():
-            return AuditDataSeverity.FAIL, df[duplicates]
-        return AuditDataSeverity.PASS, pd.DataFrame()
-    else:
-        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
-
-
-def _audit_missing_dates(
-    df: AnyDFType,
-    freq: _Freq,
-    id_col: str = "unique_id",
-    time_col: str = "ds",
-    start: Union[str, int, datetime.date, datetime.datetime] = "per_serie",
-    end: Union[str, int, datetime.date, datetime.datetime] = "global",
-) -> tuple[AuditDataSeverity, AnyDFType]:
-    if isinstance(df, pd.DataFrame):
-        # Fill gaps in data
-        # Convert time_col to datetime if it's string/object type
-        df = ensure_time_dtype(df, time_col=time_col)
-        df_complete = fill_gaps(
-            df, freq=freq, id_col=id_col, time_col=time_col, start=start, end=end
-        )
-
-        # Find missing dates by comparing df_complete with df
-        df_missing = pd.merge(
-            df_complete, df, on=[id_col, time_col], how="outer", indicator=True
-        )
-        df_missing = df_missing.query("_merge == 'left_only'")[[id_col, time_col]]
-        if len(df_missing) > 0:
-            return AuditDataSeverity.FAIL, df_missing
-        return AuditDataSeverity.PASS, pd.DataFrame()
-    else:
-        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
-
-
-def _audit_categorical_variables(
-    df: AnyDFType,
-    id_col: str = "unique_id",
-    time_col: str = "ds",
-) -> tuple[AuditDataSeverity, AnyDFType]:
-    if isinstance(df, pd.DataFrame):
-        # Check categorical variables in df except id_col and time_col
-        categorical_cols = (
-            df.select_dtypes(include=["category", "object"])
-            .columns.drop([id_col, time_col], errors="ignore")
-            .tolist()
-        )
-
-        if categorical_cols:
-            return AuditDataSeverity.FAIL, df[categorical_cols]
-        return AuditDataSeverity.PASS, pd.DataFrame()
-    else:
-        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
-
-
-def _audit_leading_zeros(
-    df: pd.DataFrame,
-    id_col: str = "unique_id",
-    time_col: str = "ds",
-    target_col: str = "y",
-) -> tuple[AuditDataSeverity, pd.DataFrame]:
-    df = ensure_sorted(df, id_col=id_col, time_col=time_col)
-    if isinstance(df, pd.DataFrame):
-        group_info = df.groupby(id_col).agg(
-            first_index=(target_col, lambda s: s.index[0]),
-            first_nonzero_index=(
-                target_col,
-                lambda s: s.ne(0).idxmax() if s.ne(0).any() else s.index[0],
-            ),
-        )
-        leading_zeros_df = group_info[
-            group_info["first_index"] != group_info["first_nonzero_index"]
-        ].reset_index()
-        if len(leading_zeros_df) > 0:
-            return AuditDataSeverity.CASE_SPECIFIC, leading_zeros_df
-        return AuditDataSeverity.PASS, pd.DataFrame()
-    else:
-        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
-
-
-def _audit_negative_values(
-    df: AnyDFType,
-    target_col: str = "y",
-) -> tuple[AuditDataSeverity, AnyDFType]:
-    if isinstance(df, pd.DataFrame):
-        negative_values = df.loc[df[target_col] < 0]
-        if len(negative_values) > 0:
-            return AuditDataSeverity.CASE_SPECIFIC, negative_values
-        return AuditDataSeverity.PASS, pd.DataFrame()
-    else:
-        raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
 
 class NixtlaClient:
@@ -435,9 +325,7 @@ class NixtlaClient:
                 retry_after=_parse_retry_after(resp.headers),
             )
         expected = (
-            (expected_status,)
-            if isinstance(expected_status, int)
-            else expected_status
+            (expected_status,) if isinstance(expected_status, int) else expected_status
         )
         if resp.status_code not in expected:
             raise ApiError(
@@ -717,8 +605,7 @@ class NixtlaClient:
                 ) from exc
         if any(_coerce_coupled_flag(res.get("coupled")) for res in results):
             raise RuntimeError(
-                "Simulation response reported coupled paths for a partitioned "
-                "request."
+                "Simulation response reported coupled paths for a partitioned request."
             )
         return {
             "samples": np.concatenate(blocks, axis=1).reshape(-1),
@@ -1318,7 +1205,7 @@ class NixtlaClient:
             )
         payload, sizes, model_horizon, model_input_size, parse_result = (
             _payloads.prepare_forecast(
-            self,
+                self,
                 df=df,
                 h=h,
                 freq=freq,
@@ -1353,7 +1240,7 @@ class NixtlaClient:
             if num_partitions is None:
                 if _is_async_job:
                     resp = _transport.run_async_job(
-                            self,
+                        self,
                         client,
                         "v2/forecast",
                         payload,
@@ -1730,8 +1617,12 @@ class NixtlaClient:
 
         logger.info("Calling Explain Endpoint...")
         job = _transport.submit_and_wrap_job(
-                self,
-            "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
+            self,
+            "v2/explain",
+            payload,
+            job_timeout_seconds,
+            parse_result,
+            task="explain",
         )
         # Abandoning the wait leaves the job burning server-side compute, so
         # cancel it on the way out.
@@ -2565,7 +2456,7 @@ class NixtlaClient:
             if num_partitions is None:
                 if _is_async_job:
                     resp = _transport.run_async_job(
-                            self,
+                        self,
                         client,
                         "v2/cross_validation",
                         payload,
@@ -2762,57 +2653,7 @@ class NixtlaClient:
                 - V001: Test for negative values
                 - V002: Test for leading zeros
         """
-        df = ensure_time_dtype(df, time_col=time_col)
-
-        logger.info("Running data quality tests...")
-        pass_D001, error_df_D001 = _audit_duplicate_rows(df, id_col, time_col)
-        pass_D002, error_df_D002 = AuditDataSeverity.FAIL, None
-        if pass_D001 != AuditDataSeverity.FAIL:
-            # If data has duplicate rows, missing dates can not be added by fill_gaps.
-            # Duplicate rows issue needs to be resolved first.
-            pass_D002, error_df_D002 = _audit_missing_dates(
-                df, freq, id_col, time_col, start, end
-            )
-        pass_F001, error_df_F001 = _audit_categorical_variables(df, id_col, time_col)
-        pass_V001, error_df_V001 = _audit_negative_values(df, target_col)
-        pass_V002, error_df_V002 = _audit_leading_zeros(
-            df, id_col, time_col, target_col
-        )
-
-        fail_dict, case_specific_dict = {}, {}
-        test_ids = ["D001", "D002", "F001", "V001", "V002"]
-        pass_vals = [pass_D001, pass_D002, pass_F001, pass_V001, pass_V002]
-        error_dfs = [
-            error_df_D001,
-            error_df_D002,
-            error_df_F001,
-            error_df_V001,
-            error_df_V002,
-        ]
-        all_pass = True
-
-        for test_id, pass_val, error_df in zip(test_ids, pass_vals, error_dfs):
-            # Only include errors for failed or case specific tests
-            if pass_val == AuditDataSeverity.FAIL:
-                all_pass = False
-                if error_df is not None:
-                    logger.warning(
-                        f"Failure {test_id} detected with critical severity."
-                    )
-                else:
-                    logger.warning(f"Test {test_id} could not be performed.")
-                fail_dict[test_id] = error_df
-
-            if pass_val == AuditDataSeverity.CASE_SPECIFIC:
-                all_pass = False
-                logger.warning(
-                    f"Failure {test_id} detected which could cause issue depending on the use case."
-                )
-                case_specific_dict[test_id] = error_df
-
-        if all_pass:
-            logger.info("All checks passed...")
-        return all_pass, fail_dict, case_specific_dict
+        return _audit.audit_data(df, freq, id_col, time_col, target_col, start, end)
 
     def clean_data(
         self,
@@ -2856,78 +2697,17 @@ class NixtlaClient:
         Raises:
             ValueError: Any exceptions during the cleaning process.
         """
-        df = ensure_time_dtype(df, time_col=time_col)
-        logger.info("Running data cleansing...")
-
-        if fail_dict:
-            if "D001" in fail_dict:
-                try:
-                    logger.info("Fixing D001: Cleaning duplicate rows...")
-
-                    if agg_dict is None:
-                        raise ValueError(
-                            "agg_dict must be provided to resolve D001 failure."
-                        )
-
-                    # Get all columns except id_col and time_col
-                    other_cols = [
-                        col for col in df.columns if col not in [id_col, time_col]
-                    ]
-
-                    # Verify all columns have aggregation rules
-                    missing_cols = [col for col in other_cols if col not in agg_dict]
-                    if missing_cols:
-                        raise ValueError(
-                            f"D001: Missing aggregation rules for columns: {missing_cols}. "
-                            "Please provide aggregation rules for all columns in agg_dict."
-                        )
-                    df = df.groupby([id_col, time_col], as_index=False).agg(agg_dict)
-                except Exception as e:
-                    raise ValueError(f"Error cleaning duplicate rows D001: {e}")
-            if "D002" in fail_dict:
-                try:
-                    missing = fail_dict.get("D002")
-                    if missing is None:
-                        logger.warning(
-                            "D002: Missing dates could not be checked by audit_data. "
-                            "Hence not filling missing dates..."
-                        )
-                    else:
-                        logger.info("Fixing D002: Filling missing dates...")
-                        df = pd.concat([df, fail_dict.get("D002")])
-                except Exception as e:
-                    raise ValueError(f"Error filling missing dates D002: {e}")
-
-        if case_specific_dict and clean_case_specific:
-            if "V001" in case_specific_dict:
-                try:
-                    logger.info("Fixing V001: Removing negative values...")
-                    df.loc[df[target_col] < 0, target_col] = 0
-                except Exception as e:
-                    raise ValueError(f"Error removing negative values V001: {e}")
-
-            if "V002" in case_specific_dict:
-                try:
-                    logger.info("Fixing V002: Removing leading zeros...")
-                    leading_zeros_df = case_specific_dict["V002"]
-                    leading_zeros_dict = leading_zeros_df.set_index(id_col)[
-                        "first_nonzero_index"
-                    ].to_dict()
-                    df = df.groupby(id_col, group_keys=False).apply(
-                        lambda group: group.loc[
-                            group.index
-                            >= leading_zeros_dict.get(group.name, group.index[0])
-                        ]
-                    )
-                except Exception as e:
-                    raise ValueError(f"Error removing leading zeros V002: {e}")
-
-        # Run data quality checks on the cleaned data
-        all_pass, error_dfs, case_specific_dfs = self.audit_data(
-            df=df, freq=freq, id_col=id_col, time_col=time_col
+        return _audit.clean_data(
+            df,
+            fail_dict,
+            case_specific_dict,
+            freq,
+            id_col,
+            time_col,
+            target_col,
+            clean_case_specific,
+            agg_dict,
         )
-
-        return df, all_pass, error_dfs, case_specific_dfs
 
 
 def _forecast_wrapper(
