@@ -27,9 +27,22 @@ pytestmark = pytest.mark.integration
 # elsewhere buys nothing and makes the suite flaky.
 JOB_TIMEOUT = 290
 
-# A submitted job takes about a second to reach the listing: the backing
-# orchestrator's index is only eventually consistent with its own submits.
-LISTING_LAG_TIMEOUT = 30.0
+# The listing is served from an index that is only eventually consistent with the jobs
+# themselves -- it trails a submit by about a second, and trails a job reaching a
+# terminal state by about as much. So no single `list()` call is ever a safe assertion
+# about one job: everything here polls, and asserts against the snapshot that matched.
+LISTING_LAG_TIMEOUT = 60.0
+
+# Bound on how far down the listing to read. Rows are newest first and the job under
+# test was created seconds ago, so only jobs created after it sit in front -- a few
+# from each concurrent CI matrix leg. This caps the walk without risking a truncation
+# that hides the job.
+LISTING_SCAN_LIMIT = 500
+
+# Statuses a job under test can legitimately be in once it has been submitted. Polling
+# the open-only default would race: a forecast finishes in well under the time the
+# index takes to settle, and the job would drop out before it could be observed.
+LISTING_STATUSES = ["pending", "running", "succeeded"]
 
 
 @pytest.fixture(scope="module")
@@ -46,16 +59,25 @@ def jobs_df():
     )
 
 
-def _wait_until_listed(client, job_id, statuses=None):
-    """Block until `job_id` shows up in the listing, and return its row."""
+def _list_until_present(client, job_id, status=LISTING_STATUSES):
+    """Poll the listing until `job_id` appears, and return that whole snapshot.
+
+    Returning the snapshot rather than just the row matters: a job can change state
+    between two calls, so every assertion about it has to be made against the one
+    listing that actually contained it.
+
+    No `task` filter here on purpose -- `task` is applied client-side, so `limit` would
+    count matching rows and stop bounding how much of the listing gets walked.
+    """
     deadline = time.monotonic() + LISTING_LAG_TIMEOUT
     while True:
-        for row in client.jobs.list(status=statuses):
-            if row.job_id == job_id:
-                return row
+        rows = client.jobs.list(status=status, limit=LISTING_SCAN_LIMIT)
+        if any(row.job_id == job_id for row in rows):
+            return rows
         if time.monotonic() >= deadline:
             raise AssertionError(
-                f"{job_id} never appeared in the listing within {LISTING_LAG_TIMEOUT}s"
+                f"{job_id} never appeared in the listing (status={status}) "
+                f"within {LISTING_LAG_TIMEOUT}s"
             )
         time.sleep(1.0)
 
@@ -220,21 +242,28 @@ def test_job_timeout_seconds_over_the_server_cap_is_refused(
 def test_a_submitted_job_is_listed_and_filterable(nixtla_test_client, jobs_df):
     job = nixtla_test_client.jobs.forecast(jobs_df, h=4, freq="D")
 
-    row = _wait_until_listed(nixtla_test_client, job.job_id)
+    rows = _list_until_present(nixtla_test_client, job.job_id)
 
+    row = next(r for r in rows if r.job_id == job.job_id)
     assert row.task_name == "forecast"
     assert row.created_at
-    assert row.status in (JobStatus.PENDING, JobStatus.RUNNING)
+    assert row.status in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED)
 
-    forecasts = nixtla_test_client.jobs.list(task="forecast")
-    assert job.job_id in {r.job_id for r in forecasts}
+    # `task` narrows the same view. Safe to assert membership in a second call now:
+    # the job is already known to be listed under one of `LISTING_STATUSES`, and it
+    # cannot leave that set.
+    forecasts = nixtla_test_client.jobs.list(
+        status=LISTING_STATUSES, task="forecast", limit=LISTING_SCAN_LIMIT
+    )
     assert {r.task_name for r in forecasts} == {"forecast"}
+    assert job.job_id in {r.job_id for r in forecasts}
 
     job.wait()
 
-    # A succeeded job leaves the default pending+running view and must be asked for.
-    done = nixtla_test_client.jobs.list(status=["succeeded"], limit=200)
-    assert job.job_id in {r.job_id for r in done}
+    # The succeeded view has to be polled too: the index trails a job's terminal
+    # transition just as it trails its submit, so it is not there the instant
+    # `wait()` returns.
+    _list_until_present(nixtla_test_client, job.job_id, status=["succeeded"])
 
 
 def test_listing_paginates_without_repeating_rows(nixtla_test_client):
