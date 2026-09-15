@@ -194,9 +194,13 @@ TimeGPT has been featured in many publications and has been recognized for its i
 - [How TimeGPT Transforms Predictive Analytics with AI](https://hackernoon.com/how-timegpt-transforms-predictive-analytics-with-ai)
 - [TimeGPT: The First Foundation Model - AI Horizon Forecast](https://aihorizonforecast.substack.com/p/timegpt-the-first-foundation-model)
 
-## 🔖 License
+## 🔖 License and access
 
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
+This SDK is open source, available under the Apache 2.0 License, and free to install and read.
+
+TimeGPT itself is closed source. The SDK is a client: every forecasting and anomaly detection call is executed by the model rather than locally, so an API key is required to run any of the examples above. You can [get one with a free trial](https://nixtla.io/free-trial), and TimeGPT can also be deployed on your own infrastructure.
+
+Feel free to contribute to the SDK (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 🏷️ Attribution
 
