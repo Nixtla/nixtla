@@ -150,9 +150,9 @@ then polls its status until it finishes, so the call blocks until the paths are
 available. Use `poll_interval` and `poll_timeout` to control the waiting
 behavior, or `NixtlaClient.submit_simulate_job` to get a `Job` handle back
 immediately. A job that fails on the server
-raises `nixtla.AsyncJobError`. If the job outlives `poll_timeout`,
-the client requests cancellation and raises `nixtla.AsyncJobTimeoutError`.
-Server-side cancellation raises `nixtla.AsyncJobCancelledError`. Invalid inputs,
+raises `nixtla.JobError`. If the job outlives `poll_timeout`,
+the client requests cancellation and raises `nixtla.JobTimeoutError`.
+Server-side cancellation raises `nixtla.JobCancelledError`. Invalid inputs,
 including missing or duplicate timestamps, raise `ValueError`. HTTP failures
 raise `nixtla.ApiError`, preserving the server's error body.
 
@@ -180,7 +180,7 @@ raise `nixtla.ApiError`, preserving the server's error body.
 | num_partitions | int | None | Split the series across this many concurrent requests to keep large jobs under the request size limit. Cannot be combined with `multivariate=True`. Each partition receives a distinct seed derived from `seed`, so the call stays reproducible, but a partitioned call returns different paths than an unpartitioned one for the same `seed`. |
 | job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job (on each partition when `num_partitions` is set). It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
 | poll_interval | float | None | Seconds between two status checks of the job, held fixed. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds, so a short job returns promptly and a long one still polls cheaply. |
-| poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. Submission retries are excluded; each partition gets its own timeout. When it elapses the client requests cancellation and raises `AsyncJobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
+| poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. Submission retries are excluded; each partition gets its own timeout. When it elapses the client requests cancellation and raises `JobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
 | **Returns** | **pandas or polars DataFrame** |  | **Long-form paths containing the ID and time columns, `sample_id`, `TimeGPT`, and `coupled`. The dataframe contains `n_series * n_paths * h` rows. The ID column is omitted if `df` did not contain one.** |
 
 See [Forecast Simulation](/forecasting/probabilistic/simulation) for complete
@@ -210,9 +210,9 @@ then polls its status until it finishes, so the call blocks until the weights
 are available. Use `poll_interval` and `poll_timeout` to control the waiting
 behavior, or `NixtlaClient.submit_explain_job` to get a `Job` handle back
 immediately. A job that fails on the server
-raises `nixtla.AsyncJobError`. If the job outlives `poll_timeout`,
-the client requests cancellation and raises `nixtla.AsyncJobTimeoutError`.
-Server-side cancellation raises `nixtla.AsyncJobCancelledError`. Invalid inputs,
+raises `nixtla.JobError`. If the job outlives `poll_timeout`,
+the client requests cancellation and raises `nixtla.JobTimeoutError`.
+Server-side cancellation raises `nixtla.JobCancelledError`. Invalid inputs,
 including missing or duplicate timestamps, raise `ValueError`. HTTP failures
 raise `nixtla.ApiError`, preserving the server's error body.
 
@@ -229,7 +229,7 @@ raise `nixtla.ApiError`, preserving the server's error body.
 | validate_api_key | bool | False | Validate the API key before sending the request. |
 | job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
 | poll_interval | float | None | Seconds between two status checks of the job, held fixed. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds, so a short job returns promptly and a long one still polls cheaply. |
-| poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. When it elapses the client requests cancellation and raises `AsyncJobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
+| poll_timeout | float | 3600.0 | Maximum seconds to wait for the job to reach a terminal state, measured from a successful submission and including queueing time on the server. When it elapses the client requests cancellation and raises `JobTimeoutError`. Set to `None` to wait until the server reports a terminal status. |
 | **Returns** | **pandas or polars DataFrame** |  | **One row per feature with `feature`, `weight`, and `method` columns. Weights are nonnegative and sum to one.** |
 
 The weights describe predictive relationships in historical data; they do not
@@ -777,12 +777,12 @@ from the package root as `nixtla.Job`.
 |  | **Type** | **Default** | **Details** |
 |---|---|---|---|
 | poll_interval | float | None | Seconds between two status checks, held fixed. Must be finite and non-negative. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds. |
-| poll_timeout | float | 3600.0 | Maximum seconds to wait for a terminal state before raising `AsyncJobTimeoutError`. Must be finite and positive, or `None` to poll until the server reports a terminal status. |
+| poll_timeout | float | 3600.0 | Maximum seconds to wait for a terminal state before raising `JobTimeoutError`. Must be finite and positive, or `None` to poll until the server reports a terminal status. |
 | cancel_on_timeout | bool | True | Whether to request cancellation when `poll_timeout` elapses, so a job you have given up on stops consuming server-side compute. Set to `False` to poll in short increments and call `wait()` again to resume. |
 | **Returns** | **Any** |  | **A DataFrame for forecast, cross-validation, anomaly-detection, simulate and explain jobs; a fine-tuned model id for finetune jobs; a `StepResult` for execute_step jobs.** |
 
-Raises `AsyncJobError` if the job fails server-side, `AsyncJobCancelledError` if
-it reaches the `cancelled` state, and `AsyncJobTimeoutError` if `poll_timeout`
+Raises `JobError` if the job fails server-side, `JobCancelledError` if
+it reaches the `cancelled` state, and `JobTimeoutError` if `poll_timeout`
 elapses first. `poll_timeout` bounds the client's polling only: with
 `cancel_on_timeout=False` the job keeps running server-side until its own
 deadline. A run of transient status-check failures does not end the wait — the

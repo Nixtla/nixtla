@@ -1,8 +1,8 @@
 __all__ = [
     "ApiError",
-    "AsyncJobCancelledError",
-    "AsyncJobError",
-    "AsyncJobTimeoutError",
+    "JobCancelledError",
+    "JobError",
+    "JobTimeoutError",
     "Job",
     "JobStatus",
     "NixtlaClient",
@@ -51,7 +51,8 @@ from utilsforecast.preprocessing import fill_gaps
 from utilsforecast.processing import ensure_sorted
 from utilsforecast.validation import ensure_time_dtype, validate_format
 
-from . import _async_transport, _payloads
+from . import _payloads
+from .jobs import Jobs, _transport
 from ._http import (
     _is_retriable_error,
     _parse_retry_after,
@@ -95,10 +96,10 @@ from ._types import (
     extra_param_checker,
     FinetunedModel,
 )
-from .async_job import (
-    AsyncJobCancelledError,
-    AsyncJobError,
-    AsyncJobTimeoutError,
+from .jobs._job import (
+    JobCancelledError,
+    JobError,
+    JobTimeoutError,
     Job,
     JobStatus,
     _DEFAULT_POLL_INTERVAL,
@@ -111,8 +112,6 @@ from .steps import (
 )
 
 if TYPE_CHECKING:
-    from .jobs import Jobs
-
     try:
         from fugue import AnyDataFrame
     except ModuleNotFoundError:
@@ -342,17 +341,15 @@ class NixtlaClient:
         self._is_azure = "ai.azure" in base_url
 
     @functools.cached_property
-    def jobs(self) -> "Jobs":
+    def jobs(self) -> Jobs:
         """Namespace for work that runs server-side: `client.jobs.forecast(...)`.
 
         Each method there mirrors the blocking method of the same name but
         returns a `Job` handle instead of a result. See `Jobs`.
         """
-        # Deferred: `jobs` imports this module at its top. Building it lazily
-        # also keeps the back-reference out of `__dict__` for clients that are
-        # pickled out to Dask/Ray/Spark workers and never touch `.jobs`.
-        from .jobs import Jobs
-
+        # Built lazily to keep the back-reference out of `__dict__` for clients
+        # that Fugue pickles out to Dask/Ray/Spark workers and that never touch
+        # `.jobs`.
         return Jobs(self)
 
     def _encode_payload(
@@ -460,7 +457,7 @@ class NixtlaClient:
         content, headers = self._encode_payload(
             payload,
             multithreaded_compress,
-            task=_async_transport._task_name(endpoint),
+            task=_transport._task_name(endpoint),
         )
         resp = client.post(url=endpoint, content=content, headers=headers)
         # async job submissions ({endpoint}/async) respond with 202 ACCEPTED
@@ -574,7 +571,7 @@ class NixtlaClient:
         for payload in payloads:
             if is_async_job:
                 request = partial(
-                    partial(_async_transport.run_async_job, self),
+                    partial(_transport.run_async_job, self),
                     client,
                     endpoint,
                     payload,
@@ -1279,7 +1276,7 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
-        _async_transport._validate_job_timeout_seconds(_job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(_job_timeout_seconds)
         if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
                 "_job_timeout_seconds requires _is_async_job; a synchronous request "
@@ -1355,7 +1352,7 @@ class NixtlaClient:
             in_sample_resp = None
             if num_partitions is None:
                 if _is_async_job:
-                    resp = _async_transport.run_async_job(
+                    resp = _transport.run_async_job(
                             self,
                         client,
                         "v2/forecast",
@@ -1381,7 +1378,7 @@ class NixtlaClient:
                     )
                     logger.info("Calling Historical Forecast Endpoint...")
                     if _is_async_job:
-                        in_sample_resp = _async_transport.run_async_job(
+                        in_sample_resp = _transport.run_async_job(
                             self,
                             client,
                             "v2/cross_validation",
@@ -1547,7 +1544,7 @@ class NixtlaClient:
                 one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
-                `AsyncJobTimeoutError`, measured from a successful submission
+                `JobTimeoutError`, measured from a successful submission
                 and including the time the job spends queued on the server.
                 Submission retries are excluded, and each partition gets its
                 own timeout. When it elapses the client requests the job's
@@ -1564,12 +1561,12 @@ class NixtlaClient:
             ValueError: Invalid arguments, missing or duplicate timestamps,
                 or timestamps that do not match the provided frequency.
             ApiError: An HTTP request failed, including an unsupported deployment.
-            AsyncJobError: The job failed or returned an invalid job response.
-            AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+            JobError: The job failed or returned an invalid job response.
+            JobCancelledError: The job was cancelled on the server.
+            JobTimeoutError: The job did not finish within `poll_timeout`
                 seconds; cancellation was requested.
         """
-        _async_transport._validate_job_timeout_seconds(job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(job_timeout_seconds)
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         h, n_paths, seed, num_partitions = _validate_simulate_args(
             h, n_paths, seed, num_partitions, multivariate
@@ -1600,7 +1597,7 @@ class NixtlaClient:
 
         logger.info("Calling Simulate Endpoint...")
         if num_partitions is None:
-            job = _async_transport.submit_and_wrap_job(
+            job = _transport.submit_and_wrap_job(
                 self,
                 "v2/simulate",
                 payload,
@@ -1696,7 +1693,7 @@ class NixtlaClient:
                 one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
-                `AsyncJobTimeoutError`, measured from a successful submission
+                `JobTimeoutError`, measured from a successful submission
                 and including the time the job spends queued on the server.
                 Submission retries are excluded. When it elapses the client
                 requests the job's cancellation. Set to `None` to wait until
@@ -1710,12 +1707,12 @@ class NixtlaClient:
             ValueError: Invalid arguments, missing or duplicate timestamps,
                 or timestamps that do not match the provided frequency.
             ApiError: An HTTP request failed, including an unsupported deployment.
-            AsyncJobError: The job failed or returned an invalid job response.
-            AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+            JobError: The job failed or returned an invalid job response.
+            JobCancelledError: The job was cancelled on the server.
+            JobTimeoutError: The job did not finish within `poll_timeout`
                 seconds; cancellation was requested.
         """
-        _async_transport._validate_job_timeout_seconds(job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(job_timeout_seconds)
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         payload, parse_result = _payloads.prepare_explain(
             self,
@@ -1732,7 +1729,7 @@ class NixtlaClient:
         )
 
         logger.info("Calling Explain Endpoint...")
-        job = _async_transport.submit_and_wrap_job(
+        job = _transport.submit_and_wrap_job(
                 self,
             "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
         )
@@ -2499,7 +2496,7 @@ class NixtlaClient:
                 DataFrame with cross validation forecasts.
         """
         extra_param_checker.validate_python(model_parameters)
-        _async_transport._validate_job_timeout_seconds(_job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(_job_timeout_seconds)
         if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
                 "_job_timeout_seconds requires _is_async_job; a synchronous request "
@@ -2567,7 +2564,7 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 if _is_async_job:
-                    resp = _async_transport.run_async_job(
+                    resp = _transport.run_async_job(
                             self,
                         client,
                         "v2/cross_validation",

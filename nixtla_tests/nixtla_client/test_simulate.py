@@ -7,7 +7,8 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from nixtla import NixtlaClient, _async_transport
+from nixtla import NixtlaClient
+from nixtla.jobs import _transport
 
 
 def _client_with_response(response, model_params=(28, 7)):
@@ -33,22 +34,22 @@ def _client_with_response(response, model_params=(28, 7)):
         return {"job_id": job_id, "status": "succeeded", "result": results[job_id]}
 
     request = MagicMock(side_effect=submit)
-    _async_transport.submit_job = request
-    _async_transport.poll_job = poll
+    _transport.submit_job = request
+    _transport.poll_job = poll
     return client, request
 
 
 
 @pytest.fixture(autouse=True)
-def _restore_async_transport():
+def _restore_transport():
     """Undo the module-level stubs `_client_with_response` installs.
 
-    Submitting and polling are free functions on `_async_transport`, not methods,
+    Submitting and polling are free functions on `_transport`, not methods,
     so a stub is global rather than per-client and has to be put back.
     """
-    original = (_async_transport.submit_job, _async_transport.poll_job)
+    original = (_transport.submit_job, _transport.poll_job)
     yield
-    _async_transport.submit_job, _async_transport.poll_job = original
+    _transport.submit_job, _transport.poll_job = original
 
 def _payload_of(call):
     if len(call.args) > 3:

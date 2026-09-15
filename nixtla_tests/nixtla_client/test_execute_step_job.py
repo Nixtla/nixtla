@@ -1,7 +1,7 @@
 """Tests for `jobs.execute_step()` and the `nixtla.steps` codec.
 
 These live apart from `test_async_jobs.py` rather than joining its `SUBMIT_JOB_CASES` /
-`WAIT_JOB_CASES` tables: those tables monkeypatch `_async_transport.submit_job`, and execute_step goes
+`WAIT_JOB_CASES` tables: those tables monkeypatch `_transport.submit_job`, and execute_step goes
 through `submit_binary_job` instead because its request is a zip body plus a header rather than a
 JSON payload. Folding it in would mean branching inside the shared tests. The three shared
 behaviours (returns a Job, wait returns the result, job_timeout_seconds is threaded through) are
@@ -22,10 +22,10 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from nixtla import _async_transport
+from nixtla.jobs import _transport
 from nixtla.nixtla_client import (
     ApiError,
-    AsyncJobTimeoutError,
+    JobTimeoutError,
     Job,
     NixtlaClient,
     _is_retriable_error,
@@ -66,7 +66,7 @@ def _stub_submit_binary(monkeypatch, job_id="es-1", capture=None):
             capture.append({"endpoint": endpoint, "metadata": metadata, "body": body})
         return job_id
 
-    monkeypatch.setattr(_async_transport, "submit_binary_job", fake_submit)
+    monkeypatch.setattr(_transport, "submit_binary_job", fake_submit)
 
 
 def _small_df(n=5):
@@ -304,7 +304,7 @@ class TestValidation:
         def boom(*args, **kwargs):
             raise AssertionError("validation should fail before any HTTP call")
 
-        monkeypatch.setattr(_async_transport, "submit_binary_job", boom)
+        monkeypatch.setattr(_transport, "submit_binary_job", boom)
 
     def test_rejects_a_ref_with_no_table(self):
         with pytest.raises(ValueError, match="not supplied"):
@@ -423,9 +423,9 @@ class TestSubmit:
             calls.append(endpoint)
             return "es-abc123"
 
-        monkeypatch.setattr(_async_transport, "submit_binary_job", fake_submit)
+        monkeypatch.setattr(_transport, "submit_binary_job", fake_submit)
         monkeypatch.setattr(
-            _async_transport, "get_job_data", lambda self, c, e, j: {"status": "pending"}
+            _transport, "get_job_data", lambda self, c, e, j: {"status": "pending"}
         )
 
         job = _client().jobs.execute_step(**_call_kwargs())
@@ -440,7 +440,7 @@ class TestSubmit:
         http_client.post.return_value = _mock_json_response(202, {"job_id": "es-1"})
 
         metadata, body = build_request(**_call_kwargs())
-        job_id = _async_transport.submit_binary_job(
+        job_id = _transport.submit_binary_job(
             _client(),
             http_client, "v2/execute_step", metadata, body
         )
@@ -513,13 +513,13 @@ class TestSubmit:
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(422, {"detail": "nope"})
         with pytest.raises(ApiError) as exc:
-            _async_transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
+            _transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
         assert exc.value.status_code == 422
 
     def test_unwraps_a_data_envelope(self):
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(200, {"data": {"job_id": "es-9"}})
-        job_id = _async_transport.submit_binary_job(
+        job_id = _transport.submit_binary_job(
             _client(),
             http_client, "v2/execute_step", "{}", b"PK"
         )
@@ -530,7 +530,7 @@ class TestSubmit:
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(200, {"unexpected": 1})
         with pytest.raises(ApiError, match="no job_id"):
-            _async_transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
+            _transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
 
 
 # ---------------------------------------------------------------------------
@@ -548,10 +548,10 @@ class TestResult:
         _stub_submit_binary(monkeypatch)
         # The status response carries no result for a binary task; it must not be parsed.
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
         monkeypatch.setattr(
-            _async_transport, "get_job_result_bytes", lambda client, endpoint, job_id: (headers, body)
+            _transport, "get_job_result_bytes", lambda client, endpoint, job_id: (headers, body)
         )
 
         job = _client().jobs.execute_step(**_call_kwargs())
@@ -567,10 +567,10 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded"}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded"}
         )
         monkeypatch.setattr(
-            _async_transport, "get_job_result_bytes", lambda client, endpoint, job_id: ({}, body)
+            _transport, "get_job_result_bytes", lambda client, endpoint, job_id: ({}, body)
         )
 
         res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
@@ -588,7 +588,7 @@ class TestResult:
         http_client.get.return_value = MagicMock(
             status_code=200, headers={}, content=b"PK"
         )
-        _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+        _transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
         http_client.get.assert_called_once_with("v2/execute_step/jobs/es-1/result")
 
     def test_a_bad_status_from_the_result_endpoint_raises(self):
@@ -597,7 +597,7 @@ class TestResult:
         resp.json.return_value = {"detail": "nope"}
         http_client.get.return_value = resp
         with pytest.raises(ApiError) as exc:
-            _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+            _transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
         assert exc.value.status_code == 422
 
     @pytest.mark.parametrize("not_ready_status", [202, 409])
@@ -610,7 +610,7 @@ class TestResult:
         http_client.get.return_value = resp
 
         with pytest.raises(ApiError) as exc:
-            _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+            _transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
 
         assert exc.value.status_code == not_ready_status
 
@@ -640,9 +640,9 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky_result)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", flaky_result)
 
         res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
 
@@ -666,9 +666,9 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky_result)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", flaky_result)
 
         with caplog.at_level(logging.ERROR):
             res = (
@@ -686,12 +686,12 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", never_ready)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", never_ready)
 
         job = _client().jobs.execute_step(**_call_kwargs())
-        with pytest.raises(AsyncJobTimeoutError) as exc:
+        with pytest.raises(JobTimeoutError) as exc:
             job.wait(poll_interval=0, poll_timeout=0.05)
         assert exc.value.job_id == "es-1"
 
@@ -704,9 +704,9 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", boom)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", boom)
 
         job = _client().jobs.execute_step(**_call_kwargs())
         with pytest.raises(ApiError) as exc:
@@ -728,9 +728,9 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", flaky)
 
         res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
         assert len(attempts) == 2
@@ -754,10 +754,10 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
         monkeypatch.setattr(
-            _async_transport, "get_job_result_bytes", always_bad_gateway
+            _transport, "get_job_result_bytes", always_bad_gateway
         )
 
         job = _client(max_retries=3, retry_interval=0).jobs.execute_step(
@@ -788,9 +788,9 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(_async_transport, "get_job_result_bytes", slow_with_hiccups)
+        monkeypatch.setattr(_transport, "get_job_result_bytes", slow_with_hiccups)
 
         res = (
             _client(max_retries=3, retry_interval=0)
@@ -812,7 +812,7 @@ class TestJobSurface:
         calls = []
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            _async_transport, "cancel_job", lambda client, job_id: calls.append(job_id)
+            _transport, "cancel_job", lambda client, job_id: calls.append(job_id)
         )
 
         job = _client().jobs.execute_step(**_call_kwargs())
@@ -824,10 +824,10 @@ class TestJobSurface:
     def test_json_jobs_still_take_the_parse_result_path(self, monkeypatch):
         """Regression guard on the `fetch_result` hook added to `Job`."""
         monkeypatch.setattr(
-            _async_transport, "submit_job", lambda self, c, e, p, multithreaded_compress=True: "ft-1"
+            _transport, "submit_job", lambda self, c, e, p, multithreaded_compress=True: "ft-1"
         )
         monkeypatch.setattr(
-            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: { "status": "succeeded", "result": {"finetuned_model_id": "model-abc"}, }
+            _transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: { "status": "succeeded", "result": {"finetuned_model_id": "model-abc"}, }
         )
 
         job = _client().jobs.finetune(df=_small_df(n=20), freq="D")

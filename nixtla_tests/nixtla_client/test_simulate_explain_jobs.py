@@ -19,12 +19,12 @@ import zstandard as zstd
 import nixtla.nixtla_client as client_module
 from nixtla import (
     ApiError,
-    AsyncJobCancelledError,
-    AsyncJobError,
-    AsyncJobTimeoutError,
+    JobCancelledError,
+    JobError,
+    JobTimeoutError,
     NixtlaClient,
 )
-from nixtla import _async_transport
+from nixtla.jobs import _transport
 from nixtla.jobs import Jobs
 
 
@@ -138,7 +138,7 @@ def no_sleep(monkeypatch):
         sleeps.append(seconds)
         return cancellation_event is not None and cancellation_event.is_set()
 
-    monkeypatch.setattr(_async_transport, "_wait_for_poll", wait_for_poll)
+    monkeypatch.setattr(_transport, "_wait_for_poll", wait_for_poll)
     return sleeps
 
 
@@ -298,7 +298,7 @@ def test_failed_job_raises_async_job_error_with_server_message():
     )
     client = api.make_client()
 
-    with pytest.raises(AsyncJobError, match="n_paths too large") as excinfo:
+    with pytest.raises(JobError, match="n_paths too large") as excinfo:
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
     err = excinfo.value
@@ -313,7 +313,7 @@ def test_cancelled_job_raises_async_job_cancelled_error():
     api = FakeApi(task="explain", statuses=("cancelled",), error=None)
     client = api.make_client()
 
-    with pytest.raises(AsyncJobCancelledError, match="cancelled") as excinfo:
+    with pytest.raises(JobCancelledError, match="cancelled") as excinfo:
         client.explain(_explain_df())
 
     assert excinfo.value.job_id in api.jobs
@@ -324,7 +324,7 @@ def test_succeeded_job_without_result_raises():
     api = FakeApi(statuses=("succeeded",), result=None)
     client = api.make_client()
 
-    with pytest.raises(AsyncJobError, match="returned no result"):
+    with pytest.raises(JobError, match="returned no result"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
 
 
@@ -332,7 +332,7 @@ def test_unknown_status_raises_instead_of_polling_forever():
     api = FakeApi(statuses=("exploded",))
     client = api.make_client()
 
-    with pytest.raises(AsyncJobError, match="unexpected job status"):
+    with pytest.raises(JobError, match="unexpected job status"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
     assert sum(request.method == "GET" for request in api.polls) == 1
 
@@ -512,9 +512,9 @@ def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
     api = FakeApi(statuses=("pending",))
     client = api.make_client()
     clock = iter(range(0, 1000))
-    monkeypatch.setattr(_async_transport.time, "monotonic", lambda: float(next(clock)))
+    monkeypatch.setattr(_transport.time, "monotonic", lambda: float(next(clock)))
 
-    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=2s") as excinfo:
+    with pytest.raises(JobTimeoutError, match="poll_timeout=2s") as excinfo:
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=2)
 
     job_id = next(iter(api.jobs))
@@ -528,13 +528,13 @@ def test_success_response_received_after_wait_deadline_is_discarded():
 
     def handle(request):
         if request.method == "GET" and "/jobs/" in request.url.path:
-            _async_transport.time.sleep(0.02)
+            _transport.time.sleep(0.02)
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
     client = api.make_client()
 
-    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
+    with pytest.raises(JobTimeoutError, match="poll_timeout=0.001s"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=0.001)
 
     assert api.cancelled == [next(iter(api.jobs))]
@@ -550,13 +550,13 @@ def test_poll_retries_do_not_run_past_wait_deadline():
 
     def handle(request):
         if request.method == "GET" and "/jobs/" in request.url.path:
-            _async_transport.time.sleep(0.02)
+            _transport.time.sleep(0.02)
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
     client = api.make_client(max_retries=3)
 
-    with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=0.001s"):
+    with pytest.raises(JobTimeoutError, match="poll_timeout=0.001s"):
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=0.001)
 
     assert sum(request.method == "GET" for request in api.polls) == 1
@@ -608,7 +608,7 @@ def test_partition_failure_signals_other_workers_to_stop(monkeypatch):
         stopped.set()
         raise client_module.CancelledError
 
-    monkeypatch.setattr(_async_transport, "run_async_job", run)
+    monkeypatch.setattr(_transport, "run_async_job", run)
     with pytest.raises(RuntimeError, match="partition failed"):
         client._dispatch_partitioned_requests(
             MagicMock(),
@@ -625,17 +625,17 @@ def test_partition_cancellation_signal_cancels_submitted_job(monkeypatch):
     api = FakeApi(statuses=("pending",))
     client = api.make_client()
     cancellation_event = client_module.Event()
-    submit = _async_transport.submit_job
+    submit = _transport.submit_job
 
     def submit_then_cancel(*args, **kwargs):
         job_id = submit(*args, **kwargs)
         cancellation_event.set()
         return job_id
 
-    monkeypatch.setattr(_async_transport, "submit_job", submit_then_cancel)
+    monkeypatch.setattr(_transport, "submit_job", submit_then_cancel)
     with client._make_client(**client._client_kwargs) as http:
         with pytest.raises(client_module.CancelledError):
-            _async_transport.run_async_job(
+            _transport.run_async_job(
                 client,
                 http,
                 "v2/simulate",
@@ -657,7 +657,7 @@ def test_cancel_is_best_effort_and_quiet_for_expected_statuses(status_code, capl
 
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            _async_transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
+            _transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
     assert caplog.records == []
 
 
@@ -667,7 +667,7 @@ def test_cancel_never_raises(caplog):
 
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            _async_transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
+            _transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
     assert "Failed to cancel job sm-1" in caplog.text
 
 
@@ -697,10 +697,10 @@ def test_api_error_defaults_are_backwards_compatible():
 
 
 def test_async_job_error_message_and_attributes():
-    err = AsyncJobError(job_id="ex-1", task="explain", status="failed", error="bad input")
+    err = JobError(job_id="ex-1", task="explain", status="failed", error="bad input")
     assert str(err) == "explain job 'ex-1' failed: bad input"
     assert isinstance(err, RuntimeError)
-    quiet = AsyncJobError(job_id="sm-1", task="simulate", status="cancelled")
+    quiet = JobError(job_id="sm-1", task="simulate", status="cancelled")
     assert "no error message was reported" in str(quiet)
 
 
@@ -903,7 +903,7 @@ def test_failed_submitted_job_raises_labelled_error(task):
     else:
         job = client.jobs.explain(_explain_df())
 
-    with pytest.raises(AsyncJobError, match=f"{task} job") as excinfo:
+    with pytest.raises(JobError, match=f"{task} job") as excinfo:
         job.wait(poll_interval=0)
     assert excinfo.value.task == task
     assert excinfo.value.error == "boom"

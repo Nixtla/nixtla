@@ -19,9 +19,9 @@ adaptive cadence -- first after half a second, then doubling up to one check
 every 15 seconds -- and waits up to an hour; pass `poll_interval` for a fixed
 cadence or `poll_timeout` for a different ceiling, or use `NixtlaClient.jobs.explain()` to get a
 `Job` handle back immediately and wait on it yourself. A job that fails
-on the server raises `nixtla.AsyncJobError` with the server's original error. Server-side cancellation raises
-`nixtla.AsyncJobCancelledError`; exceeding the client wait timeout raises
-`nixtla.AsyncJobTimeoutError` and requests cancellation.
+on the server raises `nixtla.JobError` with the server's original error. Server-side cancellation raises
+`nixtla.JobCancelledError`; exceeding the client wait timeout raises
+`nixtla.JobTimeoutError` and requests cancellation.
 </Note>
 
 <Warning>

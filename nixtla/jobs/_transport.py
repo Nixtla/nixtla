@@ -28,23 +28,23 @@ from tenacity import (
     stop_after_delay,
 )
 
-from ._http import (
+from .._http import (
     _is_retriable_error,
     _RESULT_NOT_READY_CODES,
     ApiError,
     logger,
 )
-from .async_job import (
+from ._job import (
     _MIN_POLL_RETRY_INTERVAL,
     _poll_intervals,
     _validate_poll_settings,
-    AsyncJobCancelledError,
-    AsyncJobError,
-    AsyncJobTimeoutError,
+    JobCancelledError,
+    JobError,
+    JobTimeoutError,
     Job,
     JobStatus,
 )
-from .steps import (
+from ..steps import (
     CONTENT_TYPE as _STEP_CONTENT_TYPE,
     METADATA_HEADER as _STEP_METADATA_HEADER,
     StepResult,
@@ -52,7 +52,7 @@ from .steps import (
 )
 
 if TYPE_CHECKING:
-    from .nixtla_client import NixtlaClient
+    from ..nixtla_client import NixtlaClient
 
 
 def _task_name(endpoint: str) -> str:
@@ -326,7 +326,7 @@ def poll_job(
             raise CancelledError
         if deadline is not None and time.monotonic() >= deadline:
             assert poll_timeout is not None
-            raise AsyncJobTimeoutError(
+            raise JobTimeoutError(
                 job_id=job_id, poll_timeout=poll_timeout
             ) from last_poll_error
 
@@ -378,7 +378,7 @@ def poll_job(
         try:
             status = JobStatus(raw_status)
         except ValueError:
-            raise AsyncJobError(
+            raise JobError(
                 job_id=job_id,
                 task=task,
                 error=f"unexpected job status {raw_status!r}: {job_data}",
@@ -386,9 +386,9 @@ def poll_job(
         if status == JobStatus.SUCCEEDED:
             return job_data
         if status == JobStatus.CANCELLED:
-            raise AsyncJobCancelledError(job_id=job_id)
+            raise JobCancelledError(job_id=job_id)
         if status == JobStatus.FAILED:
-            raise AsyncJobError(
+            raise JobError(
                 job_id=job_id,
                 task=task,
                 status=status.value,
@@ -440,9 +440,9 @@ def run_async_job(
             task=task,
             cancellation_event=cancellation_event,
         )
-    except AsyncJobCancelledError:
+    except JobCancelledError:
         raise  # The server has already cancelled the job.
-    except AsyncJobError as exc:
+    except JobError as exc:
         if exc.status not in ("failed", "cancelled", "succeeded"):
             cancel_job_best_effort(client, job_id, "invalid job status")
         raise
@@ -452,7 +452,7 @@ def run_async_job(
     result = job_data.get("result")
     if not isinstance(result, dict):
         # Success is terminal even if the result is malformed.
-        raise AsyncJobError(
+        raise JobError(
             job_id=job_id,
             task=task,
             status="succeeded",
@@ -515,7 +515,7 @@ def submit_and_wrap_job(
         if not isinstance(result, dict):
             # Same guard as `run_async_job`: a malformed success must not surface
             # as a `TypeError` from inside `parse_result`.
-            raise AsyncJobError(
+            raise JobError(
                 job_id=job_id,
                 task=task,
                 status="succeeded",
@@ -643,7 +643,7 @@ def wait_for_job_result_bytes(
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     assert poll_timeout is not None
-                    raise AsyncJobTimeoutError(
+                    raise JobTimeoutError(
                         job_id=job_id, poll_timeout=poll_timeout
                     ) from e
                 sleep_for = min(sleep_for, remaining)

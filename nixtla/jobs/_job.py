@@ -1,10 +1,21 @@
+"""The `Job` handle and the vocabulary around it.
+
+`Job` is what every `client.jobs` method returns: a reference to work the server
+is running, with `refresh()`, `wait()` and `cancel()` on it. `JobStatus` names the
+states it moves through, and `JobError`, `JobTimeoutError` and `JobCancelledError`
+are what waiting on one can raise. All of these are re-exported from `nixtla`.
+
+Also holds the polling cadence every task shares, since `Job.wait()` and the
+blocking methods apply the same defaults.
+"""
+
 from enum import Enum
 import math
 from numbers import Real
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional
 
 if TYPE_CHECKING:
-    from .nixtla_client import NixtlaClient
+    from ..nixtla_client import NixtlaClient
 
 
 # Defaults every async task polls with: an adaptive cadence, giving up after an
@@ -90,7 +101,7 @@ def _terminal_status(status: Optional[str]) -> Optional[JobStatus]:
     return parsed if parsed.is_terminal else None
 
 
-class AsyncJobError(RuntimeError):
+class JobError(RuntimeError):
     """Raised when a job fails or returns an invalid response.
 
     Attributes:
@@ -127,7 +138,7 @@ class AsyncJobError(RuntimeError):
         return f"job_id: {self.job_id}, error: {self.error}"
 
 
-class AsyncJobTimeoutError(Exception):
+class JobTimeoutError(Exception):
     """Raised when polling a server-side async job exceeds `poll_timeout`."""
 
     def __init__(self, *, job_id: str, poll_timeout: float):
@@ -141,7 +152,7 @@ class AsyncJobTimeoutError(Exception):
         )
 
 
-class AsyncJobCancelledError(Exception):
+class JobCancelledError(Exception):
     """Raised when a server-side async job reaches the 'cancelled' terminal state."""
 
     def __init__(self, *, job_id: str):
@@ -183,7 +194,7 @@ class Job:
                 settings; tasks whose result is binary (`execute_step` returns a zip) leave
                 `result` null there and use them to poll their own result endpoint.
             task: Name of the task the job runs (`"forecast"`, `"simulate"`, ...),
-                used to label `AsyncJobError` messages.
+                used to label `JobError` messages.
         """
         self.job_id = job_id
         self.task = task
@@ -211,7 +222,7 @@ class Job:
         to be terminal."""
         if self._status is not None:
             return self._status
-        from ._async_transport import get_job_data
+        from ._transport import get_job_data
 
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             job_data = get_job_data(
@@ -255,7 +266,7 @@ class Job:
                 it needs to.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
-                `AsyncJobTimeoutError`. Must be finite and positive, or `None`
+                `JobTimeoutError`. Must be finite and positive, or `None`
                 to poll until the server reports a terminal status. Defaults
                 to 3600.
             cancel_on_timeout (bool): Whether to request cancellation of the
@@ -265,7 +276,7 @@ class Job:
                 again to resume -- which requires the job to still be running.
                 Cancellation is best-effort. Unknown or already terminal jobs
                 need no cleanup; other cancellation failures are logged as
-                warnings. `AsyncJobTimeoutError` is raised regardless.
+                warnings. `JobTimeoutError` is raised regardless.
 
         Returns:
             The job's parsed result (a DataFrame for forecast/cross_validation/
@@ -274,10 +285,10 @@ class Job:
 
         Raises:
             ValueError: If the polling interval or timeout is invalid.
-            AsyncJobError: If the job fails server-side.
-            AsyncJobCancelledError: If the job reaches the `"cancelled"`
+            JobError: If the job fails server-side.
+            JobCancelledError: If the job reaches the `"cancelled"`
                 terminal state (e.g. after a successful `cancel()`).
-            AsyncJobTimeoutError: If `poll_timeout` elapses before the job
+            JobTimeoutError: If `poll_timeout` elapses before the job
                 reaches a terminal state. `poll_timeout` only bounds the
                 client's polling, so with `cancel_on_timeout=False` the job
                 keeps running server-side until its own deadline.
@@ -288,7 +299,7 @@ class Job:
             again -- so the total wait can reach twice `poll_timeout`.
         """
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
-        from ._async_transport import poll_job
+        from ._transport import poll_job
 
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:
@@ -301,16 +312,16 @@ class Job:
                     poll_timeout,
                     task=self.task,
                 )
-            except AsyncJobTimeoutError:
+            except JobTimeoutError:
                 if cancel_on_timeout:
                     self._cancel_best_effort("client poll timeout")
                 raise
-            except AsyncJobCancelledError:
+            except JobCancelledError:
                 # The server already reported the terminal state; re-querying
                 # `status` cannot tell us anything new.
                 self._status = JobStatus.CANCELLED
                 raise
-            except AsyncJobError as exc:
+            except JobError as exc:
                 # A terminal status the server reported is already final; an
                 # error without one leaves the job's state unknown.
                 status = _terminal_status(exc.status)
@@ -324,7 +335,7 @@ class Job:
 
     def cancel(self) -> None:
         """Request cancellation of the job."""
-        from ._async_transport import cancel_job
+        from ._transport import cancel_job
 
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             cancel_job(http_client, self.job_id)
@@ -338,7 +349,7 @@ class Job:
         so after a failed cancel `status` re-queries instead of reporting an
         optimistic `"cancelled"`.
         """
-        from ._async_transport import cancel_job_best_effort
+        from ._transport import cancel_job_best_effort
 
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             if cancel_job_best_effort(http_client, self.job_id, reason):
@@ -363,7 +374,7 @@ class Job:
         if self._status is not None and self._status.is_terminal:
             return
         if isinstance(
-            exc_val, (AsyncJobCancelledError, AsyncJobTimeoutError)
+            exc_val, (JobCancelledError, JobTimeoutError)
         ) and self._raised_by_this_job(exc_val):
             # `wait()` already settled both: a cancelled job is terminal, and a
             # timed-out one was either cancelled there or deliberately left
@@ -371,7 +382,7 @@ class Job:
             # nothing here, so it falls through to the cleanup below.
             return
         if (
-            isinstance(exc_val, AsyncJobError)
+            isinstance(exc_val, JobError)
             and self._raised_by_this_job(exc_val)
             and _terminal_status(exc_val.status) is not None
         ):

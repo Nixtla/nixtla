@@ -2,18 +2,20 @@
 
 Every method here mirrors the blocking `NixtlaClient` method of the same name,
 but returns a `Job` handle instead of a result. Nothing here holds state of its
-own -- payload construction, HTTP and polling all stay on the client, reached
-through `self._client`.
+own: the request body comes from `_payloads`, submission and polling from
+`_transport`, and anything genuinely client-side is reached through
+`self._client`.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 from utilsforecast.compat import DataFrame, DFType
 
-from . import _async_transport, _payloads
-from .async_job import Job
-from ._preprocessing import _ensure_local_dataframe, _validate_simulate_args
-from ._types import (
+from . import _transport
+from .. import _payloads
+from ._job import Job
+from .._preprocessing import _ensure_local_dataframe, _validate_simulate_args
+from .._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
     _ExtraParamDataType,
@@ -26,10 +28,10 @@ from ._types import (
     _ThresholdMethod,
     extra_param_checker,
 )
-from .steps import build_request as _build_step_request
+from ..steps import build_request as _build_step_request
 
 if TYPE_CHECKING:
-    from .nixtla_client import NixtlaClient
+    from ..nixtla_client import NixtlaClient
 
 
 class Jobs:
@@ -212,7 +214,7 @@ class Jobs:
             model_parameters=model_parameters,
             multivariate=multivariate,
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             "v2/forecast",
             payload,
@@ -387,7 +389,7 @@ class Jobs:
             multivariate=multivariate,
             categorical_exog_list=categorical_exog_list,
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             "v2/cross_validation",
             payload,
@@ -491,7 +493,7 @@ class Jobs:
             finetuned_model_id=finetuned_model_id,
             model=model,
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             "v2/finetune",
             payload,
@@ -661,7 +663,7 @@ class Jobs:
             refit=refit,
             multivariate=multivariate,
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             _ANOMALY_DETECTION_ENDPOINT,
             payload,
@@ -786,7 +788,7 @@ class Jobs:
             multivariate=multivariate,
             method_name="jobs.simulate()",
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             "v2/simulate",
             payload,
@@ -868,7 +870,7 @@ class Jobs:
             validate_api_key=validate_api_key,
             method_name="jobs.explain()",
         )
-        return _async_transport.submit_and_wrap_job(
+        return _transport.submit_and_wrap_job(
             self._client,
             "v2/explain",
             payload,
@@ -966,6 +968,6 @@ class Jobs:
             data=data,
             job_timeout_seconds=job_timeout_seconds,
         )
-        return _async_transport.submit_and_wrap_binary_job(
+        return _transport.submit_and_wrap_binary_job(
             self._client, "v2/execute_step", metadata, body, task="execute_step"
         )

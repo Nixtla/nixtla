@@ -4,7 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nixtla import NixtlaClient, _async_transport
+from nixtla import NixtlaClient
+from nixtla.jobs import _transport
 
 
 def _df(n_series=2, n=6):
@@ -65,8 +66,8 @@ def _simulate_client(h=2, n_series=2, n_paths=1):
     # same position every other request path puts it in -- so the transport's
     # leading `NixtlaClient` argument is dropped before it reaches the mock.
     submit = MagicMock(return_value="simulate-1")
-    _async_transport.submit_job = lambda _client, *args, **kwargs: submit(*args, **kwargs)
-    _async_transport.poll_job = lambda *_args, **_kwargs: {
+    _transport.submit_job = lambda _client, *args, **kwargs: submit(*args, **kwargs)
+    _transport.poll_job = lambda *_args, **_kwargs: {
         "status": "succeeded",
         "result": result,
     }
@@ -75,11 +76,11 @@ def _simulate_client(h=2, n_series=2, n_paths=1):
 
 
 @pytest.fixture(autouse=True)
-def _restore_async_transport():
+def _restore_transport():
     """Put back the module-level stubs `_simulate_client` installs."""
-    original = (_async_transport.submit_job, _async_transport.poll_job)
+    original = (_transport.submit_job, _transport.poll_job)
     yield
-    _async_transport.submit_job, _async_transport.poll_job = original
+    _transport.submit_job, _transport.poll_job = original
 
 
 def _sent_X_future(client):
