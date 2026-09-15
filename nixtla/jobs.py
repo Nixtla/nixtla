@@ -12,7 +12,7 @@ from utilsforecast.compat import DataFrame, DFType
 
 from . import _async_transport
 from .async_job import Job
-from .nixtla_client import _ensure_local_dataframe, _validate_simulate_args
+from ._preprocessing import _ensure_local_dataframe, _validate_simulate_args
 from ._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,

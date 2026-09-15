@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 from utilsforecast.data import generate_series
 from utilsforecast.feature_engineering import fourier, time_features
 
-from nixtla.nixtla_client import NixtlaClient, _maybe_add_date_features
+from nixtla.nixtla_client import NixtlaClient
+from nixtla._preprocessing import _maybe_add_date_features
 from nixtla_tests.helpers.states import model_ids_object
 
 load_dotenv(override=True)

@@ -3,19 +3,19 @@ import orjson
 import pandas as pd
 import pytest
 
-from nixtla.nixtla_client import _is_constant_offset_timezone
-from nixtla.nixtla_client import _partition_series
-from nixtla.nixtla_client import _preprocess
-from nixtla.nixtla_client import _series_starts
-from nixtla.nixtla_client import _tail
-from nixtla.nixtla_client import _times_to_iso
+from nixtla._preprocessing import _is_constant_offset_timezone
+from nixtla._preprocessing import _partition_series
+from nixtla._preprocessing import _preprocess
+from nixtla._preprocessing import _series_starts
+from nixtla._preprocessing import _tail
+from nixtla._preprocessing import _times_to_iso
 from nixtla.nixtla_client import _audit_duplicate_rows
 from nixtla.nixtla_client import _audit_categorical_variables
 from nixtla.nixtla_client import _audit_leading_zeros
 from nixtla.nixtla_client import _audit_missing_dates
 from nixtla.nixtla_client import _audit_negative_values
-from nixtla.nixtla_client import _forecast_payload_to_in_sample
-from nixtla.nixtla_client import _maybe_add_date_features
+from nixtla._preprocessing import _forecast_payload_to_in_sample
+from nixtla._preprocessing import _maybe_add_date_features
 from nixtla.nixtla_client import AuditDataSeverity
 from nixtla.date_features import SpecialDates
 
