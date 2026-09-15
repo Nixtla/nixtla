@@ -2,8 +2,8 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_new.png"/>
-<h1 align="center">TimeGPT-1 </h1>
-<h3 align="center">The first foundation model for forecasting and anomaly detection</h3>
+<h1 align="center">TimeGPT-2.1 </h1>
+<h3 align="center">Foundation model for forecasting and anomaly detection</h3>
 
 [![CI](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml)
 [![PyPi](https://img.shields.io/pypi/v/nixtla?color=blue)](https://pypi.org/project/nixtla/)
@@ -123,7 +123,7 @@ Dive into our [comprehensive documentation](https://docs.nixtla.io/docs/getting-
 
 - **Real World Applications**: Uncover how TimeGPT is applied in real-world scenarios through case studies on [forecasting web traffic](https://docs.nixtla.io/docs/use-cases-forecasting_web_traffic) and [predicting Bitcoin prices](https://docs.nixtla.io/docs/use-cases/bitcoin_price_prediction).
 
-## 🗞️ TimeGPT1 Revolutionizing Forecasting and Anomaly Detection
+## 🗞️ TimeGPT - Revolutionizing Forecasting and Anomaly Detection
 
 Time series data is pivotal across various sectors, including finance, healthcare, meteorology, and social sciences. Whether it's monitoring ocean tides or tracking the Dow Jones's daily closing values, time series data is crucial for forecasting and decision-making.
 
