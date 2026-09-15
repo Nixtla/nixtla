@@ -38,7 +38,7 @@ class Jobs:
 
     Each method submits a job and returns immediately with a `Job` handle
     rather than blocking for the result: call `job.wait()` to poll until it
-    finishes and get the result, `job.refresh()` to check on it, or
+    finishes and get the result, read `job.status` to check on it, or
     `job.cancel()` to ask the server to stop it.
 
     Not constructed directly -- `NixtlaClient` builds it on first access to

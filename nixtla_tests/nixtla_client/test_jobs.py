@@ -743,40 +743,6 @@ def test_job_status_queries_server_and_caches_once_terminal(monkeypatch):
     assert len(calls) == 2  # terminal status is now cached, no further calls
 
 
-def test_job_refresh_queries_the_server_and_returns_self(monkeypatch):
-    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
-        return "ft-job-1"
-
-    calls = []
-    statuses = chain(["running", "running"], repeat("succeeded"))
-
-    def fake_get_job_data(self, client, endpoint, job_id):
-        calls.append(job_id)
-        return {"status": next(statuses)}
-
-    monkeypatch.setattr(_transport, "submit_job", fake_submit_job)
-    monkeypatch.setattr(_transport, "get_job_data", fake_get_job_data)
-    client = _client()
-
-    job = client.jobs.finetune(df=_small_df(), freq="D")
-
-    assert job.refresh() is job  # chains: job.refresh().status
-    assert len(calls) == 1
-
-    # A non-terminal status is never cached, so reading it costs another
-    # request -- the documented price of `job.refresh().status` on a job that
-    # is still running.
-    assert job.status == "running"
-    assert len(calls) == 2
-
-    assert job.refresh().status == "succeeded"
-    assert len(calls) == 3  # the refresh saw a terminal status and cached it
-
-    # Terminal now: neither refreshing nor reading asks the server again.
-    assert job.refresh().status == "succeeded"
-    assert len(calls) == 3
-
-
 def test_job_wait_raises_after_cancelled_status(monkeypatch):
     def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"

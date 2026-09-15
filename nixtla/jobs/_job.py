@@ -1,7 +1,7 @@
 """The `Job` handle and the vocabulary around it.
 
 `Job` is what every `client.jobs` method returns: a reference to work the server
-is running, with `refresh()`, `wait()` and `cancel()` on it. `JobStatus` names the
+is running, with `status`, `wait()` and `cancel()` on it. `JobStatus` names the
 states it moves through, and `JobError`, `JobTimeoutError` and `JobCancelledError`
 are what waiting on one can raise. All of these are re-exported from `nixtla`.
 
@@ -168,9 +168,9 @@ class Job:
     `jobs.detect_anomalies()`, `jobs.simulate()`, `jobs.explain()`, or
     `jobs.execute_step()`.
 
-    `status` queries the server for the job's current status, and `refresh()`
-    does so explicitly; call `wait()` to block until it reaches a terminal
-    state and get its result, or `cancel()` to request that the server stop it.
+    `status` queries the server for the job's current status; call `wait()` to
+    block until it reaches a terminal state and get its result, or `cancel()`
+    to request that the server stop it.
 
     Can also be used as a context manager: if an exception propagates out of
     the `with` block before the job reaches a terminal state, cancellation is
@@ -215,11 +215,6 @@ class Job:
         server for it. Once a terminal status is observed it's cached, since
         a finished job's status can't change again.
         """
-        return self._refresh_status()
-
-    def _refresh_status(self) -> JobStatus:
-        """Read the job's status, querying the server unless it is already known
-        to be terminal."""
         if self._status is not None:
             return self._status
         from ._transport import get_job_data
@@ -232,21 +227,6 @@ class Job:
         if status.is_terminal:
             self._status = status
         return status
-
-    def refresh(self) -> "Job":
-        """Check on the job, and return `self` so calls chain:
-        `job.refresh().status`.
-
-        A job already known to be in a terminal state makes no request -- a
-        finished job's status cannot change.
-
-        Reading `status` queries the server by itself, so `refresh()` is for
-        asking explicitly rather than for saving a request: on a job that is
-        still running, `job.refresh().status` costs two. Use `job.status` alone
-        when all you want is the current value.
-        """
-        self._refresh_status()
-        return self
 
     def wait(
         self,

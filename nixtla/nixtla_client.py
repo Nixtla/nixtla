@@ -1473,9 +1473,7 @@ class NixtlaClient:
         Each method there mirrors the blocking method of the same name but
         returns a `Job` handle instead of a result. See `Jobs`.
         """
-        # Deferred: `jobs._namespace` imports this module at its top. Building
-        # it lazily also keeps the back-reference out of `__dict__` for clients
-        # that are pickled out to Dask/Ray/Spark workers and never touch `.jobs`.
+        # Deferred: `jobs._namespace` imports this module at its top.
         from .jobs import Jobs
 
         return Jobs(self)
