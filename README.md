@@ -37,7 +37,7 @@ from nixtla import NixtlaClient
 ### Forecast using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/readme
+# Obtain an API key via https://nixtla.io/free-trial
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
@@ -58,7 +58,7 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 ### Anomaly detection using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/readme
+# Obtain an API key via https://nixtla.io/free-trial
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
@@ -129,7 +129,7 @@ Time series data is pivotal across various sectors, including finance, healthcar
 
 Traditional analysis methods such as ARIMA, ETS, MSTL, Theta, CES, machine learning models like XGBoost and LightGBM, and deep learning approaches have been standard tools for analysts. However, TimeGPT introduces a paradigm shift with its standout performance, efficiency, and simplicity. Thanks to its zero-shot inference capability, TimeGPT streamlines the analytical process, making it accessible even to users with minimal coding experience.
 
-TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As the only foundation model for time series analysis out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
+TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As a foundation model for time series analysis that works out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
 
 ## ⚙️ TimeGPT's Architecture
 
