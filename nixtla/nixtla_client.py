@@ -1,8 +1,8 @@
 __all__ = [
     "ApiError",
-    "AsyncJobCancelledError",
-    "AsyncJobError",
-    "AsyncJobTimeoutError",
+    "JobCancelledError",
+    "JobError",
+    "JobTimeoutError",
     "Job",
     "JobStatus",
     "NixtlaClient",
@@ -17,7 +17,6 @@ from importlib.metadata import PackageNotFoundError, version
 import logging
 import math
 import os
-import time
 import warnings
 from collections.abc import Sequence
 from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
@@ -39,7 +38,6 @@ from typing import (
 )
 
 import annotated_types
-import httpcore
 import httpx
 import numpy as np
 import orjson
@@ -49,7 +47,6 @@ import zstandard as zstd
 from pydantic import AfterValidator, BaseModel, TypeAdapter
 from tenacity import (
     RetryCallState,
-    Retrying,
     retry,
     retry_if_exception,
     stop_after_attempt,
@@ -62,28 +59,31 @@ from utilsforecast.preprocessing import fill_gaps, id_time_grid
 from utilsforecast.processing import ensure_sorted
 from utilsforecast.validation import ensure_time_dtype, validate_format
 
-from .async_job import (
-    AsyncJobCancelledError,
-    AsyncJobError,
-    AsyncJobTimeoutError,
+from ._http import (
+    _is_retriable_error,
+    _parse_retry_after,
+    ApiError,
+    logger,
+)
+from ._steps import (
+    StepResult,
+    ref,
+)
+from .jobs import _transport
+from .jobs._job import (
+    JobCancelledError,
+    JobError,
+    JobTimeoutError,
     Job,
     JobStatus,
     _DEFAULT_POLL_INTERVAL,
     _DEFAULT_POLL_TIMEOUT,
-    _MIN_POLL_RETRY_INTERVAL,
-    _poll_intervals,
     _validate_poll_settings,
-)
-from .steps import (
-    CONTENT_TYPE as _STEP_CONTENT_TYPE,
-    METADATA_HEADER as _STEP_METADATA_HEADER,
-    StepResult,
-    build_request as _build_step_request,
-    build_result as _build_step_result,
-    ref,
 )
 
 if TYPE_CHECKING:
+    from .jobs import Jobs
+
     try:
         from fugue import AnyDataFrame
     except ModuleNotFoundError:
@@ -133,7 +133,6 @@ DistributedDFType = TypeVar(
 )
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.ERROR)
-logger = logging.getLogger(__name__)
 
 
 def _resolve_nixtla_client_version() -> Optional[str]:
@@ -247,66 +246,6 @@ _date_features_by_freq = {
 }
 
 
-# What a binary job's result endpoint answers while the payload has not been served yet. 202 is
-# what it returns today; 409 is kept for compatibility, and where it instead means the job ended
-# without a result, waiting is merely wasteful rather than wrong.
-_RESULT_NOT_READY_CODES = (HTTPStatus.ACCEPTED, HTTPStatus.CONFLICT)
-
-
-def _is_retriable_error(exc: BaseException) -> bool:
-    retriable_exceptions = (
-        ConnectionResetError,
-        httpcore.ConnectError,
-        httpcore.RemoteProtocolError,
-        httpx.ConnectTimeout,
-        httpx.ReadError,
-        httpx.RemoteProtocolError,
-        httpx.ReadTimeout,
-        httpx.PoolTimeout,
-        httpx.WriteError,
-        httpx.WriteTimeout,
-    )
-    retriable_codes = [
-        HTTPStatus.REQUEST_TIMEOUT,
-        HTTPStatus.CONFLICT,
-        HTTPStatus.TOO_MANY_REQUESTS,
-        HTTPStatus.BAD_GATEWAY,
-        HTTPStatus.SERVICE_UNAVAILABLE,
-        HTTPStatus.GATEWAY_TIMEOUT,
-    ]
-    return isinstance(exc, retriable_exceptions) or (
-        isinstance(exc, ApiError) and exc.status_code in retriable_codes
-    )
-
-
-def _task_name(endpoint: str) -> str:
-    """The task an API route runs: `"v2/cross_validation/async"` -> `"cross_validation"`.
-
-    Every route is named after its task, so the endpoint a call already holds is the
-    label to put on its payload-size guidance and on the errors its job raises.
-    """
-    return endpoint.removeprefix("v2/").removesuffix("/async")
-
-
-def _validate_job_timeout_seconds(job_timeout_seconds: Optional[int]) -> None:
-    """Reject a job timeout the server would refuse, before spending a round-trip on it.
-
-    Kept identical in wording to the check `steps.build_request` runs for `execute_step`, which
-    validates separately because that module is a self-contained codec. Every async task shares
-    this one check so the same bad value is reported the same way everywhere.
-    """
-    if job_timeout_seconds is None:
-        return
-    if (
-        isinstance(job_timeout_seconds, bool)
-        or not isinstance(job_timeout_seconds, int)
-        or job_timeout_seconds <= 0
-    ):
-        raise ValueError(
-            f"job_timeout_seconds must be positive, got {job_timeout_seconds!r}"
-        )
-
-
 def _coerce_positive_int(value: Any, name: str) -> int:
     """Return `value` as a plain `int`, rejecting anything that is not a positive integer.
 
@@ -348,19 +287,6 @@ def _validate_simulate_args(
     return h, n_paths, seed, num_partitions
 
 
-def _with_job_options(
-    payload: dict[str, Any], job_timeout_seconds: Optional[int]
-) -> dict[str, Any]:
-    """Return `payload` carrying the job's server-side timeout, or unchanged when none is set.
-
-    Never mutates the argument: `forecast` reuses one payload to derive its add_history request,
-    and the partitioned path hands the same dict shape to several jobs.
-    """
-    if job_timeout_seconds is None:
-        return payload
-    return {**payload, "job_options": {"timeout_seconds": job_timeout_seconds}}
-
-
 def _retry_strategy(max_retries: int, retry_interval: int, max_wait_time: int):
     def after_retry(retry_state: RetryCallState) -> None:
         error = retry_state.outcome.exception()
@@ -388,169 +314,6 @@ _MAX_CONCURRENT_ASYNC_JOBS = 5
 # The server is mid-rename: the async route already uses the post-rename name
 _ANOMALY_DETECTION_ENDPOINT = "v2/anomaly_detection"
 _ONLINE_ANOMALY_DETECTION_ENDPOINT = "v2/online_anomaly_detection"
-
-
-def _wait_for_poll(seconds: float, cancellation_event: Optional[Event]) -> bool:
-    """Wait for the next poll, returning whether cancellation was requested."""
-    if cancellation_event is None:
-        time.sleep(seconds)
-        return False
-    return cancellation_event.wait(seconds)
-
-
-def _parse_retry_after(headers: Any) -> Optional[float]:
-    """Return the `Retry-After` delay in seconds, if the header is present."""
-    try:
-        raw = headers.get("retry-after")
-    except AttributeError:
-        return None
-    if raw is None:
-        return None
-    try:
-        seconds = float(raw)
-    except (TypeError, ValueError):
-        return None
-    return max(seconds, 0.0) if math.isfinite(seconds) else None
-
-
-def _submit_retry_strategy(
-    max_retries: int,
-    retry_interval: int,
-    max_wait_time: int,
-    cancellation_event: Optional[Event] = None,
-):
-    """Retry policy for submitting an async job.
-
-    A submission that reached the server may already have created a job even
-    when the response was lost, so only failures that are known to precede
-    acceptance are retried: refusals because of the in-flight job cap (429) and
-    errors while connecting. Read timeouts and gateway errors are not retried.
-    """
-
-    def should_retry(exc: BaseException) -> bool:
-        connect_exceptions = (
-            httpcore.ConnectError,
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-        )
-        return isinstance(exc, connect_exceptions) or (
-            isinstance(exc, ApiError)
-            and exc.status_code == HTTPStatus.TOO_MANY_REQUESTS
-        )
-
-    last_error: Optional[BaseException] = None
-
-    def before_attempt(retry_state: RetryCallState) -> None:
-        if (
-            retry_state.attempt_number > 1
-            and time.monotonic() - retry_state.start_time >= max_wait_time
-        ):
-            assert last_error is not None
-            raise last_error
-
-    def wait_for(retry_state: RetryCallState) -> float:
-        exc = retry_state.outcome.exception() if retry_state.outcome else None
-        delay = float(retry_interval)
-        if isinstance(exc, ApiError) and exc.retry_after is not None:
-            delay = exc.retry_after
-        remaining = max(
-            max_wait_time - (time.monotonic() - retry_state.start_time), 0.0
-        )
-        return min(delay, remaining)
-
-    def after_retry(retry_state: RetryCallState) -> None:
-        nonlocal last_error
-        assert retry_state.outcome is not None
-        last_error = retry_state.outcome.exception()
-        logger.warning(
-            f"Submission attempt {retry_state.attempt_number} failed with error: {last_error}"
-        )
-
-    def sleep(seconds: float) -> None:
-        if _wait_for_poll(seconds, cancellation_event):
-            raise CancelledError
-
-    return Retrying(
-        retry=retry_if_exception(should_retry),
-        wait=wait_for,
-        before=before_attempt,
-        after=after_retry,
-        stop=stop_after_attempt(max_retries) | stop_after_delay(max_wait_time),
-        sleep=sleep,
-        reraise=True,
-    ).wraps
-
-
-def _is_retriable_poll_error(exc: BaseException) -> bool:
-    return _is_retriable_error(exc) or isinstance(
-        exc,
-        (
-            httpcore.TimeoutException,
-            httpx.TimeoutException,
-            httpcore.NetworkError,
-            httpx.NetworkError,
-            httpx.RemoteProtocolError,
-        ),
-    )
-
-
-def _poll_retry_strategy(
-    max_retries: Optional[int],
-    retry_interval: Callable[[], float],
-    max_wait_time: Optional[int],
-    deadline: Optional[float],
-    cancellation_event: Optional[Event] = None,
-):
-    """Retry status requests without sleeping beyond the job wait deadline.
-
-    `retry_interval` is read per attempt because the polling cadence can be
-    adaptive: a transient failure is retried at whatever interval the wait has
-    backed off to, not at a cadence fixed when the wait began.
-
-    `max_retries` bounds one run of consecutive failures, not the whole wait:
-    `_poll_job` resumes polling afterwards when it still has deadline left, so a
-    patch of gateway errors no longer ends an hour-long wait.
-    """
-
-    warned = False
-
-    def wait_for(_: RetryCallState) -> float:
-        wait = float(retry_interval())
-        if deadline is not None:
-            wait = min(wait, max(deadline - time.monotonic(), 0.0))
-        return wait
-
-    def should_stop(retry_state: RetryCallState) -> bool:
-        if max_retries is not None and retry_state.attempt_number >= max_retries:
-            return True
-        if (
-            max_wait_time is not None
-            and retry_state.seconds_since_start is not None
-            and retry_state.seconds_since_start >= max_wait_time
-        ):
-            return True
-        return deadline is not None and time.monotonic() >= deadline
-
-    def after_retry(retry_state: RetryCallState) -> None:
-        nonlocal warned
-        assert retry_state.outcome is not None
-        error = retry_state.outcome.exception()
-        log = logger.debug if warned else logger.warning
-        log(f"Polling attempt {retry_state.attempt_number} failed with error: {error}")
-        warned = True
-
-    def sleep(seconds: float) -> None:
-        if _wait_for_poll(seconds, cancellation_event):
-            raise CancelledError
-
-    return Retrying(
-        retry=retry_if_exception(_is_retriable_poll_error),
-        wait=wait_for,
-        after=after_retry,
-        stop=should_stop,
-        sleep=sleep,
-        reraise=True,
-    ).wraps
 
 
 def _maybe_infer_freq(
@@ -1624,26 +1387,6 @@ def _audit_negative_values(
         raise ValueError(f"Dataframe type {type(df)} is not supported yet.")
 
 
-class ApiError(Exception):
-    status_code: Optional[int]
-    body: Any
-    retry_after: Optional[float]
-
-    def __init__(
-        self,
-        *,
-        status_code: Optional[int] = None,
-        body: Optional[Any] = None,
-        retry_after: Optional[float] = None,
-    ):
-        self.status_code = status_code
-        self.body = body
-        self.retry_after = retry_after
-
-    def __str__(self) -> str:
-        return f"status_code: {self.status_code}, body: {self.body}"
-
-
 class NixtlaClient:
     def __init__(
         self,
@@ -1722,6 +1465,18 @@ class NixtlaClient:
         self._retry_strategy = _retry_strategy(**self._retry_settings)
         self._model_params: dict[tuple[str, str], tuple[int, int]] = {}
         self._is_azure = "ai.azure" in base_url
+
+    @functools.cached_property
+    def jobs(self) -> "Jobs":
+        """Namespace for work that runs server-side: `client.jobs.forecast(...)`.
+
+        Each method there mirrors the blocking method of the same name but
+        returns a `Job` handle instead of a result. See `Jobs`.
+        """
+        # Deferred: `jobs._namespace` imports this module at its top.
+        from .jobs import Jobs
+
+        return Jobs(self)
 
     def _encode_payload(
         self,
@@ -1828,7 +1583,7 @@ class NixtlaClient:
         content, headers = self._encode_payload(
             payload,
             multithreaded_compress,
-            task=_task_name(endpoint),
+            task=_transport._task_name(endpoint),
         )
         resp = client.post(url=endpoint, content=content, headers=headers)
         # async job submissions ({endpoint}/async) respond with 202 ACCEPTED
@@ -1942,7 +1697,7 @@ class NixtlaClient:
         for payload in payloads:
             if is_async_job:
                 request = partial(
-                    self._run_async_job,
+                    partial(_transport.run_async_job, self),
                     client,
                     endpoint,
                     payload,
@@ -1968,451 +1723,6 @@ class NixtlaClient:
             max_workers=min(max_workers, len(payloads)),
             transform=transform,
             cancellation_event=cancellation_event,
-        )
-
-    def _get_job_data(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        job_id: str,
-        timeout: Optional[float] = None,
-    ) -> dict[str, Any]:
-        return self._get_request(client, f"{endpoint}/jobs/{job_id}", timeout=timeout)
-
-    def _submit_job(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        payload: dict[str, Any],
-        multithreaded_compress: bool = True,
-        *,
-        cancellation_event: Optional[Event] = None,
-    ) -> str:
-        # Retrying an ambiguous submission failure can create duplicate jobs.
-        def submit() -> dict[str, Any]:
-            if cancellation_event is not None and cancellation_event.is_set():
-                raise CancelledError
-            return self._make_request(
-                client, f"{endpoint}/async", payload, multithreaded_compress
-            )
-
-        body = _submit_retry_strategy(
-            **self._retry_settings, cancellation_event=cancellation_event
-        )(submit)()
-        job_id = body.get("job_id") if isinstance(body, dict) else None
-        if not isinstance(job_id, str) or not job_id:
-            raise RuntimeError(
-                f"Unexpected response when submitting the {endpoint} job: {body}"
-            )
-        logger.info(f"Submitted {endpoint} job {job_id}.")
-        return job_id
-
-    def _poll_job(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        job_id: str,
-        poll_interval: Optional[float],
-        poll_timeout: Optional[float],
-        *,
-        task: Optional[str] = None,
-        cancellation_event: Optional[Event] = None,
-    ) -> dict[str, Any]:
-        """Return the successful status envelope without cancelling on timeout.
-
-        The caller owns cancellation so `Job.wait(cancel_on_timeout=False)`
-        stays resumable. Every task polls the same way: `poll_interval` between
-        status checks -- fixed when given, adaptive when `None` -- transient
-        failures retried on the client's retry budget, and nothing outliving
-        `poll_timeout`. `task` only labels the errors raised from here, and
-        defaults to the name the endpoint already carries.
-        """
-        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
-        task = task or _task_name(endpoint)
-        deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
-        # The cadence is shared between the sleep after a non-terminal status
-        # and the sleep between retries of a failed status check, so a retry
-        # never polls faster than the wait has settled to.
-        intervals = _poll_intervals(poll_interval)
-        current_interval = next(intervals)
-        retry_floor = max(
-            self._retry_settings["retry_interval"], _MIN_POLL_RETRY_INTERVAL
-        )
-        # The last transient failure, if any, so that a wait spent retrying a
-        # flapping server times out saying so rather than reporting only that
-        # the job never finished.
-        last_poll_error: Optional[BaseException] = None
-
-        def check_wait() -> None:
-            if cancellation_event is not None and cancellation_event.is_set():
-                raise CancelledError
-            if deadline is not None and time.monotonic() >= deadline:
-                assert poll_timeout is not None
-                raise AsyncJobTimeoutError(
-                    job_id=job_id, poll_timeout=poll_timeout
-                ) from last_poll_error
-
-        def get_status() -> dict[str, Any]:
-            check_wait()
-            timeout = (
-                None if deadline is None else max(deadline - time.monotonic(), 0.0)
-            )
-            return self._get_job_data(client, endpoint, job_id, timeout=timeout)
-
-        def _sleep_between_polls(interval: float) -> float:
-            """Wait out `interval`, clamped to the deadline, and return the next one."""
-            sleep_for = interval
-            if deadline is not None:
-                sleep_for = min(sleep_for, max(deadline - time.monotonic(), 0.0))
-            if _wait_for_poll(sleep_for, cancellation_event):
-                raise CancelledError
-            return next(intervals)
-
-        # One budget for every task: a run of transient status failures is
-        # bounded by the client's retry settings, and never outlives the
-        # caller's poll deadline. Each poll cycle gets a fresh budget, and
-        # retries keep whatever cadence the wait has settled to.
-        get_status_with_retries = _poll_retry_strategy(
-            max_retries=self._retry_settings["max_retries"],
-            retry_interval=lambda: current_interval,
-            max_wait_time=self._retry_settings["max_wait_time"],
-            deadline=deadline,
-            cancellation_event=cancellation_event,
-        )(get_status)
-        while True:
-            try:
-                job_data = get_status_with_retries()
-            except Exception as exc:
-                if not _is_retriable_poll_error(exc):
-                    raise
-                last_poll_error = exc
-                # The inner budget bounds one run of failures; the wait itself
-                # is bounded by `poll_timeout`. A patch of gateway errors should
-                # not end an hour-long wait -- which, in a partitioned fan-out,
-                # would also cancel the job and its siblings -- so keep polling
-                # while there is deadline left. Without a deadline there is
-                # nothing left to bound the retrying, so the error propagates.
-                check_wait()
-                if deadline is None:
-                    raise
-                current_interval = _sleep_between_polls(
-                    max(current_interval, retry_floor)
-                )
-                continue
-            check_wait()
-            raw_status = job_data.get("status") if isinstance(job_data, dict) else None
-            try:
-                status = JobStatus(raw_status)
-            except ValueError:
-                raise AsyncJobError(
-                    job_id=job_id,
-                    task=task,
-                    error=f"unexpected job status {raw_status!r}: {job_data}",
-                ) from None
-            if status == JobStatus.SUCCEEDED:
-                return job_data
-            if status == JobStatus.CANCELLED:
-                raise AsyncJobCancelledError(job_id=job_id)
-            if status == JobStatus.FAILED:
-                raise AsyncJobError(
-                    job_id=job_id,
-                    task=task,
-                    status=status.value,
-                    error=job_data.get("error"),
-                )
-            current_interval = _sleep_between_polls(current_interval)
-
-    def _run_async_job(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        payload: dict[str, Any],
-        poll_interval: Optional[float],
-        poll_timeout: Optional[float],
-        multithreaded_compress: bool = True,
-        job_timeout_seconds: Optional[int] = None,
-        *,
-        task: Optional[str] = None,
-        cancellation_event: Optional[Event] = None,
-    ) -> dict[str, Any]:
-        """Submit a job and return its result, cancelling abandoned jobs.
-
-        Each partition's wait timeout starts after successful submission,
-        excluding submission retries. If polling stops before a terminal
-        state is known, request cancellation without masking the original error.
-        """
-        _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
-        task = task or _task_name(endpoint)
-        if cancellation_event is not None and cancellation_event.is_set():
-            raise CancelledError
-        payload = _with_job_options(payload, job_timeout_seconds)
-        job_id = self._submit_job(
-            client,
-            endpoint,
-            payload,
-            multithreaded_compress,
-            cancellation_event=cancellation_event,
-        )
-        try:
-            job_data = self._poll_job(
-                client,
-                endpoint,
-                job_id,
-                poll_interval,
-                poll_timeout,
-                task=task,
-                cancellation_event=cancellation_event,
-            )
-        except AsyncJobCancelledError:
-            raise  # The server has already cancelled the job.
-        except AsyncJobError as exc:
-            if exc.status not in ("failed", "cancelled", "succeeded"):
-                self._cancel_job_best_effort(client, job_id, "invalid job status")
-            raise
-        except BaseException:
-            self._cancel_job_best_effort(client, job_id, "abandoned wait")
-            raise
-        result = job_data.get("result")
-        if not isinstance(result, dict):
-            # Success is terminal even if the result is malformed.
-            raise AsyncJobError(
-                job_id=job_id,
-                task=task,
-                status="succeeded",
-                error="job succeeded but returned no result",
-            )
-        return result
-
-    def _cancel_job(self, client: httpx.Client, job_id: str) -> None:
-        resp = client.post(f"v2/async/jobs/{job_id}/cancel")
-        if resp.status_code not in (
-            HTTPStatus.OK,
-            HTTPStatus.ACCEPTED,
-            HTTPStatus.NO_CONTENT,
-        ):
-            try:
-                body = resp.json()
-            except Exception:
-                body = f"Could not parse JSON: {resp.content}"
-            raise ApiError(status_code=resp.status_code, body=body)
-
-    def _cancel_job_best_effort(
-        self, client: httpx.Client, job_id: str, reason: str
-    ) -> bool:
-        """Request cancellation, swallowing failures. Return True if accepted.
-
-        Unknown or terminal jobs need no cleanup. Return False for them so
-        `Job` does not incorrectly cache their status as cancelled.
-        """
-        try:
-            self._cancel_job(client, job_id)
-        except Exception as exc:
-            if isinstance(exc, ApiError) and exc.status_code in (
-                HTTPStatus.NOT_FOUND,
-                HTTPStatus.CONFLICT,
-            ):
-                return False
-            logger.warning("Failed to cancel job %s (%s)", job_id, reason, exc_info=True)
-            return False
-        return True
-
-    def _submit_and_wrap_job(
-        self,
-        endpoint: str,
-        payload: dict[str, Any],
-        job_timeout_seconds: Optional[int],
-        parse_result: Callable[..., Any],
-        *,
-        task: str,
-    ) -> Job:
-        _validate_job_timeout_seconds(job_timeout_seconds)
-        payload = _with_job_options(payload, job_timeout_seconds)
-        with self._make_client(**self._client_kwargs) as client:
-            job_id = self._submit_job(client, endpoint, payload)
-
-        def get_result(job_data: dict[str, Any], *_poll_settings: Any) -> Any:
-            # A JSON result is inline in the status response, so there is nothing to wait
-            # for: the poll settings `Job` passes are accepted and ignored.
-            result = job_data.get("result")
-            if not isinstance(result, dict):
-                # Same guard as `_run_async_job`: a malformed success must not surface
-                # as a `TypeError` from inside `parse_result`.
-                raise AsyncJobError(
-                    job_id=job_id,
-                    task=task,
-                    status="succeeded",
-                    error="job succeeded but returned no result",
-                )
-            return parse_result(result)
-
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint=endpoint,
-            get_result=get_result,
-            task=task,
-        )
-
-    def _submit_binary_job(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        metadata: str,
-        body: bytes,
-    ) -> str:
-        """Submit a job whose request body is opaque bytes rather than a JSON payload.
-
-        The body is sent as-is: it is an already-deflated zip, so the zstd compression
-        `_make_request` applies to large JSON payloads would only cost CPU. `content-type` is
-        overridden per-request because the client-level default is `application/json`.
-        """
-        headers = {
-            "content-type": _STEP_CONTENT_TYPE,
-            _STEP_METADATA_HEADER: metadata,
-        }
-        resp = client.post(url=f"{endpoint}/async", content=body, headers=headers)
-        resp_body = self._parse_json_response(
-            resp, expected_status=(HTTPStatus.OK, HTTPStatus.ACCEPTED)
-        )
-        # Same envelope unwrap `_make_request` applies, so a wrapped body doesn't become a KeyError.
-        if "data" in resp_body:
-            resp_body = resp_body["data"]
-        if "job_id" not in resp_body:
-            raise ApiError(
-                status_code=resp.status_code,
-                body=f"Response has no job_id: {resp_body}",
-            )
-        return resp_body["job_id"]
-
-    def _get_job_result_bytes(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        job_id: str,
-    ) -> tuple[httpx.Headers, bytes]:
-        """Fetch a binary job's result from its dedicated endpoint, once.
-
-        Binary results cannot be inlined into the JSON status response, so they are served
-        separately. A succeeded job's result is not served the instant its status says so:
-        until it is ready the endpoint answers with one of `_RESULT_NOT_READY_CODES`, which
-        this method raises as an `ApiError` like any other non-200. Call
-        `_wait_for_job_result_bytes` rather than this directly -- it recognises those codes
-        as "still being assembled" and keeps polling, instead of reporting a failure.
-
-        The status check stays exact: anything other than 200 raises rather than returning a
-        body, so a "not ready" JSON payload is never mistaken for the zip.
-        """
-        resp = client.get(f"{endpoint}/jobs/{job_id}/result")
-        if resp.status_code != HTTPStatus.OK:
-            try:
-                body = resp.json()
-            except Exception:
-                body = f"Could not parse JSON: {resp.content}"
-            raise ApiError(status_code=resp.status_code, body=body)
-        return resp.headers, resp.content
-
-    def _wait_for_job_result_bytes(
-        self,
-        client: httpx.Client,
-        endpoint: str,
-        job_id: str,
-        poll_interval: Optional[float],
-        poll_timeout: Optional[float],
-    ) -> tuple[httpx.Headers, bytes]:
-        """Poll a binary job's result endpoint until the payload is served.
-
-        A succeeded job's result is not necessarily available the instant its status says so, and
-        the endpoint answers `_RESULT_NOT_READY_CODES` until it is. That is a polling state, not a
-        failure, so it gets its own loop here rather than going through `_retry_strategy`: waiting
-        is not an error to log as one, and it should not spend the budget reserved for transient
-        network failures.
-
-        The two are bounded differently, as they are in `_poll_job`. Waiting for a result that is
-        still being assembled is bounded only by `poll_timeout`, which `Job.wait(poll_timeout=None)`
-        may leave unset. A run of transient network failures is bounded by the client's
-        `max_retries` regardless, so an endpoint that never answers cannot spin here forever, and
-        its sleeps never fall below the client's `retry_interval` even when `poll_interval` is 0.
-        Any answer at all, "not ready" included, clears that budget.
-        """
-        deadline = None if poll_timeout is None else time.monotonic() + poll_timeout
-        intervals = _poll_intervals(poll_interval)
-        max_retries = self._retry_settings["max_retries"]
-        retry_interval = self._retry_settings["retry_interval"]
-        announced = False
-        failures = 0
-        while True:
-            try:
-                return self._get_job_result_bytes(client, endpoint, job_id)
-            except Exception as e:
-                not_ready = (
-                    isinstance(e, ApiError) and e.status_code in _RESULT_NOT_READY_CODES
-                )
-                if not not_ready and not _is_retriable_poll_error(e):
-                    raise
-                sleep_for = next(intervals)
-                if not_ready:
-                    failures = 0
-                else:
-                    failures += 1
-                    if failures >= max_retries:
-                        raise
-                    # Never retry a failing endpoint faster than the client
-                    # would retry any other request.
-                    sleep_for = max(sleep_for, retry_interval)
-                if deadline is not None:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        assert poll_timeout is not None
-                        raise AsyncJobTimeoutError(
-                            job_id=job_id, poll_timeout=poll_timeout
-                        ) from e
-                    sleep_for = min(sleep_for, remaining)
-                if not announced:
-                    # Once per wait, not once per attempt: `poll_interval` may be small.
-                    logger.info("Waiting for the result of job %s...", job_id)
-                    announced = True
-                time.sleep(sleep_for)
-
-    def _submit_and_wrap_binary_job(
-        self,
-        endpoint: str,
-        metadata: str,
-        body: bytes,
-        *,
-        task: str,
-    ) -> Job:
-        """Binary counterpart of `_submit_and_wrap_job`.
-
-        `job_options` is already folded into `metadata` by the caller, because for these tasks
-        the request metadata travels in a header rather than in the body.
-        """
-
-        def get_result(
-            job_data: dict[str, Any],
-            poll_interval: Optional[float],
-            poll_timeout: Optional[float],
-        ) -> StepResult:
-            # The status response leaves `result` null for these tasks; the payload is served
-            # from the job's own result endpoint, which may not have it the instant the status
-            # says succeeded.
-            with self._make_client(**self._client_kwargs) as client:
-                headers, content = self._wait_for_job_result_bytes(
-                    client, endpoint, job_id, poll_interval, poll_timeout
-                )
-            return _build_step_result(headers, content)
-
-        with self._make_client(**self._client_kwargs) as client:
-            job_id = _submit_retry_strategy(
-                **self._retry_settings, cancellation_event=None
-            )(self._submit_binary_job)(
-                client=client, endpoint=endpoint, metadata=metadata, body=body
-            )
-        return Job(
-            client=self,
-            job_id=job_id,
-            endpoint=endpoint,
-            get_result=get_result,
-            task=task,
         )
 
     def _make_partitioned_requests(
@@ -2842,108 +2152,6 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             resp = self._make_request_with_retries(client, "v2/finetune", payload)
         return resp["finetuned_model_id"]
-
-    def submit_finetune_job(
-        self,
-        df: DataFrame,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        finetune_steps: _NonNegativeInt = 10,
-        finetune_depth: _FinetuneDepth = 1,
-        finetune_loss: _Loss = "default",
-        output_model_id: Optional[str] = None,
-        finetuned_model_id: Optional[str] = None,
-        model: _Model = "timegpt-2.1",
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit a fine-tuning job to run asynchronously.
-
-        Unlike `finetune()`, this does not block until the job finishes. It
-        submits the job and immediately returns a `Job` handle; call
-        `job.wait()` to poll until it completes and get the fine-tuned model
-        id, or `job.cancel()` to request that the server stop it.
-
-        Args:
-            df (pandas or polars DataFrame): The DataFrame on which the
-                function will operate. Expected to contain at least the
-                following columns:
-                - time_col:
-                    Column name in `df` that contains the time indices of
-                    the time series. This is typically a datetime column with
-                    regular intervals, e.g., hourly, daily, monthly data
-                    points.
-                - target_col:
-                    Column name in `df` that contains the target variable of
-                    the time series, i.e., the variable we wish to predict
-                    or analyze.
-                Additionally, you can pass multiple time series (stacked in
-                the dataframe) considering an additional column:
-                - id_col:
-                    Column name in `df` that identifies unique time series.
-                    Each unique value in this column corresponds to a unique
-                    time series.
-            freq (str, int, pandas offset, optional): Frequency of the
-                timestamps.  If `None`, it will be inferred automatically.
-                See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-                Defaults to None.
-            id_col (str): Column that identifies each series. Defaults to
-                'unique_id'.
-            time_col (str): Column that identifies each timestep, its values
-                can be timestamps or integers. Defaults to 'ds'.
-            target_col (str): Column that contains the target. Defaults to 'y'.
-            finetune_steps (int): Number of steps used to finetune learning
-                TimeGPT in the new data. Defaults to 10.
-            finetune_depth (int): The depth of the finetuning. Uses a scale
-                from 1 to 5, where 1 means little finetuning, and 5 means that
-                the entire model is finetuned. Defaults to 1.
-            finetune_loss (str): Loss function to use for finetuning. Options
-                are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
-                Defaults to 'default'.
-            output_model_id (str, optional): ID to assign to the fine-tuned model.
-                If `None`, an UUID is used. Defaults to None.
-            finetuned_model_id (str, optional): ID of previously fine-tuned
-                model to use as base. Defaults to None.
-            model (str):
-                Model to use as a string. Options are: `timegpt-1`, and
-                `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`, `timegpt-2-pro`,
-                `timegpt-2.1`. We recommend using
-                `timegpt-1-long-horizon` for forecasting if you want to
-                predict more than one seasonal period given the frequency
-                of your data. Defaults to 'timegpt-2.1'.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns the
-                fine-tuned model id (str).
-        """
-        payload = self._prepare_finetune_payload(
-            df=df,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            finetune_steps=finetune_steps,
-            finetune_depth=finetune_depth,
-            finetune_loss=finetune_loss,
-            output_model_id=output_model_id,
-            finetuned_model_id=finetuned_model_id,
-            model=model,
-        )
-        return self._submit_and_wrap_job(
-            "v2/finetune",
-            payload,
-            job_timeout_seconds,
-            lambda resp: resp["finetuned_model_id"],
-            task="finetune",
-        )
 
     @overload
     def finetuned_models(self, as_df: Literal[False]) -> list[FinetunedModel]: ...
@@ -3497,7 +2705,7 @@ class NixtlaClient:
                 probabilistic predictions (if level is not None).
         """
         extra_param_checker.validate_python(model_parameters)
-        _validate_job_timeout_seconds(_job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(_job_timeout_seconds)
         if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
                 "_job_timeout_seconds requires _is_async_job; a synchronous request "
@@ -3572,7 +2780,8 @@ class NixtlaClient:
             in_sample_resp = None
             if num_partitions is None:
                 if _is_async_job:
-                    resp = self._run_async_job(
+                    resp = _transport.run_async_job(
+                            self,
                         client,
                         "v2/forecast",
                         payload,
@@ -3597,7 +2806,8 @@ class NixtlaClient:
                     )
                     logger.info("Calling Historical Forecast Endpoint...")
                     if _is_async_job:
-                        in_sample_resp = self._run_async_job(
+                        in_sample_resp = _transport.run_async_job(
+                            self,
                             client,
                             "v2/cross_validation",
                             in_sample_payload,
@@ -3650,174 +2860,6 @@ class NixtlaClient:
                     )
 
         return parse_result(resp, in_sample_resp, insample_feat_contributions)
-
-    def submit_forecast_job(
-        self,
-        df: DFType,
-        h: _PositiveInt,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        X_df: Optional[DFType] = None,
-        level: Optional[list[Union[int, float]]] = None,
-        quantiles: Optional[list[float]] = None,
-        finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _FinetuneDepth = 1,
-        finetune_loss: _Loss = "default",
-        finetuned_model_id: Optional[str] = None,
-        clean_ex_first: bool = True,
-        hist_exog_list: Optional[list[str]] = None,
-        categorical_exog_list: Optional[list[str]] = None,
-        validate_api_key: bool = False,
-        date_features: Union[bool, list[Union[str, Callable]]] = False,
-        date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-2.1",
-        feature_contributions: bool = False,
-        model_parameters: _ExtraParamDataType = None,
-        multivariate: bool = False,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit a forecast job to run asynchronously.
-
-        Unlike `forecast()`, this does not block until the job finishes. It
-        submits the job and immediately returns a `Job` handle; call
-        `job.wait()` to poll until it completes and get the resulting
-        DataFrame, or `job.cancel()` to request that the server stop it.
-
-        Not supported in this version: `num_partitions` (distributed/threaded
-        fan-out) and `add_history`. Use `forecast()` for those.
-
-        Args:
-            df (pandas or polars DataFrame): The DataFrame on which the
-                function will operate. Expected to contain at least the
-                following columns:
-                - time_col:
-                    Column name in `df` that contains the time indices of
-                    the time series. This is typically a datetime column
-                    with regular intervals, e.g., hourly, daily, monthly
-                    data points.
-                - target_col:
-                    Column name in `df` that contains the target variable of
-                    the time series, i.e., the variable we wish to predict
-                    or analyze.
-                Additionally, you can pass multiple time series (stacked in
-                    the dataframe) considering an additional column:
-                - id_col:
-                    Column name in `df` that identifies unique time series.
-                    Each unique value in this column corresponds to a unique
-                    time series.
-            h (int): Forecast horizon.
-            freq (str, int or pandas offset, optional): Frequency of the
-                timestamps. If `None`, it will be inferred automatically.
-                See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-                Defaults to None.
-            id_col (str): Column that identifies each series. Defaults to
-                'unique_id'.
-            time_col (str): Column that identifies each timestep, its values
-                can be timestamps or integers. Defaults to 'ds'.
-            target_col (str): Column that contains the target. Defaults to 'y'.
-            X_df (pandas or polars DataFrame, optional):
-                DataFrame with [`unique_id`, `ds`] columns and `df`'s future
-                exogenous. Defaults to None.
-            level (list[float], optional): Confidence levels between 0 and 100
-                for prediction intervals. Defaults to None.
-            quantiles (list[float], optional): Quantiles to forecast, list
-                between (0, 1). `level` and `quantiles` should not be
-                used simultaneously. The output dataframe will have
-                the quantile columns formatted as TimeGPT-q-(100 * q) for each
-                q. 100 * q represents percentiles but we choose this notation
-                to avoid having dots in column names. Defaults to None.
-            finetune_steps (int): Number of steps used to finetune learning
-                TimeGPT in the new data. Defaults to 0.
-            finetune_depth (int): The depth of the finetuning. Uses a scale
-                from 1 to 5, where 1 means little finetuning, and 5 means that
-                the entire model is finetuned. Defaults to 1.
-            finetune_loss (str): Loss function to use for finetuning. Options
-                are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
-                Defaults to 'default'.
-            finetuned_model_id (str, optional): ID of previously fine-tuned model
-                to use. Defaults to None.
-            clean_ex_first (bool): Clean exogenous signal before making
-                forecasts using TimeGPT. Defaults to True.
-            hist_exog_list (list[str], optional): Column names of the
-                historical exogenous features. Defaults to None.
-            categorical_exog_list (list[str], optional): Column names of
-                categorical exogenous features (can be strings or numbers).
-                Future categoricals must be provided via `X_df`; historical-only
-                categoricals must appear in `df` and be listed in
-                `hist_exog_list`. Defaults to None.
-            validate_api_key (bool):
-                If True, validates api_key before sending requests. Defaults
-                to False.
-            date_features (bool or list[str] or callable, optional): Features
-                computed from the dates. Can be pandas date attributes
-                or functions that will take the dates as input. If True
-                automatically adds most used date features for the
-                frequency of `df`. Defaults to False.
-            date_features_to_one_hot (bool or list[str]): Apply one-hot
-                encoding to these date features. If
-                `date_features=True`, then all date features are
-                one-hot encoded by default. Defaults to False.
-            model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`,`timegpt-2`, `timegpt-2-mini`,
-                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
-                `timegpt-1-long-horizon` for forecasting if you want to
-                predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-2.1'.
-            feature_contributions (bool): Compute SHAP values.
-                Gives access to computed SHAP values to explain the impact
-                of features on the final predictions. Defaults to False.
-            model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None
-            multivariate (bool): If True, enables multivariate predictions.
-                Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a pandas
-                or polars DataFrame with TimeGPT forecasts.
-        """
-        extra_param_checker.validate_python(model_parameters)
-        _ensure_local_dataframe(
-            df, method_name="submit_forecast_job", sync_method_name="forecast()"
-        )
-        payload, _, _, _, parse_result = self._prepare_forecast(
-            df=df,
-            h=h,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            X_df=X_df,
-            level=level,
-            quantiles=quantiles,
-            finetune_steps=finetune_steps,
-            finetune_depth=finetune_depth,
-            finetune_loss=finetune_loss,
-            finetuned_model_id=finetuned_model_id,
-            clean_ex_first=clean_ex_first,
-            hist_exog_list=hist_exog_list,
-            categorical_exog_list=categorical_exog_list,
-            validate_api_key=validate_api_key,
-            add_history=False,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-            model=model,
-            feature_contributions=feature_contributions,
-            model_parameters=model_parameters,
-            multivariate=multivariate,
-        )
-        return self._submit_and_wrap_job(
-            "v2/forecast", payload, job_timeout_seconds, parse_result, task="forecast"
-        )
 
     def _prepare_simulate(
         self,
@@ -4070,7 +3112,7 @@ class NixtlaClient:
 
         The request runs as an asynchronous job on the server: it is submitted,
         then polled until it finishes, so this call blocks until the paths are
-        available. Use `submit_simulate_job()` to get a `Job` handle back
+        available. Use `jobs.simulate()` to get a `Job` handle back
         immediately instead.
 
         Args:
@@ -4136,7 +3178,7 @@ class NixtlaClient:
                 None (a single request). At most five partition jobs run
                 concurrently. If a partition fails, the client cancels sibling
                 jobs and stops queued submissions. Not supported by
-                `submit_simulate_job()`.
+                `jobs.simulate()`.
             job_timeout_seconds (int, optional): Maximum seconds the server
                 allows this job to run before terminating it server-side (each
                 partition when `num_partitions` is set). This is separate from
@@ -4151,7 +3193,7 @@ class NixtlaClient:
                 one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
-                `AsyncJobTimeoutError`, measured from a successful submission
+                `JobTimeoutError`, measured from a successful submission
                 and including the time the job spends queued on the server.
                 Submission retries are excluded, and each partition gets its
                 own timeout. When it elapses the client requests the job's
@@ -4168,12 +3210,12 @@ class NixtlaClient:
             ValueError: Invalid arguments, missing or duplicate timestamps,
                 or timestamps that do not match the provided frequency.
             ApiError: An HTTP request failed, including an unsupported deployment.
-            AsyncJobError: The job failed or returned an invalid job response.
-            AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+            JobError: The job failed or returned an invalid job response.
+            JobCancelledError: The job was cancelled on the server.
+            JobTimeoutError: The job did not finish within `poll_timeout`
                 seconds; cancellation was requested.
         """
-        _validate_job_timeout_seconds(job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(job_timeout_seconds)
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         h, n_paths, seed, num_partitions = _validate_simulate_args(
             h, n_paths, seed, num_partitions, multivariate
@@ -4203,7 +3245,8 @@ class NixtlaClient:
 
         logger.info("Calling Simulate Endpoint...")
         if num_partitions is None:
-            job = self._submit_and_wrap_job(
+            job = _transport.submit_and_wrap_job(
+                self,
                 "v2/simulate",
                 payload,
                 job_timeout_seconds,
@@ -4231,125 +3274,6 @@ class NixtlaClient:
                 poll_timeout=poll_timeout,
             )
         return parse_result(resp)
-
-    def submit_simulate_job(
-        self,
-        df: DataFrame,
-        h: _PositiveInt,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        X_df: Optional[DataFrame] = None,
-        n_paths: _PositiveInt = 100,
-        quantiles: Optional[list[float]] = None,
-        seed: Optional[int] = None,
-        finetuned_model_id: Optional[str] = None,
-        clean_ex_first: bool = True,
-        hist_exog_list: Optional[list[str]] = None,
-        categorical_exog_list: Optional[list[str]] = None,
-        validate_api_key: bool = False,
-        date_features: Union[bool, list[Union[str, Callable]]] = False,
-        date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-2.1",
-        multivariate: bool = False,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit a simulation job to run asynchronously.
-
-        Unlike `simulate()`, this does not block until the job finishes. It
-        submits the job and immediately returns a `Job` handle; call
-        `job.wait()` to poll until it completes and get the resulting
-        DataFrame, or `job.cancel()` to request that the server stop it.
-
-        Not supported in this version: `num_partitions` (concurrent fan-out).
-        Use `simulate()` for that.
-
-        Args:
-            df (pandas or polars DataFrame): Historical time series data.
-                It must contain the time and target columns and may contain an
-                ID column and exogenous feature columns.
-            h (int): Number of future timesteps in every sample path.
-            freq (str, int or pandas offset, optional): Frequency of the
-                timestamps. If `None`, it is inferred from `df` (pandas only);
-                pass it explicitly for polars.
-            id_col (str): Column that identifies each series. Defaults to
-                `"unique_id"`.
-            time_col (str): Column that identifies each timestep. Defaults to
-                `"ds"`.
-            target_col (str): Column that contains the target. Defaults to
-                `"y"`.
-            X_df (pandas or polars DataFrame, optional): Future exogenous
-                values with ID and time columns.
-            n_paths (int): Number of paths generated for each series. Must be
-                between 1 and 10,000. Defaults to 100.
-            quantiles (list[float], optional): Strictly increasing marginal
-                quantiles inside `(0, 1)`. Between 2 and 200 values may be
-                provided. They refine the marginal distribution the paths are
-                drawn from and add no columns to the result.
-            seed (int, optional): Random seed. Reusing a seed with the same
-                inputs produces the same paths. Must be between `-2**63` and
-                `2**64 - 1`.
-            finetuned_model_id (str, optional): ID of a previously fine-tuned
-                model.
-            clean_ex_first (bool): Clean exogenous signals before inference.
-                Defaults to True.
-            hist_exog_list (list[str], optional): Historical-only exogenous
-                feature names.
-            categorical_exog_list (list[str], optional): Categorical
-                exogenous feature names.
-            validate_api_key (bool): Validate the API key before the request.
-                Defaults to False.
-            date_features (bool or list, optional): Date-derived exogenous
-                features to add.
-            date_features_to_one_hot (bool or list[str]): Date features to
-                one-hot encode.
-            model (str): Model used to generate the marginal forecasts.
-                Defaults to `"timegpt-2.1"`.
-            multivariate (bool): Request coherent paths across series. The
-                returned `coupled` column reports whether cross-series
-                coupling was applied. Defaults to False.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a pandas or
-                polars DataFrame of long-format sample paths with ID, time,
-                `sample_id`, `TimeGPT`, and `coupled` columns.
-        """
-        h, n_paths, seed, _ = _validate_simulate_args(
-            h, n_paths, seed, None, multivariate
-        )
-        payload, parse_result = self._prepare_simulate(
-            df=df,
-            h=h,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            X_df=X_df,
-            n_paths=n_paths,
-            quantiles=quantiles,
-            seed=seed,
-            finetuned_model_id=finetuned_model_id,
-            clean_ex_first=clean_ex_first,
-            hist_exog_list=hist_exog_list,
-            categorical_exog_list=categorical_exog_list,
-            validate_api_key=validate_api_key,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-            model=model,
-            multivariate=multivariate,
-            method_name="submit_simulate_job",
-        )
-        return self._submit_and_wrap_job(
-            "v2/simulate", payload, job_timeout_seconds, parse_result, task="simulate"
-        )
 
     def _prepare_explain(
         self,
@@ -4519,7 +3443,7 @@ class NixtlaClient:
 
         The request runs as an asynchronous job on the server: it is submitted,
         then polled until it finishes, so this call blocks until the weights
-        are available. Use `submit_explain_job()` to get a `Job` handle back
+        are available. Use `jobs.explain()` to get a `Job` handle back
         immediately instead.
 
         Args:
@@ -4562,7 +3486,7 @@ class NixtlaClient:
                 one check every 15 seconds.
             poll_timeout (float, optional): Maximum seconds to wait for the
                 job to reach a terminal state before raising
-                `AsyncJobTimeoutError`, measured from a successful submission
+                `JobTimeoutError`, measured from a successful submission
                 and including the time the job spends queued on the server.
                 Submission retries are excluded. When it elapses the client
                 requests the job's cancellation. Set to `None` to wait until
@@ -4576,12 +3500,12 @@ class NixtlaClient:
             ValueError: Invalid arguments, missing or duplicate timestamps,
                 or timestamps that do not match the provided frequency.
             ApiError: An HTTP request failed, including an unsupported deployment.
-            AsyncJobError: The job failed or returned an invalid job response.
-            AsyncJobCancelledError: The job was cancelled on the server.
-            AsyncJobTimeoutError: The job did not finish within `poll_timeout`
+            JobError: The job failed or returned an invalid job response.
+            JobCancelledError: The job was cancelled on the server.
+            JobTimeoutError: The job did not finish within `poll_timeout`
                 seconds; cancellation was requested.
         """
-        _validate_job_timeout_seconds(job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(job_timeout_seconds)
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
         payload, parse_result = self._prepare_explain(
             df=df,
@@ -4597,89 +3521,14 @@ class NixtlaClient:
         )
 
         logger.info("Calling Explain Endpoint...")
-        job = self._submit_and_wrap_job(
+        job = _transport.submit_and_wrap_job(
+                self,
             "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
         )
         # Abandoning the wait leaves the job burning server-side compute, so
         # cancel it on the way out.
         with job:
             return job.wait(poll_interval, poll_timeout)
-
-    def submit_explain_job(
-        self,
-        df: DataFrame,
-        method: _ExplainMethod = "granger",
-        features: Optional[list[str]] = None,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        categorical_exog_list: Optional[list[str]] = None,
-        validate_api_key: bool = False,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit an explanation job to run asynchronously.
-
-        Unlike `explain()`, this does not block until the job finishes. It
-        submits the job and immediately returns a `Job` handle; call
-        `job.wait()` to poll until it completes and get the resulting
-        DataFrame, or `job.cancel()` to request that the server stop it.
-
-        The returned weights describe lagged predictive relationships in the
-        supplied data. They do not establish that changing a feature will cause
-        the target to change.
-
-        Args:
-            df (pandas or polars DataFrame): Historical time series containing
-                the target and candidate feature columns.
-            method (str): `"granger"` for linear lagged relationships or
-                `"transfer_entropy"` for potentially nonlinear relationships.
-                Defaults to `"granger"`.
-            features (list[str], optional): Features to analyze. By default,
-                every column other than the ID, time, and target columns is
-                used.
-            freq (str, int or pandas offset, optional): Frequency of the
-                timestamps, used to verify that every series is complete and
-                regularly spaced. If `None`, it is inferred from `df` (pandas
-                only); pass it explicitly for polars.
-            id_col (str): Column that identifies each series. Defaults to
-                `"unique_id"`.
-            time_col (str): Column that identifies each timestep. Defaults to
-                `"ds"`.
-            target_col (str): Column that contains the target. Defaults to
-                `"y"`.
-            categorical_exog_list (list[str], optional): Feature names that
-                should be treated as categorical.
-            validate_api_key (bool): Validate the API key before the request.
-                Defaults to False.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a pandas or
-                polars DataFrame with one row per feature and `feature`,
-                `weight`, and `method` columns.
-        """
-        payload, parse_result = self._prepare_explain(
-            df=df,
-            method=method,
-            features=features,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            categorical_exog_list=categorical_exog_list,
-            validate_api_key=validate_api_key,
-            method_name="submit_explain_job",
-        )
-        return self._submit_and_wrap_job(
-            "v2/explain", payload, job_timeout_seconds, parse_result, task="explain"
-        )
 
     def _distributed_detect_anomalies(
         self,
@@ -5340,174 +4189,6 @@ class NixtlaClient:
                 )
         return parse_result(resp)
 
-    def submit_anomaly_detection_job(
-        self,
-        df: DFType,
-        h: _PositiveInt,
-        detection_size: _PositiveInt,
-        threshold_method: _ThresholdMethod = "univariate",
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        level: Union[int, float] = 99,
-        clean_ex_first: bool = True,
-        step_size: Optional[_PositiveInt] = None,
-        finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _FinetuneDepth = 1,
-        finetune_loss: _Loss = "default",
-        finetuned_model_id: Optional[str] = None,
-        hist_exog_list: Optional[list[str]] = None,
-        date_features: Union[bool, list[str]] = False,
-        date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-2.1",
-        model_parameters: _ExtraParamDataType = None,
-        refit: bool = False,
-        multivariate: bool = False,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit an online anomaly detection job to run asynchronously.
-
-        Unlike `detect_anomalies_online()`, this does not block until the job
-        finishes. It submits the job and immediately returns a `Job` handle;
-        call `job.wait()` to poll until it completes and get the resulting
-        DataFrame, or `job.cancel()` to request that the server stop it.
-
-        Not supported in this version: `num_partitions` (distributed/threaded
-        fan-out). Use `detect_anomalies_online()` for that.
-
-        Args:
-            df (pandas or polars DataFrame):
-                The DataFrame on which the function will operate. Expected
-                to contain at least the following columns:
-                - time_col:
-                    Column name in `df` that contains the time indices of the
-                    time series. This is typically a datetime column with
-                    regular intervals, e.g., hourly, daily, monthly data
-                    points.
-                - target_col:
-                    Column name in `df` that contains the target variable of
-                    the time series, i.e., the variable we wish to predict or
-                    analyze.
-                - id_col:
-                    Column name in `df` that identifies unique time series.
-                    Each unique value in this column corresponds to a unique
-                    time series.
-
-            h (int): Forecast horizon.
-            detection_size (int): The length of the sequence where anomalies
-                will be detected starting from the end of the dataset.
-            threshold_method (str, optional): The method used to calculate the
-                intervals for anomaly detection. Use `univariate` to flag
-                anomalies independently for each series in the dataset.
-                Use `multivariate` to have a global threshold across all series
-                in the dataset. For this method, all series must have the same
-                length. Defaults to 'univariate'.
-            freq (str, optional): Frequency of the data. By default, the freq
-                will be inferred automatically. See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-            id_col (str, optional): Column that identifies each series.
-                Defaults to 'unique_id'
-            time_col (str, optional): Column that identifies each timestep,
-                its values can be timestamps or integers. Defaults to 'ds'.
-            target_col (str, optional): Column that contains the target.
-                Defaults to 'y'.
-            level (float, optional):
-                Confidence level between 0 and 100 for detecting the anomalies.
-                Defaults to 99.
-            clean_ex_first (bool, optional): Clean exogenous signal before
-                making forecasts using TimeGPT. Defaults to True.
-            step_size (int, optional): Step size between each cross validation
-                window. If None it will be equal to `h`. Defaults to None.
-            finetune_steps (int): Number of steps used to finetune TimeGPT in
-                the new data. Defaults to 0.
-            finetune_depth (int): The depth of the finetuning. Uses a scale
-                from 1 to 5, where 1 means little finetuning, and 5 means that
-                the entire model is finetuned. Defaults to 1.
-            finetune_loss (str): Loss function to use for finetuning.
-                Options are: `default`, `mae`, `mse`, `rmse`, `mape`, and
-                `smape`. Defaults to 'default'.
-            finetuned_model_id (str, optional): ID of previously fine-tuned model
-                to use. Defaults to None.
-            hist_exog_list (list[str], optional): Column names of the historical
-                exogenous features. Defaults to None.
-            date_features (bool or list[str] or callable, optional): Features
-                computed from the dates. Can be pandas date attributes
-                or functions that will take the dates as input. If True
-                automatically adds most used date features for the
-                frequency of `df`. Defaults to False.
-            date_features_to_one_hot (bool or list[str]): Apply one-hot
-                encoding to these date features. If
-                `date_features=True`, then all date features are
-                one-hot encoded by default. Defaults to False.
-            model (str, optional): Model to use as a string. Options are:
-                `timegpt-1`, and `timegpt-1-long-horizon`, `timegpt-2`,
-                `timegpt-2-mini`, `timegpt-2-pro`, `timegpt-2.1`.
-                We recommend using
-                `timegpt-1-long-horizon` for forecasting if you want to
-                predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-2.1'.
-            model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None.
-            refit (bool, optional): Fine-tune the model in each window. If
-                False, only fine-tunes on the first window. Only used if
-                finetune_steps > 0. Defaults to False.
-            multivariate (bool): If True, enables multivariate predictions.
-                Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models. This variable
-                is different from the `threshold_method` parameter. The latter
-                controls the method used for anomaly detection (univariate vs
-                multivariate) whereas `multivariate` determines how the model
-                creates the predictions.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a pandas
-                or polars DataFrame with anomalies flagged by TimeGPT.
-        """
-        extra_param_checker.validate_python(model_parameters)
-        _ensure_local_dataframe(
-            df,
-            method_name="submit_anomaly_detection_job",
-            sync_method_name="detect_anomalies_online()",
-        )
-        payload, parse_result = self._prepare_anomaly_detection(
-            df=df,
-            h=h,
-            detection_size=detection_size,
-            threshold_method=threshold_method,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            level=level,
-            clean_ex_first=clean_ex_first,
-            step_size=step_size,
-            finetune_steps=finetune_steps,
-            finetune_depth=finetune_depth,
-            finetune_loss=finetune_loss,
-            finetuned_model_id=finetuned_model_id,
-            hist_exog_list=hist_exog_list,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-            model=model,
-            model_parameters=model_parameters,
-            refit=refit,
-            multivariate=multivariate,
-        )
-        return self._submit_and_wrap_job(
-            _ANOMALY_DETECTION_ENDPOINT,
-            payload,
-            job_timeout_seconds,
-            parse_result,
-            task="anomaly_detection",
-        )
-
     def _distributed_cross_validation(
         self,
         df: DistributedDFType,
@@ -5907,7 +4588,7 @@ class NixtlaClient:
                 DataFrame with cross validation forecasts.
         """
         extra_param_checker.validate_python(model_parameters)
-        _validate_job_timeout_seconds(_job_timeout_seconds)
+        _transport._validate_job_timeout_seconds(_job_timeout_seconds)
         if _job_timeout_seconds is not None and not _is_async_job:
             raise ValueError(
                 "_job_timeout_seconds requires _is_async_job; a synchronous request "
@@ -5974,7 +4655,8 @@ class NixtlaClient:
         with self._make_client(**self._client_kwargs) as client:
             if num_partitions is None:
                 if _is_async_job:
-                    resp = self._run_async_job(
+                    resp = _transport.run_async_job(
+                            self,
                         client,
                         "v2/cross_validation",
                         payload,
@@ -5999,272 +4681,6 @@ class NixtlaClient:
                 )
 
         return parse_result(resp)
-
-    def submit_cross_validation_job(
-        self,
-        df: DFType,
-        h: _PositiveInt,
-        freq: Optional[_Freq] = None,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        level: Optional[list[Union[int, float]]] = None,
-        quantiles: Optional[list[float]] = None,
-        validate_api_key: bool = False,
-        n_windows: _PositiveInt = 1,
-        step_size: Optional[_PositiveInt] = None,
-        finetune_steps: _NonNegativeInt = 0,
-        finetune_depth: _FinetuneDepth = 1,
-        finetune_loss: _Loss = "default",
-        finetuned_model_id: Optional[str] = None,
-        refit: bool = True,
-        clean_ex_first: bool = True,
-        hist_exog_list: Optional[list[str]] = None,
-        date_features: Union[bool, list[str]] = False,
-        date_features_to_one_hot: Union[bool, list[str]] = False,
-        model: _Model = "timegpt-2.1",
-        model_parameters: _ExtraParamDataType = None,
-        multivariate: bool = False,
-        categorical_exog_list: Optional[list[str]] = None,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit a cross-validation job to run asynchronously.
-
-        Unlike `cross_validation()`, this does not block until the job
-        finishes. It submits the job and immediately returns a `Job` handle;
-        call `job.wait()` to poll until it completes and get the resulting
-        DataFrame, or `job.cancel()` to request that the server stop it.
-
-        Not supported in this version: `num_partitions` (distributed/threaded
-        fan-out). Use `cross_validation()` for that.
-
-        Args:
-            df (pandas or polars DataFrame): The DataFrame on which the
-                function will operate. Expected to contain at least the
-                following columns:
-                - time_col:
-                    Column name in `df` that contains the time indices of the
-                    time series. This is typically a datetime column with
-                    regular intervals, e.g., hourly, daily, monthly data points.
-                - target_col:
-                    Column name in `df` that contains the target variable of the
-                    time series, i.e., the variable we wish to predict or analyze.
-                Additionally, you can pass multiple time series (stacked in the
-                dataframe) considering an additional column:
-                - id_col:
-                    Column name in `df` that identifies unique time series.
-                    Each unique value in this column corresponds to a unique
-                    time series.
-            h (int): Forecast horizon.
-            freq (str, int or pandas offset, optional): Frequency of the
-                timestamps. If `None`, it will be inferred automatically.
-                See [pandas' available frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
-                Defaults to None.
-            id_col (str): Column that identifies each series. Defaults to
-                'unique_id'.
-            time_col (str): Column that identifies each timestep, its values
-                can be timestamps or integers. Defaults to 'ds'.
-            target_col (str): Column that contains the target. Defaults to 'y'.
-            level (list[float], optional): Confidence levels between 0 and 100
-                for prediction intervals. Defaults to None.
-            quantiles (list[float], optional): Quantiles to forecast, list
-                between (0, 1). `level` and `quantiles` should not be
-                used simultaneously. The output dataframe will have
-                the quantile columns formatted as TimeGPT-q-(100 * q) for each
-                q. 100 * q represents percentiles but we choose this notation
-                to avoid having dots in column names. Defaults to None.
-            validate_api_key (bool): If True, validates api_key before sending
-                requests. Defaults to False.
-            n_windows (int): Number of windows to evaluate. Defaults to 1.
-            step_size (int, optional): Step size between each cross validation
-                window. If None it will be equal to `h`. Defaults to None.
-            finetune_steps (int): Number of steps used to finetune learning
-                TimeGPT in the new data. Defaults to 0.
-            finetune_depth (int): The depth of the finetuning. Uses a scale
-                from 1 to 5, where 1 means little finetuning, and 5 means that
-                the entire model is finetuned. Defaults to 1.
-            finetune_loss (str): Loss function to use for finetuning. Options
-                are: `default`, `mae`, `mse`, `rmse`, `mape`, and `smape`.
-                Defaults to 'default'.
-            finetuned_model_id (str, optional): ID of previously fine-tuned
-                model to use. Defaults to None.
-            refit (bool):
-                Fine-tune the model in each window. If `False`, only
-                fine-tunes on the first window. Only used if `finetune_steps`
-                > 0. Defaults to True.
-            clean_ex_first (bool):
-                Clean exogenous signal before making forecasts using TimeGPT.
-                Defaults to True.
-            hist_exog_list (list[str], optional):
-                Column names of the historical exogenous features. Defaults
-                to None.
-            date_features (bool or list[str] or callable, optional): Features
-                computed from the dates. Can be pandas date attributes
-                or functions that will take the dates as input. If True
-                automatically adds most used date features for the
-                frequency of `df`. Defaults to False.
-            date_features_to_one_hot (bool or list[str]): Apply one-hot
-                encoding to these date features. If
-                `date_features=True`, then all date features are
-                one-hot encoded by default. Defaults to False.
-            model (str): Model to use as a string. Options are: `timegpt-1`,
-                and `timegpt-1-long-horizon`, `timegpt-2`, `timegpt-2-mini`,
-                `timegpt-2-pro`, `timegpt-2.1`. We recommend using
-                `timegpt-1-long-horizon` for forecasting if you want to
-                predict more than one seasonal period given the frequency of
-                your data. Defaults to 'timegpt-2.1'.
-            model_parameters (dict): The dictionary settings that determine
-                the behavior of the model. Default is None.
-            multivariate (bool): If True, enables multivariate predictions.
-                Defaults to False. Note: multivariate predictions are only
-                supported for a select set of TimeGPT models.
-            categorical_exog_list (list[str], optional): Column names of
-                categorical exogenous features in (can be strings or
-                numbers). Defaults to None.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a pandas
-                or polars DataFrame with cross validation forecasts.
-        """
-        extra_param_checker.validate_python(model_parameters)
-        _ensure_local_dataframe(
-            df,
-            method_name="submit_cross_validation_job",
-            sync_method_name="cross_validation()",
-        )
-        payload, parse_result = self._prepare_cross_validation(
-            df=df,
-            h=h,
-            freq=freq,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            level=level,
-            quantiles=quantiles,
-            validate_api_key=validate_api_key,
-            n_windows=n_windows,
-            step_size=step_size,
-            finetune_steps=finetune_steps,
-            finetune_depth=finetune_depth,
-            finetune_loss=finetune_loss,
-            finetuned_model_id=finetuned_model_id,
-            refit=refit,
-            clean_ex_first=clean_ex_first,
-            hist_exog_list=hist_exog_list,
-            date_features=date_features,
-            date_features_to_one_hot=date_features_to_one_hot,
-            model=model,
-            model_parameters=model_parameters,
-            multivariate=multivariate,
-            categorical_exog_list=categorical_exog_list,
-        )
-        return self._submit_and_wrap_job(
-            "v2/cross_validation",
-            payload,
-            job_timeout_seconds,
-            parse_result,
-            task="cross_validation",
-        )
-
-    def submit_execute_step_job(
-        self,
-        func_name: str,
-        params: dict[str, Any],
-        data: Optional[dict[str, Any]] = None,
-        job_timeout_seconds: Optional[int] = None,
-    ) -> Job:
-        """Submit a single TSMP step to run asynchronously.
-
-        `execute_step` runs one TSMP top-level API call server-side. Each
-        call is independent: no state carries over from one to the next, so
-        every request is self-contained and carries its own data.
-        This does not block; it submits the job and immediately returns a
-        `Job` handle. Call `job.wait()` to poll until it completes and get a
-        `StepResult`, or `job.cancel()` to request that the server stop it.
-
-        Tables are referenced from `params` with `nixtla.ref(key)`, naming a
-        key of `data`. Because a step's output tables can be passed straight
-        back in as the next step's `data`, calls chain without any file or
-        byte handling::
-
-            from nixtla import NixtlaClient, ref
-
-            nixtla_client = NixtlaClient()
-
-            step1 = nixtla_client.submit_execute_step_job(
-                "make_forecast_input",
-                {"data": ref("panel"), "freq": "D"},
-                data={"panel": df},
-            ).wait()
-
-            step2 = nixtla_client.submit_execute_step_job(
-                "forecast",
-                {"resource": ref("result"), "models": ["timegpt-1"], "h": 7},
-                data=step1.data,
-            ).wait()
-
-        Chaining relies on arrow schema metadata that a pandas round-trip
-        discards, so pass `step.data` between steps rather than
-        `step.to_pandas()`.
-
-        There is no `model` argument: a step names the models it runs inside
-        `params`.
-
-        Not reachable over this transport: `optimize_model`, which requires a
-        `tune.Space` that has no JSON encoding. A pandas index is never sent
-        as data; a named one is folded into a column, anything else dropped.
-
-        Args:
-            func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
-                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`,
-                `'select_by_sql'`.
-            params (dict): Arguments for that API. Tables are referenced by
-                `ref(key)` envelopes naming a key of `data`; everything else
-                is passed through as-is and must be JSON serializable.
-            data (dict, optional): Tables the params reference, as pyarrow
-                Tables or eager pandas/polars DataFrames, keyed by the name
-                used in the `ref` envelopes. Keys must be bare names.
-                Defaults to None.
-            job_timeout_seconds (int, optional): Maximum seconds the server
-                allows this job to run before terminating it server-side.
-                This is separate from `poll_timeout` in `Job.wait()`, which
-                only controls how long the client polls locally. Capped by a
-                server-side per-task maximum; requesting a higher value
-                raises `ApiError` (422) when submitting. Defaults to the
-                server's default for this task type if not specified.
-
-        Raises:
-            TypeError: If a `data` value is not a pyarrow Table or an eager
-                pandas/polars DataFrame.
-            ValueError: If a `ref` names a table that `data` does not supply,
-                a `ref` envelope nests another `ref` (the server would ignore
-                it), a `data` key is not a bare name, `func_name` is empty or
-                over 128 characters, `job_timeout_seconds` is not positive, or
-                the request is over one of the server's budgets (metadata
-                header size or nesting, table count, body size). All are
-                raised locally, before anything is uploaded.
-
-        Returns:
-            Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`
-                (result tables as pyarrow Tables) and `.metadata` (the server's `func_name`,
-                `result` envelope and output `profile`).
-        """
-        metadata, body = _build_step_request(
-            func_name=func_name,
-            params=params,
-            data=data,
-            job_timeout_seconds=job_timeout_seconds,
-        )
-        return self._submit_and_wrap_binary_job(
-            "v2/execute_step", metadata, body, task="execute_step"
-        )
 
     def plot(
         self,
