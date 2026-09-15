@@ -24,6 +24,8 @@ from nixtla import (
     AsyncJobTimeoutError,
     NixtlaClient,
 )
+from nixtla import _async_transport
+from nixtla.jobs import Jobs
 
 
 class FakeApi:
@@ -136,7 +138,7 @@ def no_sleep(monkeypatch):
         sleeps.append(seconds)
         return cancellation_event is not None and cancellation_event.is_set()
 
-    monkeypatch.setattr(client_module, "_wait_for_poll", wait_for_poll)
+    monkeypatch.setattr(_async_transport, "_wait_for_poll", wait_for_poll)
     return sleeps
 
 
@@ -510,7 +512,7 @@ def test_wait_timeout_cancels_the_job_and_raises_timeout_error(monkeypatch):
     api = FakeApi(statuses=("pending",))
     client = api.make_client()
     clock = iter(range(0, 1000))
-    monkeypatch.setattr(client_module.time, "monotonic", lambda: float(next(clock)))
+    monkeypatch.setattr(_async_transport.time, "monotonic", lambda: float(next(clock)))
 
     with pytest.raises(AsyncJobTimeoutError, match="poll_timeout=2s") as excinfo:
         client.simulate(df=_series_df(), h=2, freq="D", n_paths=1, poll_timeout=2)
@@ -526,7 +528,7 @@ def test_success_response_received_after_wait_deadline_is_discarded():
 
     def handle(request):
         if request.method == "GET" and "/jobs/" in request.url.path:
-            client_module.time.sleep(0.02)
+            _async_transport.time.sleep(0.02)
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
@@ -548,7 +550,7 @@ def test_poll_retries_do_not_run_past_wait_deadline():
 
     def handle(request):
         if request.method == "GET" and "/jobs/" in request.url.path:
-            client_module.time.sleep(0.02)
+            _async_transport.time.sleep(0.02)
         return original_handle(request)
 
     api.transport = httpx.MockTransport(handle)
@@ -592,12 +594,12 @@ def test_keyboard_interrupt_while_polling_requests_cancellation():
     assert api.cancelled == [next(iter(api.jobs))]
 
 
-def test_partition_failure_signals_other_workers_to_stop():
+def test_partition_failure_signals_other_workers_to_stop(monkeypatch):
     client = NixtlaClient(api_key="test")
     started = client_module.Event()
     stopped = client_module.Event()
 
-    def run(_client, _task, payload, *, cancellation_event, **_kwargs):
+    def run(_nixtla_client, _client, _task, payload, *, cancellation_event, **_kwargs):
         if payload["position"] == 0:
             assert started.wait(1)
             raise RuntimeError("partition failed")
@@ -606,7 +608,7 @@ def test_partition_failure_signals_other_workers_to_stop():
         stopped.set()
         raise client_module.CancelledError
 
-    client._run_async_job = run
+    monkeypatch.setattr(_async_transport, "run_async_job", run)
     with pytest.raises(RuntimeError, match="partition failed"):
         client._dispatch_partitioned_requests(
             MagicMock(),
@@ -619,21 +621,22 @@ def test_partition_failure_signals_other_workers_to_stop():
     assert stopped.is_set()
 
 
-def test_partition_cancellation_signal_cancels_submitted_job():
+def test_partition_cancellation_signal_cancels_submitted_job(monkeypatch):
     api = FakeApi(statuses=("pending",))
     client = api.make_client()
     cancellation_event = client_module.Event()
-    submit = client._submit_job
+    submit = _async_transport.submit_job
 
     def submit_then_cancel(*args, **kwargs):
         job_id = submit(*args, **kwargs)
         cancellation_event.set()
         return job_id
 
-    client._submit_job = submit_then_cancel
+    monkeypatch.setattr(_async_transport, "submit_job", submit_then_cancel)
     with client._make_client(**client._client_kwargs) as http:
         with pytest.raises(client_module.CancelledError):
-            client._run_async_job(
+            _async_transport.run_async_job(
+                client,
                 http,
                 "v2/simulate",
                 {},
@@ -652,10 +655,9 @@ def test_cancel_is_best_effort_and_quiet_for_expected_statuses(status_code, capl
     def handle(request):
         return httpx.Response(status_code, json={"job_id": "sm-1"})
 
-    client = NixtlaClient(api_key="test")
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            client._cancel_job_best_effort(http, "sm-1", "test cleanup")
+            _async_transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
     assert caplog.records == []
 
 
@@ -663,10 +665,9 @@ def test_cancel_never_raises(caplog):
     def handle(request):
         raise httpx.ConnectError("down")
 
-    client = NixtlaClient(api_key="test")
     with httpx.Client(transport=httpx.MockTransport(handle), base_url="http://t") as http:
         with caplog.at_level("WARNING"):
-            client._cancel_job_best_effort(http, "sm-1", "test cleanup")
+            _async_transport.cancel_job_best_effort(http, "sm-1", "test cleanup")
     assert "Failed to cancel job sm-1" in caplog.text
 
 
@@ -781,11 +782,11 @@ def test_status_envelope_is_json_from_the_fixture():
 # --------------------------------------------------------------------------- #
 
 
-def test_submit_simulate_job_returns_a_handle_without_polling():
+def test_jobs_simulate_returns_a_handle_without_polling():
     api = FakeApi(result=_simulate_result(n_series=1, n_paths=2, h=3))
     client = api.make_client()
 
-    job = client.submit_simulate_job(df=_series_df(), h=3, freq="D", n_paths=2)
+    job = client.jobs.simulate(df=_series_df(), h=3, freq="D", n_paths=2)
 
     assert job.job_id in api.jobs
     assert job.task == "simulate"
@@ -799,14 +800,14 @@ def test_submit_simulate_job_returns_a_handle_without_polling():
     assert job.status == "succeeded"
 
 
-def test_submit_explain_job_returns_a_handle_without_polling():
+def test_jobs_explain_returns_a_handle_without_polling():
     api = FakeApi(
         task="explain",
         result={"weights": [0.75, 0.25], "feature_names": None, "method": "granger"},
     )
     client = api.make_client()
 
-    job = client.submit_explain_job(_explain_df(), features=["driver", "noise"])
+    job = client.jobs.explain(_explain_df(), features=["driver", "noise"])
 
     assert job.job_id in api.jobs
     assert job.task == "explain"
@@ -823,17 +824,19 @@ def test_submit_job_payload_matches_the_blocking_call(task):
     if task == "simulate":
         api = FakeApi(result=_simulate_result(1, 1, 2))
         kwargs = dict(df=_series_df(), h=2, freq="D", n_paths=1, seed=7)
-        blocking, submit = NixtlaClient.simulate, NixtlaClient.submit_simulate_job
+        blocking, submit = NixtlaClient.simulate, Jobs.simulate
     else:
         api = FakeApi(
             task="explain", result={"weights": [1.0], "method": "granger"}
         )
         kwargs = dict(df=_explain_df(), features=["driver"])
-        blocking, submit = NixtlaClient.explain, NixtlaClient.submit_explain_job
+        blocking, submit = NixtlaClient.explain, Jobs.explain
     client = api.make_client()
 
+    # Unbound, so each is called with its own receiver: the client for the
+    # blocking method, the `jobs` namespace for the submit one.
     blocking(client, **kwargs)
-    submit(client, **kwargs)
+    submit(client.jobs, **kwargs)
 
     sync_body, async_body = (api.decode(s) for s in api.submits)
     assert sync_body == async_body
@@ -845,11 +848,11 @@ def test_submit_job_forwards_job_timeout_seconds(task):
     client = api.make_client()
 
     if task == "simulate":
-        client.submit_simulate_job(
+        client.jobs.simulate(
             df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=90
         )
     else:
-        client.submit_explain_job(_explain_df(), job_timeout_seconds=90)
+        client.jobs.explain(_explain_df(), job_timeout_seconds=90)
 
     assert api.decode(api.submits[0])["job_options"] == {"timeout_seconds": 90}
 
@@ -860,25 +863,25 @@ def test_submit_job_rejects_an_invalid_job_timeout(bad):
     client = api.make_client()
 
     with pytest.raises(ValueError, match="job_timeout_seconds"):
-        client.submit_simulate_job(
+        client.jobs.simulate(
             df=_series_df(), h=2, freq="D", n_paths=1, job_timeout_seconds=bad
         )
     with pytest.raises(ValueError, match="job_timeout_seconds"):
-        client.submit_explain_job(_explain_df(), job_timeout_seconds=bad)
+        client.jobs.explain(_explain_df(), job_timeout_seconds=bad)
     assert api.requests == []
 
 
-def test_submit_simulate_job_has_no_partitioning():
+def test_jobs_simulate_has_no_partitioning():
     """`num_partitions` fans out across several jobs, which one handle cannot represent."""
     assert "num_partitions" in inspect.signature(NixtlaClient.simulate).parameters
     assert (
         "num_partitions"
-        not in inspect.signature(NixtlaClient.submit_simulate_job).parameters
+        not in inspect.signature(Jobs.simulate).parameters
     )
 
 
 @pytest.mark.parametrize(
-    "method", ["submit_simulate_job", "submit_explain_job"]
+    "method", ["simulate", "explain"]
 )
 def test_submit_job_rejects_distributed_dataframes(method):
     api = FakeApi()
@@ -896,9 +899,9 @@ def test_failed_submitted_job_raises_labelled_error(task):
     client = api.make_client()
 
     if task == "simulate":
-        job = client.submit_simulate_job(df=_series_df(), h=2, freq="D", n_paths=1)
+        job = client.jobs.simulate(df=_series_df(), h=2, freq="D", n_paths=1)
     else:
-        job = client.submit_explain_job(_explain_df())
+        job = client.jobs.explain(_explain_df())
 
     with pytest.raises(AsyncJobError, match=f"{task} job") as excinfo:
         job.wait(poll_interval=0)

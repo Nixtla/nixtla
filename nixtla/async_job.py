@@ -152,14 +152,14 @@ class AsyncJobCancelledError(Exception):
 
 
 class Job:
-    """Handle to a server-side async job submitted via `submit_forecast_job`,
-    `submit_finetune_job`, `submit_cross_validation_job`,
-    `submit_anomaly_detection_job`, `submit_simulate_job`,
-    `submit_explain_job`, or `submit_execute_step_job`.
+    """Handle to a server-side async job submitted through the `client.jobs`
+    namespace: `jobs.forecast()`, `jobs.cross_validation()`, `jobs.finetune()`,
+    `jobs.detect_anomalies()`, `jobs.simulate()`, `jobs.explain()`, or
+    `jobs.execute_step()`.
 
-    `status` queries the server for the job's current status; call `wait()`
-    to block until it reaches a terminal state and get its result, or
-    `cancel()` to request that the server stop it.
+    `status` queries the server for the job's current status, and `refresh()`
+    does so explicitly; call `wait()` to block until it reaches a terminal
+    state and get its result, or `cancel()` to request that the server stop it.
 
     Can also be used as a context manager: if an exception propagates out of
     the `with` block before the job reaches a terminal state, cancellation is
@@ -204,16 +204,38 @@ class Job:
         server for it. Once a terminal status is observed it's cached, since
         a finished job's status can't change again.
         """
+        return self._refresh_status()
+
+    def _refresh_status(self) -> JobStatus:
+        """Read the job's status, querying the server unless it is already known
+        to be terminal."""
         if self._status is not None:
             return self._status
+        from ._async_transport import get_job_data
+
         with self._client._make_client(**self._client._client_kwargs) as http_client:
-            job_data = self._client._get_job_data(
-                http_client, self._endpoint, self.job_id
+            job_data = get_job_data(
+                self._client, http_client, self._endpoint, self.job_id
             )
         status = JobStatus(job_data.get("status"))
         if status.is_terminal:
             self._status = status
         return status
+
+    def refresh(self) -> "Job":
+        """Check on the job, and return `self` so calls chain:
+        `job.refresh().status`.
+
+        A job already known to be in a terminal state makes no request -- a
+        finished job's status cannot change.
+
+        Reading `status` queries the server by itself, so `refresh()` is for
+        asking explicitly rather than for saving a request: on a job that is
+        still running, `job.refresh().status` costs two. Use `job.status` alone
+        when all you want is the current value.
+        """
+        self._refresh_status()
+        return self
 
     def wait(
         self,
@@ -266,9 +288,12 @@ class Job:
             again -- so the total wait can reach twice `poll_timeout`.
         """
         _validate_poll_settings(poll_interval, poll_timeout, allow_unbounded=True)
+        from ._async_transport import poll_job
+
         with self._client._make_client(**self._client._client_kwargs) as http_client:
             try:
-                job_data = self._client._poll_job(
+                job_data = poll_job(
+                    self._client,
                     http_client,
                     self._endpoint,
                     self.job_id,
@@ -292,15 +317,17 @@ class Job:
                 if status is not None:
                     self._status = status
                 raise
-        # `_poll_job` returns only on success; every other terminal state raises.
+        # `poll_job` returns only on success; every other terminal state raises.
         self._status = JobStatus.SUCCEEDED
         self.result = self._get_result(job_data, poll_interval, poll_timeout)
         return self.result
 
     def cancel(self) -> None:
         """Request cancellation of the job."""
+        from ._async_transport import cancel_job
+
         with self._client._make_client(**self._client._client_kwargs) as http_client:
-            self._client._cancel_job(http_client, self.job_id)
+            cancel_job(http_client, self.job_id)
         self._status = JobStatus.CANCELLED
 
     def _cancel_best_effort(self, reason: str) -> None:
@@ -311,8 +338,10 @@ class Job:
         so after a failed cancel `status` re-queries instead of reporting an
         optimistic `"cancelled"`.
         """
+        from ._async_transport import cancel_job_best_effort
+
         with self._client._make_client(**self._client._client_kwargs) as http_client:
-            if self._client._cancel_job_best_effort(http_client, self.job_id, reason):
+            if cancel_job_best_effort(http_client, self.job_id, reason):
                 self._status = JobStatus.CANCELLED
 
     def _raised_by_this_job(self, exc_val: BaseException) -> bool:

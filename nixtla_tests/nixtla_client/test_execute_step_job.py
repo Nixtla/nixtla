@@ -1,8 +1,8 @@
-"""Tests for `submit_execute_step_job` and the `nixtla.steps` codec.
+"""Tests for `jobs.execute_step()` and the `nixtla.steps` codec.
 
 These live apart from `test_async_jobs.py` rather than joining its `SUBMIT_JOB_CASES` /
-`WAIT_JOB_CASES` tables: those tables monkeypatch `NixtlaClient._submit_job`, and execute_step goes
-through `_submit_binary_job` instead because its request is a zip body plus a header rather than a
+`WAIT_JOB_CASES` tables: those tables monkeypatch `_async_transport.submit_job`, and execute_step goes
+through `submit_binary_job` instead because its request is a zip body plus a header rather than a
 JSON payload. Folding it in would mean branching inside the shared tests. The three shared
 behaviours (returns a Job, wait returns the result, job_timeout_seconds is threaded through) are
 reproduced here for the binary path.
@@ -22,6 +22,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
+from nixtla import _async_transport
 from nixtla.nixtla_client import (
     ApiError,
     AsyncJobTimeoutError,
@@ -65,7 +66,7 @@ def _stub_submit_binary(monkeypatch, job_id="es-1", capture=None):
             capture.append({"endpoint": endpoint, "metadata": metadata, "body": body})
         return job_id
 
-    monkeypatch.setattr(NixtlaClient, "_submit_binary_job", fake_submit)
+    monkeypatch.setattr(_async_transport, "submit_binary_job", fake_submit)
 
 
 def _small_df(n=5):
@@ -303,11 +304,11 @@ class TestValidation:
         def boom(*args, **kwargs):
             raise AssertionError("validation should fail before any HTTP call")
 
-        monkeypatch.setattr(NixtlaClient, "_submit_binary_job", boom)
+        monkeypatch.setattr(_async_transport, "submit_binary_job", boom)
 
     def test_rejects_a_ref_with_no_table(self):
         with pytest.raises(ValueError, match="not supplied"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("absent")})
             )
 
@@ -315,7 +316,7 @@ class TestValidation:
         # `decode` replaces the envelope with the table `data_ref` names and never recurses into
         # its siblings, so accepting this would upload `deep` and leave `opts` unset server-side.
         with pytest.raises(ValueError, match=r"\['deep'\]"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(
                     params={"data": {**ref("panel"), "opts": ref("deep")}},
                     data={"panel": _small_df(), "deep": _small_df()},
@@ -325,19 +326,19 @@ class TestValidation:
     @pytest.mark.parametrize("func_name", ["", "f" * 129])
     def test_rejects_a_func_name_outside_the_servers_bounds(self, func_name):
         with pytest.raises(ValueError, match="func_name must be a string"):
-            _client().submit_execute_step_job(**_call_kwargs(func_name=func_name))
+            _client().jobs.execute_step(**_call_kwargs(func_name=func_name))
 
     @pytest.mark.parametrize("timeout", [0, -1])
     def test_rejects_a_non_positive_job_timeout(self, timeout):
         with pytest.raises(ValueError, match="job_timeout_seconds must be positive"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(job_timeout_seconds=timeout)
             )
 
     def test_rejects_more_tables_than_the_server_accepts(self):
         data = {f"t{i}": _small_df(1) for i in range(MAX_MEMBERS + 1)}
         with pytest.raises(ValueError, match=f"over the {MAX_MEMBERS}"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("t0")}, data=data)
             )
 
@@ -346,7 +347,7 @@ class TestValidation:
         for _ in range(MAX_METADATA_DEPTH + 2):
             inner["k"] = inner = {}
         with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("panel"), "deep": deep})
             )
 
@@ -357,7 +358,7 @@ class TestValidation:
         for _ in range(3000):
             inner["k"] = inner = {}
         with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("panel"), "deep": deep})
             )
 
@@ -365,7 +366,7 @@ class TestValidation:
         params = {"data": ref("panel")}
         params["me"] = params
         with pytest.raises(ValueError, match=f"deeper than {MAX_METADATA_DEPTH}"):
-            _client().submit_execute_step_job(**_call_kwargs(params=params))
+            _client().jobs.execute_step(**_call_kwargs(params=params))
 
     def test_a_bad_ref_raises_before_any_table_is_converted(self, monkeypatch):
         # Cheapest-first: a bad reference should cost no arrow conversion.
@@ -374,7 +375,7 @@ class TestValidation:
 
         monkeypatch.setattr("nixtla.steps.to_arrow", boom)
         with pytest.raises(ValueError, match="not supplied"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref("absent")})
             )
 
@@ -383,19 +384,19 @@ class TestValidation:
         # error would surface long after the call that caused it.
         monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 128)
         with pytest.raises(ValueError, match="over the 128-byte limit"):
-            _client().submit_execute_step_job(**_call_kwargs())
+            _client().jobs.execute_step(**_call_kwargs())
 
     @pytest.mark.parametrize("key", ["../evil", "/abs", "nested/path", "", " lead"])
     def test_rejects_unsafe_data_keys(self, key):
         with pytest.raises(ValueError, match="data key"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(params={"data": ref(key)}, data={key: _small_df()})
             )
 
     def test_rejects_metadata_over_the_header_budget(self):
         # The server answers 431 and deliberately does not spill metadata into the body.
         with pytest.raises(ValueError, match="over the .* budget"):
-            _client().submit_execute_step_job(
+            _client().jobs.execute_step(
                 **_call_kwargs(
                     params={"data": ref("panel"), "sql": "x" * (HEADER_BUDGET + 1)}
                 )
@@ -403,7 +404,7 @@ class TestValidation:
 
     def test_accepts_a_call_with_no_data(self, monkeypatch):
         _stub_submit_binary(monkeypatch)
-        job = _client().submit_execute_step_job(
+        job = _client().jobs.execute_step(
             func_name="select_by_sql", params={"query": "SELECT 1"}
         )
         assert job.job_id == "es-1"
@@ -422,12 +423,12 @@ class TestSubmit:
             calls.append(endpoint)
             return "es-abc123"
 
-        monkeypatch.setattr(NixtlaClient, "_submit_binary_job", fake_submit)
+        monkeypatch.setattr(_async_transport, "submit_binary_job", fake_submit)
         monkeypatch.setattr(
-            NixtlaClient, "_get_job_data", lambda self, c, e, j: {"status": "pending"}
+            _async_transport, "get_job_data", lambda self, c, e, j: {"status": "pending"}
         )
 
-        job = _client().submit_execute_step_job(**_call_kwargs())
+        job = _client().jobs.execute_step(**_call_kwargs())
 
         assert isinstance(job, Job)
         assert job.job_id == "es-abc123"
@@ -439,7 +440,8 @@ class TestSubmit:
         http_client.post.return_value = _mock_json_response(202, {"job_id": "es-1"})
 
         metadata, body = build_request(**_call_kwargs())
-        job_id = _client()._submit_binary_job(
+        job_id = _async_transport.submit_binary_job(
+            _client(),
             http_client, "v2/execute_step", metadata, body
         )
 
@@ -470,7 +472,7 @@ class TestSubmit:
         sent = []
         _stub_submit_binary(monkeypatch, capture=sent)
 
-        _client().submit_execute_step_job(**_call_kwargs(), job_timeout_seconds=120)
+        _client().jobs.execute_step(**_call_kwargs(), job_timeout_seconds=120)
 
         assert json.loads(sent[0]["metadata"])["job_options"] == {
             "timeout_seconds": 120
@@ -486,7 +488,7 @@ class TestSubmit:
         sent = []
         _stub_submit_binary(monkeypatch, capture=sent)
         with caplog.at_level(logging.WARNING, logger="nixtla.steps"):
-            job = _client().submit_execute_step_job(
+            job = _client().jobs.execute_step(
                 **_call_kwargs(data={"panel": _small_df(), "spare": _small_df()})
             )
 
@@ -502,7 +504,7 @@ class TestSubmit:
         # Previously a big spare table could push a chained call over MAX_BODY_BYTES on its own.
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr("nixtla.steps.MAX_BODY_BYTES", 4096)
-        job = _client().submit_execute_step_job(
+        job = _client().jobs.execute_step(
             **_call_kwargs(data={"panel": _small_df(), "spare": _small_df(n=50_000)})
         )
         assert job.job_id == "es-1"
@@ -511,13 +513,14 @@ class TestSubmit:
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(422, {"detail": "nope"})
         with pytest.raises(ApiError) as exc:
-            _client()._submit_binary_job(http_client, "v2/execute_step", "{}", b"PK")
+            _async_transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
         assert exc.value.status_code == 422
 
     def test_unwraps_a_data_envelope(self):
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(200, {"data": {"job_id": "es-9"}})
-        job_id = _client()._submit_binary_job(
+        job_id = _async_transport.submit_binary_job(
+            _client(),
             http_client, "v2/execute_step", "{}", b"PK"
         )
         assert job_id == "es-9"
@@ -527,7 +530,7 @@ class TestSubmit:
         http_client = MagicMock()
         http_client.post.return_value = _mock_json_response(200, {"unexpected": 1})
         with pytest.raises(ApiError, match="no job_id"):
-            _client()._submit_binary_job(http_client, "v2/execute_step", "{}", b"PK")
+            _async_transport.submit_binary_job(_client(), http_client, "v2/execute_step", "{}", b"PK")
 
 
 # ---------------------------------------------------------------------------
@@ -545,17 +548,13 @@ class TestResult:
         _stub_submit_binary(monkeypatch)
         # The status response carries no result for a binary task; it must not be parsed.
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
         monkeypatch.setattr(
-            NixtlaClient,
-            "_get_job_result_bytes",
-            lambda self, client, endpoint, job_id: (headers, body),
+            _async_transport, "get_job_result_bytes", lambda client, endpoint, job_id: (headers, body)
         )
 
-        job = _client().submit_execute_step_job(**_call_kwargs())
+        job = _client().jobs.execute_step(**_call_kwargs())
         result = job.wait(poll_interval=0, poll_timeout=1)
 
         assert isinstance(result, StepResult)
@@ -568,17 +567,13 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded"},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded"}
         )
         monkeypatch.setattr(
-            NixtlaClient,
-            "_get_job_result_bytes",
-            lambda self, client, endpoint, job_id: ({}, body),
+            _async_transport, "get_job_result_bytes", lambda client, endpoint, job_id: ({}, body)
         )
 
-        res = _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
+        res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
 
         # Feeding `.data` straight back must preserve the resource tag end to end.
         _, chained_body = build_request(
@@ -593,7 +588,7 @@ class TestResult:
         http_client.get.return_value = MagicMock(
             status_code=200, headers={}, content=b"PK"
         )
-        _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+        _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
         http_client.get.assert_called_once_with("v2/execute_step/jobs/es-1/result")
 
     def test_a_bad_status_from_the_result_endpoint_raises(self):
@@ -602,7 +597,7 @@ class TestResult:
         resp.json.return_value = {"detail": "nope"}
         http_client.get.return_value = resp
         with pytest.raises(ApiError) as exc:
-            _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+            _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
         assert exc.value.status_code == 422
 
     @pytest.mark.parametrize("not_ready_status", [202, 409])
@@ -615,7 +610,7 @@ class TestResult:
         http_client.get.return_value = resp
 
         with pytest.raises(ApiError) as exc:
-            _client()._get_job_result_bytes(http_client, "v2/execute_step", "es-1")
+            _async_transport.get_job_result_bytes(http_client, "v2/execute_step", "es-1")
 
         assert exc.value.status_code == not_ready_status
 
@@ -635,7 +630,7 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         attempts = []
 
-        def flaky_result(self, client, endpoint, job_id):
+        def flaky_result(client, endpoint, job_id):
             attempts.append(job_id)
             if len(attempts) == 1:
                 raise ApiError(
@@ -645,13 +640,11 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky_result)
 
-        res = _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
+        res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
 
         assert len(attempts) == 2
         assert res["result"].num_rows == 3
@@ -665,7 +658,7 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         attempts = []
 
-        def flaky_result(self, client, endpoint, job_id):
+        def flaky_result(client, endpoint, job_id):
             attempts.append(job_id)
             if len(attempts) < 3:
                 raise ApiError(status_code=202, body={"detail": "not ready"})
@@ -673,15 +666,13 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky_result)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky_result)
 
         with caplog.at_level(logging.ERROR):
             res = (
-                _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
+                _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
             )
 
         assert res["result"].num_rows == 3
@@ -690,18 +681,16 @@ class TestResult:
 
     def test_a_result_that_never_arrives_times_out(self, monkeypatch):
         # Surfacing a bare ApiError(202) would read like a bug rather than "still processing".
-        def never_ready(self, client, endpoint, job_id):
+        def never_ready(client, endpoint, job_id):
             raise ApiError(status_code=202, body={"detail": "not ready"})
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", never_ready)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", never_ready)
 
-        job = _client().submit_execute_step_job(**_call_kwargs())
+        job = _client().jobs.execute_step(**_call_kwargs())
         with pytest.raises(AsyncJobTimeoutError) as exc:
             job.wait(poll_interval=0, poll_timeout=0.05)
         assert exc.value.job_id == "es-1"
@@ -709,19 +698,17 @@ class TestResult:
     def test_a_non_retriable_result_error_surfaces_immediately(self, monkeypatch):
         attempts = []
 
-        def boom(self, client, endpoint, job_id):
+        def boom(client, endpoint, job_id):
             attempts.append(job_id)
             raise ApiError(status_code=500, body={"detail": "boom"})
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", boom)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", boom)
 
-        job = _client().submit_execute_step_job(**_call_kwargs())
+        job = _client().jobs.execute_step(**_call_kwargs())
         with pytest.raises(ApiError) as exc:
             job.wait(poll_interval=0)
         assert exc.value.status_code == 500
@@ -733,7 +720,7 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         attempts = []
 
-        def flaky(self, client, endpoint, job_id):
+        def flaky(client, endpoint, job_id):
             attempts.append(job_id)
             if len(attempts) == 1:
                 raise httpx.ReadTimeout("timed out")
@@ -741,13 +728,11 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", flaky)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", flaky)
 
-        res = _client().submit_execute_step_job(**_call_kwargs()).wait(poll_interval=0)
+        res = _client().jobs.execute_step(**_call_kwargs()).wait(poll_interval=0)
         assert len(attempts) == 2
         assert res["result"].num_rows == 3
 
@@ -763,19 +748,19 @@ class TestResult:
         """
         attempts = []
 
-        def always_bad_gateway(self, client, endpoint, job_id):
+        def always_bad_gateway(client, endpoint, job_id):
             attempts.append(job_id)
             raise ApiError(status_code=502, body={"detail": "bad gateway"})
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", always_bad_gateway)
+        monkeypatch.setattr(
+            _async_transport, "get_job_result_bytes", always_bad_gateway
+        )
 
-        job = _client(max_retries=3, retry_interval=0).submit_execute_step_job(
+        job = _client(max_retries=3, retry_interval=0).jobs.execute_step(
             **_call_kwargs()
         )
         with pytest.raises(ApiError) as exc:
@@ -793,7 +778,7 @@ class TestResult:
         body = _pack({"result": _tagged_table()})
         attempts = []
 
-        def slow_with_hiccups(self, client, endpoint, job_id):
+        def slow_with_hiccups(client, endpoint, job_id):
             attempts.append(job_id)
             if len(attempts) >= 12:
                 return {}, body
@@ -803,15 +788,13 @@ class TestResult:
 
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None},
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: {"status": "succeeded", "result": None}
         )
-        monkeypatch.setattr(NixtlaClient, "_get_job_result_bytes", slow_with_hiccups)
+        monkeypatch.setattr(_async_transport, "get_job_result_bytes", slow_with_hiccups)
 
         res = (
             _client(max_retries=3, retry_interval=0)
-            .submit_execute_step_job(**_call_kwargs())
+            .jobs.execute_step(**_call_kwargs())
             .wait(poll_interval=0, poll_timeout=None)
         )
 
@@ -829,12 +812,10 @@ class TestJobSurface:
         calls = []
         _stub_submit_binary(monkeypatch)
         monkeypatch.setattr(
-            NixtlaClient,
-            "_cancel_job",
-            lambda self, client, job_id: calls.append(job_id),
+            _async_transport, "cancel_job", lambda client, job_id: calls.append(job_id)
         )
 
-        job = _client().submit_execute_step_job(**_call_kwargs())
+        job = _client().jobs.execute_step(**_call_kwargs())
         job.cancel()
 
         assert calls == ["es-1"]
@@ -843,19 +824,12 @@ class TestJobSurface:
     def test_json_jobs_still_take_the_parse_result_path(self, monkeypatch):
         """Regression guard on the `fetch_result` hook added to `Job`."""
         monkeypatch.setattr(
-            NixtlaClient,
-            "_submit_job",
-            lambda self, c, e, p, multithreaded_compress=True: "ft-1",
+            _async_transport, "submit_job", lambda self, c, e, p, multithreaded_compress=True: "ft-1"
         )
         monkeypatch.setattr(
-            NixtlaClient,
-            "_poll_job",
-            lambda self, c, e, j, pi, pt, **kw: {
-                "status": "succeeded",
-                "result": {"finetuned_model_id": "model-abc"},
-            },
+            _async_transport, "poll_job", lambda self, c, e, j, pi, pt, **kw: { "status": "succeeded", "result": {"finetuned_model_id": "model-abc"}, }
         )
 
-        job = _client().submit_finetune_job(df=_small_df(n=20), freq="D")
+        job = _client().jobs.finetune(df=_small_df(n=20), freq="D")
 
         assert job.wait(poll_interval=0, poll_timeout=1) == "model-abc"

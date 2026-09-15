@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from nixtla import NixtlaClient
+from nixtla import NixtlaClient, _async_transport
 
 
 def _client_with_response(response):
@@ -15,27 +15,39 @@ def _client_with_response(response):
 
     `explain` submits a server-side job and polls it, so both halves are
     stubbed: the returned mock records the submitted payload (as
-    `call.args[2]`, like every other request path) and the canned response
+    `call.args[3]`) and the canned response
     comes back as the job's result.
     """
     client = NixtlaClient(api_key="test", max_retries=1)
     client._make_client = MagicMock()
     results = {}
 
-    def submit(_http_client, endpoint, payload, *args, **kwargs):
+    def submit(_client, _http_client, endpoint, payload, *args, **kwargs):
         task = endpoint.rsplit("/", 1)[-1]
         job_id = f"{task}-{len(results)}"
         results[job_id] = response(task, payload) if callable(response) else response
         return job_id
 
-    def poll(_http_client, _endpoint, job_id, *args, **kwargs):
+    def poll(_client, _http_client, _endpoint, job_id, *args, **kwargs):
         return {"job_id": job_id, "status": "succeeded", "result": results[job_id]}
 
     request = MagicMock(side_effect=submit)
-    client._submit_job = request
-    client._poll_job = poll
+    _async_transport.submit_job = request
+    _async_transport.poll_job = poll
     return client, request
 
+
+
+@pytest.fixture(autouse=True)
+def _restore_async_transport():
+    """Undo the module-level stubs `_client_with_response` installs.
+
+    Submitting and polling are free functions on `_async_transport`, not methods,
+    so a stub is global rather than per-client and has to be put back.
+    """
+    original = (_async_transport.submit_job, _async_transport.poll_job)
+    yield
+    _async_transport.submit_job, _async_transport.poll_job = original
 
 def _explain_response(task, payload):
     assert task == "explain"
@@ -89,7 +101,7 @@ def test_explain_preserves_feature_order_and_sorts_observations():
             }
         ),
     )
-    _, endpoint, payload = request.call_args.args
+    _, _, endpoint, payload = request.call_args.args
     assert endpoint == "v2/explain"
     assert "model" not in payload
     assert payload["method"] == "transfer_entropy"
@@ -108,7 +120,7 @@ def test_explain_uses_all_non_key_columns_by_default():
     result = client.explain(_explain_df())
 
     assert result["feature"].tolist() == ["driver", "noise"]
-    assert request.call_args.args[2]["method"] == "granger"
+    assert request.call_args.args[3]["method"] == "granger"
 
 
 def test_explain_string_categorical_payload_uses_original_position():
@@ -123,7 +135,7 @@ def test_explain_string_categorical_payload_uses_original_position():
         categorical_exog_list=["segment"],
     )
 
-    series = request.call_args.args[2]["series"]
+    series = request.call_args.args[3]["series"]
     assert series["categorical_exog"] == [1]
     assert series["X"][1] == [
         "small",
@@ -264,7 +276,7 @@ def test_explain_serializes_missing_pandas_categorical_values_as_json_null(caplo
             categorical_exog_list=["label"],
         )
 
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     assert payload["series"]["X"][0] == ["y", None, "y", "x", "x", "x"]
     assert "missing values: ['label']" in caplog.text
     orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY)
@@ -295,7 +307,7 @@ def test_explain_serializes_pandas_nullable_feature_dtypes(dtype):
 
     client.explain(df, features=["driver", "nullable"])
 
-    values = request.call_args.args[2]["series"]["X"][1]
+    values = request.call_args.args[3]["series"]["X"][1]
     assert isinstance(values, np.ndarray)
     assert values.dtype != object
     orjson.dumps(values, option=orjson.OPT_SERIALIZE_NUMPY)
@@ -380,7 +392,7 @@ def test_explain_warns_and_ships_nan_for_pandas_missing_values(make_driver, capl
 
     assert "missing values: ['driver']" in caplog.text
     assert result["feature"].tolist() == ["driver", "noise"]
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     driver_values = np.asarray(payload["series"]["X"][0], dtype=np.float64)
     assert np.isnan(driver_values).sum() == 1
 
@@ -401,7 +413,7 @@ def test_explain_warns_and_ships_nan_for_polars_missing_values(values, caplog):
 
     assert "missing values: ['driver']" in caplog.text
     assert result["feature"].to_list() == ["driver", "noise"]
-    payload = request.call_args.args[2]
+    payload = request.call_args.args[3]
     driver_values = np.asarray(payload["series"]["X"][0], dtype=np.float64)
     assert np.isnan(driver_values).sum() == 1
 
