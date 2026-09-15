@@ -112,48 +112,49 @@ def _frozen_backtest(
             f"Series too short: {details}."
         )
 
-    _original_ts = fcst.ts
-    try:
-        all_results = []
-        splits = ufp.backtest_splits(
-            new_df,
-            n_windows=n_windows,
-            h=h,
-            id_col=id_col,
-            time_col=time_col,
-            freq=fcst.freq,
-            step_size=step_size,
+    # `predict(new_df=...)` persists the window's history on the instance it
+    # runs on; use a copy so the caller's state is untouched
+    fcst = fcst._with_ts()
+    all_results = []
+    splits = ufp.backtest_splits(
+        new_df,
+        n_windows=n_windows,
+        h=h,
+        id_col=id_col,
+        time_col=time_col,
+        freq=fcst.freq,
+        step_size=step_size,
+    )
+    for cutoffs, train, valid in splits:
+        preds = fcst.predict(h=h, new_df=train)
+        preds = ufp.join(preds, cutoffs, on=id_col, how="left")
+        joined = ufp.join(
+            valid[[id_col, time_col, target_col]],
+            preds,
+            on=[id_col, time_col],
         )
-        for cutoffs, train, valid in splits:
-            preds = fcst.predict(h=h, new_df=train)
-            preds = ufp.join(preds, cutoffs, on=id_col, how="left")
-            joined = ufp.join(
-                valid[[id_col, time_col, target_col]],
-                preds,
-                on=[id_col, time_col],
+        expected_rows = h * len(nw.from_native(cutoffs))
+        if len(nw.from_native(joined)) != expected_rows:
+            raise ValueError(
+                "Frozen-model backtest predictions did not align with the "
+                "validation windows. This usually means some series in `new_df` "
+                "have gaps in their time index; please fill the gaps and retry."
             )
-            expected_rows = h * len(nw.from_native(cutoffs))
-            if len(nw.from_native(joined)) != expected_rows:
-                raise ValueError(
-                    "Frozen-model backtest predictions did not align with the "
-                    "validation windows. This usually means some series in `new_df` "
-                    "have gaps in their time index; please fill the gaps and retry."
-                )
-            sort_idxs = ufp.maybe_compute_sort_indices(joined, id_col, time_col)
-            if sort_idxs is not None:
-                joined = ufp.take_rows(joined, sort_idxs)
-            all_results.append(joined)
-    finally:
-        fcst.ts = _original_ts
+        sort_idxs = ufp.maybe_compute_sort_indices(joined, id_col, time_col)
+        if sort_idxs is not None:
+            joined = ufp.take_rows(joined, sort_idxs)
+        all_results.append(joined)
 
     return nw.to_native(nw.concat([nw.from_native(r) for r in all_results]))
 
 
 class MLForecast:
-    # Calibration state (set in ``fit``/``history_warmup``/``load``). Declared
-    # here so mypy has a type regardless of method processing order.
-    _cs_df: Optional[DataFrame]
-    _cs_source_scales_: Optional[Dict]
+    # Calibration state, set by ``fit`` and ``load``. The defaults are what an
+    # instance never fit with intervals holds, so instances pickled before
+    # these fields existed keep loading.
+    prediction_intervals: Optional[PredictionIntervals] = None
+    _cs_df: Optional[DataFrame] = None
+    _cs_source_scales_: Optional[Dict] = None
 
     def __init__(
         self,
@@ -226,14 +227,38 @@ class MLForecast:
             raise ValueError("LightGBMCV object must be fitted first.")
         import lightgbm as lgb
 
-        fcst = cls(
-            models=lgb.LGBMRegressor(
-                **{**cv.params, "n_estimators": cv.best_iteration_}
-            ),
-            freq=cv.ts.freq,
-        )
-        fcst.ts = copy.deepcopy(cv.ts)
+        model = lgb.LGBMRegressor(**{**cv.params, "n_estimators": cv.best_iteration_})
+        return cls._from_ts(copy.deepcopy(cv.ts), models=model)
+
+    @classmethod
+    def _from_ts(
+        cls,
+        ts: TimeSeries,
+        models: Models,
+        *,
+        models_: Optional[Dict[str, Any]] = None,
+        prediction_intervals: Optional[PredictionIntervals] = None,
+        cs_df: Optional[DataFrame] = None,
+    ) -> "MLForecast":
+        """A forecaster around an already-built `TimeSeries`."""
+        fcst = cls(models=models, freq=ts.freq)
+        fcst.ts = ts
+        if models_ is not None:
+            fcst.models_ = models_
+        fcst.prediction_intervals = prediction_intervals
+        fcst._cs_df = cs_df
         return fcst
+
+    def _with_ts(self, ts: Optional[TimeSeries] = None) -> "MLForecast":
+        """Shallow copy, optionally around `ts`.
+
+        Whatever a nested fit, preprocess or predict leaves behind lands on the
+        copy instead of on this instance.
+        """
+        out = copy.copy(self)
+        if ts is not None:
+            out.ts = ts
+        return out
 
     def _validate_data(
         self,
@@ -465,7 +490,7 @@ class MLForecast:
         """
         # Run data validations if requested
         self._validate_data_or_warn(df, id_col, time_col, validate_data)
-        self.ts.horizon_features_ = self._resolve_horizon_features(
+        resolved_horizon_features = self._resolve_horizon_features(
             df=df,
             id_col=id_col,
             time_col=time_col,
@@ -491,6 +516,7 @@ class MLForecast:
             return_X_y=return_X_y,
             as_numpy=as_numpy,
             weight_col=weight_col,
+            horizon_features=resolved_horizon_features,
         )
 
     def history_warmup(
@@ -543,13 +569,14 @@ class MLForecast:
             MLForecast: Forecast object with the internal state built from `df`.
         """
         self._validate_data_or_warn(df, id_col, time_col, validate_data)
+        resolved_horizon_features = None
         if horizon_features is not None or horizon_feature_templates is not None:
             effective_max_horizon = max_horizon
             if effective_max_horizon is None and horizons is None:
                 # preserve model-shape metadata from a previous fit (e.g. an
                 # unpickled instance being re-warmed), same as TimeSeries.history_warmup
-                effective_max_horizon = getattr(self.ts, "max_horizon", None)
-            self.ts.horizon_features_ = self._resolve_horizon_features(
+                effective_max_horizon = self.ts.max_horizon
+            resolved_horizon_features = self._resolve_horizon_features(
                 df=df,
                 id_col=id_col,
                 time_col=time_col,
@@ -587,10 +614,6 @@ class MLForecast:
                     "Pass `horizon_features` explicitly to reconfigure the model "
                     "shape, or include the columns in `df`."
                 )
-        if not hasattr(self, "_cs_df"):
-            self._cs_df = None
-        if not hasattr(self, "_cs_source_scales_"):
-            self._cs_source_scales_ = None
         self.ts.history_warmup(
             df,
             id_col=id_col,
@@ -602,6 +625,7 @@ class MLForecast:
             max_horizon=max_horizon,
             horizons=horizons,
             as_numpy=as_numpy,
+            horizon_features=resolved_horizon_features,
         )
         return self
 
@@ -714,7 +738,11 @@ class MLForecast:
                 f"settings are: {min_samples}, shortest serie has: {min_size}. "
                 "Please reduce the number of windows, horizon or remove those series."
             )
-        cv_results = self.cross_validation(
+        # cross-validation and preprocessing fit the TimeSeries they run on and
+        # leave CV state behind; run them on a copy so `self` only carries what
+        # `fit` sets afterwards
+        scratch = self._with_ts(self.ts._clone_cold())
+        cv_results = scratch.cross_validation(
             df=df,
             n_windows=n_windows,
             h=h,
@@ -735,9 +763,9 @@ class MLForecast:
         # For weighted conformal methods, also store full model covariates so
         # that the DRE can use all lag/rolling/date/exogenous features.
         feature_cols = None
-        _pi = getattr(self, "prediction_intervals", None)
+        _pi = self.prediction_intervals
         if _pi is not None and _pi.method.startswith("weighted_conformal"):
-            preprocessed_result = self.preprocess(
+            preprocessed_result = scratch.preprocess(
                 df,
                 id_col=id_col,
                 time_col=time_col,
@@ -1050,37 +1078,14 @@ class MLForecast:
             first_origin = valid_origins[0]
             hist = group.iloc[: first_origin + 1]
             hist = hist[[id_col, time_col, target_col, *dynamic]]
-            temp_ts = TimeSeries(
-                freq=self.ts.freq,
-                lags=self.ts.lags,
-                lag_transforms=self.ts.lag_transforms,
-                date_features=self.ts.date_features,
-                num_threads=self.ts.num_threads,
-                target_transforms=copy.deepcopy(self.ts.target_transforms),
-                lag_transforms_namer=self.ts.lag_transforms_namer,
-                date_features_as_dummies=self.ts.date_features_as_dummies,
-                drop_auxiliary_columns=self.ts.drop_auxiliary_columns,
-            )
-            temp_ts._fit(
-                hist,
-                id_col=id_col,
-                time_col=time_col,
-                target_col=target_col,
-                static_features=[id_col],
-                keep_last_n=self.ts.keep_last_n,
-                weight_col=self.ts.weight_col,
-            )
+            # a one-series instance wearing the parent's statics and feature
+            # order, since `hist` carries neither
+            temp_ts = self.ts._clone_warm(hist, static_features=[id_col])
             temp_ts.static_features_ = static_features_pd[
                 static_features_pd[id_col].eq(uid)
             ].reset_index(drop=True)
             temp_ts.static_features = self.ts.static_features
             temp_ts.features_order_ = list(self.ts.features_order_)
-            core_tfms = temp_ts._get_core_lag_tfms()
-            if core_tfms:
-                temp_ts._compute_transforms(core_tfms, updates_only=False)
-            temp_ts.max_horizon = self.ts.max_horizon
-            temp_ts._horizons = self.ts._horizons
-            temp_ts.as_numpy = self.ts.as_numpy
 
             current_origin = first_origin
             for origin_idx in valid_origins:
@@ -1221,12 +1226,10 @@ class MLForecast:
                 horizon_features=horizon_features,
                 horizon_feature_templates=horizon_feature_templates,
                 return_X_y=False,
-                as_numpy=False,
+                as_numpy=as_numpy,
                 weight_col=weight_col,
                 validate_data=validate_data,
             )
-            # Restore the as_numpy setting for prediction
-            self.ts.as_numpy = as_numpy
 
             # Get the effective max horizon and internal horizons from preprocessing
             effective_max_horizon = self.ts.max_horizon
@@ -1473,7 +1476,7 @@ class MLForecast:
             h (int): Number of periods to predict.
             before_predict_callback (callable, optional): Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None.
             after_predict_callback (callable, optional): Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None.
-            new_df (pandas or polars DataFrame, optional): Series data of new observations for which forecasts are to be generated. This dataframe should have the same structure as the one used to fit the model, including any features and time series data. If `new_df` is not None, the method will generate forecasts for the new observations. Defaults to None.
+            new_df (pandas or polars DataFrame, optional): Series data of new observations for which forecasts are to be generated. This dataframe should have the same structure as the one used to fit the model, including any features and time series data. If `new_df` is not None, the method will generate forecasts for the new observations and, on success, the instance continues from them: `update` and later `predict` calls see this history instead of the one the model was fit on. Defaults to None.
             level (list of ints or floats, optional): Confidence levels between 0 and 100 for prediction intervals. Defaults to None.
             X_df (pandas or polars DataFrame, optional): Dataframe with the future exogenous features. Should have the id column and the time column. Defaults to None.
             ids (list of str, optional): List with subset of ids seen during training for which the forecasts should be computed. Defaults to None.
@@ -1513,40 +1516,7 @@ class MLForecast:
 
         new_ts: Optional[TimeSeries] = None
         if new_df is not None:
-            new_ts = TimeSeries(
-                freq=self.ts.freq,
-                lags=self.ts.lags,
-                lag_transforms=self.ts.lag_transforms,
-                date_features=self.ts.date_features,
-                num_threads=self.ts.num_threads,
-                # Deep copy: target transforms store fitted state (e.g. last values
-                # for Differences) inside the objects. Sharing them with self.ts
-                # lets nested predict calls (e.g. _frozen_backtest windows) clobber
-                # the state this prediction's inverse transform relies on.
-                target_transforms=copy.deepcopy(self.ts.target_transforms),
-                lag_transforms_namer=self.ts.lag_transforms_namer,
-                date_features_as_dummies=self.ts.date_features_as_dummies,
-                drop_auxiliary_columns=self.ts.drop_auxiliary_columns,
-            )
-            # Builds `_pooled_states` (global/groupby/partition_by), whose
-            # `_ts_aggs` are computed from the full `new_df` history, and warms
-            # up local (coreforecast) lag-transform buffers before the first
-            # update-based prediction step. trim=False keeps the full provided
-            # history rather than applying the `keep_last_n` trim.
-            new_ts.history_warmup(
-                new_df,
-                id_col=self.ts.id_col,
-                time_col=self.ts.time_col,
-                target_col=self.ts.target_col,
-                static_features=self.ts.static_features,
-                keep_last_n=self.ts.keep_last_n,
-                weight_col=self.ts.weight_col,
-                trim=False,
-            )
-            new_ts.max_horizon = self.ts.max_horizon
-            new_ts._horizons = self.ts._horizons
-            new_ts.as_numpy = self.ts.as_numpy
-            new_ts.horizon_features_ = copy.deepcopy(self.ts.horizon_features_)
+            new_ts = self.ts._clone_warm(new_df)
             ts = new_ts
         else:
             ts = self.ts
@@ -1579,13 +1549,9 @@ class MLForecast:
                 w_arr = np.asarray(transfer_conformal.weights, dtype=float)
             _transfer_result = TransferResult(cs_df=self._cs_df, weights=w_arr)
 
-        _saved_cs_df = None
+        conformity_scores = self._cs_df
         if new_df is not None and level is not None:
-            if (
-                self._cs_df is None
-                or not hasattr(self, "prediction_intervals")
-                or self.prediction_intervals is None
-            ):
+            if self._cs_df is None or self.prediction_intervals is None:
                 raise ValueError(
                     "Transfer-learning prediction intervals require that the model was "
                     "fit with `prediction_intervals=PredictionIntervals(...)`."
@@ -1625,34 +1591,24 @@ class MLForecast:
                     target_col=self.ts.target_col,
                 )
 
-            # Save state that needs to survive for the final forecasting step.
-            _saved_models_ = self.models_
-            _saved_ts_for_cv = self.ts
-            _saved_cs_df_pre = self._cs_df
-            _saved_pi = self.prediction_intervals
-            _saved_source_scales = self._cs_source_scales_
-            try:
-                _transfer_result = spec.fn(
-                    new_df=new_df,
-                    prediction_intervals=self.prediction_intervals,
-                    tc=transfer_conformal,
-                    backtest_results=_backtest_results,
-                    model_names=list(self.models.keys()),
-                    target_col=self.ts.target_col,
-                    id_col=self.ts.id_col,
-                    time_col=self.ts.time_col,
-                    preprocess_fn=(self.preprocess if spec.needs_preprocess else None),
-                    source_cs_df=(self._cs_df if spec.needs_source_cs else None),
-                    source_scales=(
-                        self._cs_source_scales_ if spec.needs_source_cs else None
-                    ),
-                )
-            finally:
-                self.models_ = _saved_models_
-                self.ts = _saved_ts_for_cv
-                self._cs_df = _saved_cs_df_pre
-                self.prediction_intervals = _saved_pi
-                self._cs_source_scales_ = _saved_source_scales
+            # preprocessing `new_df` fits the TimeSeries it runs on; hand the
+            # method a copy so this instance keeps its source state
+            scratch = self._with_ts(self.ts._clone_cold())
+            _transfer_result = spec.fn(
+                new_df=new_df,
+                prediction_intervals=self.prediction_intervals,
+                tc=transfer_conformal,
+                backtest_results=_backtest_results,
+                model_names=list(self.models.keys()),
+                target_col=self.ts.target_col,
+                id_col=self.ts.id_col,
+                time_col=self.ts.time_col,
+                preprocess_fn=(scratch.preprocess if spec.needs_preprocess else None),
+                source_cs_df=(self._cs_df if spec.needs_source_cs else None),
+                source_scales=(
+                    self._cs_source_scales_ if spec.needs_source_cs else None
+                ),
+            )
 
             if (
                 spec.runs_target_cv
@@ -1660,201 +1616,189 @@ class MLForecast:
                 and _transfer_result.weights is None
                 and _transfer_result.target_scales is None
             ):
-                # recalibrate / error_scaled: swap in the new cs_df for the quantile step.
-                _saved_cs_df = self._cs_df
-                self._cs_df = _transfer_result.cs_df
-        try:
-            forecasts = ts.predict(
-                models=self.models_,
-                horizon=h,
-                before_predict_callback=before_predict_callback,
-                after_predict_callback=after_predict_callback,
-                X_df=X_df,
-                ids=ids,
-            )
-            if new_ts is not None:
-                # Persist transfer-learning state only after a successful prediction.
-                self.ts = new_ts
-            if level is not None:
-                if self._cs_df is None:
-                    warn_msg = (
+                # recalibrate / error_scaled: the quantile step uses the target scores
+                conformity_scores = _transfer_result.cs_df
+        forecasts = ts.predict(
+            models=self.models_,
+            horizon=h,
+            before_predict_callback=before_predict_callback,
+            after_predict_callback=after_predict_callback,
+            X_df=X_df,
+            ids=ids,
+        )
+        if level is not None:
+            if conformity_scores is None or self.prediction_intervals is None:
+                warn_msg = (
+                    "Please rerun the `fit` method passing a proper value "
+                    "to prediction intervals to compute them."
+                )
+                warnings.warn(warn_msg, UserWarning)
+            else:
+                cs_ids = set(
+                    nw.from_native(conformity_scores, eager_only=True)[ts.id_col]
+                    .unique()
+                    .to_list()
+                )
+                if ids is None:
+                    active_ids = set(ts.uids)
+                    if cs_ids != active_ids and new_df is None:
+                        raise ValueError(
+                            "Prediction intervals were calibrated on a different set of series "
+                            "than the current forecasting state. Please rerun `fit` before "
+                            "requesting intervals."
+                        )
+                else:
+                    missing_ids = set(ids) - cs_ids
+                    if missing_ids:
+                        raise ValueError(
+                            "Prediction intervals are only available for series seen during "
+                            "interval calibration. Missing ids: "
+                            f"{missing_ids}."
+                        )
+                if (self.prediction_intervals.h != 1) and (
+                    self.prediction_intervals.h < h
+                ):
+                    raise ValueError(
+                        "The `h` argument of PredictionIntervals "
+                        "should be equal to one or greater or equal to `h`. "
                         "Please rerun the `fit` method passing a proper value "
-                        "to prediction intervals to compute them."
+                        "to prediction intervals."
+                    )
+                is_transfer = (
+                    new_df is not None
+                    and transfer_conformal is not None
+                    and transfer_conformal.method != "recalibrate"
+                )
+                if self.prediction_intervals.h == 1 and h > 1:
+                    if is_transfer:
+                        raise ValueError(
+                            "Transfer conformal prediction requires PredictionIntervals(h=h). "
+                            "Refit the source model with PredictionIntervals(h=h) to use "
+                            "transfer prediction intervals with h > 1."
+                        )
+                    warn_msg = (
+                        "Prediction intervals are calculated using 1-step ahead cross-validation, "
+                        "with a constant width for all horizons. To vary the error by horizon, "
+                        "pass PredictionIntervals(h=h) to the `prediction_intervals` "
+                        "argument when refitting the model."
                     )
                     warnings.warn(warn_msg, UserWarning)
+                level_ = sorted(level)
+                model_names = self.models.keys()
+                conformal_method = _get_conformal_method(
+                    self.prediction_intervals.method
+                )
+                _cs_weights = (
+                    _transfer_result.weights if _transfer_result is not None else None
+                )
+                _target_weights = (
+                    _transfer_result.target_weights
+                    if _transfer_result is not None
+                    else None
+                )
+                # ESS warning: low effective sample size means weights are extreme.
+                if _cs_weights is not None and level is not None:
+                    ess = float(_cs_weights.sum() ** 2 / (_cs_weights**2).sum())
+                    alpha_min = min((100.0 - lv) / 100.0 for lv in level)
+                    ess_needed = 1.0 / alpha_min - 1.0
+                    if ess < ess_needed:
+                        warnings.warn(
+                            f"Effective sample size (ESS={ess:.1f}) is below the recommended "
+                            f"threshold ({ess_needed:.1f}) for level {max(level)}. Weighted "
+                            "quantiles may return inf bounds. Consider: lower confidence levels, "
+                            "more calibration windows, or reduce clip_quantile in TransferConformal.",
+                            UserWarning,
+                            stacklevel=2,
+                        )
+                if _cs_weights is not None and self.prediction_intervals.method in (
+                    "conformal_distribution",
+                    "conformal_error",
+                ):
+                    raise ValueError(
+                        "weighted_conformal transfer requires a weighted conformal fit method. "
+                        "Refit the source model with "
+                        "PredictionIntervals(method='weighted_conformal_error') or "
+                        "'weighted_conformal_distribution'."
+                    )
+                if ids is not None:
+                    if _cs_weights is not None:
+                        raise ValueError(
+                            "TransferConformal with DRE weights cannot be used together with "
+                            "ids= filtering: the weights array aligns with the full calibration "
+                            "set and would misalign after id-based filtering."
+                        )
+                    ids_mask = ufp.is_in(conformity_scores[ts.id_col], ids)
+                    cs_df = ufp.filter_with_mask(conformity_scores, ids_mask)
+                    n_series = len(ids)
                 else:
-                    cs_ids = set(
-                        nw.from_native(self._cs_df, eager_only=True)[self.ts.id_col]
-                        .unique()
-                        .to_list()
-                    )
-                    if ids is None:
-                        active_ids = set(self.ts.uids)
-                        if cs_ids != active_ids and new_df is None:
-                            raise ValueError(
-                                "Prediction intervals were calibrated on a different set of series "
-                                "than the current forecasting state. Please rerun `fit` before "
-                                "requesting intervals."
-                            )
+                    cs_df = conformity_scores
+                    if is_transfer:
+                        n_series = len(cs_df) // (
+                            self.prediction_intervals.n_windows
+                            * self.prediction_intervals.h
+                        )
                     else:
-                        missing_ids = set(ids) - cs_ids
-                        if missing_ids:
-                            raise ValueError(
-                                "Prediction intervals are only available for series seen during "
-                                "interval calibration. Missing ids: "
-                                f"{missing_ids}."
-                            )
-                    if (self.prediction_intervals.h != 1) and (
-                        self.prediction_intervals.h < h
-                    ):
-                        raise ValueError(
-                            "The `h` argument of PredictionIntervals "
-                            "should be equal to one or greater or equal to `h`. "
-                            "Please rerun the `fit` method passing a proper value "
-                            "to prediction intervals."
-                        )
-                    is_transfer = (
-                        new_df is not None
-                        and transfer_conformal is not None
-                        and transfer_conformal.method != "recalibrate"
-                    )
-                    if self.prediction_intervals.h == 1 and h > 1:
-                        if is_transfer:
-                            raise ValueError(
-                                "Transfer conformal prediction requires PredictionIntervals(h=h). "
-                                "Refit the source model with PredictionIntervals(h=h) to use "
-                                "transfer prediction intervals with h > 1."
-                            )
-                        warn_msg = (
-                            "Prediction intervals are calculated using 1-step ahead cross-validation, "
-                            "with a constant width for all horizons. To vary the error by horizon, "
-                            "pass PredictionIntervals(h=h) to the `prediction_intervals` "
-                            "argument when refitting the model."
-                        )
-                        warnings.warn(warn_msg, UserWarning)
-                    level_ = sorted(level)
-                    model_names = self.models.keys()
-                    conformal_method = _get_conformal_method(
-                        self.prediction_intervals.method
-                    )
-                    _cs_weights = (
-                        _transfer_result.weights
-                        if _transfer_result is not None
-                        else None
-                    )
-                    _target_weights = (
-                        _transfer_result.target_weights
-                        if _transfer_result is not None
-                        else None
-                    )
-                    # ESS warning: low effective sample size means weights are extreme.
-                    if _cs_weights is not None and level is not None:
-                        ess = float(_cs_weights.sum() ** 2 / (_cs_weights**2).sum())
-                        alpha_min = min((100.0 - lv) / 100.0 for lv in level)
-                        ess_needed = 1.0 / alpha_min - 1.0
-                        if ess < ess_needed:
-                            warnings.warn(
-                                f"Effective sample size (ESS={ess:.1f}) is below the recommended "
-                                f"threshold ({ess_needed:.1f}) for level {max(level)}. Weighted "
-                                "quantiles may return inf bounds. Consider: lower confidence levels, "
-                                "more calibration windows, or reduce clip_quantile in TransferConformal.",
-                                UserWarning,
-                                stacklevel=2,
-                            )
-                    if _cs_weights is not None and self.prediction_intervals.method in (
-                        "conformal_distribution",
-                        "conformal_error",
-                    ):
-                        raise ValueError(
-                            "weighted_conformal transfer requires a weighted conformal fit method. "
-                            "Refit the source model with "
-                            "PredictionIntervals(method='weighted_conformal_error') or "
-                            "'weighted_conformal_distribution'."
-                        )
-                    if ids is not None:
-                        if _cs_weights is not None:
-                            raise ValueError(
-                                "TransferConformal with DRE weights cannot be used together with "
-                                "ids= filtering: the weights array aligns with the full calibration "
-                                "set and would misalign after id-based filtering."
-                            )
-                        ids_mask = ufp.is_in(self._cs_df[self.ts.id_col], ids)
-                        cs_df = ufp.filter_with_mask(self._cs_df, ids_mask)
-                        n_series = len(ids)
-                    else:
-                        cs_df = self._cs_df
-                        if is_transfer:
-                            n_series = len(cs_df) // (
-                                self.prediction_intervals.n_windows
-                                * self.prediction_intervals.h
-                            )
-                        else:
-                            n_series = self.ts.ga.n_groups
-                    _target_scales = (
-                        _transfer_result.target_scales
-                        if _transfer_result is not None
-                        else None
-                    )
-                    if (
-                        _target_scales is not None
-                        and self._cs_source_scales_ is not None
-                    ):
-                        from .conformal_prediction import _apply_scale_alignment
+                        n_series = ts.ga.n_groups
+                _target_scales = (
+                    _transfer_result.target_scales
+                    if _transfer_result is not None
+                    else None
+                )
+                if _target_scales is not None and self._cs_source_scales_ is not None:
+                    from .conformal_prediction import _apply_scale_alignment
 
-                        cs_df = _apply_scale_alignment(
-                            cs_df=cs_df,
-                            model_names=list(model_names),
-                            id_col=self.ts.id_col,
-                            source_scales=self._cs_source_scales_,
-                        )
-                    if _transfer_result is not None and _transfer_result.signed:
-                        forecasts = _add_signed_transfer_intervals(
-                            forecasts,
-                            cs_df,
-                            model_names=list(model_names),
-                            level=level_,
-                            horizon=h,
-                            cs_h=self.prediction_intervals.h,
-                        )
-                    else:
-                        forecasts = conformal_method(
-                            forecasts,
-                            cs_df,
-                            model_names=list(model_names),
-                            level=level_,
-                            cs_h=self.prediction_intervals.h,
-                            cs_n_windows=self.prediction_intervals.n_windows,
-                            n_series=n_series,
-                            horizon=h,
-                            weights=_cs_weights,
-                            is_transfer=is_transfer,
-                            **(
-                                {}
-                                if self.prediction_intervals.method.startswith(
-                                    "conformal_"
-                                )
-                                else {"target_weights": _target_weights}
-                            ),
-                        )
-                    # Per-series σ_tgt scaling: multiply interval half-widths by σ_tgt_j.
-                    # Scores are already normalized by σ_src_i, so quantiles are on the
-                    # normalized scale; rescaling by σ_tgt_j gives per-series correct widths.
-                    if _target_scales is not None:
-                        from .conformal_prediction import _rescale_interval_columns
+                    cs_df = _apply_scale_alignment(
+                        cs_df=cs_df,
+                        model_names=list(model_names),
+                        id_col=ts.id_col,
+                        source_scales=self._cs_source_scales_,
+                    )
+                if _transfer_result is not None and _transfer_result.signed:
+                    forecasts = _add_signed_transfer_intervals(
+                        forecasts,
+                        cs_df,
+                        model_names=list(model_names),
+                        level=level_,
+                        horizon=h,
+                        cs_h=self.prediction_intervals.h,
+                    )
+                else:
+                    forecasts = conformal_method(
+                        forecasts,
+                        cs_df,
+                        model_names=list(model_names),
+                        level=level_,
+                        cs_h=self.prediction_intervals.h,
+                        cs_n_windows=self.prediction_intervals.n_windows,
+                        n_series=n_series,
+                        horizon=h,
+                        weights=_cs_weights,
+                        is_transfer=is_transfer,
+                        **(
+                            {}
+                            if self.prediction_intervals.method.startswith("conformal_")
+                            else {"target_weights": _target_weights}
+                        ),
+                    )
+                # Per-series σ_tgt scaling: multiply interval half-widths by σ_tgt_j.
+                # Scores are already normalized by σ_src_i, so quantiles are on the
+                # normalized scale; rescaling by σ_tgt_j gives per-series correct widths.
+                if _target_scales is not None:
+                    from .conformal_prediction import _rescale_interval_columns
 
-                        fcst_uid_arr = forecasts[self.ts.id_col].to_numpy()
-                        codes, uniques = pd.factorize(fcst_uid_arr)
-                        sigma_tgt = np.array(
-                            [_target_scales.get(uid, 1.0) for uid in uniques],
-                            dtype=float,
-                        )[codes]
-                        forecasts = _rescale_interval_columns(
-                            forecasts, list(model_names), level_, sigma_tgt
-                        )
-            return forecasts
-        finally:
-            if _saved_cs_df is not None:
-                self._cs_df = _saved_cs_df
+                    fcst_uid_arr = forecasts[ts.id_col].to_numpy()
+                    codes, uniques = pd.factorize(fcst_uid_arr)
+                    sigma_tgt = np.array(
+                        [_target_scales.get(uid, 1.0) for uid in uniques],
+                        dtype=float,
+                    )[codes]
+                    forecasts = _rescale_interval_columns(
+                        forecasts, list(model_names), level_, sigma_tgt
+                    )
+        if new_ts is not None:
+            # the instance moves to `new_df` only once the whole call succeeded
+            self.ts = new_ts
+        return forecasts
 
     def cross_validation(
         self,
@@ -2045,7 +1989,7 @@ class MLForecast:
             if sort_idxs is not None:
                 result = ufp.take_rows(result, sort_idxs)
             # Calculate expected rows accounting for sparse horizons
-            internal_horizons = getattr(self.ts, "_horizons", None)
+            internal_horizons = self.ts._horizons
             full_range = (
                 list(range(self.ts.max_horizon)) if self.ts.max_horizon else None
             )
@@ -2114,14 +2058,14 @@ class MLForecast:
             with fsspec.open(f"{path}/intervals.pkl", "rb") as f:
                 intervals = cloudpickle.load(f)
         except FileNotFoundError:
-            intervals = None
-        fcst = MLForecast(models=models, freq=ts.freq)
-        fcst.ts = ts
-        fcst.models_ = models
-        if intervals is not None:
-            fcst.prediction_intervals = intervals["settings"]
-            fcst._cs_df = intervals["scores"]
-        return fcst
+            intervals = {"settings": None, "scores": None}
+        return MLForecast._from_ts(
+            ts,
+            models=models,
+            models_=models,
+            prediction_intervals=intervals["settings"],
+            cs_df=intervals["scores"],
+        )
 
     def update(self, df: DataFrame, validate_new_data: bool = False) -> None:
         """Update the values of the stored series.

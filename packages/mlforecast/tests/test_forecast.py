@@ -217,7 +217,6 @@ def test_recursive_forecast_fitted_values_on_demand_h_matches_slow_baseline():
     dynamic = [c for c in train_pd.columns if c not in exclude]
 
     rows = []
-    original_ts = fcst.ts
     for uid, group in train_pd.groupby("unique_id", observed=True):
         group = group.sort_values("ds").reset_index(drop=True)
         valid_uid_times = valid_one_step_times.get(uid, set())
@@ -232,10 +231,7 @@ def test_recursive_forecast_fitted_values_on_demand_h_matches_slow_baseline():
             if future.iloc[0]["ds"] not in valid_uid_times:
                 continue
             X_df = future[["unique_id", "ds", *dynamic]] if dynamic else None
-            try:
-                preds = fcst.predict(h=h, new_df=hist, X_df=X_df)
-            finally:
-                fcst.ts = original_ts
+            preds = fcst.predict(h=h, new_df=hist, X_df=X_df)
             pred_last = preds.iloc[-1]
             rows.append(
                 {
@@ -2827,3 +2823,29 @@ def test_drop_auxiliary_columns_unknown_warns(aux_cols_series):
     )
     with pytest.warns(UserWarning, match="drop_auxiliary_columns"):
         fcst.fit(aux_cols_series, static_features=statics)
+
+
+def test_fit_with_intervals_leaves_no_cv_state():
+    # the conformity scores come from a cross-validation that must run on a
+    # copy: the instance only carries what `fit` itself sets
+    df = generate_daily_series(3, min_length=30, max_length=30)
+    fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
+    fcst.fit(df, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
+    assert not hasattr(fcst, "cv_models_")
+    assert not hasattr(fcst, "cv_fitted_values_")
+    assert fcst._cs_df is not None
+    assert fcst.models_ is not None
+
+
+def test_predict_new_df_keeps_state_when_intervals_fail():
+    # `new_df` becomes the instance's history only once the whole call
+    # succeeded, including the interval step that runs after the forecast
+    df = generate_daily_series(3, min_length=30, max_length=30)
+    fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
+    fcst.fit(df, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
+    original_ts = fcst.ts
+    with pytest.raises(ValueError, match="range"):
+        fcst.predict(1, new_df=df, level=[150])
+    assert fcst.ts is original_ts
+    fcst.predict(1, new_df=df, level=[80])
+    assert fcst.ts is not original_ts

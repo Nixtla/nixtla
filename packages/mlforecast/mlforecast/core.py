@@ -271,6 +271,14 @@ class TimeSeries:
     last_dates: Any
     static_features_: DataFrame
     features_order_: List[str]
+    # Settings that arrive with ``fit_transform``/``history_warmup``. Instances
+    # that only went through ``_fit`` (LightGBMCV, distributed partitions) and
+    # older pickles fall through to the value ``predict`` assumed for them.
+    as_numpy: bool = False
+    max_horizon: Optional[int] = None
+    _horizons: Optional[List[int]] = None
+    # shared dict is safe: every writer rebinds the attribute
+    horizon_features_: Dict[int, List[str]] = {}
 
     def __init__(
         self,
@@ -317,7 +325,7 @@ class TimeSeries:
             lag_transforms=self.lag_transforms,
             namer=lag_transforms_namer,
         )
-        self.horizon_features_: Dict[int, List[str]] = {}
+        self.horizon_features_ = {}
         self.ga: GroupedArray
 
     def _get_core_lag_tfms(self) -> Dict[str, _BaseLagTransform]:
@@ -1399,6 +1407,7 @@ class TimeSeries:
         return_X_y: bool = False,
         as_numpy: bool = False,
         weight_col: Optional[str] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
     ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data` and save the required information for the predictions step.
 
@@ -1410,9 +1419,12 @@ class TimeSeries:
             max_horizon: Train models for all horizons 1 to max_horizon.
             horizons: Train models only for specific horizons (1-indexed).
                       Mutually exclusive with max_horizon.
+            horizon_features: Mapping of 1-indexed horizons to the dynamic
+                exogenous columns each horizon's model uses.
         """
         self.dropna = dropna
         self.as_numpy = as_numpy
+        self.horizon_features_ = {} if horizon_features is None else horizon_features
         self._fit(
             df=data,
             id_col=id_col,
@@ -1443,6 +1455,7 @@ class TimeSeries:
         max_horizon: Optional[int] = None,
         horizons: Optional[List[int]] = None,
         as_numpy: Optional[bool] = None,
+        horizon_features: Optional[Dict[int, List[str]]] = None,
         trim: bool = True,
     ) -> "TimeSeries":
         """Build all internal state from `df` without materializing features.
@@ -1470,6 +1483,9 @@ class TimeSeries:
             as_numpy: Whether prediction passes a numpy array to the model
                 instead of a dataframe. When None, any value from a previous
                 fit is preserved (False for a fresh instance).
+            horizon_features: Mapping of 1-indexed horizons to the dynamic
+                exogenous columns the models were trained with. When None, any
+                mapping from a previous fit is preserved.
             trim: Apply the `keep_last_n` trim after warming the transform
                 state. `predict(new_df=...)` disables this to keep the full
                 provided history.
@@ -1489,20 +1505,72 @@ class TimeSeries:
         if trim:
             self._apply_keep_last_n()
         del self._restore_idxs, self._sort_idxs
+        # a None argument keeps the value from a previous fit (e.g. an unpickled
+        # instance being re-warmed); a fresh instance has the class defaults
         if max_horizon is not None or horizons is not None:
             self._horizons, self.max_horizon = _validate_horizon_params(
                 max_horizon, horizons
             )
-        else:
-            # preserve model-shape metadata from a previous fit (e.g. an
-            # unpickled instance being re-warmed); default to recursive mode
-            self._horizons = getattr(self, "_horizons", None)
-            self.max_horizon = getattr(self, "max_horizon", None)
         if as_numpy is not None:
             self.as_numpy = as_numpy
-        else:
-            self.as_numpy = getattr(self, "as_numpy", False)
+        if horizon_features is not None:
+            self.horizon_features_ = horizon_features
         return self
+
+    def _fit_settings(self) -> Dict[str, Any]:
+        """Arguments that warm a fresh instance the way this one was fit."""
+        settings: Dict[str, Any] = dict(
+            id_col=self.id_col,
+            time_col=self.time_col,
+            target_col=self.target_col,
+            static_features=self.static_features,
+            keep_last_n=self.keep_last_n,
+            weight_col=self.weight_col,
+            as_numpy=self.as_numpy,
+            horizon_features=copy.deepcopy(self.horizon_features_),
+        )
+        if self._horizons is not None:
+            # back to 1-indexed; `_validate_horizon_params` maps this to the
+            # same (_horizons, max_horizon) pair for both flavours of fit
+            settings["horizons"] = [h + 1 for h in self._horizons]
+        elif self.max_horizon is not None:
+            # instances fit before sparse horizons existed only carry max_horizon
+            settings["max_horizon"] = self.max_horizon
+        return settings
+
+    def _clone_cold(self) -> "TimeSeries":
+        """A fresh instance with this one's constructor arguments and no fit state.
+
+        Target transforms are cloned unfitted: sharing them would let the
+        clone's fit clobber the state this instance's inverse transform relies
+        on, and the clone refits them anyway.
+        """
+        target_transforms = None
+        if self.target_transforms is not None:
+            target_transforms = [tfm.clone() for tfm in self.target_transforms]
+        return TimeSeries(
+            freq=self.freq,
+            lags=self.lags,
+            lag_transforms=self.lag_transforms,
+            date_features=self.date_features,
+            num_threads=self.num_threads,
+            target_transforms=target_transforms,
+            lag_transforms_namer=self.lag_transforms_namer,
+            date_features_as_dummies=self.date_features_as_dummies,
+            drop_auxiliary_columns=self.drop_auxiliary_columns,
+        )
+
+    def _clone_warm(
+        self, df: DataFrame, *, trim: bool = False, **overrides: Any
+    ) -> "TimeSeries":
+        """A fresh instance with this one's fit settings, warmed from `df`.
+
+        `overrides` replace individual settings, e.g. `static_features`. The
+        default `trim=False` keeps the full history `df` provides.
+        """
+        out = self._clone_cold()
+        out.history_warmup(df, **{**self._fit_settings(), **overrides}, trim=trim)
+        return out
 
     def _update_y(self, new: np.ndarray) -> None:
         """Appends the elements of `new` to every time serie.
@@ -1841,7 +1909,7 @@ class TimeSeries:
             )
 
         # Determine horizons to predict based on _horizons (sparse) or all up to horizon
-        internal_horizons = getattr(self, "_horizons", None)
+        internal_horizons = self._horizons
 
         # Check if horizons are sparse (not a contiguous range from 0)
         full_range = list(range(self.max_horizon))

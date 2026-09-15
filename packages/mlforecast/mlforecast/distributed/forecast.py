@@ -185,7 +185,6 @@ class DistributedMLForecast:
             if core_tfms:
                 # populate the stats needed for the updates
                 ts._compute_transforms(core_tfms, updates_only=False)
-            ts.as_numpy = False
             return [
                 [
                     cloudpickle.dumps(ts),
@@ -310,6 +309,8 @@ class DistributedMLForecast:
         window_info: Optional[WindowInfo] = None,
         weight_col: str | None = None,
     ) -> fugue.AnyDataFrame:
+        # `_base_ts` is never fit; it records the settings the partitions were
+        # fit with, for the methods that run later and for `save`/`load`
         self._base_ts.id_col = id_col
         self._base_ts.time_col = time_col
         self._base_ts.target_col = target_col
@@ -1040,7 +1041,4 @@ class DistributedMLForecast:
         ts.static_features_ = statics
         ts.transforms.update(combined_core_lag_tfms)
         ts.target_transforms = combined_target_tfms
-        fcst = MLForecast(models=self.models_, freq=ts.freq)
-        fcst.ts = ts
-        fcst.models_ = self.models_
-        return fcst
+        return MLForecast._from_ts(ts, models=self.models_, models_=self.models_)

@@ -525,7 +525,6 @@ class LightGBMCV:
         self.ts._fit(
             df, id_col, time_col, target_col, static_features, keep_last_n, weight_col
         )
-        self.ts.as_numpy = False
         return hist
 
     def predict(

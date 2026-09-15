@@ -10,6 +10,8 @@ import polars as pl
 import pytest
 import utilsforecast.processing as ufp
 
+from sklearn.linear_model import LinearRegression
+
 from mlforecast.callbacks import SaveFeatures
 from mlforecast.core import (
     TimeSeries,
@@ -101,6 +103,44 @@ def x():
     )
     x["y"] = x["ds"] * 0.1 + x["y"]
     return x
+
+
+def test_fit_only_instance_uses_class_defaults():
+    # LightGBMCV and the distributed partitions only run `_fit`, so their
+    # instances (and pickles of them) lack the settings fit_transform stores
+    series = generate_daily_series(3, min_length=20, max_length=20)
+    ts = TimeSeries(freq="D", lags=[1, 2])
+    X, y = ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", return_X_y=True
+    )
+    model = LinearRegression().fit(X, y)
+    expected = ts.predict({"m": model}, horizon=3)
+    for name in ("as_numpy", "max_horizon", "_horizons", "horizon_features_"):
+        ts.__dict__.pop(name, None)
+    pd.testing.assert_frame_equal(ts.predict({"m": model}, horizon=3), expected)
+    # the settings a warm clone reads must fall through to the defaults as well
+    warm = ts._clone_warm(series)
+    pd.testing.assert_frame_equal(warm.predict({"m": model}, horizon=3), expected)
+
+
+def test_clone_warm_keeps_max_horizon_without_horizons():
+    # instances fit before sparse horizons existed (v0.10 to v1.0.2 pickles)
+    # carry max_horizon but no _horizons; the warm clone must stay direct
+    series = generate_daily_series(3, min_length=20, max_length=20)
+    ts = TimeSeries(freq="D", lags=[1, 2])
+    prep = ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", max_horizon=2
+    )
+    models = {"m": {}}
+    for h in range(2):
+        rows = prep[f"y{h}"].notna()
+        X, y = prep.loc[rows, ts.features_order_], prep.loc[rows, f"y{h}"]
+        models["m"][h] = LinearRegression().fit(X, y)
+    expected = ts.predict(models, horizon=2)
+    ts.__dict__.pop("_horizons")
+    warm = ts._clone_warm(series)
+    assert (warm._horizons, warm.max_horizon) == ([0, 1], 2)
+    pd.testing.assert_frame_equal(warm.predict(models, horizon=2), expected)
 
 
 # differences
