@@ -6,7 +6,16 @@ here rather than from each other.
 """
 
 import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Dict, Literal, Optional, TypeVar, Union
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Dict,
+    Literal,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import annotated_types
 import pandas as pd

@@ -114,6 +114,7 @@ def _validate_simulate_args(
         seed = int(seed)
     return h, n_paths, seed, num_partitions
 
+
 def _maybe_infer_freq(
     df: DataFrame,
     freq: Optional[_FreqType],
