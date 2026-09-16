@@ -178,3 +178,19 @@ def test_audit_helpers_left_the_client_module():
     ]
     assert [n for n in names if not hasattr(_audit, n)] == []
     assert [n for n in names if hasattr(nixtla_client, n)] == []
+
+
+def test_the_package_ships_no_notebooks():
+    """Notebooks are documentation, not library code.
+
+    `[tool.uv.build-backend] module-root = "."` means anything under `nixtla/`
+    goes into the wheel, so a stray `.ipynb` there is shipped to every user who
+    pip-installs the SDK.
+    """
+    import pathlib
+
+    import nixtla
+
+    package_root = pathlib.Path(nixtla.__file__).parent
+    notebooks = sorted(p.name for p in package_root.rglob("*.ipynb"))
+    assert notebooks == [], f"notebooks inside the package: {notebooks}"

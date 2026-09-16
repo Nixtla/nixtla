@@ -82,11 +82,19 @@ jobs:
             done
           }
 
+          # Notebooks the runner cannot execute:
+          #   - the Ray example needs a cluster
+          #   - the Snowflake anomaly demo runs inside a Snowflake worksheet,
+          #     where get_active_session() resolves; there is no equivalent here
+          SKIP_NOTEBOOKS="19_computing_at_scale_ray_distributed.ipynb 4_snowflake_anomaly_demo.ipynb"
+
           find nbs/docs/ -name "*.ipynb" -print0 | while IFS= read -r -d '' nb; do
-            if [[ "$(basename "$nb")" == "19_computing_at_scale_ray_distributed.ipynb" ]]; then
-              echo "Skipping $nb..."
-              continue
-            fi
+            case " $SKIP_NOTEBOOKS " in
+              *" $(basename "$nb") "*)
+                echo "Skipping $nb..."
+                continue
+                ;;
+            esac
             echo "Running $nb..."
             run_nbconvert_with_retry "$nb"
           done
