@@ -998,7 +998,7 @@ class Jobs:
     # shadows the builtin for every annotation evaluated below it.
     def list(
         self,
-        status: Optional[list[Union[str, JobStatus]]] = None,
+        status: Optional[Union[str, JobStatus, list[Union[str, JobStatus]]]] = None,
         task: Optional[str] = None,
         limit: Optional[int] = None,
     ) -> list[JobSummary]:
@@ -1008,8 +1008,8 @@ class Jobs:
         to `retrieve()`.
 
         Args:
-            status: Statuses to list. Defaults to the server's own default of
-                pending plus running.
+            status: Status, or list of statuses, to list. Defaults to the
+                server's own default of pending plus running.
             task: Keep only jobs for this task. Filtered client-side; the endpoint
                 has no task parameter.
             limit: Fetch at most this many rows. This bounds the walk itself, not
@@ -1027,6 +1027,10 @@ class Jobs:
         """
         if limit is not None and limit <= 0:
             raise ValueError(f"limit must be positive, got {limit!r}")
+        # `JobStatus` subclasses `str`, so this catches both bare forms; without it
+        # `status="succeeded"` iterates characters and blames 's'.
+        if isinstance(status, str):
+            status = [status]
         statuses = [JobStatus(s).value for s in status] if status else None
         if task is not None and task not in _transport._TASK_ENDPOINTS:
             raise ValueError(

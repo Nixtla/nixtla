@@ -2395,3 +2395,32 @@ def test_list_skips_a_row_with_no_job_id():
     _mock_listing(client, [([row, _row("fc-2")], None)])
 
     assert [s.job_id for s in client.jobs.list()] == ["fc-2"]
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        ("succeeded", ["succeeded"]),
+        (JobStatus.FAILED, ["failed"]),
+        (["succeeded", JobStatus.FAILED], ["succeeded", "failed"]),
+    ],
+)
+def test_list_accepts_a_bare_status_as_well_as_a_list(status, expected):
+    # `task` takes a bare str, so `status` reads as though it does too. Iterating
+    # the characters of "succeeded" reports nothing the caller wrote.
+    client = _client()
+    queries = _mock_listing(client, [([], None)])
+
+    client.jobs.list(status=status)
+
+    assert queries[0].get_list("status") == expected
+
+
+def test_list_rejects_an_unknown_status_before_any_request():
+    client = _client()
+    client._make_client = MagicMock()
+
+    with pytest.raises(ValueError, match="not a valid JobStatus"):
+        client.jobs.list(status="nonsense")
+
+    client._make_client.assert_not_called()
