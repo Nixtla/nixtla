@@ -8,6 +8,11 @@ from nixtla.nixtla_client import (
 )
 from nixtla_tests.helpers.checks import check_retry_behavior
 
+# `check_retry_behavior` only overrides `_make_request`; the model-metadata
+# lookup it triggers first goes through `_get_request`/`_retry_strategy`
+# instead, which is not mocked, so every test here reaches the live API.
+pytestmark = pytest.mark.integration
+
 
 def raise_api_error_with_text(*args, **kwargs):
     raise ApiError(
