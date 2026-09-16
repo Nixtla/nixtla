@@ -64,7 +64,27 @@ def test_audit_tests_are_not_integration():
     They dropped the `custom_client` fixture when `_audit` was extracted, so
     they must keep running on every matrix cell. If this fails, someone
     reintroduced a live-client fixture into `test_audit_data.py`.
+
+    Checks the functions' parameter lists rather than the file's raw text. A
+    substring scan fires on any docstring or comment that merely *names* a
+    fixture -- the docstring in that file names `custom_client` precisely to
+    explain why it is not used -- while still missing a live fixture reached
+    under a local alias (`def client(custom_client): return custom_client`),
+    which is the more realistic reintroduction. Parameters catch the alias and
+    ignore the prose.
     """
-    src = (REPO_ROOT / "nixtla_tests/nixtla_client/test_audit_data.py").read_text()
-    for fixture_name in _LIVE_CLIENT_FIXTURES:
-        assert fixture_name not in src, fixture_name
+    import ast
+
+    tree = ast.parse(
+        (REPO_ROOT / "nixtla_tests/nixtla_client/test_audit_data.py").read_text()
+    )
+    offenders = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            params = {a.arg for a in node.args.args} | {
+                a.arg for a in node.args.kwonlyargs
+            }
+            offenders += [
+                f"{node.name}({bad})" for bad in sorted(_LIVE_CLIENT_FIXTURES & params)
+            ]
+    assert offenders == [], offenders
