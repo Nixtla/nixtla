@@ -2,9 +2,19 @@ import pandas as pd
 
 import pytest
 
+from nixtla import NixtlaClient
 
-def test_audit_data_all_pass(custom_client, df_ok, common_kwargs):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+
+@pytest.fixture
+def client():
+    """`audit_data` and `clean_data` never reach the API, so this needs no
+    credentials -- unlike the shared `client` fixture these tests used to
+    take, which also deletes fine-tuned models on teardown."""
+    return NixtlaClient(api_key="dummy", base_url="http://localhost")
+
+
+def test_audit_data_all_pass(client, df_ok, common_kwargs):
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_ok, **common_kwargs
     )
     assert all_pass
@@ -13,9 +23,9 @@ def test_audit_data_all_pass(custom_client, df_ok, common_kwargs):
 
 
 def test_audit_data_with_duplicates(
-    custom_client, df_with_duplicates_set2, common_kwargs
+    client, df_with_duplicates_set2, common_kwargs
 ):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_duplicates_set2, **common_kwargs
     )
     assert not all_pass
@@ -30,12 +40,12 @@ def test_audit_data_with_duplicates(
 
 
 def test_clean_data_with_duplicates(
-    custom_client, df_with_duplicates_set2, common_kwargs
+    client, df_with_duplicates_set2, common_kwargs
 ):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_duplicates_set2, **common_kwargs
     )
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_with_duplicates_set2,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -49,15 +59,15 @@ def test_clean_data_with_duplicates(
 
 
 def test_clean_data_raises_valueerror(
-    custom_client, df_with_duplicates_set2, common_kwargs
+    client, df_with_duplicates_set2, common_kwargs
 ):
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_duplicates_set2, **common_kwargs
     )
     with pytest.raises(
         ValueError, match="agg_dict must be provided to resolve D001 failure."
     ):
-        custom_client.clean_data(
+        client.clean_data(
             df=df_with_duplicates_set2,
             fail_dict=fail_dfs,
             case_specific_dict=case_specific_dfs,
@@ -66,9 +76,9 @@ def test_clean_data_raises_valueerror(
 
 
 def test_audit_data_with_missing_dates(
-    custom_client, df_with_missing_dates, common_kwargs
+    client, df_with_missing_dates, common_kwargs
 ):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_missing_dates, **common_kwargs
     )
     assert not all_pass
@@ -79,13 +89,13 @@ def test_audit_data_with_missing_dates(
 
 
 def test_clean_data_with_missing_dates(
-    custom_client, df_with_missing_dates, common_kwargs
+    client, df_with_missing_dates, common_kwargs
 ):
     # First audit to get fail_dfs and case_specific_dfs
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_missing_dates, **common_kwargs
     )
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_with_missing_dates,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -100,9 +110,9 @@ def test_clean_data_with_missing_dates(
 
 
 def test_audit_data_with_duplicates_and_missing_dates(
-    custom_client, df_with_duplicates_and_missing_dates, common_kwargs
+    client, df_with_duplicates_and_missing_dates, common_kwargs
 ):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_duplicates_and_missing_dates, **common_kwargs
     )
     assert not all_pass
@@ -115,15 +125,15 @@ def test_audit_data_with_duplicates_and_missing_dates(
 
 
 def test_clean_data_with_duplicates_and_missing_dates(
-    custom_client, df_with_duplicates_and_missing_dates, common_kwargs
+    client, df_with_duplicates_and_missing_dates, common_kwargs
 ):
     # First audit to get fail_dfs and case_specific_dfs
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_duplicates_and_missing_dates, **common_kwargs
     )
 
     # Clean Data (pass 1 will clear the duplicates)
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_with_duplicates_and_missing_dates,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -139,7 +149,7 @@ def test_clean_data_with_duplicates_and_missing_dates(
     assert len(cleaned_df) == 4  # Two duplicates rows consolidated into one.
 
     # Clean Data (pass 2 will clear the missing dates)
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=cleaned_df,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -152,8 +162,8 @@ def test_clean_data_with_duplicates_and_missing_dates(
     assert len(cleaned_df) == 5
 
 
-def test_audit_data_with_cat_columns(custom_client, df_with_cat_columns, common_kwargs):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+def test_audit_data_with_cat_columns(client, df_with_cat_columns, common_kwargs):
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_with_cat_columns, **common_kwargs
     )
     assert not all_pass
@@ -163,8 +173,8 @@ def test_audit_data_with_cat_columns(custom_client, df_with_cat_columns, common_
     assert fail_dfs["F001"].shape[1] == 2  # Should return both categorical columns
 
 
-def test_audit_data_with_negative_vals(custom_client, df_negative_vals, common_kwargs):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+def test_audit_data_with_negative_vals(client, df_negative_vals, common_kwargs):
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_negative_vals, **common_kwargs
     )
     assert not all_pass
@@ -175,12 +185,12 @@ def test_audit_data_with_negative_vals(custom_client, df_negative_vals, common_k
 
 
 def test_clean_data_with_negative_vals_without_cleaning_case_specific(
-    custom_client, df_negative_vals, common_kwargs
+    client, df_negative_vals, common_kwargs
 ):
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_negative_vals, **common_kwargs
     )
-    _, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    _, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_negative_vals,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -195,12 +205,12 @@ def test_clean_data_with_negative_vals_without_cleaning_case_specific(
 
 
 def test_clean_data_with_negative_vals_cleaning_case_specific(
-    custom_client, df_negative_vals, common_kwargs
+    client, df_negative_vals, common_kwargs
 ):
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_negative_vals, **common_kwargs
     )
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_negative_vals,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -215,7 +225,7 @@ def test_clean_data_with_negative_vals_cleaning_case_specific(
 
     # test second pass
     # Clean Data, second pass (removes leading zeros)
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=cleaned_df,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -228,8 +238,8 @@ def test_clean_data_with_negative_vals_cleaning_case_specific(
     assert len(case_specific_dfs) == 0
 
 
-def test_audit_data_leading_zeros(custom_client, common_kwargs, df_leading_zeros_set2):
-    all_pass, fail_dfs, case_specific_dfs = custom_client.audit_data(
+def test_audit_data_leading_zeros(client, common_kwargs, df_leading_zeros_set2):
+    all_pass, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_leading_zeros_set2, **common_kwargs
     )
     assert not all_pass
@@ -242,12 +252,12 @@ def test_audit_data_leading_zeros(custom_client, common_kwargs, df_leading_zeros
 
 
 def test_clean_data_leading_zeroes_without_cleaning_case_specific(
-    custom_client, common_kwargs, df_leading_zeros_set2
+    client, common_kwargs, df_leading_zeros_set2
 ):
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_leading_zeros_set2, **common_kwargs
     )
-    _, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    _, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_leading_zeros_set2,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,
@@ -264,12 +274,12 @@ def test_clean_data_leading_zeroes_without_cleaning_case_specific(
 
 
 def test_clean_data_with_cleaning_case_specific(
-    custom_client, common_kwargs, df_leading_zeros_set2
+    client, common_kwargs, df_leading_zeros_set2
 ):
-    _, fail_dfs, case_specific_dfs = custom_client.audit_data(
+    _, fail_dfs, case_specific_dfs = client.audit_data(
         df=df_leading_zeros_set2, **common_kwargs
     )
-    cleaned_df, all_pass, fail_dfs, case_specific_dfs = custom_client.clean_data(
+    cleaned_df, all_pass, fail_dfs, case_specific_dfs = client.clean_data(
         df=df_leading_zeros_set2,
         fail_dict=fail_dfs,
         case_specific_dict=case_specific_dfs,

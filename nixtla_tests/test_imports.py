@@ -14,6 +14,7 @@ import pytest
         "import nixtla.nixtla_client",
         "import nixtla._steps",
         "import nixtla._types",
+        "import nixtla._audit",
     ],
 )
 def test_imports_in_a_fresh_interpreter(stmt):
@@ -124,3 +125,56 @@ def test_types_module_carries_the_whole_vocabulary():
     # unused import if it did.
     assert hasattr(_types, "validate_extra_params")
     assert not hasattr(nixtla_client, "validate_extra_params")
+
+
+def test_audit_module_only_depends_on_http_and_types():
+    """`_audit` is pure local pandas -- it must not pull in the client.
+
+    `NixtlaClient.audit_data` and `.clean_data` are the documented entry
+    points, but they only forward here; importing the client back would make
+    a data-quality check depend on the HTTP stack it never touches.
+
+    Reuses `_intra_package_imports` from Task 1 -- see its docstring for why
+    this reads the source instead of `sys.modules`.
+    """
+    assert _intra_package_imports("nixtla/_audit.py") == {"._http", "._types"}
+
+
+def test_client_audit_methods_forward_to_the_audit_module():
+    """The client's methods must delegate, not carry a second implementation.
+
+    Reading the source is blunt, but it is the only thing that catches the
+    failure mode that matters here: a body left behind in `nixtla_client.py`
+    alongside the new one in `_audit.py`, both passing their tests, diverging
+    on the next edit.
+    """
+    import inspect
+
+    from nixtla.nixtla_client import NixtlaClient
+
+    audit_src = inspect.getsource(NixtlaClient.audit_data)
+    clean_src = inspect.getsource(NixtlaClient.clean_data)
+
+    assert "_audit.audit_data(" in audit_src
+    assert "_audit.clean_data(" in clean_src
+    # The implementations themselves must be gone, not merely bypassed.
+    assert "_audit_duplicate_rows" not in audit_src
+    assert "Fixing D001" not in clean_src
+
+
+def test_audit_helpers_left_the_client_module():
+    """The five checks and the severity enum live in `_audit` now, and only
+    there -- `nixtla_client` must not keep aliases to them."""
+    from nixtla import _audit
+    from nixtla import nixtla_client
+
+    names = [
+        "AuditDataSeverity",
+        "_audit_duplicate_rows",
+        "_audit_missing_dates",
+        "_audit_categorical_variables",
+        "_audit_leading_zeros",
+        "_audit_negative_values",
+    ]
+    assert [n for n in names if not hasattr(_audit, n)] == []
+    assert [n for n in names if hasattr(nixtla_client, n)] == []
