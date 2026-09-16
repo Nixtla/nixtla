@@ -8,7 +8,7 @@ from nixtla import NixtlaClient
 @pytest.fixture
 def client():
     """`audit_data` and `clean_data` never reach the API, so this needs no
-    credentials -- unlike the shared `client` fixture these tests used to
+    credentials -- unlike the shared `custom_client` fixture these tests used to
     take, which also deletes fine-tuned models on teardown."""
     return NixtlaClient(api_key="dummy", base_url="http://localhost")
 
