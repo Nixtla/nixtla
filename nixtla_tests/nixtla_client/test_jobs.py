@@ -2318,12 +2318,42 @@ def test_list_asks_for_no_more_rows_than_the_limit():
     assert queries[0]["page_size"] == "5"
 
 
-def test_list_does_not_cap_page_size_when_filtering_by_task():
-    # `task` filters client-side, so a capped page could hold no matching rows
-    # and still be taken for the whole answer.
+def test_list_caps_page_size_even_when_filtering_by_task():
+    # The task filter runs client-side, so it must not un-bound the walk.
     client = _client()
     queries = _mock_listing(client, [([_row("fc-1")], None)])
 
     client.jobs.list(task="forecast", limit=5)
 
-    assert "page_size" not in queries[0]
+    assert queries[0]["page_size"] == "5"
+
+
+def test_list_limit_bounds_the_walk_when_nothing_matches_the_task():
+    # Two pages available; `limit=2` buys exactly two rows, and neither is an
+    # explain job. Page two is never asked for.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([_row("fc-1"), _row("fc-2")], "tok-1"),
+            ([_row("ex-3")], None),
+        ],
+    )
+
+    assert client.jobs.list(task="explain", limit=2) == []
+    assert len(queries) == 1
+
+
+def test_list_page_size_shrinks_to_the_unfetched_remainder():
+    # 3 fetched of 5 allowed -> the second page asks for the remaining 2.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([_row("cv-1"), _row("cv-2"), _row("cv-3")], "tok-1"),
+            ([_row("fc-4"), _row("fc-5")], "tok-2"),
+        ],
+    )
+
+    assert [s.job_id for s in client.jobs.list(task="forecast", limit=5)] == ["fc-4", "fc-5"]
+    assert [q["page_size"] for q in queries] == ["5", "2"]

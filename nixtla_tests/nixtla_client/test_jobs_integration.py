@@ -27,8 +27,10 @@ JOB_TIMEOUT = 290
 # job -- everything here polls and asserts against the snapshot that matched.
 LISTING_LAG_TIMEOUT = 60.0
 
-# Caps the walk. Rows are newest first and the job under test is seconds old, so only
-# a handful of concurrent CI jobs can sit in front of it.
+# Caps the walk: `limit` bounds rows fetched, so this is at most three requests per
+# poll even with `task=` set. Rows are newest first and the job under test is seconds
+# old, so only a handful of concurrent CI jobs can sit in front of it -- but if more
+# than 500 newer jobs ever do, raise this rather than dropping the bound.
 LISTING_SCAN_LIMIT = 500
 
 # Polling the open-only default would race: a forecast finishes before the index

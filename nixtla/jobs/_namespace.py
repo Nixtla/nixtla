@@ -987,7 +987,11 @@ class Jobs:
                 pending plus running.
             task: Keep only jobs for this task. Filtered client-side; the endpoint
                 has no task parameter.
-            limit: Stop after this many rows. `None` fetches every page.
+            limit: Fetch at most this many rows. This bounds the walk itself, not
+                just the result: `task` is filtered client-side, so with it set
+                fewer than `limit` rows come back -- possibly none -- even when the
+                team has more matching jobs further down. Raise it to look deeper.
+                `None` fetches every page.
 
         Returns:
             list of JobSummary: Newest first, across pages as well as within one.
@@ -1006,6 +1010,7 @@ class Jobs:
             )
 
         summaries: list[JobSummary] = []
+        fetched = 0
         page_token: Optional[str] = None
         with self._client._make_client(**self._client._client_kwargs) as client:
             while True:
@@ -1013,15 +1018,19 @@ class Jobs:
                     self._client,
                     client,
                     statuses=statuses,
-                    # Skipped when `task` is set: that filter runs client-side.
+                    # `limit` bounds rows fetched, not rows matched: `task` is a
+                    # client-side filter and must not turn a bounded walk into a
+                    # scan of the whole retention window.
                     page_size=(
-                        min(limit, _MAX_PAGE_SIZE)
-                        if limit is not None and task is None
+                        min(limit - fetched, _MAX_PAGE_SIZE)
+                        if limit is not None
                         else None
                     ),
                     page_token=page_token,
                 )
-                for row in body.get("jobs") or []:
+                rows = body.get("jobs") or []
+                fetched += len(rows)
+                for row in rows:
                     if task is not None and row.get("task_name") != task:
                         continue
                     summaries.append(
@@ -1034,6 +1043,8 @@ class Jobs:
                     )
                     if limit is not None and len(summaries) >= limit:
                         return summaries
+                if limit is not None and fetched >= limit:
+                    return summaries
                 # A short or empty page can still have more behind it.
                 page_token = body.get("next_page_token")
                 if not page_token:
