@@ -1054,7 +1054,7 @@ class Jobs:
                     page_token=page_token,
                 )
                 rows = body.get("jobs") or []
-                fetched += len(rows)
+                fetched += max(len(rows), 1)
                 for row in rows:
                     if task is not None and row.get("task_name") != task:
                         continue

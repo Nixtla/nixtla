@@ -105,9 +105,6 @@ def list_jobs(
         params["page_size"] = page_size
     if page_token is not None:
         params["page_token"] = page_token
-    # Wrapped like `list_models`: a transient failure on page 7 of a walk would
-    # otherwise discard every row already collected, with no resume token for the
-    # caller to restart from.
     return nixtla_client._retry_strategy(nixtla_client._get_request)(
         client, "v2/async/jobs", params=params or None
     )
