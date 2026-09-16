@@ -114,13 +114,14 @@ class JobSummary:
         task_name (str | None): Task the job runs; `None` if `job_id` carries no
             recognised prefix.
         status (JobStatus): Lifecycle state.
-        created_at (str): ISO-8601 timestamp of when the job was accepted.
+        created_at (str | None): ISO-8601 timestamp of when the job was accepted;
+            `None` if the server's row omitted it.
     """
 
     job_id: str
     task_name: Optional[str]
     status: JobStatus
-    created_at: str
+    created_at: Optional[str]
 
 
 class JobError(RuntimeError):

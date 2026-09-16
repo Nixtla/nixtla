@@ -2357,3 +2357,41 @@ def test_list_page_size_shrinks_to_the_unfetched_remainder():
 
     assert [s.job_id for s in client.jobs.list(task="forecast", limit=5)] == ["fc-4", "fc-5"]
     assert [q["page_size"] for q in queries] == ["5", "2"]
+
+
+def test_list_skips_a_row_with_an_unmodelled_status_and_keeps_the_rest(caplog):
+    # A status the enum does not carry (a queued state added server-side) must
+    # not take out the caller's unrelated rows.
+    client = _client()
+    _mock_listing(
+        client,
+        [([_row("fc-1"), _row("cv-2", status="queued"), _row("fc-3")], None)],
+    )
+
+    with caplog.at_level("WARNING", logger="nixtla.nixtla_client"):
+        summaries = client.jobs.list()
+
+    assert [s.job_id for s in summaries] == ["fc-1", "fc-3"]
+    assert "cv-2" in caplog.text
+
+
+def test_list_tolerates_a_row_with_no_created_at():
+    client = _client()
+    row = _row("fc-1")
+    del row["created_at"]
+    _mock_listing(client, [([row], None)])
+
+    (summary,) = client.jobs.list()
+
+    assert summary.job_id == "fc-1"
+    assert summary.created_at is None
+
+
+def test_list_skips_a_row_with_no_job_id():
+    # Nothing to `retrieve()` with, so the row is unusable rather than partial.
+    client = _client()
+    row = _row("fc-1")
+    del row["job_id"]
+    _mock_listing(client, [([row, _row("fc-2")], None)])
+
+    assert [s.job_id for s in client.jobs.list()] == ["fc-2"]

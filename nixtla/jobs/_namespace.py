@@ -12,6 +12,7 @@ from utilsforecast.compat import DataFrame, DFType
 
 from . import _transport
 from ._job import Job, JobStatus, JobSummary
+from .._http import logger
 from ..nixtla_client import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ensure_local_dataframe,
@@ -35,6 +36,30 @@ if TYPE_CHECKING:
 
 # Largest page `GET v2/async/jobs` will serve.
 _MAX_PAGE_SIZE = 200
+
+
+def _summarise(row: dict[str, Any]) -> Optional[JobSummary]:
+    """One listing row as a `JobSummary`, or `None` when the row cannot be modelled.
+
+    A status this enum does not carry -- a queued or timed-out state added
+    server-side -- must cost the caller that one row, not the whole listing.
+    `poll_job` names the job in a `JobError` instead; a listing has no single
+    job to name, so the row is dropped with a warning and the rest survive.
+    """
+    job_id = row.get("job_id")
+    try:
+        status: Optional[JobStatus] = JobStatus(row.get("status"))
+    except ValueError:
+        status = None
+    if not job_id or status is None:
+        logger.warning("Skipping a job listing row this client cannot read: %r", row)
+        return None
+    return JobSummary(
+        job_id=job_id,
+        task_name=row.get("task_name"),
+        status=status,
+        created_at=row.get("created_at"),
+    )
 
 
 class Jobs:
@@ -1033,14 +1058,10 @@ class Jobs:
                 for row in rows:
                     if task is not None and row.get("task_name") != task:
                         continue
-                    summaries.append(
-                        JobSummary(
-                            job_id=row["job_id"],
-                            task_name=row.get("task_name"),
-                            status=JobStatus(row["status"]),
-                            created_at=row["created_at"],
-                        )
-                    )
+                    summary = _summarise(row)
+                    if summary is None:
+                        continue
+                    summaries.append(summary)
                     if limit is not None and len(summaries) >= limit:
                         return summaries
                 if limit is not None and fetched >= limit:
