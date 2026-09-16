@@ -994,8 +994,6 @@ class Jobs:
             self._client, "v2/execute_step", metadata, body, task="execute_step"
         )
 
-    # Keep `list` and `retrieve` last: binding the name `list` in the class body
-    # shadows the builtin for every annotation evaluated below it.
     def list(
         self,
         status: Optional[Union[str, JobStatus, list[Union[str, JobStatus]]]] = None,
@@ -1048,9 +1046,6 @@ class Jobs:
                     self._client,
                     client,
                     statuses=statuses,
-                    # `limit` bounds rows fetched, not rows matched: `task` is a
-                    # client-side filter and must not turn a bounded walk into a
-                    # scan of the whole retention window.
                     page_size=(
                         min(limit - fetched, _MAX_PAGE_SIZE)
                         if limit is not None
@@ -1059,10 +1054,7 @@ class Jobs:
                     page_token=page_token,
                 )
                 rows = body.get("jobs") or []
-                # An empty page still costs a request, and the server does serve
-                # them: charge it against `limit` so a run of them cannot un-bound
-                # the walk.
-                fetched += max(len(rows), 1)
+                fetched += len(rows)
                 for row in rows:
                     if task is not None and row.get("task_name") != task:
                         continue
