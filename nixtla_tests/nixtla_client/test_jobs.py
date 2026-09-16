@@ -15,8 +15,7 @@ from nixtla.nixtla_client import (
     Job,
     NixtlaClient,
 )
-from nixtla.jobs import _transport
-from nixtla.jobs import JobStatus, Jobs
+from nixtla.jobs import _transport, JobStatus, Jobs
 
 
 # ---------------------------------------------------------------------------
@@ -33,8 +32,7 @@ def test_jobs_namespace_is_bound_to_the_client_and_stable():
     assert client.jobs is client.jobs
 
 
-# Every task that can be submitted. `list` and `retrieve` are deliberately not here:
-# they are the recovery surface, not tasks, and are asserted separately below.
+# `list` and `retrieve` recover a job; they are not tasks, so they sit apart.
 SUBMIT_METHODS = {
     "forecast",
     "cross_validation",
@@ -54,8 +52,6 @@ def test_jobs_namespace_exposes_every_task():
 
 
 def test_every_submit_method_returns_a_job():
-    # The task methods all hand back a handle; the recovery methods do not, so
-    # keeping the two sets apart is what this pins.
     for name in SUBMIT_METHODS:
         assert getattr(Jobs, name).__annotations__["return"] is Job
 
@@ -153,7 +149,8 @@ def test_run_async_job_success():
     client._get_request = fake_get_request
 
     result = _transport.run_async_job(
-        client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        client,
+        MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
     )
 
     assert result == {"mean": [1, 2, 3]}
@@ -170,7 +167,8 @@ def test_run_async_job_failed():
 
     with pytest.raises(JobError) as excinfo:
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
         )
 
     assert excinfo.value.job_id == "fc-abc123"
@@ -187,7 +185,8 @@ def test_run_async_job_cancelled():
 
     with pytest.raises(JobCancelledError) as excinfo:
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
         )
 
     assert excinfo.value.job_id == "fc-abc123"
@@ -201,7 +200,8 @@ def test_run_async_job_unexpected_status():
 
     with pytest.raises(JobError, match="unexpected job status"):
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
         )
 
 
@@ -214,7 +214,8 @@ def test_run_async_job_timeout(monkeypatch):
 
     with pytest.raises(JobTimeoutError) as excinfo:
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
         )
 
     assert excinfo.value.job_id == "fc-abc123"
@@ -235,7 +236,8 @@ def test_run_async_job_cancels_the_job_on_timeout(monkeypatch):
 
     with pytest.raises(JobTimeoutError):
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
         )
 
     assert calls == ["fc-abc123"]
@@ -265,7 +267,8 @@ def test_run_async_job_does_not_cancel_on_terminal_states(
 
     with pytest.raises(expected_error):
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
         )
 
     assert calls == []
@@ -287,11 +290,7 @@ def test_run_async_job_timeout_survives_a_failing_cancel(monkeypatch, caplog):
         with pytest.raises(JobTimeoutError) as excinfo:
             _transport.run_async_job(
                 client,
-                MagicMock(),
-                "v2/forecast",
-                {},
-                poll_interval=0,
-                poll_timeout=0.05,
+                MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=0.05
             )
 
     assert excinfo.value.job_id == "fc-abc123"
@@ -314,7 +313,8 @@ def test_run_async_job_fails_fast_on_non_retriable_poll_error():
 
     with pytest.raises(ApiError) as excinfo:
         _transport.run_async_job(
-            client, MagicMock(), "v2/forecast", {}, poll_interval=10, poll_timeout=3600
+            client,
+            MagicMock(), "v2/forecast", {}, poll_interval=10, poll_timeout=3600
         )
 
     assert excinfo.value.status_code == 404
@@ -330,11 +330,7 @@ def test_run_async_job_retries_transient_poll_error():
     responses = iter(
         [
             httpx.ReadTimeout("timed out"),
-            {
-                "job_id": "fc-abc123",
-                "status": "succeeded",
-                "result": {"mean": [1, 2, 3]},
-            },
+            {"job_id": "fc-abc123", "status": "succeeded", "result": {"mean": [1, 2, 3]}},
         ]
     )
 
@@ -348,7 +344,8 @@ def test_run_async_job_retries_transient_poll_error():
     client._get_request = fake_get_request
 
     result = _transport.run_async_job(
-        client, MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
+        client,
+        MagicMock(), "v2/forecast", {}, poll_interval=0, poll_timeout=5
     )
 
     assert result == {"mean": [1, 2, 3]}
@@ -444,23 +441,15 @@ def _stub_model_params(monkeypatch, model_params):
 
 def _stub_job_status(monkeypatch, status):
     monkeypatch.setattr(
-        _transport,
-        "get_job_data",
-        lambda self, client, endpoint, job_id: {"status": status},
+        _transport, "get_job_data", lambda self, client, endpoint, job_id: {"status": status}
     )
 
 
-@pytest.mark.parametrize(
-    "method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES
-)
-def test_submit_job_returns_job(
-    monkeypatch, method_name, endpoint, make_call_kwargs, model_params
-):
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
+def test_submit_job_returns_job(monkeypatch, method_name, endpoint, make_call_kwargs, model_params):
     calls = []
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         calls.append(endpoint)
         return "job-1"
 
@@ -602,25 +591,15 @@ WAIT_JOB_CASES = [
 
 
 @pytest.mark.parametrize(
-    "method_name, make_call_kwargs, model_params, poll_response_fn, check_result",
-    WAIT_JOB_CASES,
+    "method_name, make_call_kwargs, model_params, poll_response_fn, check_result", WAIT_JOB_CASES
 )
 def test_submit_job_wait_returns_result(
-    monkeypatch,
-    method_name,
-    make_call_kwargs,
-    model_params,
-    poll_response_fn,
-    check_result,
+    monkeypatch, method_name, make_call_kwargs, model_params, poll_response_fn, check_result
 ):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "job-1"
 
-    def fake_poll_job(
-        self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs
-    ):
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs):
         return poll_response_fn()
 
     _stub_model_params(monkeypatch, model_params)
@@ -669,9 +648,7 @@ def test_jobs_detect_anomalies_payload_matches_sync(monkeypatch):
     )
     captured = {}
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         captured["async"] = (endpoint, _normalize_payload(payload))
         return "job-1"
 
@@ -703,9 +680,7 @@ def test_jobs_detect_anomalies_omits_model_parameters_when_unset(monkeypatch):
     # `model_parameters` is only sent when set, matching cross_validation.
     captured = {}
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         captured["payload"] = payload
         return "job-1"
 
@@ -733,9 +708,7 @@ def test_jobs_detect_anomalies_rejects_bad_model_parameters():
 
 
 def test_job_cancel_calls_cancel_job(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     calls = []
@@ -755,9 +728,7 @@ def test_job_cancel_calls_cancel_job(monkeypatch):
 
 
 def test_job_status_queries_server_and_caches_once_terminal(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     calls = []
@@ -784,17 +755,13 @@ def test_job_status_queries_server_and_caches_once_terminal(monkeypatch):
 
 
 def test_job_wait_raises_after_cancelled_status(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     def fake_cancel_job(client, job_id):
         pass
 
-    def fake_poll_job(
-        self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs
-    ):
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs):
         raise JobCancelledError(job_id=job_id)
 
     monkeypatch.setattr(_transport, "submit_job", fake_submit_job)
@@ -827,16 +794,10 @@ def _recording_cancel(calls):
 def _timing_out_job(monkeypatch, cancel_job):
     """A submitted `Job` whose polling always times out, with `_cancel_job` stubbed."""
     monkeypatch.setattr(
-        _transport,
-        "submit_job",
-        lambda self, client, endpoint, payload, multithreaded_compress=True: "ft-job-1",
+        _transport, "submit_job", lambda self, client, endpoint, payload, multithreaded_compress=True: "ft-job-1"
     )
     monkeypatch.setattr(
-        _transport,
-        "poll_job",
-        lambda self, client, endpoint, job_id, poll_interval, poll_timeout, **kw: (
-            _raise(JobTimeoutError(job_id=job_id, poll_timeout=poll_timeout))
-        ),
+        _transport, "poll_job", lambda self, client, endpoint, job_id, poll_interval, poll_timeout, **kw: _raise( JobTimeoutError(job_id=job_id, poll_timeout=poll_timeout) )
     )
     monkeypatch.setattr(_transport, "cancel_job", cancel_job)
     return _client().jobs.finetune(df=_small_df(), freq="D")
@@ -890,9 +851,7 @@ def test_job_wait_cancel_on_timeout_leaves_status_unresolved_if_cancel_fails(
 
     job = _timing_out_job(monkeypatch, fake_cancel_job)
     monkeypatch.setattr(
-        _transport,
-        "get_job_data",
-        lambda self, client, endpoint, job_id: {"status": "running"},
+        _transport, "get_job_data", lambda self, client, endpoint, job_id: {"status": "running"}
     )
 
     with caplog.at_level("WARNING"):
@@ -953,9 +912,7 @@ def test_job_context_manager_honours_cancel_on_timeout_false(monkeypatch):
 
 
 def test_job_context_manager_cancels_on_exception(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     calls = []
@@ -976,9 +933,7 @@ def test_job_context_manager_cancels_on_exception(monkeypatch):
 
 
 def test_job_context_manager_no_cancel_on_normal_exit(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     calls = []
@@ -998,14 +953,10 @@ def test_job_context_manager_no_cancel_on_normal_exit(monkeypatch):
 
 
 def test_job_context_manager_no_cancel_if_already_terminal(monkeypatch):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
-    def fake_poll_job(
-        self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs
-    ):
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs):
         return _finetune_poll_response()
 
     calls = []
@@ -1036,9 +987,7 @@ def test_job_context_manager_cancels_when_a_sibling_job_times_out(monkeypatch):
     """
     job_ids = iter(["outer-job", "inner-job"])
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return next(job_ids)
 
     calls = []
@@ -1074,9 +1023,7 @@ def test_job_context_manager_ignores_terminal_errors_from_other_jobs(
 ):
     """Every early return in `__exit__` is about this job, not the error's type."""
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     calls = []
@@ -1096,9 +1043,7 @@ def test_job_context_manager_ignores_terminal_errors_from_other_jobs(
 
 
 def test_job_context_manager_logs_and_swallows_cancel_failure(monkeypatch, caplog):
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         return "ft-job-1"
 
     def fake_cancel_job(client, job_id):
@@ -1151,17 +1096,13 @@ def test_cancel_job_raises_on_other_status_codes():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES
-)
+@pytest.mark.parametrize("method_name, endpoint, make_call_kwargs, model_params", SUBMIT_JOB_CASES)
 def test_submit_job_threads_job_timeout_seconds(
     monkeypatch, method_name, endpoint, make_call_kwargs, model_params
 ):
     payloads = []
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         payloads.append(payload)
         return "job-1"
 
@@ -1211,15 +1152,11 @@ def _capture_submitted_payloads(monkeypatch, h=5):
     """
     payloads = []
 
-    def fake_submit_job(
-        self, client, endpoint, payload, multithreaded_compress=True, **kwargs
-    ):
+    def fake_submit_job(self, client, endpoint, payload, multithreaded_compress=True, **kwargs):
         payloads.append((endpoint, payload))
         return "job-1"
 
-    def fake_poll_job(
-        self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs
-    ):
+    def fake_poll_job(self, client, endpoint, job_id, poll_interval, poll_timeout, **kwargs):
         if endpoint == "v2/cross_validation":
             n = len(payloads[-1][1]["series"]["y"])
             result = {
@@ -1246,7 +1183,8 @@ def test_run_async_job_folds_job_options_into_the_payload(monkeypatch):
 
     original = {"idx": 0}
     _transport.run_async_job(
-        client, MagicMock(), "v2/forecast", original, 0, 1, job_timeout_seconds=300
+        client,
+        MagicMock(), "v2/forecast", original, 0, 1, job_timeout_seconds=300
     )
 
     assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
@@ -1303,9 +1241,7 @@ def test_make_partitioned_requests_forwards_the_job_timeout(monkeypatch):
 def test_forecast_async_job_carries_the_job_timeout(monkeypatch):
     payloads = _capture_submitted_payloads(monkeypatch)
 
-    _client().forecast(
-        df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True
-    )
+    _client().forecast(df=_small_df(), h=5, _job_timeout_seconds=300, _is_async_job=True)
 
     assert payloads[0][1]["job_options"] == {"timeout_seconds": 300}
 
@@ -1775,9 +1711,7 @@ def test_job_wait_preserves_permanent_errors_after_deadline(monkeypatch, status_
     "failure",
     ["retries_exhausted", "unknown_status", "no_result", "failed", "cancelled"],
 )
-def test_async_runner_cleans_up_only_jobs_with_unknown_terminal_state(
-    task, failure, monkeypatch
-):
+def test_async_runner_cleans_up_only_jobs_with_unknown_terminal_state(task, failure, monkeypatch):
     client = _client(max_retries=2, retry_interval=0)
     monkeypatch.setattr(_transport, "submit_job", MagicMock(return_value="job-1"))
     cancel_best_effort = MagicMock()
@@ -1832,14 +1766,14 @@ def test_async_runner_cleans_up_only_jobs_with_unknown_terminal_state(
         ("v2/anomaly_detection", "anomaly_detection"),
     ],
 )
-def test_failed_job_is_labelled_with_the_task_its_endpoint_names(
-    endpoint, task, monkeypatch
-):
+def test_failed_job_is_labelled_with_the_task_its_endpoint_names(endpoint, task, monkeypatch):
     """Every job's failure reads the same way, without each call site repeating
     the task name the route already carries."""
     client = _client()
     monkeypatch.setattr(_transport, "submit_job", MagicMock(return_value="job-1"))
-    fake_get_job_data = MagicMock(return_value={"status": "failed", "error": "boom"})
+    fake_get_job_data = MagicMock(
+        return_value={"status": "failed", "error": "boom"}
+    )
     monkeypatch.setattr(_transport, "get_job_data", fake_get_job_data)
 
     with pytest.raises(JobError) as excinfo:
@@ -1899,9 +1833,7 @@ def test_polling_still_rejects_an_invalid_timeout(poll_timeout, monkeypatch):
     fake_get_job_data = MagicMock()
     monkeypatch.setattr(_transport, "get_job_data", fake_get_job_data)
     with pytest.raises(ValueError, match="poll_timeout"):
-        _transport.poll_job(
-            client, MagicMock(), "v2/forecast", "job-1", 0, poll_timeout
-        )
+        _transport.poll_job(client, MagicMock(), "v2/forecast", "job-1", 0, poll_timeout)
     fake_get_job_data.assert_not_called()
 
 
@@ -1936,7 +1868,8 @@ def test_submit_retry_budget_bounds_waits_and_prevents_late_resubmission(
     with pytest.raises(ApiError) as excinfo:
         if binary:
             _transport.submit_and_wrap_binary_job(
-                client, "v2/execute_step", "{}", b"payload", task="execute_step"
+                client,
+                "v2/execute_step", "{}", b"payload", task="execute_step"
             )
         else:
             with client._make_client(**client._client_kwargs) as http:
@@ -1968,7 +1901,8 @@ def test_binary_submission_uses_safe_retry_policy(failure):
     if failure == "connection":
         assert (
             _transport.submit_and_wrap_binary_job(
-                client, "v2/execute_step", "{}", b"payload", task="execute_step"
+                client,
+                "v2/execute_step", "{}", b"payload", task="execute_step"
             ).job_id
             == "es-1"
         )
@@ -1976,7 +1910,8 @@ def test_binary_submission_uses_safe_retry_policy(failure):
     else:
         with pytest.raises((ApiError, httpx.ReadTimeout)):
             _transport.submit_and_wrap_binary_job(
-                client, "v2/execute_step", "{}", b"payload", task="execute_step"
+                client,
+                "v2/execute_step", "{}", b"payload", task="execute_step"
             )
         assert len(requests) == 1
 
@@ -2144,11 +2079,9 @@ def test_transient_poll_failures_warn_once_per_job(caplog, monkeypatch):
 
 
 def _mock_listing(client, pages):
-    """Serve `pages` from `v2/async/jobs`, recording the query each page was asked with.
+    """Serve `pages` (each `(jobs, next_page_token)`) from `v2/async/jobs`.
 
-    Each page is `(jobs, next_page_token)`. Returns the list of `httpx.QueryParams`
-    the client sent, so a test can assert what went on the wire as well as what came
-    back.
+    Returns the `httpx.QueryParams` each page was asked with.
     """
     queries = []
     remaining = list(pages)
@@ -2185,14 +2118,14 @@ def test_list_returns_summaries_in_server_order():
     assert [s.task_name for s in summaries] == ["forecast", "cross_validation"]
     assert [s.status for s in summaries] == [JobStatus.RUNNING, JobStatus.PENDING]
     assert summaries[0].created_at == "2026-09-15T00:00:00Z"
-    # Frozen: a row is a record of what the server said, not a mutable handle.
+    # Frozen: a row records what the server said; it is not a handle.
     with pytest.raises(AttributeError):
         summaries[0].job_id = "other"
 
 
 def test_list_pages_until_the_token_is_null_not_until_a_page_looks_short():
-    # The contract the endpoint documents: a short page, and even an empty one, can
-    # still have more behind it. Stopping on page length would lose `fc-3` here.
+    # A short or empty page can still have more behind it; stopping on page
+    # length would lose `fc-3`.
     client = _client()
     queries = _mock_listing(
         client,
@@ -2212,7 +2145,7 @@ def test_list_sends_statuses_as_repeated_params_and_defaults_to_none():
     queries = _mock_listing(client, [([], None), ([], None)])
 
     client.jobs.list()
-    # No filter: the server's own default (pending plus running) applies.
+    # No filter: the server's default (pending plus running) applies.
     assert "status" not in queries[0]
 
     client.jobs.list(status=["succeeded", JobStatus.FAILED])
@@ -2224,19 +2157,15 @@ def test_list_limit_stops_paging_early():
     queries = _mock_listing(client, [([_row("fc-1"), _row("fc-2")], "tok-1")])
 
     assert [s.job_id for s in client.jobs.list(limit=1)] == ["fc-1"]
-    # Stopped inside the first page, so the token was never followed.
-    assert len(queries) == 1
+    assert len(queries) == 1  # stopped inside page one, token never followed
 
 
 def test_list_filters_by_task_client_side():
     client = _client()
-    queries = _mock_listing(
-        client, [([_row("fc-1"), _row("cv-2"), _row("fc-3")], None)]
-    )
+    queries = _mock_listing(client, [([_row("fc-1"), _row("cv-2"), _row("fc-3")], None)])
 
     assert [s.job_id for s in client.jobs.list(task="forecast")] == ["fc-1", "fc-3"]
-    # The endpoint has no task parameter, so nothing about it goes on the wire.
-    assert "task" not in queries[0]
+    assert "task" not in queries[0]  # the endpoint has no task parameter
 
 
 @pytest.mark.parametrize(
@@ -2277,13 +2206,11 @@ def test_retrieve_reads_the_task_from_the_job_id_prefix(prefix, task):
     assert isinstance(job, Job)
     assert job.task == task
     assert job._endpoint == f"v2/{task}"
-    # The prefix is enough; resolving the task costs no round trip.
-    client._make_client.assert_not_called()
+    client._make_client.assert_not_called()  # the prefix costs no round trip
 
 
 def test_retrieve_polls_anomaly_detection_on_the_async_route():
-    # The async route is `v2/anomaly_detection`; `v2/online_anomaly_detection` has no
-    # async routes at all, so a retrieved handle must not point at it.
+    # `v2/online_anomaly_detection` has no async routes; the async one is `v2/anomaly_detection`.
     assert _client().jobs.retrieve("ad-1")._endpoint == "v2/anomaly_detection"
 
 
@@ -2294,7 +2221,6 @@ def test_retrieve_rejects_an_unrecognised_job_id(job_id):
 
 
 def test_retrieve_returns_the_result_dict_unparsed():
-    # No uids, no column names and no dataframe: the raw response is the contract.
     result = {"mean": [1.0, 2.0], "sizes": [2], "idxs": [0, 1]}
 
     def handle(request):
@@ -2322,8 +2248,8 @@ def test_retrieve_raises_when_a_succeeded_job_carries_no_result():
 
 
 def test_retrieve_decodes_execute_step_from_its_own_result_endpoint():
-    # The one task whose status envelope leaves `result` null: the payload is binary
-    # and served separately, so a raw dict would be `None` rather than a contract.
+    # The one task whose status envelope leaves `result` null: the payload is
+    # binary and served from its own result endpoint.
     import io
     import zipfile
 
@@ -2393,8 +2319,8 @@ def test_list_asks_for_no_more_rows_than_the_limit():
 
 
 def test_list_does_not_cap_page_size_when_filtering_by_task():
-    # `task` filters client-side, so a capped page could come back holding nothing
-    # of the wanted task and still be treated as the whole answer.
+    # `task` filters client-side, so a capped page could hold no matching rows
+    # and still be taken for the whole answer.
     client = _client()
     queries = _mock_listing(client, [([_row("fc-1")], None)])
 

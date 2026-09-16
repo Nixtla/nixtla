@@ -64,9 +64,8 @@ def _task_name(endpoint: str) -> str:
     return endpoint.removeprefix("v2/").removesuffix("/async")
 
 
-# Prefix every `job_id` carries, naming the task that produced it. The server builds
-# ids as `f"{prefix}-{uuid4().hex}"`, so the task is readable from the id alone and
-# `retrieve()` needs no round trip to work out which endpoint to poll.
+# The server builds job ids as `f"{prefix}-{uuid4().hex}"`, so `retrieve()` can read
+# the task off the id without a round trip.
 _JOB_ID_PREFIXES = {
     "ft": "finetune",
     "fc": "forecast",
@@ -77,13 +76,13 @@ _JOB_ID_PREFIXES = {
     "es": "execute_step",
 }
 
-# Route each task polls. `anomaly_detection` is the one asymmetry: the async route is
-# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` its blocking sibling
-# (`detect_anomalies_online()`) posts to.
+# Route each task polls. Note `anomaly_detection`: the async route is
+# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` that
+# `detect_anomalies_online()` posts to.
 _TASK_ENDPOINTS = {task: f"v2/{task}" for task in _JOB_ID_PREFIXES.values()}
 
-# The only task whose result is binary: its status envelope leaves `result` null and
-# the zip comes from the task's own result endpoint instead.
+# Tasks whose status envelope leaves `result` null, serving bytes from their own
+# result endpoint instead.
 _BINARY_TASKS = frozenset({"execute_step"})
 
 
@@ -104,8 +103,7 @@ def list_jobs(
 ) -> dict[str, Any]:
     """One page of the team's jobs from `GET v2/async/jobs`.
 
-    `statuses` goes on the wire as a repeated `status` parameter, which httpx builds
-    from the list. Omitting it leaves the server's default of pending plus running.
+    `statuses` goes on the wire as a repeated `status` parameter.
     """
     params: dict[str, Any] = {}
     if statuses:
@@ -550,10 +548,8 @@ def cancel_job_best_effort(client: httpx.Client, job_id: str, reason: str) -> bo
 def wrap_retrieved_job(nixtla_client: "NixtlaClient", job_id: str, task: str) -> Job:
     """A `Job` for work this process did not submit, built from `job_id` alone.
 
-    The result comes back unparsed. Every `parse_result` in `nixtla_client` closes over
-    request-side state -- the series ids, the column names, the dataframe flavour -- and
-    none of that is ever sent to the server, so there is nothing here to rebuild a frame
-    from. `execute_step` is the exception only because its result carries its own schema.
+    The result comes back unparsed: every `parse_result` closes over request-side state
+    the server never sees. `execute_step` is the exception, its result being self-describing.
     """
     endpoint = _TASK_ENDPOINTS[task]
 

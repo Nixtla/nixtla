@@ -104,15 +104,14 @@ def _terminal_status(status: Optional[str]) -> Optional[JobStatus]:
 
 @dataclass(frozen=True)
 class JobSummary:
-    """One row of `client.jobs.list()`: a job the server knows about.
+    """One row of `client.jobs.list()`.
 
-    Carries no result — it names a job, it does not deliver one. Pass `job_id`
-    to `client.jobs.retrieve()` for a handle that can poll, wait on, or cancel it.
+    Names a job; it does not carry its result. Pass `job_id` to
+    `client.jobs.retrieve()` for a handle that can poll, wait on or cancel it.
 
     Attributes:
-        job_id (str): Identifier for the job, usable on `retrieve()` and `cancel()`.
-        task_name (str | None): Which task the job runs (`"forecast"`,
-            `"cross_validation"`, ...); `None` only if `job_id` carries no
+        job_id (str): Identifier, usable on `retrieve()` and `cancel()`.
+        task_name (str | None): Task the job runs; `None` if `job_id` carries no
             recognised prefix.
         status (JobStatus): Lifecycle state.
         created_at (str): ISO-8601 timestamp of when the job was accepted.

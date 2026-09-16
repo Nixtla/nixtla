@@ -969,6 +969,8 @@ class Jobs:
             self._client, "v2/execute_step", metadata, body, task="execute_step"
         )
 
+    # Keep `list` and `retrieve` last: binding the name `list` in the class body
+    # shadows the builtin for every annotation evaluated below it.
     def list(
         self,
         status: Optional[list[Union[str, JobStatus]]] = None,
@@ -977,24 +979,22 @@ class Jobs:
     ) -> list[JobSummary]:
         """List your team's jobs, newest first.
 
-        Use it to recover a `job_id` whose `Job` you no longer hold, then pass that
-        id to `retrieve()` to poll, wait on or cancel it.
+        Use it to recover a `job_id` whose `Job` you no longer hold, then pass it
+        to `retrieve()`.
 
         Args:
             status: Statuses to list. Defaults to the server's own default of
-                pending plus running, so terminal jobs need an explicit
-                `status=["succeeded", "failed", "cancelled"]`.
-            task: Keep only jobs for this task (`"forecast"`, `"cross_validation"`,
-                ...). Filtered client-side; the endpoint has no task parameter.
+                pending plus running.
+            task: Keep only jobs for this task. Filtered client-side; the endpoint
+                has no task parameter.
             limit: Stop after this many rows. `None` fetches every page.
 
         Returns:
             list of JobSummary: Newest first, across pages as well as within one.
 
         Note:
-            A terminal job stays listed only for the orchestrator's retention window
-            (currently about a week), so a job's absence here is not evidence it
-            never existed.
+            A terminal job is listed only for the orchestrator's retention window
+            (about a week), so absence here is not evidence a job never existed.
         """
         if limit is not None and limit <= 0:
             raise ValueError(f"limit must be positive, got {limit!r}")
@@ -1013,9 +1013,7 @@ class Jobs:
                     self._client,
                     client,
                     statuses=statuses,
-                    # Ask for no more than is wanted. Capped at the server's own
-                    # maximum; `task` filters after the fact, so a filtered call
-                    # still has to read full pages to find enough rows.
+                    # Skipped when `task` is set: that filter runs client-side.
                     page_size=(
                         min(limit, _MAX_PAGE_SIZE)
                         if limit is not None and task is None
@@ -1036,8 +1034,7 @@ class Jobs:
                     )
                     if limit is not None and len(summaries) >= limit:
                         return summaries
-                # Page until the token is null, never until a page looks short: a
-                # page can come back short, or empty, and still have more behind it.
+                # A short or empty page can still have more behind it.
                 page_token = body.get("next_page_token")
                 if not page_token:
                     return summaries
@@ -1045,32 +1042,22 @@ class Jobs:
     def retrieve(self, job_id: str) -> Job:
         """A `Job` handle for work this process did not submit.
 
-        The task is read from the `job_id`'s own prefix, so this costs no request.
-        The handle behaves like a submitted one -- `status`, `wait()`, `cancel()`
-        and the context manager all work.
+        The task is read from the `job_id` prefix, so this costs no request; the
+        handle then behaves like a submitted one.
 
         Args:
             job_id: Identifier of the job, as `list()` reports it.
 
         Returns:
-            Job: Handle whose `wait()` returns the server's **raw result dict**, not
-                the parsed dataframe the original call would have returned. The keys
-                are the task's own: `mean`/`intervals` for `forecast`, plus
-                `sizes`/`idxs` for `cross_validation` and `anomaly_detection`,
-                `samples` for `simulate`, `weights`/`feature_names` for `explain`,
-                and `finetuned_model_id` for `finetune`. `execute_step` is the one
-                exception: its result carries its own schema, so `wait()` returns the
-                same `StepResult` a submitted job would.
+            Job: Handle whose `wait()` returns the server's **raw result dict**,
+                not a parsed dataframe -- the series ids and column names never
+                reach the server, so they cannot come back. Values run in sorted
+                series-id order, which is what lets a caller still holding the
+                input frame re-label them. `execute_step` is the exception: its
+                result is self-describing, so `wait()` returns a `StepResult`.
 
         Raises:
             ValueError: If `job_id` carries no recognised task prefix.
-
-        Note:
-            Values in those arrays run in **sorted series-id order** -- the order
-            `sorted(df[id_col].unique())` gives -- grouped by `sizes` where the task
-            reports it. That is what lets a caller who still holds the input frame put
-            the labels back on. The ids themselves are never sent to the server, which
-            is why they cannot come back with the result.
         """
         task = _transport._task_from_job_id(job_id)
         if task is None:
