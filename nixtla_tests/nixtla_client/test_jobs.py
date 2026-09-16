@@ -2424,3 +2424,28 @@ def test_list_rejects_an_unknown_status_before_any_request():
         client.jobs.list(status="nonsense")
 
     client._make_client.assert_not_called()
+
+
+def test_list_retries_a_transient_failure_mid_walk():
+    # A 502 on page two must not discard page one: there is no resume token
+    # for the caller to restart the walk from.
+    client = _client(retry_interval=0)
+    responses = [
+        httpx.Response(200, json={"jobs": [_row("fc-1")], "next_page_token": "tok-1"}),
+        httpx.Response(502, json={"detail": "bad gateway"}),
+        httpx.Response(200, json={"jobs": [_row("fc-2")], "next_page_token": None}),
+    ]
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.params)
+        return responses.pop(0)
+
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    assert [s.job_id for s in client.jobs.list()] == ["fc-1", "fc-2"]
+    # Three requests for two pages: the failed one was retried, not surfaced.
+    assert len(calls) == 3
+    assert [q.get("page_token") for q in calls] == [None, "tok-1", "tok-1"]
