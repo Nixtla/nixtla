@@ -58,6 +58,55 @@ def test_marker_is_declared_in_pyproject():
     assert '"integration: mark test as requiring a live Nixtla API"' in pyproject
 
 
+def test_conftest_live_client_fixtures_are_all_in_the_constant():
+    """`_LIVE_CLIENT_FIXTURES` is hand-maintained, and the marker hook's
+    correctness rests entirely on that set being complete: a fixture that
+    constructs a real `NixtlaClient` but is missing from it lets its tests
+    slip back into every matrix cell -- unmarked, silently, with CI staying
+    green the whole time. AST-scans `nixtla_tests/conftest.py` for fixtures
+    whose body builds a `NixtlaClient` and asserts none of them escape the
+    set, so adding a third live-client fixture without updating the constant
+    fails loudly here instead of failing quietly in CI.
+
+    Scoped to `nixtla_tests/conftest.py` only -- the shared root conftest the
+    hook's set is actually about. `nixtla_tests/snowflake/test_snowflake_deployment.py`
+    also defines a live `nixtla_client` fixture, but it's excluded from the
+    offline cells by its own `@pytest.mark.snowflake` marker rather than by
+    this hook, so it's deliberately left out of this scan.
+    """
+    import ast
+
+    def _is_fixture_decorator(node):
+        if isinstance(node, ast.Attribute):
+            return node.attr == "fixture"
+        if isinstance(node, ast.Call):
+            return _is_fixture_decorator(node.func)
+        return False
+
+    def _constructs_nixtla_client(func_node):
+        return any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "NixtlaClient"
+            for node in ast.walk(func_node)
+        )
+
+    tree = ast.parse((REPO_ROOT / "nixtla_tests/conftest.py").read_text())
+    live_client_fixtures = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(_is_fixture_decorator(d) for d in node.decorator_list)
+        and _constructs_nixtla_client(node)
+    }
+    undeclared = live_client_fixtures - _LIVE_CLIENT_FIXTURES
+    assert not undeclared, (
+        f"Fixture(s) {sorted(undeclared)} in nixtla_tests/conftest.py construct a "
+        "NixtlaClient but are missing from _LIVE_CLIENT_FIXTURES -- the "
+        "integration-marker hook will silently stop covering them."
+    )
+
+
 def test_audit_tests_are_not_integration():
     """`audit_data` / `clean_data` are pure local pandas.
 

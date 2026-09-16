@@ -13,10 +13,6 @@ from utilsforecast.compat import DataFrame, DFType
 from . import _transport
 from ._job import Job, JobStatus, JobSummary
 from .._http import logger
-from ..nixtla_client import (
-    _ensure_local_dataframe,
-    _validate_simulate_args,
-)
 from .._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
@@ -29,6 +25,10 @@ from .._types import (
     _PositiveInt,
     _ThresholdMethod,
     extra_param_checker,
+)
+from ..nixtla_client import (
+    _ensure_local_dataframe,
+    _validate_simulate_args,
 )
 from .._steps import build_request as _build_step_request
 
