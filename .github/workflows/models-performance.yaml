@@ -50,8 +50,8 @@ jobs:
 
       - name: Upload images to new branch main
         run: |
-          git config --global user.email azul@nixtla.io
-          git config --global user.name AzulGarza
+          git config --global user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git config --global user.name "github-actions[bot]"
           git push origin --delete docs-figs-model-performance || true
           git checkout -b docs-figs-model-performance
           git add -f "*.png"
