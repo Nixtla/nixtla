@@ -2464,3 +2464,20 @@ def test_list_names_every_known_task_when_rejecting_an_unknown_one():
     for task in _transport._JOB_ID_PREFIXES.values():
         assert task in message
     assert not hasattr(_transport, "_TASK_ENDPOINTS")
+
+
+def test_list_charges_empty_pages_against_the_limit():
+    # The server serves empty pages with a live token. If they cost no budget,
+    # `limit` never bites and the walk runs the whole retention window.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([], "tok-1"),
+            ([], "tok-2"),
+            ([_row("fc-3")], "tok-3"),
+        ],
+    )
+
+    assert client.jobs.list(limit=2) == []
+    assert len(queries) == 2

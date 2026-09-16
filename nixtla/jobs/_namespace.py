@@ -1020,6 +1020,9 @@ class Jobs:
 
         Returns:
             list of JobSummary: Newest first, across pages as well as within one.
+                A row this client cannot read -- one whose status this SDK's
+                `JobStatus` does not model -- is skipped with a warning rather than
+                failing the call, so a job can be missing here and present server-side.
 
         Note:
             A terminal job is listed only for the orchestrator's retention window
@@ -1032,11 +1035,9 @@ class Jobs:
         if isinstance(status, str):
             status = [status]
         statuses = [JobStatus(s).value for s in status] if status else None
-        if task is not None and task not in _transport._JOB_ID_PREFIXES.values():
-            raise ValueError(
-                f"unknown task {task!r}; expected one of "
-                f"{sorted(_transport._JOB_ID_PREFIXES.values())}"
-            )
+        known_tasks = sorted(_transport._JOB_ID_PREFIXES.values())
+        if task is not None and task not in known_tasks:
+            raise ValueError(f"unknown task {task!r}; expected one of {known_tasks}")
 
         summaries: list[JobSummary] = []
         fetched = 0
@@ -1058,7 +1059,10 @@ class Jobs:
                     page_token=page_token,
                 )
                 rows = body.get("jobs") or []
-                fetched += len(rows)
+                # An empty page still costs a request, and the server does serve
+                # them: charge it against `limit` so a run of them cannot un-bound
+                # the walk.
+                fetched += max(len(rows), 1)
                 for row in rows:
                     if task is not None and row.get("task_name") != task:
                         continue
