@@ -15,29 +15,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
-  NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
-  NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
-  NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
-  # Snowflake credentials for integration tests
-  SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
-  SF_USER: ${{ secrets.SF_USER }}
-  SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
-  SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
-  SF_ROLE: ${{ secrets.SF_ROLE }}
-
 permissions:
   contents: read
 
 jobs:
   run-tests:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, nixtla-linux-large-public, windows-latest]
+        os: [macos-14, ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
@@ -57,6 +45,11 @@ jobs:
           make devenv
 
       - name: Cleanup old finetuned models
+        env:
+          NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+          NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+          NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+          NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
         run: >
           uv run python scripts/cleanup_finetuned_models.py --older-than 60
         continue-on-error: true
@@ -67,8 +60,23 @@ jobs:
           # Required for distributed tests: Ray/Spark spawn worker processes
           # that need to locate the correct Python environment
           UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+          NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+          NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+          NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+          NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
+          # Snowflake credentials: only this step runs the `snowflake`-marked tests
+          SF_ACCOUNT: ${{ secrets.SF_ACCOUNT }}
+          SF_USER: ${{ secrets.SF_USER }}
+          SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+          SF_WAREHOUSE: ${{ secrets.SF_WAREHOUSE }}
+          SF_ROLE: ${{ secrets.SF_ROLE }}
         run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
 
       - name: Run tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
+        env:
+          NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
+          NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
+          NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
+          NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
         run: uv run pytest --cov=nixtla -m "not distributed_run and not snowflake" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
