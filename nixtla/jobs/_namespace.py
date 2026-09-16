@@ -1032,10 +1032,10 @@ class Jobs:
         if isinstance(status, str):
             status = [status]
         statuses = [JobStatus(s).value for s in status] if status else None
-        if task is not None and task not in _transport._TASK_ENDPOINTS:
+        if task is not None and task not in _transport._JOB_ID_PREFIXES.values():
             raise ValueError(
                 f"unknown task {task!r}; expected one of "
-                f"{sorted(_transport._TASK_ENDPOINTS)}"
+                f"{sorted(_transport._JOB_ID_PREFIXES.values())}"
             )
 
         summaries: list[JobSummary] = []

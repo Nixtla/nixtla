@@ -2449,3 +2449,18 @@ def test_list_retries_a_transient_failure_mid_walk():
     # Three requests for two pages: the failed one was retried, not surfaced.
     assert len(calls) == 3
     assert [q.get("page_token") for q in calls] == [None, "tok-1", "tok-1"]
+
+
+def test_list_names_every_known_task_when_rejecting_an_unknown_one():
+    # The message is the discovery path for the argument, so it has to be complete.
+    client = _client()
+    client._make_client = MagicMock()
+
+    with pytest.raises(ValueError) as excinfo:
+        client.jobs.list(task="nonsense")
+
+    message = str(excinfo.value)
+    assert "unknown task 'nonsense'" in message
+    for task in _transport._JOB_ID_PREFIXES.values():
+        assert task in message
+    assert not hasattr(_transport, "_TASK_ENDPOINTS")

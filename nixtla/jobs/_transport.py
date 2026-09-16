@@ -64,7 +64,10 @@ def _task_name(endpoint: str) -> str:
 
 
 # The server builds job ids as `f"{prefix}-{uuid4().hex}"`, so `retrieve()` can read
-# the task off the id without a round trip.
+# the task off the id without a round trip. Every task's route is `f"v2/{task}"` --
+# the inverse of `_task_name` above. Note `anomaly_detection`: the async route is
+# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` that
+# `detect_anomalies_online()` posts to.
 _JOB_ID_PREFIXES = {
     "ft": "finetune",
     "fc": "forecast",
@@ -74,11 +77,6 @@ _JOB_ID_PREFIXES = {
     "ex": "explain",
     "es": "execute_step",
 }
-
-# Route each task polls. Note `anomaly_detection`: the async route is
-# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` that
-# `detect_anomalies_online()` posts to.
-_TASK_ENDPOINTS = {task: f"v2/{task}" for task in _JOB_ID_PREFIXES.values()}
 
 
 def _task_from_job_id(job_id: str) -> Optional[str]:
@@ -612,9 +610,7 @@ def wrap_retrieved_job(nixtla_client: "NixtlaClient", job_id: str, task: str) ->
     """
     # Identity: every `parse_result` closes over request-side state the server never
     # saw, so a retrieved job's result comes back exactly as the server sent it.
-    return _wrap_job(
-        nixtla_client, job_id, _TASK_ENDPOINTS[task], task, lambda result: result
-    )
+    return _wrap_job(nixtla_client, job_id, f"v2/{task}", task, lambda result: result)
 
 
 def submit_and_wrap_job(
