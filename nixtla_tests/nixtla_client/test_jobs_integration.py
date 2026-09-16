@@ -28,9 +28,12 @@ pytestmark = pytest.mark.integration
 JOB_TIMEOUT = 290
 
 # The listing is served from an index that is only eventually consistent with the jobs
-# themselves -- it trails a submit by about a second, and trails a job reaching a
-# terminal state by about as much. So no single `list()` call is ever a safe assertion
-# about one job: everything here polls, and asserts against the snapshot that matched.
+# themselves. It trails a submit by about a second, and trails a job reaching a terminal
+# state by about as much -- but it also *drops rows it has already served*: two reads a
+# fraction of a second apart disagree while a job's record is being rewritten, and a job
+# observed in one call can be missing from the next and back on the one after. So no
+# single `list()` call is ever a safe assertion about one job, whether or not an earlier
+# call found it: everything here polls, and asserts against the snapshot that matched.
 LISTING_LAG_TIMEOUT = 60.0
 
 # Bound on how far down the listing to read. Rows are newest first and the job under
@@ -59,25 +62,27 @@ def jobs_df():
     )
 
 
-def _list_until_present(client, job_id, status=LISTING_STATUSES):
+def _list_until_present(client, job_id, status=LISTING_STATUSES, task=None):
     """Poll the listing until `job_id` appears, and return that whole snapshot.
 
     Returning the snapshot rather than just the row matters: a job can change state
     between two calls, so every assertion about it has to be made against the one
     listing that actually contained it.
 
-    No `task` filter here on purpose -- `task` is applied client-side, so `limit` would
-    count matching rows and stop bounding how much of the listing gets walked.
+    Passing `task` costs more than it looks: `task` is applied client-side, so `limit`
+    counts matching rows and stops bounding how much of the listing gets walked -- a
+    filtered poll reads to the end of the retention window every time. That is a handful
+    of requests, and the price of asserting anything about the filtered view at all.
     """
     deadline = time.monotonic() + LISTING_LAG_TIMEOUT
     while True:
-        rows = client.jobs.list(status=status, limit=LISTING_SCAN_LIMIT)
+        rows = client.jobs.list(status=status, task=task, limit=LISTING_SCAN_LIMIT)
         if any(row.job_id == job_id for row in rows):
             return rows
         if time.monotonic() >= deadline:
             raise AssertionError(
-                f"{job_id} never appeared in the listing (status={status}) "
-                f"within {LISTING_LAG_TIMEOUT}s"
+                f"{job_id} never appeared in the listing "
+                f"(status={status}, task={task}) within {LISTING_LAG_TIMEOUT}s"
             )
         time.sleep(1.0)
 
@@ -249,20 +254,13 @@ def test_a_submitted_job_is_listed_and_filterable(nixtla_test_client, jobs_df):
     assert row.created_at
     assert row.status in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED)
 
-    # `task` narrows the same view. Safe to assert membership in a second call now:
-    # the job is already known to be listed under one of `LISTING_STATUSES`, and it
-    # cannot leave that set.
-    forecasts = nixtla_test_client.jobs.list(
-        status=LISTING_STATUSES, task="forecast", limit=LISTING_SCAN_LIMIT
-    )
+    # check filterable (task)
+    forecasts = _list_until_present(nixtla_test_client, job.job_id, task="forecast")
     assert {r.task_name for r in forecasts} == {"forecast"}
-    assert job.job_id in {r.job_id for r in forecasts}
 
     job.wait()
 
-    # The succeeded view has to be polled too: the index trails a job's terminal
-    # transition just as it trails its submit, so it is not there the instant
-    # `wait()` returns.
+    # check filterable (status)
     _list_until_present(nixtla_test_client, job.job_id, status=["succeeded"])
 
 
