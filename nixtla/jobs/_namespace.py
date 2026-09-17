@@ -881,52 +881,23 @@ class Jobs:
         data: Optional[dict[str, Any]] = None,
         job_timeout_seconds: Optional[int] = None,
     ) -> Job:
-        """Submit a single TSMP step to run asynchronously.
+        """Submit a single server-side step to run asynchronously.
 
-        `execute_step` runs one TSMP top-level API call server-side. Each
-        call is independent: no state carries over from one to the next, so
-        every request is self-contained and carries its own data.
+        Access to this endpoint is granted per account. Contact Nixtla
+        support for access and for the calls it accepts.
+
         This does not block; it submits the job and immediately returns a
         `Job` handle. Call `job.wait()` to poll until it completes and get a
         `StepResult`, or `job.cancel()` to request that the server stop it.
 
-        Tables are referenced from `params` with `nixtla.ref(key)`, naming a
-        key of `data`. Because a step's output tables can be passed straight
-        back in as the next step's `data`, calls chain without any file or
-        byte handling::
-
-            from nixtla import NixtlaClient, ref
-
-            nixtla_client = NixtlaClient()
-
-            step1 = nixtla_client.jobs.execute_step(
-                "make_forecast_input",
-                {"data": ref("panel"), "freq": "D"},
-                data={"panel": df},
-            ).wait()
-
-            step2 = nixtla_client.jobs.execute_step(
-                "forecast",
-                {"resource": ref("result"), "models": ["timegpt-1"], "h": 7},
-                data=step1.data,
-            ).wait()
-
-        Chaining relies on arrow schema metadata that a pandas round-trip
-        discards, so pass `step.data` between steps rather than
-        `step.to_pandas()`.
-
-        There is no `model` argument: a step names the models it runs inside
-        `params`.
-
-        Not reachable over this transport: `optimize_model`, which requires a
-        `tune.Space` that has no JSON encoding. A pandas index is never sent
-        as data; a named one is folded into a column, anything else dropped.
+        Each call is independent: no state carries over from one to the next,
+        so every request is self-contained and carries its own data. A pandas
+        index is never sent as data; a named one is folded into a column,
+        anything else dropped.
 
         Args:
-            func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
-                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`,
-                `'select_by_sql'`.
-            params (dict): Arguments for that API. Tables are referenced by
+            func_name (str): Name of the server-side call to run.
+            params (dict): Arguments for that call. Tables are referenced by
                 `ref(key)` envelopes naming a key of `data`; everything else
                 is passed through as-is and must be JSON serializable.
             data (dict, optional): Tables the params reference, as pyarrow
@@ -954,8 +925,8 @@ class Jobs:
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`
-                (result tables as pyarrow Tables) and `.metadata` (the server's `func_name`,
-                `result` envelope and output `profile`).
+                (result tables as pyarrow Tables) and `.metadata` (what the server reported
+                about the call).
         """
         metadata, body = _build_step_request(
             func_name=func_name,
