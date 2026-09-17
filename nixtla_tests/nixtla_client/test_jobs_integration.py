@@ -99,7 +99,7 @@ def test_finetune_job_returns_a_model_id(nixtla_test_client, jobs_df):
 
 
 def test_execute_step_job_returns_tables(nixtla_test_client, jobs_df):
-    # TSMP validates the frame's schema server-side and requires a string id column;
+    # The server validates the frame's schema and requires a string id column;
     # a numeric `unique_id` fails the job rather than the request.
     df = jobs_df.assign(unique_id=jobs_df["unique_id"].astype(str))
 

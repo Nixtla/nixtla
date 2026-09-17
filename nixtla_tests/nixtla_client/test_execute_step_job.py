@@ -151,8 +151,9 @@ class TestCodec:
             to_arrow([1, 2, 3])
 
     def test_to_arrow_drops_a_positional_pandas_index(self):
-        # Arrow serializes any non-default index as a column, so an ordinary filter would
-        # otherwise upload a phantom `__index_level_0__` that TSMP rebuilds the resource around.
+        # Arrow serializes any non-default index as a column, so an ordinary filter
+        # would otherwise upload a phantom `__index_level_0__` that the server
+        # rebuilds the resource around.
         filtered = _small_df()[lambda df: df["y"] > 1]
         assert list(filtered.index) != list(range(len(filtered)))
         assert to_arrow(filtered).column_names == ["unique_id", "ds", "y"]
