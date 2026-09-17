@@ -528,9 +528,16 @@ class Jobs:
     ) -> Job:
         """Submit an online anomaly detection job to run asynchronously.
 
-        Unlike `detect_anomalies_online()`, this does not block until the job
-        finishes. It submits the job and immediately returns a `Job` handle;
-        call `job.wait()` to poll until it completes and get the resulting
+        This is the async form of `detect_anomalies_online()` — it runs
+        *online* detection, not the historical (batch) detection that
+        `detect_anomalies()` performs today. That name clash resolves in 1.0,
+        when batch detection is removed and `detect_anomalies()` becomes the
+        online method. This method already uses the 1.0 name and will not
+        change.
+
+        Unlike the blocking method, this does not wait for the job to finish.
+        It submits the job and immediately returns a `Job` handle; call
+        `job.wait()` to poll until it completes and get the resulting
         DataFrame, or `job.cancel()` to request that the server stop it.
 
         Not supported in this version: `num_partitions` (distributed/threaded

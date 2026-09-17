@@ -753,6 +753,14 @@ def create_udtfs(session: Session, config: DeploymentConfig) -> None:
         session: Active Snowflake session
         config: Deployment configuration with stage and integration name
     """
+    print(
+        "[yellow]Note: nixtla_detect_anomalies_batch (historical anomaly "
+        "detection) changes behavior in nixtla 1.0 -- it will run online "
+        "detection instead, requiring h and detection_size in PARAMS and "
+        "returning a trailing detection window. Re-deploy after "
+        "upgrading.[/yellow]"
+    )
+
     # Ensure session is using the correct database and schema context
     session.use_database(config.database)
     session.use_schema(config.schema)
