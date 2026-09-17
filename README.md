@@ -2,8 +2,8 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/Nixtla/neuralforecast/main/nbs/imgs_indx/logo_new.png"/>
-<h1 align="center">TimeGPT-1 </h1>
-<h3 align="center">The first foundation model for forecasting and anomaly detection</h3>
+<h1 align="center">TimeGPT-2.1 </h1>
+<h3 align="center">Foundation model for forecasting and anomaly detection</h3>
 
 [![CI](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/Nixtla/nixtla/actions/workflows/ci.yaml)
 [![PyPi](https://img.shields.io/pypi/v/nixtla?color=blue)](https://pypi.org/project/nixtla/)
@@ -24,7 +24,7 @@ https://github.com/Nixtla/nixtla/assets/4086186/163ad9e6-7a16-44e1-b2e9-dab8a0b7
 ### Install nixtla's SDK
 
 ```python
-pip install nixtla>=0.7.0
+pip install nixtla>=0.8.0
 ```
 
 ### Import libraries and load data
@@ -37,7 +37,7 @@ from nixtla import NixtlaClient
 ### Forecast using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/readme
+# Obtain an API key via https://nixtla.io/free-trial
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
@@ -58,7 +58,7 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 ### Anomaly detection using TimeGPT in 3 easy steps
 
 ```python
-# Get your API Key at https://nixtla.io/free-trial?utm_source=nixtla.io&utm_campaign=/docs/readme
+# Obtain an API key via https://nixtla.io/free-trial
 
 # 1. Instantiate the NixtlaClient
 nixtla_client = NixtlaClient(api_key = 'YOUR API KEY HERE')
@@ -123,13 +123,13 @@ Dive into our [comprehensive documentation](https://docs.nixtla.io/docs/getting-
 
 - **Real World Applications**: Uncover how TimeGPT is applied in real-world scenarios through case studies on [forecasting web traffic](https://docs.nixtla.io/docs/use-cases-forecasting_web_traffic) and [predicting Bitcoin prices](https://docs.nixtla.io/docs/use-cases/bitcoin_price_prediction).
 
-## 🗞️ TimeGPT1 Revolutionizing Forecasting and Anomaly Detection
+## 🗞️ TimeGPT - Revolutionizing Forecasting and Anomaly Detection
 
 Time series data is pivotal across various sectors, including finance, healthcare, meteorology, and social sciences. Whether it's monitoring ocean tides or tracking the Dow Jones's daily closing values, time series data is crucial for forecasting and decision-making.
 
 Traditional analysis methods such as ARIMA, ETS, MSTL, Theta, CES, machine learning models like XGBoost and LightGBM, and deep learning approaches have been standard tools for analysts. However, TimeGPT introduces a paradigm shift with its standout performance, efficiency, and simplicity. Thanks to its zero-shot inference capability, TimeGPT streamlines the analytical process, making it accessible even to users with minimal coding experience.
 
-TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As the only foundation model for time series analysis out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
+TimeGPT is user-friendly and low-code, enabling users to upload their time series data and either generate forecasts or detect anomalies with just a single line of code. As a foundation model for time series analysis that works out of the box, TimeGPT can be integrated via our public APIs, through Azure Studio (coming soon), or deployed on your own infrastructure.
 
 ## ⚙️ TimeGPT's Architecture
 
@@ -194,9 +194,13 @@ TimeGPT has been featured in many publications and has been recognized for its i
 - [How TimeGPT Transforms Predictive Analytics with AI](https://hackernoon.com/how-timegpt-transforms-predictive-analytics-with-ai)
 - [TimeGPT: The First Foundation Model - AI Horizon Forecast](https://aihorizonforecast.substack.com/p/timegpt-the-first-foundation-model)
 
-## 🔖 License
+## 🔖 License and access
 
-TimeGPT is closed source. However, this SDK is open source and available under the Apache 2.0 License. Feel free to contribute (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
+This SDK is open source, available under the Apache 2.0 License, and free to install and read.
+
+TimeGPT itself is closed source. The SDK is a client: every forecasting and anomaly detection call is executed by the model rather than locally, so an API key is required to run any of the examples above. You can [get one with a free trial](https://nixtla.io/free-trial), and TimeGPT can also be deployed on your own infrastructure.
+
+Feel free to contribute to the SDK (check out the [Contributing](https://github.com/Nixtla/nixtla/blob/main/CONTRIBUTING.md) guide for more details).
 
 ## 🏷️ Attribution
 
