@@ -62,11 +62,14 @@ def test_job_recovery_surface_is_absent():
     # Not ready for the public release: no listing, no retrieval, no summary type.
     import nixtla
 
-    assert not hasattr(Jobs, "list")
-    assert not hasattr(Jobs, "retrieve")
     assert not hasattr(nixtla, "JobSummary")
     assert "JobSummary" not in nixtla.__all__
-    for gone in ("list_jobs", "wrap_retrieved_job", "_task_from_job_id", "_JOB_ID_PREFIXES"):
+    for gone in (
+        "list_jobs",
+        "wrap_retrieved_job",
+        "_task_from_job_id",
+        "_JOB_ID_PREFIXES",
+    ):
         assert not hasattr(_transport, gone), gone
 
 

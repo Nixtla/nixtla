@@ -710,4 +710,6 @@ def submit_and_wrap_binary_job(
             client=client, endpoint=endpoint, metadata=metadata, body=body
         )
     # `_build_step_result` already produces the `StepResult` callers want.
+    # `_wrap_job` routes on `task == "execute_step"` to reach the binary result
+    # endpoint; a second binary task would need that branch widened.
     return _wrap_job(nixtla_client, job_id, endpoint, task, lambda result: result)
