@@ -26,7 +26,7 @@ target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 | api_key | Optional | None | The authorization api_key interacts with the Nixtla API.<br/>If not provided, will use the NIXTLA_API_KEY environment variable. |
 | base_url | Optional | None | Custom base_url.<br/>If not provided, will use the NIXTLA_BASE_URL environment variable. |
 | timeout | Optional | 60 | Request timeout in seconds. Set this to `None` to disable it. |
-| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up.<br/>It defines how many times the client will retry the API call if it fails.<br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total. Job submissions, including `execute_step`, retry only connection failures and HTTP 429. Read timeouts and gateway errors are not retried because the server may already have accepted the job. |
+| max_retries | int | 6 | The maximum number of attempts to make when calling the API before giving up.<br/>It defines how many times the client will retry the API call if it fails.<br/>Default value is 6, indicating the client will attempt the API call up to 6 times in total. Job submissions retry only connection failures and HTTP 429. Read timeouts and gateway errors are not retried because the server may already have accepted the job. |
 | retry_interval | int | 10 | The interval in seconds between consecutive retry attempts.<br/>This is the waiting period before the client tries to call the API again after a failed attempt.<br/>Default value is 10 seconds, meaning the client waits for 10 seconds between retries. |
 | max_wait_time | int | 360 | The maximum total time in seconds that the client will spend on all retry attempts before giving up.<br/>This sets an upper limit on the cumulative waiting time for all retry attempts.<br/>If this time is exceeded, the client will stop retrying and raise an exception.<br/>Default value is 360 seconds, meaning the client will cease retrying if the total time<br/>spent on retries exceeds 360 seconds.<br/>The client throws a ReadTimeout error after 60 seconds of inactivity. If you want to<br/>catch these errors, use max_wait_time \>\> 60. |
 
@@ -723,35 +723,6 @@ Arguments are those of `NixtlaClient.explain`.
 href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
 target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
 
-## NixtlaClient.jobs.execute_step
-
-> ```text
-> NixtlaClient.jobs.execute_step (
->     func_name, params, data=None, job_timeout_seconds=None
-> )
-> ```
-
-*Run one TSMP top-level API call server-side and return a handle to it without waiting.*
-
-|  | **Type** | **Default** | **Details** |
-|---|---|---|---|
-| func_name | str |  | Name of the TSMP top-level API call to run. |
-| params | dict |  | Arguments for the call. Reference a table from `data` with `nixtla.ref(key)`. |
-| data | dict | None | Tables the call reads, keyed by the name `nixtla.ref` refers to. One step's result `data` can be passed straight in here, so calls chain without any file or byte handling. |
-| job_timeout_seconds | int | None | Maximum time in seconds the server may spend on the job. It may not exceed the limit of the deployment. Defaults to the deployment's limit. |
-| **Returns** | **Job** |  | **Handle to the submitted job. `job.wait()` returns a `StepResult`.** |
-
-Unlike the other tasks, this job's result is binary and is served from its own
-endpoint rather than inlined into the status response. `job.wait()` therefore
-polls twice — once for the status, then for the payload — so a wait can take up
-to twice `poll_timeout`.
-
-------------------------------------------------------------------------
-
-<a
-href="https://github.com/Nixtla/nixtla/blob/main/nixtla/nixtla_client.py#LNone"
-target="_blank" style={{ float: "right", fontSize: "smaller" }}>source</a>
-
 ## Job
 
 *Handle to a server-side asynchronous job.*
@@ -779,7 +750,7 @@ from the package root as `nixtla.Job`.
 | poll_interval | float | None | Seconds between two status checks, held fixed. Must be finite and non-negative. By default the client polls on an adaptive cadence instead: the first check comes after half a second and the interval doubles up to one check every 15 seconds. |
 | poll_timeout | float | 3600.0 | Maximum seconds to wait for a terminal state before raising `JobTimeoutError`. Must be finite and positive, or `None` to poll until the server reports a terminal status. |
 | cancel_on_timeout | bool | True | Whether to request cancellation when `poll_timeout` elapses, so a job you have given up on stops consuming server-side compute. Set to `False` to poll in short increments and call `wait()` again to resume. |
-| **Returns** | **Any** |  | **A DataFrame for forecast, cross-validation, anomaly-detection, simulate and explain jobs; a fine-tuned model id for finetune jobs; a `StepResult` for execute_step jobs.** |
+| **Returns** | **Any** |  | **A DataFrame for forecast, cross-validation, anomaly-detection, simulate and explain jobs; a fine-tuned model id for finetune jobs.** |
 
 Raises `JobError` if the job fails server-side, `JobCancelledError` if
 it reaches the `cancelled` state, and `JobTimeoutError` if `poll_timeout`

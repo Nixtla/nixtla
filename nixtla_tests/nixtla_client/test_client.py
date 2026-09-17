@@ -30,6 +30,7 @@ def test_custom_business_hours(
     ] == [("timegpt-2.1", "cbh")]
 
 
+@pytest.mark.smoke
 @pytest.mark.integration
 def test_integer_freq(integer_freq_series):
     nixtla_test_client = NixtlaClient()
@@ -49,6 +50,7 @@ def test_api_key_fail():
         assert "NIXTLA_API_KEY" in str(excinfo.value)
 
 
+@pytest.mark.smoke
 @pytest.mark.integration
 def test_api_key_success():
     nixtla_client = NixtlaClient()

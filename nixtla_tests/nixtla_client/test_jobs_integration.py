@@ -5,8 +5,6 @@ does not model. Payloads here are kept small and few: the server caps a team's
 in-flight jobs and refuses further submits with 429.
 """
 
-import time
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,22 +19,6 @@ pytestmark = pytest.mark.integration
 # exercises the option passes a budget, just under the cap.
 JOB_TIMEOUT = 290
 
-# The listing index is only eventually consistent: it trails submit and completion by
-# about a second, and it re-drops rows it has already served, so a job seen in one call
-# can be missing from the next. No single `list()` call is a safe assertion about one
-# job -- everything here polls and asserts against the snapshot that matched.
-LISTING_LAG_TIMEOUT = 60.0
-
-# Caps the walk: `limit` bounds rows fetched, so this is at most three requests per
-# poll even with `task=` set. Rows are newest first and the job under test is seconds
-# old, so only a handful of concurrent CI jobs can sit in front of it -- but if more
-# than 500 newer jobs ever do, raise this rather than dropping the bound.
-LISTING_SCAN_LIMIT = 500
-
-# Polling the open-only default would race: a forecast finishes before the index
-# settles, so the job would drop out before it could be observed.
-LISTING_STATUSES = ["pending", "running", "succeeded"]
-
 
 @pytest.fixture(scope="module")
 def jobs_df():
@@ -50,25 +32,6 @@ def jobs_df():
             "y": 10 + np.arange(n) * 0.5 + rng.normal(scale=0.5, size=n),
         }
     )
-
-
-def _list_until_present(client, job_id, status=LISTING_STATUSES, task=None):
-    """Poll the listing until `job_id` appears, and return that whole snapshot.
-
-    The snapshot, not the row: a job can change state between calls, so every
-    assertion has to be made against the listing that actually contained it.
-    """
-    deadline = time.monotonic() + LISTING_LAG_TIMEOUT
-    while True:
-        rows = client.jobs.list(status=status, task=task, limit=LISTING_SCAN_LIMIT)
-        if any(row.job_id == job_id for row in rows):
-            return rows
-        if time.monotonic() >= deadline:
-            raise AssertionError(
-                f"{job_id} never appeared in the listing "
-                f"(status={status}, task={task}) within {LISTING_LAG_TIMEOUT}s"
-            )
-        time.sleep(1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -133,9 +96,6 @@ def test_finetune_job_returns_a_model_id(nixtla_test_client, jobs_df):
     # The one task whose result is a bare string, not a dataframe.
     assert isinstance(model_id, str) and model_id
     model_ids_object.model_id2 = model_id  # so the teardown deletes the model
-
-    raw = nixtla_test_client.jobs.retrieve(job.job_id).wait()
-    assert raw["finetuned_model_id"] == model_id
 
 
 def test_execute_step_job_returns_tables(nixtla_test_client, jobs_df):
@@ -219,58 +179,3 @@ def test_job_timeout_seconds_over_the_server_cap_is_refused(
 
     assert excinfo.value.status_code == 422
 
-
-# ---------------------------------------------------------------------------
-# recovering a job: `list()` and `retrieve()`
-# ---------------------------------------------------------------------------
-
-
-def test_a_submitted_job_is_listed_and_filterable(nixtla_test_client, jobs_df):
-    job = nixtla_test_client.jobs.forecast(jobs_df, h=4, freq="D")
-
-    rows = _list_until_present(nixtla_test_client, job.job_id)
-
-    row = next(r for r in rows if r.job_id == job.job_id)
-    assert row.task_name == "forecast"
-    assert row.created_at
-    assert row.status in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED)
-
-    # filterable by task
-    forecasts = _list_until_present(nixtla_test_client, job.job_id, task="forecast")
-    assert {r.task_name for r in forecasts} == {"forecast"}
-
-    job.wait()
-
-    # filterable by status
-    _list_until_present(nixtla_test_client, job.job_id, status=["succeeded"])
-
-
-def test_listing_paginates_without_repeating_rows(nixtla_test_client):
-    # `limit` keeps this cheap however many jobs the team has.
-    rows = nixtla_test_client.jobs.list(
-        status=["pending", "running", "succeeded"], limit=25
-    )
-
-    ids = [r.job_id for r in rows]
-    assert len(ids) == len(set(ids))
-    assert len(ids) <= 25
-
-
-def test_retrieve_recovers_a_job_and_returns_the_raw_result(
-    nixtla_test_client, jobs_df
-):
-    job = nixtla_test_client.jobs.forecast(jobs_df, h=4, freq="D")
-    parsed = job.wait()
-
-    # Everything below goes through the id alone, as a fresh process would.
-    recovered = nixtla_test_client.jobs.retrieve(job.job_id)
-    assert recovered.task == "forecast"
-
-    result = recovered.wait()
-
-    assert recovered.status == JobStatus.SUCCEEDED
-    # The raw response, not the frame `jobs.forecast(...).wait()` builds.
-    assert isinstance(result, dict)
-    assert len(result["mean"]) == 4
-    # Same numbers, one labelled and one positional.
-    np.testing.assert_allclose(result["mean"], parsed["TimeGPT"].to_numpy())

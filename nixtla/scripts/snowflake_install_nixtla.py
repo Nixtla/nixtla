@@ -17,7 +17,6 @@ Options:
     --integration_name: External access integration name (optional, default: "nixtla_access_integration")
     --base_url: Nixtla API base URL (optional, will prompt)
         - https://api.nixtla.io (default, TimeGPT)
-        - https://tsmp.nixtla.io (TimeGPT-2, supports all models)
 """
 
 import inspect
@@ -2039,7 +2038,7 @@ def deploy_snowflake(
         integration_name: External access integration name (optional, default: nixtla_access_integration)
         base_url: Nixtla API base URL (optional, will prompt if not provided)
             - https://api.nixtla.io (default, TimeGPT)
-            - https://tsmp.nixtla.io (TimeGPT-2, supports all models)
+            Any other endpoint may be passed in full.
     """
     # Create session
     session = create_snowflake_session(connection_name)
@@ -2071,13 +2070,12 @@ def deploy_snowflake(
         # Ask for base URL if not provided
         base_url_options = {
             "1": "https://api.nixtla.io",
-            "2": "https://tsmp.nixtla.io",
         }
         print("\n[cyan]Available Nixtla API endpoints:[/cyan]")
         print("  [1] https://api.nixtla.io (default, TimeGPT)")
-        print("  [2] https://tsmp.nixtla.io (TimeGPT-2, supports all models)")
+        # Only the default is listed; any other endpoint is still accepted in full.
         _base_url_input = ask_with_defaults(
-            "Nixtla API base URL (enter 1, 2, or full URL): ",
+            "Nixtla API base URL (enter 1 or a full URL): ",
             lambda: base_url,
             lambda: "1",
         )

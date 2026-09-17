@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 
+@pytest.mark.smoke
 def test_detect_anomalies_online_univariate(nixtla_test_client, anomaly_online_df):
     df, n_series, detection_size = anomaly_online_df
     anomaly_df = nixtla_test_client.detect_anomalies_online(

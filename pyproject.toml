@@ -119,6 +119,7 @@ select = [
 markers = [
     "distributed_run: mark test as requiring distributed run, such as those depending on Ray, Spark frameworks",
     "integration: mark test as requiring a live Nixtla API",
+    "smoke: integration test cheap enough to run on every OS/Python cell, not just Linux 3.11",
     "spark_run: mark test execution related to Spark framework",
     "ray_run: mark test execution related to Ray framework",
     "snowflake: mark test as requiring Snowflake connection and API key",

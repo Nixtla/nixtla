@@ -420,7 +420,13 @@ def test_explain_warns_and_ships_nan_for_polars_missing_values(values, caplog):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize("method", ["granger", "transfer_entropy"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        pytest.param("granger", marks=pytest.mark.smoke),
+        "transfer_entropy",
+    ],
+)
 def test_explain_live_endpoint_returns_normalized_weights(nixtla_test_client, method):
     n = 160
     rng = np.random.default_rng(42)

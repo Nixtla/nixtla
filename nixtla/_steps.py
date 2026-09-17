@@ -1,15 +1,14 @@
 """Client-side codec for the `execute_step` endpoint.
 
-`execute_step` runs one TSMP top-level API call server-side. Unlike the other endpoints it does not
-exchange JSON: the request body is a zip of `<key>.parquet` members and all of its metadata rides in
-a `nixtla-metadata` header. The invariant is that the zip is data and the header is metadata, so
-there is exactly one place to look for each.
+Unlike the other endpoints it does not exchange JSON: the request body is a zip of
+`<key>.parquet` members and all of its metadata rides in a `nixtla-metadata` header. The
+invariant is that the zip is data and the header is metadata, so there is exactly one place
+to look for each.
 
-Nothing here understands TSMP semantics. Tables returned by the server carry their resource
-identity in arrow schema metadata, and this module passes that through untouched, which is what
-makes chaining one step's output into the next lossless. That is also why this endpoint needs
-pyarrow: a pandas round-trip drops schema metadata, so a chained call would silently misread
-the previous step's output as an untyped table.
+Nothing here interprets what the server does with a call. Tables returned by the server carry
+their resource identity in arrow schema metadata, and this module passes that through
+untouched. That is also why this endpoint needs pyarrow: a pandas round-trip drops schema
+metadata, so the server's output would be silently misread as an untyped table.
 """
 
 import io
@@ -284,11 +283,8 @@ class StepResult(Mapping):
     iteration and `dict(res)` all work.
 
     Attributes:
-        data (dict): Result tables keyed by name, as `pyarrow.Table`. Pass this straight back as
-            the `data` argument of the next step to chain calls without losing the tables'
-            resource identity.
-        metadata (dict): What the server reported about the call — `func_name`, the `result`
-            envelope, and a `profile` of the output when the result is a dataframe.
+        data (dict): Result tables keyed by name, as `pyarrow.Table`.
+        metadata (dict): What the server reported about the call.
     """
 
     def __init__(self, *, data: dict[str, pa.Table], metadata: dict[str, Any]):

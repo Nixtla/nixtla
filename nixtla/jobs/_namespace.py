@@ -11,8 +11,7 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from utilsforecast.compat import DataFrame, DFType
 
 from . import _transport
-from ._job import Job, JobStatus, JobSummary
-from .._http import logger
+from ._job import Job
 from .._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
@@ -34,34 +33,6 @@ from .._steps import build_request as _build_step_request
 
 if TYPE_CHECKING:
     from ..nixtla_client import NixtlaClient
-
-
-# Largest page `GET v2/async/jobs` will serve.
-_MAX_PAGE_SIZE = 200
-
-
-def _summarise(row: dict[str, Any]) -> Optional[JobSummary]:
-    """One listing row as a `JobSummary`, or `None` when the row cannot be modelled.
-
-    A status this enum does not carry -- a queued or timed-out state added
-    server-side -- must cost the caller that one row, not the whole listing.
-    `poll_job` names the job in a `JobError` instead; a listing has no single
-    job to name, so the row is dropped with a warning and the rest survive.
-    """
-    job_id = row.get("job_id")
-    try:
-        status: Optional[JobStatus] = JobStatus(row.get("status"))
-    except ValueError:
-        status = None
-    if not job_id or status is None:
-        logger.warning("Skipping a job listing row this client cannot read: %r", row)
-        return None
-    return JobSummary(
-        job_id=job_id,
-        task_name=row.get("task_name"),
-        status=status,
-        created_at=row.get("created_at"),
-    )
 
 
 class Jobs:
@@ -910,52 +881,23 @@ class Jobs:
         data: Optional[dict[str, Any]] = None,
         job_timeout_seconds: Optional[int] = None,
     ) -> Job:
-        """Submit a single TSMP step to run asynchronously.
+        """Submit a single server-side step to run asynchronously.
 
-        `execute_step` runs one TSMP top-level API call server-side. Each
-        call is independent: no state carries over from one to the next, so
-        every request is self-contained and carries its own data.
+        Access to this endpoint is granted per account. Contact Nixtla
+        support for access and for the calls it accepts.
+
         This does not block; it submits the job and immediately returns a
         `Job` handle. Call `job.wait()` to poll until it completes and get a
         `StepResult`, or `job.cancel()` to request that the server stop it.
 
-        Tables are referenced from `params` with `nixtla.ref(key)`, naming a
-        key of `data`. Because a step's output tables can be passed straight
-        back in as the next step's `data`, calls chain without any file or
-        byte handling::
-
-            from nixtla import NixtlaClient, ref
-
-            nixtla_client = NixtlaClient()
-
-            step1 = nixtla_client.jobs.execute_step(
-                "make_forecast_input",
-                {"data": ref("panel"), "freq": "D"},
-                data={"panel": df},
-            ).wait()
-
-            step2 = nixtla_client.jobs.execute_step(
-                "forecast",
-                {"resource": ref("result"), "models": ["timegpt-1"], "h": 7},
-                data=step1.data,
-            ).wait()
-
-        Chaining relies on arrow schema metadata that a pandas round-trip
-        discards, so pass `step.data` between steps rather than
-        `step.to_pandas()`.
-
-        There is no `model` argument: a step names the models it runs inside
-        `params`.
-
-        Not reachable over this transport: `optimize_model`, which requires a
-        `tune.Space` that has no JSON encoding. A pandas index is never sent
-        as data; a named one is folded into a column, anything else dropped.
+        Each call is independent: no state carries over from one to the next,
+        so every request is self-contained and carries its own data. A pandas
+        index is never sent as data; a named one is folded into a column,
+        anything else dropped.
 
         Args:
-            func_name (str): TSMP top-level API to run, e.g. `'forecast'`,
-                `'make_forecast_input'`, `'cross_validate'`, `'preprocess'`,
-                `'select_by_sql'`.
-            params (dict): Arguments for that API. Tables are referenced by
+            func_name (str): Name of the server-side call to run.
+            params (dict): Arguments for that call. Tables are referenced by
                 `ref(key)` envelopes naming a key of `data`; everything else
                 is passed through as-is and must be JSON serializable.
             data (dict, optional): Tables the params reference, as pyarrow
@@ -983,8 +925,8 @@ class Jobs:
 
         Returns:
             Job: Handle to the submitted job. `job.wait()` returns a `StepResult` with `.data`
-                (result tables as pyarrow Tables) and `.metadata` (the server's `func_name`,
-                `result` envelope and output `profile`).
+                (result tables as pyarrow Tables) and `.metadata` (what the server reported
+                about the call).
         """
         metadata, body = _build_step_request(
             func_name=func_name,
@@ -995,108 +937,3 @@ class Jobs:
         return _transport.submit_and_wrap_binary_job(
             self._client, "v2/execute_step", metadata, body, task="execute_step"
         )
-
-    def list(
-        self,
-        status: Optional[Union[str, JobStatus, list[Union[str, JobStatus]]]] = None,
-        task: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> list[JobSummary]:
-        """List your team's jobs, newest first.
-
-        Use it to recover a `job_id` whose `Job` you no longer hold, then pass it
-        to `retrieve()`.
-
-        Args:
-            status: Status, or list of statuses, to list. Defaults to the
-                server's own default of pending plus running.
-            task: Keep only jobs for this task. Filtered client-side; the endpoint
-                has no task parameter.
-            limit: Fetch at most this many rows. This bounds the walk itself, not
-                just the result: `task` is filtered client-side, so with it set
-                fewer than `limit` rows come back -- possibly none -- even when the
-                team has more matching jobs further down. Raise it to look deeper.
-                `None` fetches every page.
-
-        Returns:
-            list of JobSummary: Newest first, across pages as well as within one.
-                A row this client cannot read -- one whose status this SDK's
-                `JobStatus` does not model -- is skipped with a warning rather than
-                failing the call, so a job can be missing here and present server-side.
-
-        Note:
-            A terminal job is listed only for the orchestrator's retention window
-            (about a week), so absence here is not evidence a job never existed.
-        """
-        if limit is not None and limit <= 0:
-            raise ValueError(f"limit must be positive, got {limit!r}")
-        # `JobStatus` subclasses `str`, so this catches both bare forms; without it
-        # `status="succeeded"` iterates characters and blames 's'.
-        if isinstance(status, str):
-            status = [status]
-        statuses = [JobStatus(s).value for s in status] if status else None
-        known_tasks = sorted(_transport._JOB_ID_PREFIXES.values())
-        if task is not None and task not in known_tasks:
-            raise ValueError(f"unknown task {task!r}; expected one of {known_tasks}")
-
-        summaries: list[JobSummary] = []
-        fetched = 0
-        page_token: Optional[str] = None
-        with self._client._make_client(**self._client._client_kwargs) as client:
-            while True:
-                body = _transport.list_jobs(
-                    self._client,
-                    client,
-                    statuses=statuses,
-                    page_size=(
-                        min(limit - fetched, _MAX_PAGE_SIZE)
-                        if limit is not None
-                        else None
-                    ),
-                    page_token=page_token,
-                )
-                rows = body.get("jobs") or []
-                fetched += max(len(rows), 1)
-                for row in rows:
-                    if task is not None and row.get("task_name") != task:
-                        continue
-                    summary = _summarise(row)
-                    if summary is None:
-                        continue
-                    summaries.append(summary)
-                    if limit is not None and len(summaries) >= limit:
-                        return summaries
-                if limit is not None and fetched >= limit:
-                    return summaries
-                # A short or empty page can still have more behind it.
-                page_token = body.get("next_page_token")
-                if not page_token:
-                    return summaries
-
-    def retrieve(self, job_id: str) -> Job:
-        """A `Job` handle for work this process did not submit.
-
-        The task is read from the `job_id` prefix, so this costs no request; the
-        handle then behaves like a submitted one.
-
-        Args:
-            job_id: Identifier of the job, as `list()` reports it.
-
-        Returns:
-            Job: Handle whose `wait()` returns the server's **raw result dict**,
-                not a parsed dataframe -- the series ids and column names never
-                reach the server, so they cannot come back. Values run in sorted
-                series-id order, which is what lets a caller still holding the
-                input frame re-label them. `execute_step` is the exception: its
-                result is self-describing, so `wait()` returns a `StepResult`.
-
-        Raises:
-            ValueError: If `job_id` carries no recognised task prefix.
-        """
-        task = _transport._task_from_job_id(job_id)
-        if task is None:
-            raise ValueError(
-                f"unrecognised job_id {job_id!r}: expected an id beginning with one of "
-                f"{sorted(_transport._JOB_ID_PREFIXES)} followed by '-'"
-            )
-        return _transport.wrap_retrieved_job(self._client, job_id, task)
