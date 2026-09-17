@@ -616,6 +616,7 @@ def test_simulate_coerces_null_samples_to_float_nan():
     assert result["TimeGPT"].isna().all()
 
 
+@pytest.mark.smoke
 @pytest.mark.integration
 def test_simulate_live_endpoint_is_reproducible(nixtla_test_client):
     n = 120
