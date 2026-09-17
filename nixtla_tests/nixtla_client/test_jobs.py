@@ -15,8 +15,7 @@ from nixtla.nixtla_client import (
     Job,
     NixtlaClient,
 )
-from nixtla.jobs import _transport
-from nixtla.jobs import Jobs
+from nixtla.jobs import _transport, JobStatus, Jobs
 
 
 # ---------------------------------------------------------------------------
@@ -33,16 +32,28 @@ def test_jobs_namespace_is_bound_to_the_client_and_stable():
     assert client.jobs is client.jobs
 
 
+# `list` and `retrieve` recover a job; they are not tasks, so they sit apart.
+SUBMIT_METHODS = {
+    "forecast",
+    "cross_validation",
+    "finetune",
+    "detect_anomalies",
+    "simulate",
+    "explain",
+    "execute_step",
+}
+
+
 def test_jobs_namespace_exposes_every_task():
-    assert {m for m in vars(Jobs) if not m.startswith("_")} == {
-        "forecast",
-        "cross_validation",
-        "finetune",
-        "detect_anomalies",
-        "simulate",
-        "explain",
-        "execute_step",
+    assert {m for m in vars(Jobs) if not m.startswith("_")} == SUBMIT_METHODS | {
+        "list",
+        "retrieve",
     }
+
+
+def test_every_submit_method_returns_a_job():
+    for name in SUBMIT_METHODS:
+        assert getattr(Jobs, name).__annotations__["return"] is Job
 
 
 def test_submit_methods_are_gone_from_the_client():
@@ -2060,3 +2071,413 @@ def test_transient_poll_failures_warn_once_per_job(caplog, monkeypatch):
         if record.message.startswith("Polling attempt")
     ]
     assert levels == [logging.WARNING, logging.DEBUG]
+
+
+# ---------------------------------------------------------------------------
+# `jobs.list()` and `jobs.retrieve()`: recovering a job this process didn't submit
+# ---------------------------------------------------------------------------
+
+
+def _mock_listing(client, pages):
+    """Serve `pages` (each `(jobs, next_page_token)`) from `v2/async/jobs`.
+
+    Returns the `httpx.QueryParams` each page was asked with.
+    """
+    queries = []
+    remaining = list(pages)
+
+    def handle(request):
+        queries.append(request.url.params)
+        jobs, token = remaining.pop(0)
+        return httpx.Response(200, json={"jobs": jobs, "next_page_token": token})
+
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+    return queries
+
+
+def _row(job_id, status="running", task_name=None, created_at="2026-09-15T00:00:00Z"):
+    if task_name is None:
+        task_name = _transport._task_from_job_id(job_id)
+    return {
+        "job_id": job_id,
+        "task_name": task_name,
+        "status": status,
+        "created_at": created_at,
+    }
+
+
+def test_list_returns_summaries_in_server_order():
+    client = _client()
+    _mock_listing(client, [([_row("fc-1"), _row("cv-2", status="pending")], None)])
+
+    summaries = client.jobs.list()
+
+    assert [s.job_id for s in summaries] == ["fc-1", "cv-2"]
+    assert [s.task_name for s in summaries] == ["forecast", "cross_validation"]
+    assert [s.status for s in summaries] == [JobStatus.RUNNING, JobStatus.PENDING]
+    assert summaries[0].created_at == "2026-09-15T00:00:00Z"
+    # Frozen: a row records what the server said; it is not a handle.
+    with pytest.raises(AttributeError):
+        summaries[0].job_id = "other"
+
+
+def test_list_pages_until_the_token_is_null_not_until_a_page_looks_short():
+    # A short or empty page can still have more behind it; stopping on page
+    # length would lose `fc-3`.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([_row("fc-1")], "tok-1"),
+            ([], "tok-2"),
+            ([_row("fc-3")], None),
+        ],
+    )
+
+    assert [s.job_id for s in client.jobs.list()] == ["fc-1", "fc-3"]
+    assert [q.get("page_token") for q in queries] == [None, "tok-1", "tok-2"]
+
+
+def test_list_sends_statuses_as_repeated_params_and_defaults_to_none():
+    client = _client()
+    queries = _mock_listing(client, [([], None), ([], None)])
+
+    client.jobs.list()
+    # No filter: the server's default (pending plus running) applies.
+    assert "status" not in queries[0]
+
+    client.jobs.list(status=["succeeded", JobStatus.FAILED])
+    assert queries[1].get_list("status") == ["succeeded", "failed"]
+
+
+def test_list_limit_stops_paging_early():
+    client = _client()
+    queries = _mock_listing(client, [([_row("fc-1"), _row("fc-2")], "tok-1")])
+
+    assert [s.job_id for s in client.jobs.list(limit=1)] == ["fc-1"]
+    assert len(queries) == 1  # stopped inside page one, token never followed
+
+
+def test_list_filters_by_task_client_side():
+    client = _client()
+    queries = _mock_listing(client, [([_row("fc-1"), _row("cv-2"), _row("fc-3")], None)])
+
+    assert [s.job_id for s in client.jobs.list(task="forecast")] == ["fc-1", "fc-3"]
+    assert "task" not in queries[0]  # the endpoint has no task parameter
+
+
+@pytest.mark.parametrize(
+    "kwargs,message",
+    [
+        ({"limit": 0}, "limit must be positive"),
+        ({"task": "nonsense"}, "unknown task"),
+    ],
+)
+def test_list_rejects_bad_arguments_before_any_request(kwargs, message):
+    client = _client()
+    client._make_client = MagicMock()
+
+    with pytest.raises(ValueError, match=message):
+        client.jobs.list(**kwargs)
+
+    client._make_client.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "prefix,task",
+    [
+        ("ft", "finetune"),
+        ("fc", "forecast"),
+        ("cv", "cross_validation"),
+        ("ad", "anomaly_detection"),
+        ("sm", "simulate"),
+        ("ex", "explain"),
+        ("es", "execute_step"),
+    ],
+)
+def test_retrieve_reads_the_task_from_the_job_id_prefix(prefix, task):
+    client = _client()
+    client._make_client = MagicMock()
+
+    job = client.jobs.retrieve(f"{prefix}-abc123")
+
+    assert isinstance(job, Job)
+    assert job.task == task
+    assert job._endpoint == f"v2/{task}"
+    client._make_client.assert_not_called()  # the prefix costs no round trip
+
+
+def test_retrieve_polls_anomaly_detection_on_the_async_route():
+    # `v2/online_anomaly_detection` has no async routes; the async one is `v2/anomaly_detection`.
+    assert _client().jobs.retrieve("ad-1")._endpoint == "v2/anomaly_detection"
+
+
+@pytest.mark.parametrize("job_id", ["", "no-prefix-here", "zz-abc", "fc", "fcabc"])
+def test_retrieve_rejects_an_unrecognised_job_id(job_id):
+    with pytest.raises(ValueError, match="unrecognised job_id"):
+        _client().jobs.retrieve(job_id)
+
+
+def test_retrieve_returns_the_result_dict_unparsed():
+    result = {"mean": [1.0, 2.0], "sizes": [2], "idxs": [0, 1]}
+
+    def handle(request):
+        return httpx.Response(200, json={"status": "succeeded", "result": result})
+
+    client = _client()
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    assert client.jobs.retrieve("cv-1").wait() == result
+
+
+def test_retrieve_raises_when_a_succeeded_job_carries_no_result():
+    def handle(request):
+        return httpx.Response(200, json={"status": "succeeded", "result": None})
+
+    client = _client()
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    with pytest.raises(JobError, match="returned no result"):
+        client.jobs.retrieve("fc-1").wait()
+
+
+def test_retrieve_decodes_execute_step_from_its_own_result_endpoint():
+    # The one task whose status envelope leaves `result` null: the payload is
+    # binary and served from its own result endpoint.
+    import io
+    import zipfile
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    buf = io.BytesIO()
+    table = pa.table({"unique_id": ["a"], "y": [1.0]})
+    with zipfile.ZipFile(buf, "w") as zf:
+        inner = io.BytesIO()
+        pq.write_table(table, inner)
+        zf.writestr("out.parquet", inner.getvalue())
+    body = buf.getvalue()
+
+    def handle(request):
+        if request.url.path.endswith("/result"):
+            return httpx.Response(
+                200,
+                content=body,
+                headers={
+                    "content-type": _transport._STEP_CONTENT_TYPE,
+                    _transport._STEP_METADATA_HEADER: orjson.dumps(
+                        {"tables": {"out": "out.parquet"}}
+                    ).decode(),
+                },
+            )
+        return httpx.Response(200, json={"status": "succeeded", "result": None})
+
+    client = _client()
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    result = client.jobs.retrieve("es-1").wait()
+
+    assert result.data["out"].to_pydict() == {"unique_id": ["a"], "y": [1.0]}
+
+
+def test_retrieved_job_can_be_cancelled():
+    cancels = []
+
+    def handle(request):
+        if request.url.path.endswith("/cancel"):
+            cancels.append(request.url.path)
+            return httpx.Response(202)
+        return httpx.Response(200, json={"status": "running", "result": None})
+
+    client = _client()
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    job = client.jobs.retrieve("sm-1")
+    job.cancel()
+
+    assert cancels == ["/v2/async/jobs/sm-1/cancel"]
+    assert job.status == JobStatus.CANCELLED
+
+
+def test_list_asks_for_no_more_rows_than_the_limit():
+    client = _client()
+    queries = _mock_listing(client, [([_row("fc-1")], None)])
+
+    client.jobs.list(limit=5)
+
+    assert queries[0]["page_size"] == "5"
+
+
+def test_list_caps_page_size_even_when_filtering_by_task():
+    # The task filter runs client-side, so it must not un-bound the walk.
+    client = _client()
+    queries = _mock_listing(client, [([_row("fc-1")], None)])
+
+    client.jobs.list(task="forecast", limit=5)
+
+    assert queries[0]["page_size"] == "5"
+
+
+def test_list_limit_bounds_the_walk_when_nothing_matches_the_task():
+    # Two pages available; `limit=2` buys exactly two rows, and neither is an
+    # explain job. Page two is never asked for.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([_row("fc-1"), _row("fc-2")], "tok-1"),
+            ([_row("ex-3")], None),
+        ],
+    )
+
+    assert client.jobs.list(task="explain", limit=2) == []
+    assert len(queries) == 1
+
+
+def test_list_page_size_shrinks_to_the_unfetched_remainder():
+    # 3 fetched of 5 allowed -> the second page asks for the remaining 2.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([_row("cv-1"), _row("cv-2"), _row("cv-3")], "tok-1"),
+            ([_row("fc-4"), _row("fc-5")], "tok-2"),
+        ],
+    )
+
+    assert [s.job_id for s in client.jobs.list(task="forecast", limit=5)] == ["fc-4", "fc-5"]
+    assert [q["page_size"] for q in queries] == ["5", "2"]
+
+
+def test_list_skips_a_row_with_an_unmodelled_status_and_keeps_the_rest(caplog):
+    # A status the enum does not carry (a queued state added server-side) must
+    # not take out the caller's unrelated rows.
+    client = _client()
+    _mock_listing(
+        client,
+        [([_row("fc-1"), _row("cv-2", status="queued"), _row("fc-3")], None)],
+    )
+
+    with caplog.at_level("WARNING", logger="nixtla.nixtla_client"):
+        summaries = client.jobs.list()
+
+    assert [s.job_id for s in summaries] == ["fc-1", "fc-3"]
+    assert "cv-2" in caplog.text
+
+
+def test_list_tolerates_a_row_with_no_created_at():
+    client = _client()
+    row = _row("fc-1")
+    del row["created_at"]
+    _mock_listing(client, [([row], None)])
+
+    (summary,) = client.jobs.list()
+
+    assert summary.job_id == "fc-1"
+    assert summary.created_at is None
+
+
+def test_list_skips_a_row_with_no_job_id():
+    # Nothing to `retrieve()` with, so the row is unusable rather than partial.
+    client = _client()
+    row = _row("fc-1")
+    del row["job_id"]
+    _mock_listing(client, [([row, _row("fc-2")], None)])
+
+    assert [s.job_id for s in client.jobs.list()] == ["fc-2"]
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        ("succeeded", ["succeeded"]),
+        (JobStatus.FAILED, ["failed"]),
+        (["succeeded", JobStatus.FAILED], ["succeeded", "failed"]),
+    ],
+)
+def test_list_accepts_a_bare_status_as_well_as_a_list(status, expected):
+    # `task` takes a bare str, so `status` reads as though it does too. Iterating
+    # the characters of "succeeded" reports nothing the caller wrote.
+    client = _client()
+    queries = _mock_listing(client, [([], None)])
+
+    client.jobs.list(status=status)
+
+    assert queries[0].get_list("status") == expected
+
+
+def test_list_rejects_an_unknown_status_before_any_request():
+    client = _client()
+    client._make_client = MagicMock()
+
+    with pytest.raises(ValueError, match="not a valid JobStatus"):
+        client.jobs.list(status="nonsense")
+
+    client._make_client.assert_not_called()
+
+
+def test_list_retries_a_transient_failure_mid_walk():
+    # A 502 on page two must not discard page one: there is no resume token
+    # for the caller to restart the walk from.
+    client = _client(retry_interval=0)
+    responses = [
+        httpx.Response(200, json={"jobs": [_row("fc-1")], "next_page_token": "tok-1"}),
+        httpx.Response(502, json={"detail": "bad gateway"}),
+        httpx.Response(200, json={"jobs": [_row("fc-2")], "next_page_token": None}),
+    ]
+    calls = []
+
+    def handle(request):
+        calls.append(request.url.params)
+        return responses.pop(0)
+
+    client._make_client = lambda **kwargs: httpx.Client(
+        transport=httpx.MockTransport(handle), **kwargs
+    )
+
+    assert [s.job_id for s in client.jobs.list()] == ["fc-1", "fc-2"]
+    # Three requests for two pages: the failed one was retried, not surfaced.
+    assert len(calls) == 3
+    assert [q.get("page_token") for q in calls] == [None, "tok-1", "tok-1"]
+
+
+def test_list_names_every_known_task_when_rejecting_an_unknown_one():
+    # The message is the discovery path for the argument, so it has to be complete.
+    client = _client()
+    client._make_client = MagicMock()
+
+    with pytest.raises(ValueError) as excinfo:
+        client.jobs.list(task="nonsense")
+
+    message = str(excinfo.value)
+    assert "unknown task 'nonsense'" in message
+    for task in _transport._JOB_ID_PREFIXES.values():
+        assert task in message
+    assert not hasattr(_transport, "_TASK_ENDPOINTS")
+
+
+def test_list_charges_empty_pages_against_the_limit():
+    # The server serves empty pages with a live token. If they cost no budget,
+    # `limit` never bites and the walk runs the whole retention window.
+    client = _client()
+    queries = _mock_listing(
+        client,
+        [
+            ([], "tok-1"),
+            ([], "tok-2"),
+            ([_row("fc-3")], "tok-3"),
+        ],
+    )
+
+    assert client.jobs.list(limit=2) == []
+    assert len(queries) == 2

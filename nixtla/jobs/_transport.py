@@ -47,7 +47,6 @@ from ._job import (
 from .._steps import (
     CONTENT_TYPE as _STEP_CONTENT_TYPE,
     METADATA_HEADER as _STEP_METADATA_HEADER,
-    StepResult,
     build_result as _build_step_result,
 )
 
@@ -62,6 +61,53 @@ def _task_name(endpoint: str) -> str:
     label to put on its payload-size guidance and on the errors its job raises.
     """
     return endpoint.removeprefix("v2/").removesuffix("/async")
+
+
+# The server builds job ids as `f"{prefix}-{uuid4().hex}"`, so `retrieve()` can read
+# the task off the id without a round trip. Every task's route is `f"v2/{task}"` --
+# the inverse of `_task_name` above. Note `anomaly_detection`: the async route is
+# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` that
+# `detect_anomalies_online()` posts to.
+_JOB_ID_PREFIXES = {
+    "ft": "finetune",
+    "fc": "forecast",
+    "cv": "cross_validation",
+    "ad": "anomaly_detection",
+    "sm": "simulate",
+    "ex": "explain",
+    "es": "execute_step",
+}
+
+
+def _task_from_job_id(job_id: str) -> Optional[str]:
+    """The task a `job_id` belongs to, from its prefix, or `None` if unrecognised."""
+    prefix, sep, _ = job_id.partition("-")
+    if not sep:
+        return None
+    return _JOB_ID_PREFIXES.get(prefix)
+
+
+def list_jobs(
+    nixtla_client: "NixtlaClient",
+    client: httpx.Client,
+    statuses: Optional[list[str]] = None,
+    page_size: Optional[int] = None,
+    page_token: Optional[str] = None,
+) -> dict[str, Any]:
+    """One page of the team's jobs from `GET v2/async/jobs`.
+
+    `statuses` goes on the wire as a repeated `status` parameter.
+    """
+    params: dict[str, Any] = {}
+    if statuses:
+        params["status"] = statuses
+    if page_size is not None:
+        params["page_size"] = page_size
+    if page_token is not None:
+        params["page_token"] = page_token
+    return nixtla_client._retry_strategy(nixtla_client._get_request)(
+        client, "v2/async/jobs", params=params or None
+    )
 
 
 def _validate_job_timeout_seconds(job_timeout_seconds: Optional[int]) -> None:
@@ -494,6 +540,76 @@ def cancel_job_best_effort(client: httpx.Client, job_id: str, reason: str) -> bo
     return True
 
 
+def _wrap_job(
+    nixtla_client: "NixtlaClient",
+    job_id: str,
+    endpoint: str,
+    task: str,
+    parse_result: Callable[[Any], Any],
+) -> Job:
+    """A `Job` handle over an already-submitted `job_id`.
+
+    Shared by `retrieve()` and the two submit-then-wrap helpers: they differ only in
+    whether they submit first and in what `parse_result` does, so where the payload
+    comes from -- and how a malformed success is reported -- lives here once.
+    """
+    if task == "execute_step":
+
+        def get_result(
+            job_data: dict[str, Any],
+            poll_interval: Optional[float],
+            poll_timeout: Optional[float],
+        ) -> Any:
+            # The status response leaves `result` null for these tasks; the payload is
+            # served from the job's own result endpoint, which may not have it the
+            # instant the status says succeeded.
+            with nixtla_client._make_client(**nixtla_client._client_kwargs) as client:
+                headers, content = wait_for_job_result_bytes(
+                    nixtla_client, client, endpoint, job_id, poll_interval, poll_timeout
+                )
+            return parse_result(_build_step_result(headers, content))
+
+    else:
+
+        def get_result(
+            job_data: dict[str, Any],
+            poll_interval: Optional[float],
+            poll_timeout: Optional[float],
+        ) -> Any:
+            # A JSON result is inline in the status response, so there is nothing to
+            # wait for: the poll settings `Job` passes are accepted and ignored.
+            result = job_data.get("result")
+            if not isinstance(result, dict):
+                # A malformed success must not surface as a `TypeError` from inside
+                # `parse_result`.
+                raise JobError(
+                    job_id=job_id,
+                    task=task,
+                    status="succeeded",
+                    error="job succeeded but returned no result",
+                )
+            return parse_result(result)
+
+    return Job(
+        client=nixtla_client,
+        job_id=job_id,
+        endpoint=endpoint,
+        get_result=get_result,
+        task=task,
+    )
+
+
+def wrap_retrieved_job(nixtla_client: "NixtlaClient", job_id: str, task: str) -> Job:
+    """A `Job` for work this process did not submit, built from `job_id` alone.
+
+    The result comes back unparsed: every `parse_result` closes over request-side state
+    the server never sees. `execute_step` is the exception, its result being self-describing.
+    """
+    # Identity: every `parse_result` closes over request-side state the server never
+    # saw, so a retrieved job's result comes back exactly as the server sent it.
+    return _wrap_job(nixtla_client, job_id, f"v2/{task}", task, lambda result: result)
+
+
 def submit_and_wrap_job(
     nixtla_client: "NixtlaClient",
     endpoint: str,
@@ -507,29 +623,7 @@ def submit_and_wrap_job(
     payload = _with_job_options(payload, job_timeout_seconds)
     with nixtla_client._make_client(**nixtla_client._client_kwargs) as client:
         job_id = submit_job(nixtla_client, client, endpoint, payload)
-
-    def get_result(job_data: dict[str, Any], *_poll_settings: Any) -> Any:
-        # A JSON result is inline in the status response, so there is nothing to wait
-        # for: the poll settings `Job` passes are accepted and ignored.
-        result = job_data.get("result")
-        if not isinstance(result, dict):
-            # Same guard as `run_async_job`: a malformed success must not surface
-            # as a `TypeError` from inside `parse_result`.
-            raise JobError(
-                job_id=job_id,
-                task=task,
-                status="succeeded",
-                error="job succeeded but returned no result",
-            )
-        return parse_result(result)
-
-    return Job(
-        client=nixtla_client,
-        job_id=job_id,
-        endpoint=endpoint,
-        get_result=get_result,
-        task=task,
-    )
+    return _wrap_job(nixtla_client, job_id, endpoint, task, parse_result)
 
 
 def submit_binary_job(
@@ -667,32 +761,11 @@ def submit_and_wrap_binary_job(
     `job_options` is already folded into `metadata` by the caller, because for these tasks
     the request metadata travels in a header rather than in the body.
     """
-
-    def get_result(
-        job_data: dict[str, Any],
-        poll_interval: Optional[float],
-        poll_timeout: Optional[float],
-    ) -> StepResult:
-        # The status response leaves `result` null for these tasks; the payload is served
-        # from the job's own result endpoint, which may not have it the instant the status
-        # says succeeded.
-        with nixtla_client._make_client(**nixtla_client._client_kwargs) as client:
-            headers, content = wait_for_job_result_bytes(
-                nixtla_client, client, endpoint, job_id, poll_interval, poll_timeout
-            )
-        return _build_step_result(headers, content)
-
-    job_id: str
     with nixtla_client._make_client(**nixtla_client._client_kwargs) as client:
         job_id = _submit_retry_strategy(
             **nixtla_client._retry_settings, cancellation_event=None
         )(partial(submit_binary_job, nixtla_client))(
             client=client, endpoint=endpoint, metadata=metadata, body=body
         )
-    return Job(
-        client=nixtla_client,
-        job_id=job_id,
-        endpoint=endpoint,
-        get_result=get_result,
-        task=task,
-    )
+    # `_build_step_result` already produces the `StepResult` callers want.
+    return _wrap_job(nixtla_client, job_id, endpoint, task, lambda result: result)

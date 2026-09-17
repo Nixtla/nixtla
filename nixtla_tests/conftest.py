@@ -21,6 +21,25 @@ pytest_plugins = [
     "nixtla_tests.fixtures.ray_fixtures",
 ]
 
+# Fixtures that hand a test a client pointed at a real deployment. Tests taking
+# one of these hit the API, so they are integration tests whether or not anyone
+# remembered to say so -- and CI runs them on a single matrix cell.
+_LIVE_CLIENT_FIXTURES = frozenset({"nixtla_test_client", "custom_client"})
+
+
+def pytest_collection_modifyitems(config, items):
+    """Mark anything that takes a live-client fixture as `integration`.
+
+    Deriving the marker beats hand-applying it to ~180 tests: the fixture is
+    the thing that actually reaches the API, so a new test that takes one is
+    covered the moment it is written. Explicit `@pytest.mark.integration` still
+    works and still matters -- tests that build their own `NixtlaClient()`
+    rather than taking a fixture are invisible to this hook.
+    """
+    for item in items:
+        if _LIVE_CLIENT_FIXTURES & set(item.fixturenames):
+            item.add_marker("integration")
+
 
 # note that scope="session" will result in failed test
 @pytest.fixture(scope="module")

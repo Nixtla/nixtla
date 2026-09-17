@@ -72,11 +72,15 @@ jobs:
           SF_ROLE: ${{ secrets.SF_ROLE }}
         run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
 
-      - name: Run tests (not Linux Python 3.11)
+      # Live-API tests run on the Linux / 3.11 cell only: they cost API quota
+      # and the other five cells add no coverage of the API itself, only of the
+      # platform. Anything taking a live-client fixture is marked `integration`
+      # automatically -- see `pytest_collection_modifyitems` in the conftest.
+      - name: Run offline tests (not Linux Python 3.11)
         if: runner.os != 'Linux' || matrix.python-version != '3.11'
         env:
           NIXTLA_API_KEY: ${{ secrets.NIXTLA_DEV_API_KEY }}
           NIXTLA_BASE_URL: ${{ secrets.NIXTLA_DEV_BASE_URL }}
           NIXTLA_API_KEY_CUSTOM: ${{ secrets.NIXTLA_API_KEY_CUSTOM }}
           NIXTLA_BASE_URL_CUSTOM: ${{ secrets.NIXTLA_BASE_URL_CUSTOM }}
-        run: uv run pytest --cov=nixtla -m "not distributed_run and not snowflake" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
+        run: uv run pytest --cov=nixtla -m "not integration and not distributed_run and not snowflake" --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests

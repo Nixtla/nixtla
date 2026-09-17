@@ -9,6 +9,7 @@ from nixtla_tests.helpers.client_helper import delete_env_var
 
 from nixtla.nixtla_client import NixtlaClient, ApiError
 
+@pytest.mark.integration
 def test_custom_business_hours(
     business_hours_series, custom_business_hours
 ):
@@ -29,6 +30,7 @@ def test_custom_business_hours(
     ] == [("timegpt-2.1", "cbh")]
 
 
+@pytest.mark.integration
 def test_integer_freq(integer_freq_series):
     nixtla_test_client = NixtlaClient()
     nixtla_test_client.detect_anomalies(df=integer_freq_series, level=90, freq=1)
@@ -47,11 +49,13 @@ def test_api_key_fail():
         assert "NIXTLA_API_KEY" in str(excinfo.value)
 
 
+@pytest.mark.integration
 def test_api_key_success():
     nixtla_client = NixtlaClient()
     assert nixtla_client.validate_api_key()
 
 
+@pytest.mark.integration
 def test_custom_client_success():
     custom_client = NixtlaClient(
         base_url=os.environ["NIXTLA_BASE_URL_CUSTOM"],
@@ -64,6 +68,7 @@ def test_custom_client_success():
     assert sorted(usage.keys()) == ["minute", "month"]
 
 
+@pytest.mark.integration
 def test_forecast_with_wrong_api_key():
     with pytest.raises(Exception) as excinfo:
         NixtlaClient(api_key="transphobic").forecast(
