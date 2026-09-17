@@ -9,7 +9,6 @@ Also holds the polling cadence every task shares, since `Job.wait()` and the
 blocking methods apply the same defaults.
 """
 
-from dataclasses import dataclass
 from enum import Enum
 import math
 from numbers import Real
@@ -100,28 +99,6 @@ def _terminal_status(status: Optional[str]) -> Optional[JobStatus]:
     except ValueError:
         return None
     return parsed if parsed.is_terminal else None
-
-
-@dataclass(frozen=True)
-class JobSummary:
-    """One row of `client.jobs.list()`.
-
-    Names a job; it does not carry its result. Pass `job_id` to
-    `client.jobs.retrieve()` for a handle that can poll, wait on or cancel it.
-
-    Attributes:
-        job_id (str): Identifier, usable on `retrieve()` and `cancel()`.
-        task_name (str | None): Task the job runs; `None` if `job_id` carries no
-            recognised prefix.
-        status (JobStatus): Lifecycle state.
-        created_at (str | None): ISO-8601 timestamp of when the job was accepted;
-            `None` if the server's row omitted it.
-    """
-
-    job_id: str
-    task_name: Optional[str]
-    status: JobStatus
-    created_at: Optional[str]
 
 
 class JobError(RuntimeError):

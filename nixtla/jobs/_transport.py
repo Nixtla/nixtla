@@ -63,53 +63,6 @@ def _task_name(endpoint: str) -> str:
     return endpoint.removeprefix("v2/").removesuffix("/async")
 
 
-# The server builds job ids as `f"{prefix}-{uuid4().hex}"`, so `retrieve()` can read
-# the task off the id without a round trip. Every task's route is `f"v2/{task}"` --
-# the inverse of `_task_name` above. Note `anomaly_detection`: the async route is
-# `v2/anomaly_detection`, not the `v2/online_anomaly_detection` that
-# `detect_anomalies_online()` posts to.
-_JOB_ID_PREFIXES = {
-    "ft": "finetune",
-    "fc": "forecast",
-    "cv": "cross_validation",
-    "ad": "anomaly_detection",
-    "sm": "simulate",
-    "ex": "explain",
-    "es": "execute_step",
-}
-
-
-def _task_from_job_id(job_id: str) -> Optional[str]:
-    """The task a `job_id` belongs to, from its prefix, or `None` if unrecognised."""
-    prefix, sep, _ = job_id.partition("-")
-    if not sep:
-        return None
-    return _JOB_ID_PREFIXES.get(prefix)
-
-
-def list_jobs(
-    nixtla_client: "NixtlaClient",
-    client: httpx.Client,
-    statuses: Optional[list[str]] = None,
-    page_size: Optional[int] = None,
-    page_token: Optional[str] = None,
-) -> dict[str, Any]:
-    """One page of the team's jobs from `GET v2/async/jobs`.
-
-    `statuses` goes on the wire as a repeated `status` parameter.
-    """
-    params: dict[str, Any] = {}
-    if statuses:
-        params["status"] = statuses
-    if page_size is not None:
-        params["page_size"] = page_size
-    if page_token is not None:
-        params["page_token"] = page_token
-    return nixtla_client._retry_strategy(nixtla_client._get_request)(
-        client, "v2/async/jobs", params=params or None
-    )
-
-
 def _validate_job_timeout_seconds(job_timeout_seconds: Optional[int]) -> None:
     """Reject a job timeout the server would refuse, before spending a round-trip on it.
 
@@ -549,9 +502,9 @@ def _wrap_job(
 ) -> Job:
     """A `Job` handle over an already-submitted `job_id`.
 
-    Shared by `retrieve()` and the two submit-then-wrap helpers: they differ only in
-    whether they submit first and in what `parse_result` does, so where the payload
-    comes from -- and how a malformed success is reported -- lives here once.
+    Shared by the two submit-then-wrap helpers: they differ only in what
+    `parse_result` does, so where the payload comes from -- and how a malformed
+    success is reported -- lives here once.
     """
     if task == "execute_step":
 
@@ -597,17 +550,6 @@ def _wrap_job(
         get_result=get_result,
         task=task,
     )
-
-
-def wrap_retrieved_job(nixtla_client: "NixtlaClient", job_id: str, task: str) -> Job:
-    """A `Job` for work this process did not submit, built from `job_id` alone.
-
-    The result comes back unparsed: every `parse_result` closes over request-side state
-    the server never sees. `execute_step` is the exception, its result being self-describing.
-    """
-    # Identity: every `parse_result` closes over request-side state the server never
-    # saw, so a retrieved job's result comes back exactly as the server sent it.
-    return _wrap_job(nixtla_client, job_id, f"v2/{task}", task, lambda result: result)
 
 
 def submit_and_wrap_job(
