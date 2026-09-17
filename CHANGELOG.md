@@ -16,6 +16,8 @@
 
 - **Breaking:** `detect_anomalies_online()` takes its two new arguments mid-signature, matching the parameter order `forecast()` and `cross_validation()` use. Callers passing arguments **positionally** past `finetune_loss` must switch to keywords. Its request body now always carries `finetuned_model_id`, which was previously omitted when unset.
 - A failed partition now stops queued `num_partitions` work instead of letting the remaining requests run to completion.
+- The built wheel no longer ships a notebook. The Snowflake anomaly-detection demo moved out of the package to `nbs/docs/deployment/4_snowflake_anomaly_demo.ipynb`; because the build backend is configured with `module-root = "."`, it had been installed alongside the library by every `pip install nixtla`.
+- Two names that were never part of the public API moved out of `nixtla.nixtla_client` and are no longer importable from it: `AuditDataSeverity` is now in `nixtla._audit`, and `validate_extra_params` in `nixtla._types`. The package's own exports are unchanged.
 
 ## 0.6.6
 
