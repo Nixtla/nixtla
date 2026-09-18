@@ -2,8 +2,9 @@
 
 Every method here mirrors the blocking `NixtlaClient` method of the same name,
 but returns a `Job` handle instead of a result. Nothing here holds state of its
-own -- payload construction, HTTP and polling all stay on the client, reached
-through `self._client`.
+own: dataframe preparation comes from `_preprocessing`, submission and polling
+from `_transport`, and anything genuinely client-side is reached through
+`self._client`.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
@@ -12,6 +13,7 @@ from utilsforecast.compat import DataFrame, DFType
 
 from . import _transport
 from ._job import Job
+from .._preprocessing import _ensure_local_dataframe, _validate_simulate_args
 from .._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
@@ -24,10 +26,6 @@ from .._types import (
     _PositiveInt,
     _ThresholdMethod,
     extra_param_checker,
-)
-from ..nixtla_client import (
-    _ensure_local_dataframe,
-    _validate_simulate_args,
 )
 from .._steps import build_request as _build_step_request
 

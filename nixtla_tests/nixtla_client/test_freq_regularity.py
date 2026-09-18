@@ -9,7 +9,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from nixtla.nixtla_client import _dataframe_keys_match, _validate_freq_regularity
+from nixtla._preprocessing import _dataframe_keys_match, _validate_freq_regularity
 
 
 def _regular_df(n_series=2, n=5):

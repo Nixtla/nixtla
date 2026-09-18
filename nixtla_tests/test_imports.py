@@ -15,6 +15,7 @@ import pytest
         "import nixtla._steps",
         "import nixtla._types",
         "import nixtla._audit",
+        "import nixtla._preprocessing",
     ],
 )
 def test_imports_in_a_fresh_interpreter(stmt):
@@ -57,6 +58,33 @@ def _intra_package_imports(relative_path):
             for alias in node.names:
                 if alias.name.split(".")[0] == "nixtla":
                     found.add(alias.name)
+    return found
+
+
+def _type_checking_imports(relative_path):
+    """The `nixtla.*` modules a source file imports only under `if TYPE_CHECKING:`.
+
+    An annotation-only import is not a runtime edge, so the layering tests
+    subtract these before asserting what a module actually depends on.
+    """
+    import ast
+    import pathlib
+
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    tree = ast.parse((repo_root / relative_path).read_text())
+    found = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.If)
+            and getattr(node.test, "id", None) == "TYPE_CHECKING"
+        ):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.ImportFrom):
+                if inner.level:
+                    found.add("." * inner.level + (inner.module or ""))
+                elif (inner.module or "").split(".")[0] == "nixtla":
+                    found.add(inner.module)
     return found
 
 
@@ -194,3 +222,152 @@ def test_the_package_ships_no_notebooks():
     package_root = pathlib.Path(nixtla.__file__).parent
     notebooks = sorted(p.name for p in package_root.rglob("*.ipynb"))
     assert notebooks == [], f"notebooks inside the package: {notebooks}"
+
+
+def test_preprocessing_module_is_a_leaf_over_http_and_types():
+    """`nixtla/_preprocessing.py` is plain pandas over dataframes and dicts.
+
+    It must not import the client back: a frequency check or an exogenous-
+    feature split has no business depending on the HTTP stack, and an edge
+    from here to `nixtla_client` would recreate the cycle that
+    `nixtla/__init__.py`'s statement order is tiptoeing around.
+
+    Reuses `_intra_package_imports` -- see its docstring for why this reads
+    the source rather than `sys.modules`.
+    """
+    assert _intra_package_imports("nixtla/_preprocessing.py") == {"._http", "._types"}
+
+
+def test_preprocessing_helpers_left_the_client_module():
+    """All 42 helpers live in `_preprocessing` now.
+
+    `nixtla_client` keeps a name bound for exactly the ones it still calls --
+    no more, because ruff's F401 would reject an unused import, and no fewer,
+    because ruff's F821 would reject a call to a name that is not imported.
+    That set turned out to be 33, not the 13 originally named for this task:
+    the six payload builders (`_forecast_payload`, `_cross_validation_payload`,
+    etc.) that still live in `nixtla_client.py` -- Task 2 moves them to
+    `_payloads.py` -- reach for 20 more preprocessing helpers directly. Two
+    tests also monkeypatch or call helpers through the client module's
+    namespace (`test_start_datetime_payload`, `test_categorical_features`);
+    both of those names are in the 33. Asserting the set equality is what
+    keeps a well-meaning cleanup from quietly breaking any of this.
+    """
+    from nixtla import _preprocessing
+    from nixtla import nixtla_client
+
+    moved = [
+        "_date_features_by_freq",
+        "_coerce_positive_int",
+        "_validate_simulate_args",
+        "_maybe_infer_freq",
+        "_is_numeric_column",
+        "_features_with_missing_values",
+        "_numeric_column_array",
+        "_coerce_coupled_flag",
+        "_has_duplicate_keys",
+        "_validate_freq_regularity",
+        "_dataframe_keys_match",
+        "_standardize_freq",
+        "_array_tails",
+        "_tail",
+        "_time_col_tz",
+        "_is_constant_offset_timezone",
+        "_warn_non_constant_offset",
+        "_times_to_iso",
+        "_series_starts",
+        "_partition_series",
+        "_maybe_add_date_features",
+        "_validate_exog",
+        "_extract_categorical_exog",
+        "_validate_input_size",
+        "_ensure_local_dataframe",
+        "_prepare_level_and_quantiles",
+        "_maybe_convert_level_to_quantiles",
+        "_align_future_exog_order",
+        "_align_future_categorical_exog",
+        "_preprocess",
+        "_validate_future_exog_keys",
+        "_sort_categorical_values",
+        "_log_exog_features",
+        "_build_exog_payload",
+        "_forecast_payload_to_in_sample",
+        "_get_in_sample_horizon_and_windows",
+        "_maybe_add_intervals",
+        "_maybe_drop_id",
+        "_parse_in_sample_output",
+        "_restrict_input_samples",
+        "_extract_target_array",
+        "_process_exog_features",
+    ]
+    missing = [n for n in moved if not hasattr(_preprocessing, n)]
+    assert missing == [], missing
+
+    still_on_the_client = {
+        "_coerce_coupled_flag",
+        "_extract_categorical_exog",
+        "_forecast_payload_to_in_sample",
+        "_get_in_sample_horizon_and_windows",
+        "_maybe_drop_id",
+        "_maybe_infer_freq",
+        "_parse_in_sample_output",
+        "_partition_series",
+        "_preprocess",
+        "_series_starts",
+        "_standardize_freq",
+        "_validate_freq_regularity",
+        "_validate_simulate_args",
+        # The 20 below are not in the brief's original 13: ruff's F821 caught
+        # the six payload builders in `nixtla_client.py` (not yet extracted;
+        # that is Task 2) calling straight into these preprocessing helpers.
+        "_align_future_categorical_exog",
+        "_array_tails",
+        "_build_exog_payload",
+        "_extract_target_array",
+        "_features_with_missing_values",
+        "_is_numeric_column",
+        "_log_exog_features",
+        "_maybe_add_intervals",
+        "_maybe_convert_level_to_quantiles",
+        "_numeric_column_array",
+        "_prepare_level_and_quantiles",
+        "_process_exog_features",
+        "_restrict_input_samples",
+        "_sort_categorical_values",
+        "_tail",
+        "_time_col_tz",
+        "_times_to_iso",
+        "_validate_exog",
+        "_validate_future_exog_keys",
+        "_validate_input_size",
+    }
+    assert {n for n in moved if hasattr(nixtla_client, n)} == still_on_the_client
+
+
+def test_preprocessing_helpers_are_shared_not_copied():
+    """The client's names must be the very same objects, not a second copy.
+
+    An `is` check is what distinguishes a move from a copy-paste: two
+    identical function bodies would both pass their tests and drift apart on
+    the next edit.
+    """
+    from nixtla import _preprocessing
+    from nixtla import nixtla_client
+
+    assert nixtla_client._preprocess is _preprocessing._preprocess
+    assert nixtla_client._partition_series is _preprocessing._partition_series
+
+
+def test_jobs_namespace_no_longer_imports_the_client_module_at_runtime():
+    """`jobs/_namespace.py` used to pull `_ensure_local_dataframe` and
+    `_validate_simulate_args` out of `..nixtla_client`, which is the concrete
+    half of the package's import cycle. Both are preprocessing helpers, so the
+    extraction removes that edge.
+
+    The `..nixtla_client` import under `if TYPE_CHECKING:` stays -- it is an
+    annotation, not a runtime edge -- so it is subtracted before asserting.
+    """
+    path = "nixtla/jobs/_namespace.py"
+    runtime = _intra_package_imports(path) - _type_checking_imports(path)
+    assert "..nixtla_client" not in runtime
+    assert ".._preprocessing" in runtime
