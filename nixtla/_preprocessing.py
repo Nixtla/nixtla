@@ -1,9 +1,7 @@
 """Dataframe preparation: validation, frequency handling, exogenous features,
 partitioning and result parsing.
 
-Everything here is a plain function over dataframes and payload dicts -- no
-client, no HTTP. `nixtla_client` calls into it on the way to a request and on
-the way back from a response.
+Plain functions over dataframes and payload dicts -- no client, no HTTP.
 """
 
 import datetime

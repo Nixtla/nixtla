@@ -66,7 +66,7 @@ def _type_checking_imports(relative_path):
     """The `nixtla.*` modules a source file imports only under `if TYPE_CHECKING:`.
 
     An annotation-only import is not a runtime edge, so the layering tests
-    subtract these before asserting what a module actually depends on.
+    subtract these first.
     """
     import ast
     import pathlib
@@ -226,33 +226,14 @@ def test_the_package_ships_no_notebooks():
 
 
 def test_preprocessing_module_is_a_leaf_over_http_and_types():
-    """`nixtla/_preprocessing.py` is plain pandas over dataframes and dicts.
-
-    It must not import the client back: a frequency check or an exogenous-
-    feature split has no business depending on the HTTP stack, and an edge
-    from here to `nixtla_client` would recreate the cycle that
-    `nixtla/__init__.py`'s statement order is tiptoeing around.
-
-    Reuses `_intra_package_imports` -- see its docstring for why this reads
-    the source rather than `sys.modules`.
-    """
+    """`_preprocessing` must not import the client back, or the cycle returns."""
     assert _intra_package_imports("nixtla/_preprocessing.py") == {"._http", "._types"}
 
 
 def test_preprocessing_helpers_left_the_client_module():
-    """All 42 helpers live in `_preprocessing` now.
-
-    `nixtla_client` keeps a name bound for exactly the ones it still calls --
-    no more, because ruff's F401 would reject an unused import, and no fewer,
-    because ruff's F821 would reject a call to a name that is not imported.
-    That set is 13: the six payload builders (`_prepare_forecast`,
-    `_prepare_cross_validation`, etc.) moved to `_payloads.py` in Task 2, along
-    with the 20 preprocessing helpers they used to call directly, so only the
-    names the rest of `nixtla_client.py` still calls remain bound here. Two
-    tests also monkeypatch or call helpers through the client module's
-    namespace (`test_start_datetime_payload`, `test_categorical_features`);
-    both of those names are in the 13. Asserting the set equality is what
-    keeps a well-meaning cleanup from quietly breaking any of this.
+    """The helpers live in `_preprocessing`, and `nixtla_client` keeps a name
+    bound for exactly the ones it still calls -- F401 rejects an unused import
+    and F821 a call to an unimported name, so the set is pinned from both sides.
     """
     from nixtla import _preprocessing
     from nixtla import nixtla_client
@@ -323,12 +304,7 @@ def test_preprocessing_helpers_left_the_client_module():
 
 
 def test_preprocessing_helpers_are_shared_not_copied():
-    """The client's names must be the very same objects, not a second copy.
-
-    An `is` check is what distinguishes a move from a copy-paste: two
-    identical function bodies would both pass their tests and drift apart on
-    the next edit.
-    """
+    """The client's names must be the very same objects, not a second copy."""
     from nixtla import _preprocessing
     from nixtla import nixtla_client
 
@@ -337,13 +313,9 @@ def test_preprocessing_helpers_are_shared_not_copied():
 
 
 def test_jobs_namespace_no_longer_imports_the_client_module_at_runtime():
-    """`jobs/_namespace.py` used to pull `_ensure_local_dataframe` and
-    `_validate_simulate_args` out of `..nixtla_client`, which is the concrete
-    half of the package's import cycle. Both are preprocessing helpers, so the
-    extraction removes that edge.
-
-    The `..nixtla_client` import under `if TYPE_CHECKING:` stays -- it is an
-    annotation, not a runtime edge -- so it is subtracted before asserting.
+    """`jobs/_namespace.py` takes its preprocessing helpers from
+    `.._preprocessing`, not `..nixtla_client`, so the runtime edge that closed
+    the package's import cycle is gone.
     """
     path = "nixtla/jobs/_namespace.py"
     runtime = _intra_package_imports(path) - _type_checking_imports(path)
@@ -352,12 +324,8 @@ def test_jobs_namespace_no_longer_imports_the_client_module_at_runtime():
 
 
 def test_payloads_module_does_not_import_the_client_at_runtime():
-    """`_payloads` sits below `nixtla_client`, not beside it.
-
-    It needs the `NixtlaClient` name only for annotations, so the one edge back
-    up has to be under `if TYPE_CHECKING:`. A fresh-interpreter
-    `import nixtla._payloads` (in the parametrized test above) proves the
-    runtime graph stays acyclic; this asserts the source shape that keeps it so.
+    """`_payloads` needs the `NixtlaClient` name only for annotations, so its
+    one edge back up stays under `if TYPE_CHECKING:`.
     """
     guarded = _type_checking_imports("nixtla/_payloads.py")
     assert guarded == {".nixtla_client"}
@@ -369,13 +337,7 @@ def test_payloads_module_does_not_import_the_client_at_runtime():
 
 
 def test_prepare_methods_left_the_client_class():
-    """The six builders are free functions now, and only that.
-
-    A method left behind alongside the new function would keep passing its
-    own tests while the two diverged on the next edit -- the exact failure
-    mode `test_client_audit_methods_forward_to_the_audit_module` guards for
-    `_audit`.
-    """
+    """The six builders are free functions now, with no method left behind."""
     from nixtla import _payloads
     from nixtla.nixtla_client import NixtlaClient
 
@@ -395,12 +357,8 @@ def test_prepare_methods_left_the_client_class():
 
 
 def test_sync_and_job_paths_share_one_builder_per_task():
-    """The point of the extraction: `client.forecast()` and
-    `client.jobs.forecast()` must assemble their request body with the same
-    function, so the blocking and async paths cannot drift.
-
-    Reading the source is blunt but it is what catches a second copy -- both
-    would pass their own tests.
+    """`client.forecast()` and `client.jobs.forecast()` must assemble their
+    request body with the same function, so the two paths cannot drift.
     """
     import inspect
 
@@ -409,9 +367,17 @@ def test_sync_and_job_paths_share_one_builder_per_task():
 
     pairs = [
         ("_payloads.prepare_forecast(", NixtlaClient.forecast, Jobs.forecast),
-        ("_payloads.prepare_cross_validation(", NixtlaClient.cross_validation, Jobs.cross_validation),
+        (
+            "_payloads.prepare_cross_validation(",
+            NixtlaClient.cross_validation,
+            Jobs.cross_validation,
+        ),
         ("_payloads.prepare_finetune_payload(", NixtlaClient.finetune, Jobs.finetune),
-        ("_payloads.prepare_anomaly_detection(", NixtlaClient.detect_anomalies_online, Jobs.detect_anomalies),
+        (
+            "_payloads.prepare_anomaly_detection(",
+            NixtlaClient.detect_anomalies_online,
+            Jobs.detect_anomalies,
+        ),
         ("_payloads.prepare_simulate(", NixtlaClient.simulate, Jobs.simulate),
         ("_payloads.prepare_explain(", NixtlaClient.explain, Jobs.explain),
     ]

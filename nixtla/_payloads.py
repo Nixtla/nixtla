@@ -1,19 +1,9 @@
 """Request payload construction: DataFrame in, `(payload, parse_result)` out.
 
-One builder per task. Each validates and preprocesses the caller's frames,
-assembles the JSON body the API expects, and returns it alongside a closure
-that turns the response back into a DataFrame. Both the blocking methods on
-`NixtlaClient` and the `client.jobs` namespace go through the same builder, so
-the two paths cannot drift. Batch `detect_anomalies()` is the one exception:
-its payload is built inline in `nixtla_client.py` because it never had a
-builder to extract and will be removed in 1.0 when the method name shifts to
-online anomaly detection.
-
-Like `jobs/_transport.py`, these are free functions taking the client rather
-than methods on it. They reach into it only for the pieces that are genuinely
-client state: `_run_validations`, `_maybe_override_model`, `_get_model_params`,
-and the `weights_x` / `feature_contributions` attributes a forecast leaves
-behind.
+One builder per task, shared by the blocking `NixtlaClient` methods and the
+`client.jobs` namespace so the two paths cannot drift. Batch
+`detect_anomalies()` is the exception: its payload is still built inline in
+`nixtla_client.py`, pending its removal in 1.0.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union, get_args
