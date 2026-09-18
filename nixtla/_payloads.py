@@ -4,7 +4,10 @@ One builder per task. Each validates and preprocesses the caller's frames,
 assembles the JSON body the API expects, and returns it alongside a closure
 that turns the response back into a DataFrame. Both the blocking methods on
 `NixtlaClient` and the `client.jobs` namespace go through the same builder, so
-the two paths cannot drift.
+the two paths cannot drift. Batch `detect_anomalies()` is the one exception:
+its payload is built inline in `nixtla_client.py` because it never had a
+builder to extract and will be removed in 1.0 when the method name shifts to
+online anomaly detection.
 
 Like `jobs/_transport.py`, these are free functions taking the client rather
 than methods on it. They reach into it only for the pieces that are genuinely
