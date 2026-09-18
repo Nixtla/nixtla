@@ -57,6 +57,13 @@ nixtla_client.plot(df, fcst_df, level=[80, 90])
 
 ### Anomaly detection using TimeGPT in 3 easy steps
 
+> [!WARNING]
+> `detect_anomalies()` performs historical (batch) detection and is **removed in
+> nixtla 1.0**, where the name will refer to online anomaly detection instead.
+> There is no drop-in replacement — use `detect_anomalies_online()`, which
+> requires `h` and `detection_size`. See the [CHANGELOG](./CHANGELOG.md) for
+> details.
+
 ```python
 # Obtain an API key via https://nixtla.io/free-trial
 

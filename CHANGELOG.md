@@ -10,6 +10,16 @@
 - **`list_models()`** returns the sorted model names your API key may use, each usable as the `model` argument of `forecast()`, `cross_validation()` and the other forecasting methods. It needs the `GET /v2/models` route, which is not deployed yet; until it ships the call raises `ApiError` with status 404.
 - `detect_anomalies_online()` accepts `finetuned_model_id` and `model_parameters`, which the API already supported but the client did not expose.
 
+### Deprecated
+
+- **The anomaly-detection methods are being renamed in 1.0, and the name `detect_anomalies()` changes meaning.** Every affected entry point now emits a `FutureWarning`:
+  - `detect_anomalies()` performs historical (batch) detection today. It is **removed in 1.0**, and there is no drop-in replacement — migrate to `detect_anomalies_online()`, which requires `h` and `detection_size` and flags a trailing detection window rather than the whole history.
+  - `detect_anomalies_online()` is **renamed to `detect_anomalies()`** in 1.0. Behavior is unchanged; only the name moves.
+  - `client.jobs.detect_anomalies()` is unaffected. It already runs online detection under the 1.0 name, so no code using it needs to change.
+  - The Snowflake anomaly path follows the same move: `nixtla.snowflake.detect_anomalies()`, the `NIXTLA_DETECT_ANOMALIES` procedure and its backing UDTF switch from batch to **online** detection in 1.0. `h` and `detection_size` become required entries in `PARAMS`, and the result covers a trailing detection window instead of the whole history, so the SQL contract changes for existing callers. The warning is emitted by the client-side helper and by the installer when it deploys the UDTF — not by the UDTF itself, which runs in the warehouse where nothing would see it. A deployed UDTF is pinned to the nixtla version installed in the warehouse, so the change lands on re-deploy rather than when you upgrade locally.
+
+  Because `h` and `detection_size` are required and have no defaults, code still calling the batch method after upgrading to 1.0 raises `TypeError` rather than silently returning results for a different detection window.
+
 ### Changed
 
 - **Breaking:** `detect_anomalies_online()` takes its two new arguments mid-signature, matching the parameter order `forecast()` and `cross_validation()` use. Callers passing arguments **positionally** past `finetune_loss` must switch to keywords. Its request body now always carries `finetuned_model_id`, which was previously omitted when unset.

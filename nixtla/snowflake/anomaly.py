@@ -28,11 +28,21 @@ For a result you obtained yourself -- a SQL cell's ``dataframe_1``, say -- skip
 
 >>> nixtla_client.plot(actuals, to_anomalies_df(dataframe_1, level=99))
 
+.. note:: Changing in 1.0
+    The Snowflake anomaly path -- this module's ``detect_anomalies``, the
+    ``NIXTLA_DETECT_ANOMALIES`` procedure and its backing UDTF -- switches from
+    historical (batch) detection to online detection, matching
+    ``NixtlaClient.detect_anomalies_online()`` as of v0.9.0. It will require
+    ``h`` and ``detection_size`` in ``PARAMS``, and will return a trailing
+    window instead of flags across the whole history. Re-deploy the Snowflake
+    objects after upgrading.
+
 """
 
 from __future__ import annotations
 
 import json
+import warnings
 from typing import Any, Union
 
 import pandas as pd
@@ -178,7 +188,24 @@ def detect_anomalies(
     pandas.DataFrame
         Ready for ``nixtla_client.plot(actuals, anomalies)``.
 
+    .. note:: Changing in 1.0
+        Switches to online detection
+        (``NixtlaClient.detect_anomalies_online()`` as of v0.9.0). ``h`` and
+        ``detection_size`` become required ``params``, and the result covers a
+        trailing detection window rather than the whole history.
+
     """
+    warnings.warn(
+        "nixtla.snowflake.detect_anomalies() and the NIXTLA_DETECT_ANOMALIES "
+        "procedure currently perform historical (batch) anomaly detection. In "
+        "nixtla 1.0 they switch to online detection, matching "
+        "NixtlaClient.detect_anomalies_online() as of v0.9.0: `h` and "
+        "`detection_size` become required params, and the result covers a "
+        "trailing detection window instead of the whole history. Re-deploy the "
+        "Snowflake objects after upgrading. See the CHANGELOG for details.",
+        FutureWarning,
+        stacklevel=2,
+    )
     if isinstance(level, float) and level.is_integer():
         level = int(level)
     payload = json.dumps({"level": level, **params}).replace("'", "''")

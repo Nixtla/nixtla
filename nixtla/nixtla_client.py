@@ -3422,6 +3422,12 @@ class NixtlaClient:
     ) -> AnyDFType:
         """Detect anomalies in your time series using TimeGPT.
 
+        .. deprecated:: 0.9.0
+            Removed in 1.0, where the name ``detect_anomalies()`` will refer to
+            online anomaly detection instead. There is no drop-in replacement;
+            use :meth:`detect_anomalies_online`, which requires ``h`` and
+            ``detection_size``.
+
         Args:
             df (pandas or polars DataFrame): The DataFrame on which the
                 function will operate. Expected to contain at least the
@@ -3487,6 +3493,16 @@ class NixtlaClient:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with anomalies flagged by TimeGPT.
         """
+        warnings.warn(
+            "detect_anomalies() performs historical (batch) anomaly detection "
+            "and will be REMOVED in nixtla 1.0. In 1.0 the name detect_anomalies() "
+            "will refer to online anomaly detection (detect_anomalies_online() "
+            "as of v0.9.0). There is no drop-in replacement: migrate "
+            "to detect_anomalies_online(), which requires `h` and `detection_size`. "
+            "See the CHANGELOG for details.",
+            FutureWarning,
+            stacklevel=2,
+        )
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies(
                 df=df,
@@ -3840,6 +3856,11 @@ class NixtlaClient:
         """
         Online anomaly detection in your time series using TimeGPT.
 
+        .. deprecated:: 0.9.0
+            Renamed to ``detect_anomalies()`` in 1.0; behavior is unchanged.
+            Its async form, ``jobs.detect_anomalies()``, already uses the new
+            name.
+
         Args:
             df (pandas or polars DataFrame):
                 The DataFrame on which the function will operate. Expected
@@ -3931,6 +3952,14 @@ class NixtlaClient:
             pandas, polars, dask or spark DataFrame or ray Dataset:
                 DataFrame with anomalies flagged by TimeGPT.
         """
+        warnings.warn(
+            "detect_anomalies_online() will be renamed to detect_anomalies() in "
+            "nixtla 1.0; behavior is unchanged. Its async form, "
+            "jobs.detect_anomalies(), already uses the new name. See the CHANGELOG "
+            "for details.",
+            FutureWarning,
+            stacklevel=2,
+        )
         extra_param_checker.validate_python(model_parameters)
         if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
             return self._distributed_detect_anomalies_online(
