@@ -16,6 +16,7 @@ import pytest
         "import nixtla._types",
         "import nixtla._audit",
         "import nixtla._preprocessing",
+        "import nixtla._payloads",
     ],
 )
 def test_imports_in_a_fresh_interpreter(stmt):
@@ -244,13 +245,13 @@ def test_preprocessing_helpers_left_the_client_module():
     `nixtla_client` keeps a name bound for exactly the ones it still calls --
     no more, because ruff's F401 would reject an unused import, and no fewer,
     because ruff's F821 would reject a call to a name that is not imported.
-    That set turned out to be 33, not the 13 originally named for this task:
-    the six payload builders (`_forecast_payload`, `_cross_validation_payload`,
-    etc.) that still live in `nixtla_client.py` -- Task 2 moves them to
-    `_payloads.py` -- reach for 20 more preprocessing helpers directly. Two
+    That set is 13: the six payload builders (`_prepare_forecast`,
+    `_prepare_cross_validation`, etc.) moved to `_payloads.py` in Task 2, along
+    with the 20 preprocessing helpers they used to call directly, so only the
+    names the rest of `nixtla_client.py` still calls remain bound here. Two
     tests also monkeypatch or call helpers through the client module's
     namespace (`test_start_datetime_payload`, `test_categorical_features`);
-    both of those names are in the 33. Asserting the set equality is what
+    both of those names are in the 13. Asserting the set equality is what
     keeps a well-meaning cleanup from quietly breaking any of this.
     """
     from nixtla import _preprocessing
@@ -317,29 +318,6 @@ def test_preprocessing_helpers_left_the_client_module():
         "_standardize_freq",
         "_validate_freq_regularity",
         "_validate_simulate_args",
-        # The 20 below are not in the brief's original 13: ruff's F821 caught
-        # the six payload builders in `nixtla_client.py` (not yet extracted;
-        # that is Task 2) calling straight into these preprocessing helpers.
-        "_align_future_categorical_exog",
-        "_array_tails",
-        "_build_exog_payload",
-        "_extract_target_array",
-        "_features_with_missing_values",
-        "_is_numeric_column",
-        "_log_exog_features",
-        "_maybe_add_intervals",
-        "_maybe_convert_level_to_quantiles",
-        "_numeric_column_array",
-        "_prepare_level_and_quantiles",
-        "_process_exog_features",
-        "_restrict_input_samples",
-        "_sort_categorical_values",
-        "_tail",
-        "_time_col_tz",
-        "_times_to_iso",
-        "_validate_exog",
-        "_validate_future_exog_keys",
-        "_validate_input_size",
     }
     assert {n for n in moved if hasattr(nixtla_client, n)} == still_on_the_client
 
@@ -371,3 +349,72 @@ def test_jobs_namespace_no_longer_imports_the_client_module_at_runtime():
     runtime = _intra_package_imports(path) - _type_checking_imports(path)
     assert "..nixtla_client" not in runtime
     assert ".._preprocessing" in runtime
+
+
+def test_payloads_module_does_not_import_the_client_at_runtime():
+    """`_payloads` sits below `nixtla_client`, not beside it.
+
+    It needs the `NixtlaClient` name only for annotations, so the one edge back
+    up has to be under `if TYPE_CHECKING:`. A fresh-interpreter
+    `import nixtla._payloads` (in the parametrized test above) proves the
+    runtime graph stays acyclic; this asserts the source shape that keeps it so.
+    """
+    guarded = _type_checking_imports("nixtla/_payloads.py")
+    assert guarded == {".nixtla_client"}
+    assert _intra_package_imports("nixtla/_payloads.py") - guarded == {
+        "._http",
+        "._preprocessing",
+        "._types",
+    }
+
+
+def test_prepare_methods_left_the_client_class():
+    """The six builders are free functions now, and only that.
+
+    A method left behind alongside the new function would keep passing its
+    own tests while the two diverged on the next edit -- the exact failure
+    mode `test_client_audit_methods_forward_to_the_audit_module` guards for
+    `_audit`.
+    """
+    from nixtla import _payloads
+    from nixtla.nixtla_client import NixtlaClient
+
+    builders = [
+        "prepare_forecast",
+        "prepare_cross_validation",
+        "prepare_anomaly_detection",
+        "prepare_simulate",
+        "prepare_explain",
+        "prepare_finetune_payload",
+    ]
+    missing = [n for n in builders if not hasattr(_payloads, n)]
+    assert missing == [], missing
+
+    left_behind = [n for n in builders if hasattr(NixtlaClient, "_" + n)]
+    assert left_behind == [], left_behind
+
+
+def test_sync_and_job_paths_share_one_builder_per_task():
+    """The point of the extraction: `client.forecast()` and
+    `client.jobs.forecast()` must assemble their request body with the same
+    function, so the blocking and async paths cannot drift.
+
+    Reading the source is blunt but it is what catches a second copy -- both
+    would pass their own tests.
+    """
+    import inspect
+
+    from nixtla.jobs._namespace import Jobs
+    from nixtla.nixtla_client import NixtlaClient
+
+    pairs = [
+        ("_payloads.prepare_forecast(", NixtlaClient.forecast, Jobs.forecast),
+        ("_payloads.prepare_cross_validation(", NixtlaClient.cross_validation, Jobs.cross_validation),
+        ("_payloads.prepare_finetune_payload(", NixtlaClient.finetune, Jobs.finetune),
+        ("_payloads.prepare_anomaly_detection(", NixtlaClient.detect_anomalies_online, Jobs.detect_anomalies),
+        ("_payloads.prepare_simulate(", NixtlaClient.simulate, Jobs.simulate),
+        ("_payloads.prepare_explain(", NixtlaClient.explain, Jobs.explain),
+    ]
+    for call, sync_method, job_method in pairs:
+        assert call in inspect.getsource(sync_method), (call, sync_method.__name__)
+        assert call in inspect.getsource(job_method), (call, job_method.__name__)
