@@ -15,6 +15,8 @@ import pytest
         "import nixtla._steps",
         "import nixtla._types",
         "import nixtla._audit",
+        "import nixtla._preprocessing",
+        "import nixtla._payloads",
     ],
 )
 def test_imports_in_a_fresh_interpreter(stmt):
@@ -57,6 +59,33 @@ def _intra_package_imports(relative_path):
             for alias in node.names:
                 if alias.name.split(".")[0] == "nixtla":
                     found.add(alias.name)
+    return found
+
+
+def _type_checking_imports(relative_path):
+    """The `nixtla.*` modules a source file imports only under `if TYPE_CHECKING:`.
+
+    An annotation-only import is not a runtime edge, so the layering tests
+    subtract these first.
+    """
+    import ast
+    import pathlib
+
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    tree = ast.parse((repo_root / relative_path).read_text())
+    found = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.If)
+            and getattr(node.test, "id", None) == "TYPE_CHECKING"
+        ):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.ImportFrom):
+                if inner.level:
+                    found.add("." * inner.level + (inner.module or ""))
+                elif (inner.module or "").split(".")[0] == "nixtla":
+                    found.add(inner.module)
     return found
 
 
@@ -194,3 +223,164 @@ def test_the_package_ships_no_notebooks():
     package_root = pathlib.Path(nixtla.__file__).parent
     notebooks = sorted(p.name for p in package_root.rglob("*.ipynb"))
     assert notebooks == [], f"notebooks inside the package: {notebooks}"
+
+
+def test_preprocessing_module_is_a_leaf_over_http_and_types():
+    """`_preprocessing` must not import the client back, or the cycle returns."""
+    assert _intra_package_imports("nixtla/_preprocessing.py") == {"._http", "._types"}
+
+
+def test_preprocessing_helpers_left_the_client_module():
+    """The helpers live in `_preprocessing`, and `nixtla_client` keeps a name
+    bound for exactly the ones it still calls -- F401 rejects an unused import
+    and F821 a call to an unimported name, so the set is pinned from both sides.
+    """
+    from nixtla import _preprocessing
+    from nixtla import nixtla_client
+
+    moved = [
+        "_date_features_by_freq",
+        "_coerce_positive_int",
+        "_validate_simulate_args",
+        "_maybe_infer_freq",
+        "_is_numeric_column",
+        "_features_with_missing_values",
+        "_numeric_column_array",
+        "_coerce_coupled_flag",
+        "_has_duplicate_keys",
+        "_validate_freq_regularity",
+        "_dataframe_keys_match",
+        "_standardize_freq",
+        "_array_tails",
+        "_tail",
+        "_time_col_tz",
+        "_is_constant_offset_timezone",
+        "_warn_non_constant_offset",
+        "_times_to_iso",
+        "_series_starts",
+        "_partition_series",
+        "_maybe_add_date_features",
+        "_validate_exog",
+        "_extract_categorical_exog",
+        "_validate_input_size",
+        "_ensure_local_dataframe",
+        "_prepare_level_and_quantiles",
+        "_maybe_convert_level_to_quantiles",
+        "_align_future_exog_order",
+        "_align_future_categorical_exog",
+        "_preprocess",
+        "_validate_future_exog_keys",
+        "_sort_categorical_values",
+        "_log_exog_features",
+        "_build_exog_payload",
+        "_forecast_payload_to_in_sample",
+        "_get_in_sample_horizon_and_windows",
+        "_maybe_add_intervals",
+        "_maybe_drop_id",
+        "_parse_in_sample_output",
+        "_restrict_input_samples",
+        "_extract_target_array",
+        "_process_exog_features",
+    ]
+    missing = [n for n in moved if not hasattr(_preprocessing, n)]
+    assert missing == [], missing
+
+    still_on_the_client = {
+        "_coerce_coupled_flag",
+        "_extract_categorical_exog",
+        "_forecast_payload_to_in_sample",
+        "_get_in_sample_horizon_and_windows",
+        "_maybe_drop_id",
+        "_maybe_infer_freq",
+        "_parse_in_sample_output",
+        "_partition_series",
+        "_preprocess",
+        "_series_starts",
+        "_standardize_freq",
+        "_validate_freq_regularity",
+        "_validate_simulate_args",
+    }
+    assert {n for n in moved if hasattr(nixtla_client, n)} == still_on_the_client
+
+
+def test_preprocessing_helpers_are_shared_not_copied():
+    """The client's names must be the very same objects, not a second copy."""
+    from nixtla import _preprocessing
+    from nixtla import nixtla_client
+
+    assert nixtla_client._preprocess is _preprocessing._preprocess
+    assert nixtla_client._partition_series is _preprocessing._partition_series
+
+
+def test_jobs_namespace_no_longer_imports_the_client_module_at_runtime():
+    """`jobs/_namespace.py` takes its preprocessing helpers from
+    `.._preprocessing`, not `..nixtla_client`, so the runtime edge that closed
+    the package's import cycle is gone.
+    """
+    path = "nixtla/jobs/_namespace.py"
+    runtime = _intra_package_imports(path) - _type_checking_imports(path)
+    assert "..nixtla_client" not in runtime
+    assert ".._preprocessing" in runtime
+
+
+def test_payloads_module_does_not_import_the_client_at_runtime():
+    """`_payloads` needs the `NixtlaClient` name only for annotations, so its
+    one edge back up stays under `if TYPE_CHECKING:`.
+    """
+    guarded = _type_checking_imports("nixtla/_payloads.py")
+    assert guarded == {".nixtla_client"}
+    assert _intra_package_imports("nixtla/_payloads.py") - guarded == {
+        "._http",
+        "._preprocessing",
+        "._types",
+    }
+
+
+def test_prepare_methods_left_the_client_class():
+    """The six builders are free functions now, with no method left behind."""
+    from nixtla import _payloads
+    from nixtla.nixtla_client import NixtlaClient
+
+    builders = [
+        "prepare_forecast",
+        "prepare_cross_validation",
+        "prepare_anomaly_detection",
+        "prepare_simulate",
+        "prepare_explain",
+        "prepare_finetune_payload",
+    ]
+    missing = [n for n in builders if not hasattr(_payloads, n)]
+    assert missing == [], missing
+
+    left_behind = [n for n in builders if hasattr(NixtlaClient, "_" + n)]
+    assert left_behind == [], left_behind
+
+
+def test_sync_and_job_paths_share_one_builder_per_task():
+    """`client.forecast()` and `client.jobs.forecast()` must assemble their
+    request body with the same function, so the two paths cannot drift.
+    """
+    import inspect
+
+    from nixtla.jobs._namespace import Jobs
+    from nixtla.nixtla_client import NixtlaClient
+
+    pairs = [
+        ("_payloads.prepare_forecast(", NixtlaClient.forecast, Jobs.forecast),
+        (
+            "_payloads.prepare_cross_validation(",
+            NixtlaClient.cross_validation,
+            Jobs.cross_validation,
+        ),
+        ("_payloads.prepare_finetune_payload(", NixtlaClient.finetune, Jobs.finetune),
+        (
+            "_payloads.prepare_anomaly_detection(",
+            NixtlaClient.detect_anomalies_online,
+            Jobs.detect_anomalies,
+        ),
+        ("_payloads.prepare_simulate(", NixtlaClient.simulate, Jobs.simulate),
+        ("_payloads.prepare_explain(", NixtlaClient.explain, Jobs.explain),
+    ]
+    for call, sync_method, job_method in pairs:
+        assert call in inspect.getsource(sync_method), (call, sync_method.__name__)
+        assert call in inspect.getsource(job_method), (call, job_method.__name__)
