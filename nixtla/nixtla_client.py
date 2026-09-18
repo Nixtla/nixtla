@@ -3496,8 +3496,8 @@ class NixtlaClient:
         warnings.warn(
             "detect_anomalies() performs historical (batch) anomaly detection "
             "and will be REMOVED in nixtla 1.0. In 1.0 the name detect_anomalies() "
-            "will refer to online anomaly detection (today's "
-            "detect_anomalies_online()). There is no drop-in replacement: migrate "
+            "will refer to online anomaly detection (detect_anomalies_online() "
+            "as of v0.9.0). There is no drop-in replacement: migrate "
             "to detect_anomalies_online(), which requires `h` and `detection_size`. "
             "See the CHANGELOG for details.",
             FutureWarning,

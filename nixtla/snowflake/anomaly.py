@@ -32,8 +32,8 @@ For a result you obtained yourself -- a SQL cell's ``dataframe_1``, say -- skip
     The Snowflake anomaly path -- this module's ``detect_anomalies``, the
     ``NIXTLA_DETECT_ANOMALIES`` procedure and its backing UDTF -- switches from
     historical (batch) detection to online detection, matching
-    ``NixtlaClient.detect_anomalies_online()``. It will require ``h`` and
-    ``detection_size`` in ``PARAMS``, and will return a trailing detection
+    ``NixtlaClient.detect_anomalies_online()`` as of v0.9.0. It will require
+    ``h`` and ``detection_size`` in ``PARAMS``, and will return a trailing
     window instead of flags across the whole history. Re-deploy the Snowflake
     objects after upgrading.
 
@@ -189,8 +189,8 @@ def detect_anomalies(
         Ready for ``nixtla_client.plot(actuals, anomalies)``.
 
     .. note:: Changing in 1.0
-        Switches to online detection (today's
-        ``NixtlaClient.detect_anomalies_online()``). ``h`` and
+        Switches to online detection
+        (``NixtlaClient.detect_anomalies_online()`` as of v0.9.0). ``h`` and
         ``detection_size`` become required ``params``, and the result covers a
         trailing detection window rather than the whole history.
 
@@ -199,10 +199,10 @@ def detect_anomalies(
         "nixtla.snowflake.detect_anomalies() and the NIXTLA_DETECT_ANOMALIES "
         "procedure currently perform historical (batch) anomaly detection. In "
         "nixtla 1.0 they switch to online detection, matching "
-        "NixtlaClient.detect_anomalies_online(): `h` and `detection_size` "
-        "become required params, and the result covers a trailing detection "
-        "window instead of the whole history. Re-deploy the Snowflake objects "
-        "after upgrading. See the CHANGELOG for details.",
+        "NixtlaClient.detect_anomalies_online() as of v0.9.0: `h` and "
+        "`detection_size` become required params, and the result covers a "
+        "trailing detection window instead of the whole history. Re-deploy the "
+        "Snowflake objects after upgrading. See the CHANGELOG for details.",
         FutureWarning,
         stacklevel=2,
     )
