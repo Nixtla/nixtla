@@ -147,6 +147,10 @@
         ]
       },
       {
+        "group": "ASYNCHRONOUS JOBS",
+        "pages": ["/jobs/asynchronous_jobs"]
+      },
+      {
         "group": "USE CASES",
         "pages": [
           "/use_cases/forecasting_web_traffic",
