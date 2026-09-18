@@ -42,6 +42,16 @@
   zero for a group that produced a lambda, NaN for an empty or all-NaN group,
   whose whole row the driver fills.
 
+### Performance
+
+- Rolling min and max, with their seasonal, update and expanding variants, use
+  a block scan (van Herk / Gil-Werman) instead of a monotonic deque. The deque
+  popped entries in a loop whose exit depended on the data, which mispredicted
+  about once per element; the scan does three compare-selects per element with
+  no such branch. About 3x faster on random data, 2.6 to 3.9 ns per element
+  instead of 9.5 on a Neoverse N1, and the same on monotonic data. Results are
+  unchanged.
+
 ### Build
 
 - The Eigen submodule is gone; the handful of reductions it backed are plain

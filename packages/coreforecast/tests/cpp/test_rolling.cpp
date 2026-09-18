@@ -106,6 +106,37 @@ TEST_CASE_TEMPLATE("min and max without skipna are NaN from the first NaN on",
   CheckClose(out, want_max);
 }
 
+// The min/max kernel scans the data in window-sized blocks, so these shapes
+// hit its seams: n below, equal to and not a multiple of w, w of 1, a NaN run
+// longer than the window and -inf, which is also the scan's identity.
+TEST_CASE_TEMPLATE("min and max match the reference across block boundaries", T,
+                   float, double) {
+  for (bool skipna : {false, true}) {
+    for (int n : {1, 2, 3, 7, 8, 9, 31}) {
+      auto data = Random<T>(n);
+      for (int i = 3; i < n; i += 5) {
+        data[i] = -std::numeric_limits<T>::infinity();
+      }
+      if (skipna && n > 20) {
+        data = WithNaN(data, {10, 11, 12, 13, 14, 15, 16, 17, 18, 19});
+      }
+      for (int w : {1, 2, 3, 7, 8, 30}) {
+        for (int ms : {1, w}) {
+          CAPTURE(skipna);
+          CAPTURE(n);
+          CAPTURE(w);
+          CAPTURE(ms);
+          std::vector<T> out(n);
+          rolling::MinTransform(In(data), Out(out), Window{w, ms, skipna});
+          CheckClose(out, RefRolling(data, w, ms, skipna, false, Min<T>));
+          rolling::MaxTransform(In(data), Out(out), Window{w, ms, skipna});
+          CheckClose(out, RefRolling(data, w, ms, skipna, false, Max<T>));
+        }
+      }
+    }
+  }
+}
+
 TEST_CASE_TEMPLATE("update equals the last element of transform", T, float,
                    double) {
   const int n = 17;
@@ -204,7 +235,8 @@ TEST_CASE_TEMPLATE("expanding transforms are cumulative statistics", T, float,
     CHECK(agg[0] == static_cast<T>(Valid(data, 0, n, skipna).size()));
     // the single-array entry points pass no agg; the result is the same
     std::vector<T> without_agg(n);
-    expanding::MeanTransform(In(data), Out(without_agg), std::span<T>{}, skipna);
+    expanding::MeanTransform(In(data), Out(without_agg), std::span<T>{},
+                             skipna);
     CheckClose(without_agg, out);
 
     expanding::StdTransform(In(data), Out(out), Out(agg), skipna);

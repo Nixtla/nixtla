@@ -5,8 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <functional>
-#include <memory>
+#include <limits>
 #include <span>
 #include <type_traits>
 #include <variant>
@@ -214,150 +213,118 @@ inline void StdTransform(std::span<const T> data, std::span<T> out,
   StdTransformWithStats(data, out, std::span<T>{}, w);
 }
 
-// ============================================================================
-// CompAccumulator - PARTIALLY OPTIMIZED for SkipNA=false
-// ============================================================================
-// Cannot fully remove isnan checks because NaN breaks comparison semantics
-// (NaN < x and NaN > x are both false), which corrupts the monotonic deque.
-// Optimization: Short-circuit all deque operations once has_nan_ is true.
-// ============================================================================
-template <typename T, typename Comp, bool SkipNA> class CompAccumulator {
-public:
-  // std::pair's default constructor value-initializes, which would zero the
-  // whole ring buffer on every allocation; this aggregate's one is trivial
-  struct Entry {
-    index_t index;
-    T value;
-  };
-
-  CompAccumulator(index_t window_size)
-      : buffer_(std::make_unique_for_overwrite<Entry[]>(
-            static_cast<size_t>(window_size))),
-        window_size_(window_size) {}
-  inline bool Empty() const noexcept { return tail_ == -1; }
-  inline void PushBack(index_t i, T x) noexcept {
-    if (tail_ == -1) {
-      head_ = 0;
-      tail_ = 0;
-    } else if (tail_ == window_size_ - 1) {
-      tail_ = 0;
-    } else {
-      ++tail_;
-    }
-    buffer_[tail_] = {i, x};
-  }
-  inline void PopBack() noexcept {
-    if (head_ == tail_) {
-      head_ = 0;
-      tail_ = -1;
-    } else if (tail_ == 0) {
-      tail_ = window_size_ - 1;
-    } else {
-      --tail_;
-    }
-  }
-  inline void PopFront() noexcept {
-    if (head_ == tail_) {
-      head_ = 0;
-      tail_ = -1;
-    } else if (head_ == window_size_ - 1) {
-      head_ = 0;
-    } else {
-      ++head_;
-    }
-  }
-  inline const Entry &Front() const noexcept { return buffer_[head_]; }
-  inline const Entry &Back() const noexcept { return buffer_[tail_]; }
-
-  void Insert(T x) noexcept {
-    if constexpr (!SkipNA) {
-      // Short-circuit: once NaN seen, skip all deque maintenance
-      if (has_nan_) {
-        ++i_;
-        return;
-      }
-      if (std::isnan(x)) {
-        has_nan_ = true;
-        ++i_;
-        return;
-      }
-    }
-
-    if constexpr (SkipNA) {
-      if (std::isnan(x)) {
-        // the front can expire on this step even though nothing is inserted;
-        // skipping the check leaves an out-of-window entry to be returned
-        if (!Empty() && Front().index <= i_) {
-          PopFront();
-        }
-        ++i_;
-        return;
-      }
-    }
-
-    // Valid value: maintain monotonic deque
-    while (!Empty() && comp_(Back().value, x)) {
-      PopBack();
-    }
-    if (!Empty() && Front().index <= i_) {
-      PopFront();
-    }
-    PushBack(window_size_ + i_, x);
-    ++i_;
-  }
-
-  void Update(T x) noexcept { Insert(x); }
-
-  T Update(T x, index_t) noexcept {
-    Insert(x);
-    if constexpr (!SkipNA) {
-      if (has_nan_)
-        return kNaN<T>;
-    }
-    if (Empty())
-      return kNaN<T>;
-    return Front().value;
-  }
-
-  T Update(T new_x, T) noexcept {
-    Insert(new_x);
-    if constexpr (!SkipNA) {
-      if (has_nan_)
-        return kNaN<T>;
-    }
-    if (Empty())
-      return kNaN<T>;
-    return Front().value;
-  }
-
-private:
-  std::unique_ptr<Entry[]> buffer_;
-  index_t window_size_;
-  index_t head_ = 0;
-  index_t tail_ = -1;
-  index_t i_ = 0;
-  [[no_unique_address]] std::conditional_t<SkipNA, std::monostate, bool>
-      has_nan_{};
-  Comp comp_ = Comp();
+// Rolling min and max are one van Herk / Gil-Werman block scan: each output
+// joins the suffix scan of the previous block with the prefix scan of the
+// current one, three compare-selects per element and no data-dependent
+// branch. The op must stay the plain `a < b ? b : a` (one maxsd on x86-64,
+// fcsel on aarch64): std::fmax is a libm call on x86-64 GCC and an isnan()
+// select becomes a branch. NaN handling therefore lives outside the op. With
+// skipna a NaN turns into the identity before the op and a rolling NaN count
+// makes a window without a valid value NaN, which the identity alone can't
+// since -inf is a legitimate value. Without skipna the caller passes NaN-free
+// data.
+template <typename T> struct MaxOp {
+  static constexpr T id = -std::numeric_limits<T>::infinity();
+  T operator()(T a, T b) const noexcept { return a < b ? b : a; }
 };
 
-template <typename T>
-void MinTransform(std::span<const T> data, std::span<T> out, const Window &w) {
-  if (w.skipna) {
-    Transform<T, CompAccumulator<T, std::greater_equal<T>, true>>(data, out, w);
-  } else {
-    Transform<T, CompAccumulator<T, std::greater_equal<T>, false>>(data, out,
-                                                                   w);
+template <typename T> struct MinOp {
+  static constexpr T id = std::numeric_limits<T>::infinity();
+  T operator()(T a, T b) const noexcept { return b < a ? b : a; }
+};
+
+template <typename T, typename Op, bool SkipNA>
+inline void BlockScan(std::span<const T> data, std::span<T> out, index_t w,
+                      index_t min_samples) {
+  const Op op;
+  const index_t n = std::ssize(data);
+  auto clean = [](T x) -> T {
+    if constexpr (SkipNA)
+      return std::isnan(x) ? Op::id : x;
+    else
+      return x;
+  };
+  auto is_nan = [](T x) -> index_t {
+    if constexpr (SkipNA)
+      return std::isnan(x);
+    else
+      return 0;
+  };
+  index_t nans = 0;
+  T run = Op::id;
+  const index_t head = std::min(w, n);
+  for (index_t i = 0; i < head; ++i) {
+    run = op(run, clean(data[i]));
+    nans += is_nan(data[i]);
+    out[i] = (i + 1 < min_samples || nans == i + 1) ? kNaN<T> : run;
+  }
+  if (n <= w)
+    return;
+  // slot w holds the identity so the window that is exactly one block needs
+  // no special case
+  std::vector<T> prev(w + 1, Op::id), cur(w + 1, Op::id);
+  auto suffix = [&](std::vector<T> &buf, index_t start) {
+    buf[w - 1] = clean(data[start + w - 1]);
+    for (index_t j = w - 2; j >= 0; --j)
+      buf[j] = op(clean(data[start + j]), buf[j + 1]);
+  };
+  suffix(prev, 0);
+  for (index_t b = w; b < n; b += w) {
+    const index_t len = std::min(w, n - b);
+    run = Op::id;
+    for (index_t o = 0; o < len; ++o) {
+      const index_t i = b + o;
+      run = op(run, clean(data[i]));
+      nans += is_nan(data[i]) - is_nan(data[i - w]);
+      out[i] = nans == w ? kNaN<T> : op(prev[o + 1], run);
+    }
+    if (b + len < n) {
+      suffix(cur, b);
+      std::swap(prev, cur);
+    }
   }
 }
 
-template <typename T>
-void MaxTransform(std::span<const T> data, std::span<T> out, const Window &w) {
-  if (w.skipna) {
-    Transform<T, CompAccumulator<T, std::less_equal<T>, true>>(data, out, w);
-  } else {
-    Transform<T, CompAccumulator<T, std::less_equal<T>, false>>(data, out, w);
+template <typename T, typename Op>
+inline void CompTransform(std::span<const T> data, std::span<T> out,
+                          const Window &w) {
+  assert(w.window_size > 0 && w.min_samples > 0);
+  const index_t n = std::ssize(data);
+  if (n < w.min_samples) {
+    FillNaN(out);
+    return;
   }
+  if (w.skipna) {
+    const index_t window_size = std::min(w.window_size, n);
+    BlockScan<T, Op, true>(data, out, window_size,
+                           std::min(w.min_samples, window_size));
+    return;
+  }
+  // a NaN poisons its own output and every later one, so the kernel only
+  // sees the clean prefix; this branch fires once
+  index_t k = 0;
+  while (k < n && !std::isnan(data[k]))
+    ++k;
+  if (k < w.min_samples) {
+    FillNaN(out);
+    return;
+  }
+  const index_t window_size = std::min(w.window_size, k);
+  BlockScan<T, Op, false>(data.first(k), out.first(k), window_size,
+                          std::min(w.min_samples, window_size));
+  FillNaN(out.subspan(k));
+}
+
+template <typename T>
+inline void MinTransform(std::span<const T> data, std::span<T> out,
+                         const Window &w) {
+  CompTransform<T, MinOp<T>>(data, out, w);
+}
+
+template <typename T>
+inline void MaxTransform(std::span<const T> data, std::span<T> out,
+                         const Window &w) {
+  CompTransform<T, MaxOp<T>>(data, out, w);
 }
 
 // ============================================================================

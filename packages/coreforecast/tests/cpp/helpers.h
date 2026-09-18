@@ -95,6 +95,8 @@ void CheckClose(const std::vector<T> &got, const std::vector<T> &want) {
     INFO("index ", i);
     if (std::isnan(want[i])) {
       CHECK(std::isnan(got[i]));
+    } else if (std::isinf(want[i])) {
+      CHECK(got[i] == want[i]);
     } else {
       CHECK(got[i] == doctest::Approx(want[i]).epsilon(eps));
     }

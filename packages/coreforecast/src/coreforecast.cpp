@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <exception>
 #include <limits>
+#include <memory>
 #include <span>
 #include <stdexcept>
 #include <string>
