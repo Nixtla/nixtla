@@ -1,0 +1,309 @@
+---
+title: "Asynchronous Jobs"
+description: "Submit long-running TimeGPT work to the server and collect the result later with a Job handle, instead of blocking your program while it runs."
+icon: "hourglass"
+---
+
+## What Is an Asynchronous Job?
+
+Every long-running TimeGPT task can be started without waiting for it to finish.
+`NixtlaClient.forecast()` blocks until the forecast comes back; its
+counterpart `NixtlaClient.jobs.forecast()` sends the same request and returns a
+`Job` handle as soon as the server has accepted the work.
+
+The handle is how you check on the job later: read `job.status` to see where it
+is, call `job.wait()` to block until it finishes and get the result, or
+`job.cancel()` to ask the server to stop.
+
+Each `jobs` method takes the same arguments as the blocking method it mirrors,
+so moving a call across is usually a one-word change.
+
+## Why Use Asynchronous Jobs
+
+- **Keep working while the server does.** Submit the job, run other code, and
+  collect the result when you need it.
+- **Outlast a single blocking call.** Fine-tuning on a long history or
+  simulating thousands of paths can run for a while; a handle lets you decide
+  how long to wait, separately from how long the job may run.
+- **Stay in control.** Cancel work you no longer need instead of leaving it to
+  consume server-side compute.
+- **Run several tasks at once.** Submit a batch of independent jobs, then
+  collect them all.
+
+<Info>
+If you only want the result and are happy to wait for it, keep using the
+blocking methods — they are simpler, and they are the only ones that support
+`num_partitions` for splitting a large request. A partitioned call fans out
+across several jobs and so has no single handle to return.
+</Info>
+
+## How to Run a Job
+
+### Step 1: Import Packages
+
+Import the required packages and initialize a Nixtla client to connect with TimeGPT.
+
+```python
+import pandas as pd
+from nixtla import NixtlaClient
+
+nixtla_client = NixtlaClient(
+    api_key="my_api_key_provided_by_nixtla"  # Defaults to os.environ.get("NIXTLA_API_KEY")
+)
+```
+
+### Step 2: Load Data
+
+This guide uses the classic `AirPassengers` dataset, a monthly series of
+international airline passengers from 1949 to 1960.
+
+```python
+df = pd.read_csv(
+    "https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/air_passengers.csv",
+    parse_dates=["timestamp"],
+).rename(columns={"timestamp": "ds", "value": "y"})
+
+df.head()
+```
+
+| ds | y |
+|:---|---:|
+| 1949-01-01 | 112 |
+| 1949-02-01 | 118 |
+| 1949-03-01 | 132 |
+| 1949-04-01 | 129 |
+| 1949-05-01 | 121 |
+
+### Step 3: Submit the Job
+
+Call `jobs.forecast()` with the arguments you would pass to `forecast()`. It
+returns as soon as the server accepts the request.
+
+```python
+job = nixtla_client.jobs.forecast(df=df, h=12, freq="MS", level=[80, 95])
+```
+
+Log output:
+
+```bash
+INFO:nixtla.nixtla_client:Validating inputs...
+INFO:nixtla.nixtla_client:Preprocessing dataframes...
+INFO:nixtla.nixtla_client:Querying model metadata...
+INFO:nixtla.nixtla_client:Restricting input...
+INFO:nixtla.nixtla_client:Calling Forecast Endpoint...
+INFO:nixtla.nixtla_client:Submitted v2/forecast job fc-78d1e2570e3941339c3c440527c8750b.
+```
+
+The handle carries the job's identifier and the task it runs:
+
+```python
+print(job.job_id)
+print(job.task)
+```
+
+```bash
+fc-78d1e2570e3941339c3c440527c8750b
+forecast
+```
+
+<Note>
+Validation and preprocessing still happen locally before the request is sent,
+so an invalid argument or a malformed DataFrame raises immediately rather than
+producing a job that fails later.
+</Note>
+
+### Step 4: Check the Status
+
+`job.status` asks the server where the job is. It returns a `JobStatus`, which
+compares equal to its lowercase string.
+
+```python
+job.status
+```
+
+```bash
+<JobStatus.PENDING: 'pending'>
+```
+
+A job is `pending`, then `running`, and finally reaches one of three terminal
+states: `succeeded`, `failed` or `cancelled`. Once a job is terminal its status
+cannot change again, so the handle stops querying the server and answers from
+what it already knows.
+
+```python
+job.status == "running"   # JobStatus compares equal to its lowercase string
+job.status.is_terminal    # False until the job succeeds, fails or is cancelled
+```
+
+### Step 5: Wait for the Result
+
+`job.wait()` polls until the job reaches a terminal state and returns its
+result — the same object the blocking method would have given you.
+
+```python
+fcst = job.wait()
+fcst.head()
+```
+
+| ds | TimeGPT | TimeGPT-hi-80 | TimeGPT-hi-95 | TimeGPT-lo-80 | TimeGPT-lo-95 |
+|:---|---:|---:|---:|---:|---:|
+| 1961-01-01 | 441.82 | 466.45 | 483.12 | 414.39 | 394.16 |
+| 1961-02-01 | 416.51 | 445.14 | 464.02 | 380.57 | 358.47 |
+| 1961-03-01 | 478.55 | 512.67 | 530.40 | 433.19 | 405.89 |
+| 1961-04-01 | 478.73 | 513.14 | 532.17 | 434.39 | 409.23 |
+| 1961-05-01 | 488.74 | 523.64 | 543.01 | 438.99 | 403.44 |
+
+## Controlling How Long You Wait
+
+Two independent limits apply to a job, and it helps to keep them apart.
+
+**How long the client polls** is set on `wait()`:
+
+```python
+fcst = job.wait(poll_interval=5, poll_timeout=600)
+```
+
+- `poll_interval` — seconds between status checks, held fixed. By default the
+  client polls adaptively instead: the first check comes after half a second and
+  the interval doubles up to one check every 15 seconds.
+- `poll_timeout` — how long to wait for a terminal state before giving up.
+  Defaults to one hour. Pass `None` to wait until the server reports one.
+- `cancel_on_timeout` — whether giving up also cancels the job. It defaults to
+  `True`, so a job you have stopped waiting for stops consuming compute. Set it
+  to `False` to poll in short increments and call `wait()` again to resume.
+
+**How long the server may spend on the job** is set at submission with
+`job_timeout_seconds`:
+
+```python
+job = nixtla_client.jobs.forecast(df=df, h=12, freq="MS", job_timeout_seconds=120)
+```
+
+It defaults to your deployment's own limit for that task, and may not exceed it.
+Asking for more raises `ApiError` at submission:
+
+```bash
+ApiError: status_code: 422, body: {'detail': 'Requested timeout_seconds=600 exceeds the maximum allowed for this task (300s).'}
+```
+
+<Note>
+These two do not substitute for one another. `poll_timeout` only ends the
+client's wait; with `cancel_on_timeout=False` the job keeps running server-side
+until `job_timeout_seconds` elapses.
+</Note>
+
+## Cancelling a Job
+
+Call `cancel()` to ask the server to stop work you no longer need:
+
+```python
+job.cancel()
+```
+
+Cancellation is a request, not an instant stop — the job reaches the
+`cancelled` state once the server acts on it, and a `wait()` still in progress
+then raises `JobCancelledError`.
+
+Using the handle as a context manager cancels the job for you if anything goes
+wrong between submitting and collecting the result, including a keyboard
+interrupt:
+
+```python
+with nixtla_client.jobs.forecast(df=df, h=12, freq="MS") as job:
+    fcst = job.wait()
+```
+
+A block that exits cleanly cancels nothing, and neither does an exception
+raised by a job that has already finished.
+
+## When a Job Fails
+
+A job that does not succeed raises when you wait on it. Each error names the
+job so you can tell which one it was.
+
+| Exception | Raised when |
+|:---|:---|
+| `JobError` | The job failed server-side. The message carries the server's original error. |
+| `JobCancelledError` | The job reached the `cancelled` state. |
+| `JobTimeoutError` | `poll_timeout` elapsed before the job finished. |
+
+All three are importable from the package root:
+
+```python
+from nixtla import JobCancelledError, JobError, JobTimeoutError
+
+try:
+    fcst = job.wait(poll_timeout=600)
+except JobError as e:
+    print(f"the job failed: {e}")
+except JobTimeoutError as e:
+    print(f"gave up waiting: {e}")
+except JobCancelledError as e:
+    print(f"the job was cancelled: {e}")
+```
+
+<Note>
+A run of failed status checks does not end a wait. The client keeps polling
+while there is time left on `poll_timeout`, and reports the last such failure
+as the cause only if the wait times out.
+</Note>
+
+## Running Several Jobs at Once
+
+Because submitting does not block, you can start independent tasks together and
+collect them afterwards. Here a forecast and a cross-validation run over the
+same series at the same time:
+
+```python
+jobs = {
+    "forecast": nixtla_client.jobs.forecast(df=df, h=12, freq="MS"),
+    "cross_validation": nixtla_client.jobs.cross_validation(
+        df=df, h=12, freq="MS", n_windows=3
+    ),
+}
+
+for name, job in jobs.items():
+    print(f"{name}: {job.job_id}")
+
+results = {name: job.wait() for name, job in jobs.items()}
+```
+
+```bash
+forecast: fc-1d4e1de71fde45e6ab12abc1263950b1
+cross_validation: cv-f37009d5de7b42c1bee0e4abb08f9b4b
+```
+
+```python
+results["cross_validation"].head()
+```
+
+| ds | cutoff | y | TimeGPT |
+|:---|:---|---:|---:|
+| 1958-01-01 | 1957-12-01 | 340 | 341.87 |
+| 1958-02-01 | 1957-12-01 | 318 | 335.86 |
+| 1958-03-01 | 1957-12-01 | 362 | 386.89 |
+| 1958-04-01 | 1957-12-01 | 348 | 380.64 |
+| 1958-05-01 | 1957-12-01 | 363 | 385.46 |
+
+Both jobs were already running by the time the first `wait()` was called, so
+the second result costs only whatever time it still needed.
+
+## Available Job Methods
+
+| Method | Mirrors | `wait()` returns |
+|:---|:---|:---|
+| `jobs.forecast()` | [`forecast()`](/forecasting/timegpt_quickstart) | Forecasts as a DataFrame |
+| `jobs.cross_validation()` | [`cross_validation()`](/forecasting/evaluation/cross_validation) | Cross-validation results as a DataFrame |
+| `jobs.detect_anomalies()` | [`detect_anomalies_online()`](/anomaly_detection/real-time/introduction) | Anomalies as a DataFrame |
+| `jobs.finetune()` | [`finetune()`](/forecasting/fine-tuning/steps) | The fine-tuned model id, as a string |
+| `jobs.simulate()` | [`simulate()`](/forecasting/probabilistic/simulation) | Sample paths as a DataFrame |
+| `jobs.explain()` | [`explain()`](/forecasting/explanation/introduction) | Feature weights as a DataFrame |
+
+<Info>
+`simulate()` and `explain()` always run as jobs underneath — the blocking
+versions submit one and poll it for you. Use `jobs.simulate()` or
+`jobs.explain()` when you would rather hold the handle yourself.
+</Info>
+
+For the full argument lists of each method, along with `Job`, `JobStatus` and
+the error types, see the [SDK reference](/reference/sdk_reference).

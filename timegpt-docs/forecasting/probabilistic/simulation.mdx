@@ -20,8 +20,8 @@ blocks like any other client method. By default the client polls on an
 adaptive cadence -- first after half a second, then doubling up to one check
 every 15 seconds -- and waits up to an hour per job; pass `poll_interval` for a
 fixed cadence or `poll_timeout` for a different ceiling, or use
-`NixtlaClient.jobs.simulate()` to get a `Job` handle back immediately and
-wait on it yourself. A job that
+`NixtlaClient.jobs.simulate()` to get a [`Job` handle](/jobs/asynchronous_jobs)
+back immediately and wait on it yourself. A job that
 fails on the server raises `nixtla.JobError` with the server's original error. Server-side cancellation raises
 `nixtla.JobCancelledError`; exceeding the client wait timeout raises
 `nixtla.JobTimeoutError` and requests cancellation.
