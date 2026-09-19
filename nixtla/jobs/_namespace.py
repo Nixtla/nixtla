@@ -2,8 +2,9 @@
 
 Every method here mirrors the blocking `NixtlaClient` method of the same name,
 but returns a `Job` handle instead of a result. Nothing here holds state of its
-own -- payload construction, HTTP and polling all stay on the client, reached
-through `self._client`.
+own: the request body comes from `_payloads`, submission and polling from
+`_transport`, and anything genuinely client-side is reached through
+`self._client`.
 """
 
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
@@ -11,7 +12,9 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 from utilsforecast.compat import DataFrame, DFType
 
 from . import _transport
+from .. import _payloads
 from ._job import Job
+from .._preprocessing import _ensure_local_dataframe, _validate_simulate_args
 from .._types import (
     _ANOMALY_DETECTION_ENDPOINT,
     _ExplainMethod,
@@ -24,10 +27,6 @@ from .._types import (
     _PositiveInt,
     _ThresholdMethod,
     extra_param_checker,
-)
-from ..nixtla_client import (
-    _ensure_local_dataframe,
-    _validate_simulate_args,
 )
 from .._steps import build_request as _build_step_request
 
@@ -188,7 +187,8 @@ class Jobs:
         _ensure_local_dataframe(
             df, method_name="jobs.forecast()", sync_method_name="forecast()"
         )
-        payload, _, _, _, parse_result = self._client._prepare_forecast(
+        payload, _, _, _, parse_result = _payloads.prepare_forecast(
+            self._client,
             df=df,
             h=h,
             freq=freq,
@@ -362,7 +362,8 @@ class Jobs:
             method_name="jobs.cross_validation()",
             sync_method_name="cross_validation()",
         )
-        payload, parse_result = self._client._prepare_cross_validation(
+        payload, parse_result = _payloads.prepare_cross_validation(
+            self._client,
             df=df,
             h=h,
             freq=freq,
@@ -478,7 +479,8 @@ class Jobs:
             Job: Handle to the submitted job. `job.wait()` returns the
                 fine-tuned model id (str).
         """
-        payload = self._client._prepare_finetune_payload(
+        payload = _payloads.prepare_finetune_payload(
+            self._client,
             df=df,
             freq=freq,
             id_col=id_col,
@@ -643,7 +645,8 @@ class Jobs:
             method_name="jobs.detect_anomalies()",
             sync_method_name="detect_anomalies_online()",
         )
-        payload, parse_result = self._client._prepare_anomaly_detection(
+        payload, parse_result = _payloads.prepare_anomaly_detection(
+            self._client,
             df=df,
             h=h,
             detection_size=detection_size,
@@ -769,7 +772,8 @@ class Jobs:
         h, n_paths, seed, _ = _validate_simulate_args(
             h, n_paths, seed, None, multivariate
         )
-        payload, parse_result = self._client._prepare_simulate(
+        payload, parse_result = _payloads.prepare_simulate(
+            self._client,
             df=df,
             h=h,
             freq=freq,
@@ -860,7 +864,8 @@ class Jobs:
                 polars DataFrame with one row per feature and `feature`,
                 `weight`, and `method` columns.
         """
-        payload, parse_result = self._client._prepare_explain(
+        payload, parse_result = _payloads.prepare_explain(
+            self._client,
             df=df,
             method=method,
             features=features,
