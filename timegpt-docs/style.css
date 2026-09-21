@@ -1904,7 +1904,7 @@ details.expandable .primitive-param-field {
 #banner p a {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: 12px !important;
+  font-size: 14px !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
   line-height: 92% !important;
