@@ -436,7 +436,7 @@ d_{p}(y,\mu)
 y\,\ln\!\frac{y}{\mu}\;-\;(y-\mu),
 & p = 1\quad(\text{Poisson deviance}),\\[0.5em]
 \displaystyle
--2\Bigl[\ln\!\frac{y}{\mu}\;-\;\frac{y-\mu}{\mu}\Bigr],
+\frac{y}{\mu}\;-\;\ln\!\frac{y}{\mu}\;-\;1,
 & p = 2\quad(\text{Gamma deviance}).
 \end{cases}
 ```

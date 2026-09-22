@@ -176,14 +176,15 @@ def tweedie_deviance_single(y_true, y_pred, power, **kwargs):
     elif power == 1:
         return np.mean(2 * (y_true * np.log(y_true / y_pred) - (y_true - y_pred)))
     elif power == 2:
-        return np.mean(2 * (np.log(y_pred) - np.log(y_true)) + y_true / y_pred - 1)
+        ratio = y_true / y_pred
+        return np.mean(2 * (ratio - np.log(ratio) - 1))
     else:
         return np.mean(
             2
             * (
                 (y_true ** (2 - power)) / ((1 - power) * (2 - power))
-                - (y_true * (y_pred ** (1 - power))) / (1 - power)
                 + (y_pred ** (2 - power)) / (2 - power)
+                - (y_true * (y_pred ** (1 - power))) / (1 - power)
             )
         )
 
@@ -635,3 +636,47 @@ def test_scaled_metric_with_cutoffs_respects_id_col(engine):
     )
 
     np.testing.assert_allclose(actual["model"].to_numpy(), expected["model"].to_numpy())
+
+
+TWEEDIE_POWERS = [0.0, 1.0, 1.2, 1.5, 1.8, 2.0, 2.5, 3.0]
+
+
+def tweedie_sample():
+    rng = np.random.default_rng(0)
+    y = rng.uniform(0.5, 10, size=40)
+    pred = rng.uniform(0.5, 10, size=40)
+    return y, pred
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("power", TWEEDIE_POWERS)
+def test_tweedie_deviance_powers(engine, power):
+    y, pred = tweedie_sample()
+    data = {"unique_id": ["id0"] * y.size, "y": y, "model": pred, "perfect": y}
+    if engine == "pandas":
+        df = pd.DataFrame(data)
+    else:
+        import polars as pl
+
+        df = pl.DataFrame(data)
+    res = ufl.tweedie_deviance(df, ["model", "perfect"], power=power)
+    res = res if engine == "pandas" else res.to_pandas()
+    expected = tweedie_deviance_single(y, pred, power=power)
+    np.testing.assert_allclose(res["model"].iloc[0], expected)
+    # a deviance vanishes for a perfect forecast
+    np.testing.assert_allclose(res["perfect"].iloc[0], 0.0, atol=1e-12)
+
+
+@pytest.mark.parametrize("power", TWEEDIE_POWERS)
+def test_tweedie_deviance_vs_sklearn(power):
+    sklearn_metrics = pytest.importorskip("sklearn.metrics")
+    y, pred = tweedie_sample()
+    if power <= 1:
+        # y == 0 is in the domain for these powers
+        y = np.concatenate([y, [0.0, 0.0]])
+        pred = np.concatenate([pred, [1.0, 2.0]])
+    df = pd.DataFrame({"unique_id": "id0", "y": y, "model": pred})
+    np.testing.assert_allclose(
+        ufl.tweedie_deviance(df, ["model"], power=power)["model"].iloc[0],
+        sklearn_metrics.mean_tweedie_deviance(y, pred, power=power),
+    )

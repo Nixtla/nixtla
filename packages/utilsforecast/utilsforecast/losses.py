@@ -1206,49 +1206,30 @@ def tweedie_deviance(
             "All predictions must be strictly positive for Tweedie deviance."
         )
 
-    if power == 0:
+    target = nw.col(target_col)
 
-        def gen_expr(model):
-            return ((nw.col(model) - nw.col(target_col)) ** 2).alias(model)
-
-    elif power == 1:
-
-        def gen_expr(model):
-            return (
-                nw.when(nw.col(target_col) == 0)
-                .then(2 * nw.col(model))
-                .otherwise(
-                    2
-                    * (
-                        nw.col(target_col)
-                        * (nw.col(target_col).log() - nw.col(model).log())
-                        - (nw.col(target_col) - nw.col(model))
-                    )
-                )
-                .alias(model)
+    def gen_expr(model):
+        pred = nw.col(model)
+        if power == 0:
+            deviance = (target - pred) ** 2
+        elif power == 1:
+            # y * log(y / mu) is taken as 0 at y == 0, its limit there
+            deviance = 2 * (
+                nw.when(target > 0).then(target * (target / pred).log()).otherwise(0.0)
+                - target
+                + pred
             )
-
-    elif power == 2:
-
-        def gen_expr(model):
-            return (
-                2 * (nw.col(model).log() - nw.col(target_col).log())
-                + (nw.col(target_col) / nw.col(model))
-                - 1
-            ).alias(model)
-
-    else:
-
-        def gen_expr(model):
-            return (
-                2
-                * (
-                    nw.col(target_col).clip(0) ** (2 - power)
-                    / ((1 - power) * (2 - power))
-                )
-                - (nw.col(target_col) * (nw.col(model) ** (1 - power)) / (1 - power))
-                + (nw.col(model) ** (2 - power) / (2 - power))
-            ).alias(model)
+        elif power == 2:
+            ratio = target / pred
+            deviance = 2 * (ratio - ratio.log() - 1)
+        else:
+            # every term of the unit deviance carries the factor of 2
+            deviance = 2 * (
+                target.clip(0) ** (2 - power) / ((1 - power) * (2 - power))
+                + pred ** (2 - power) / (2 - power)
+                - target * pred ** (1 - power) / (1 - power)
+            )
+        return deviance.alias(model)
 
     return _nw_agg_expr(
         df=df,
