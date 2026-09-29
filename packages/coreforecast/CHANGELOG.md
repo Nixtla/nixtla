@@ -61,6 +61,12 @@
   attribute differed between identical fits. It is now deterministic padding:
   zero for a group that produced a lambda, NaN for an empty or all-NaN group,
   whose whole row the driver fills.
+- The rolling quantile got slower with each thread added rather than faster: the
+  vendored skip list drew its node heights from libc's `rand`, which glibc
+  serialises on a process-wide lock. They now come from a per-thread generator,
+  so quantiles scale like the other kernels (4x on four threads, from 0.5x) and
+  are slightly faster on a single thread. Results are unchanged: the heights
+  only affect how the list is searched, not the order it keeps.
 
 ### Performance
 

@@ -11,12 +11,6 @@ include_directories(include/coreforecast)
 # SYSTEM keeps the third-party headers out of the warning gate below
 include_directories(SYSTEM external_libs/skiplist/src/cpp
                     external_libs/stl-cpp/include)
-set(SKIPLIST_SOURCE external_libs/skiplist/src/cpp/SkipList.cpp)
-# vendored source, built into our targets, so its warnings aren't ours
-set_source_files_properties(
-  ${SKIPLIST_SOURCE}
-  PROPERTIES COMPILE_OPTIONS $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-w>)
-
 # MSVC is left out until /W4 on the pybind11 headers gets its own pass
 set(COREFORECAST_WARNINGS $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra>)
 # Off by default so a new compiler warning about existing code can't break a
@@ -28,7 +22,7 @@ if(COREFORECAST_WERROR)
 endif()
 
 file(GLOB SOURCES src/*.cpp)
-pybind11_add_module(_lib ${SOURCES} ${SKIPLIST_SOURCE})
+pybind11_add_module(_lib ${SOURCES})
 target_compile_options(_lib PRIVATE ${COREFORECAST_WARNINGS})
 
 # Off by default so wheel builds are unchanged. ON builds a doctest runner for
@@ -39,7 +33,8 @@ option(COREFORECAST_BUILD_TESTS "Build the C++ kernel tests" OFF)
 if(COREFORECAST_BUILD_TESTS)
   enable_testing()
   file(GLOB TEST_SOURCES tests/cpp/*.cpp)
-  add_executable(kernel_tests ${TEST_SOURCES} ${SKIPLIST_SOURCE})
+  # skiplist.cpp by name rather than the src glob: coreforecast.cpp needs Python
+  add_executable(kernel_tests ${TEST_SOURCES} src/skiplist.cpp)
   target_include_directories(kernel_tests SYSTEM
                              PRIVATE external_libs/doctest/doctest)
   target_compile_options(kernel_tests PRIVATE ${COREFORECAST_WARNINGS})

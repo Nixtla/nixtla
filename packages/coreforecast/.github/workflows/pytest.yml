@@ -184,6 +184,38 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         run: ctest --test-dir build/cpp --output-on-failure
 
+  # CodSpeed counts instructions, so the benchmarks below say nothing about what
+  # threads do. This is the job that notices a kernel that stopped scaling: it
+  # fails when a two-thread speedup drops under the floor in the script. Two and
+  # not four because the runner's four vCPUs are two cores plus their
+  # hyperthreads; the script says more about it.
+  thread_scaling:
+    name: Check that the kernels still scale with the thread count
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run
+        run: uv run python scripts/bench_threads.py --check
+
   run_benchmarks:
     runs-on: ubuntu-22.04
     steps:
