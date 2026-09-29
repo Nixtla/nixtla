@@ -35,6 +35,26 @@
 
 ### Bug fixes
 
+- `ExpandingMean`, `ExpandingStd`, `ExpandingMin`, `ExpandingMax` and
+  `ExponentiallyWeightedMean` ignored `skipna` in `update()`. Every other lag
+  transform forwards it to a kernel, but these five carry their accumulator in
+  Python and incorporated a NaN unconditionally, so one arriving through the
+  incremental path made the statistic NaN for that group permanently even with
+  `skipna=True`. `transform()` was always correct, so training features and
+  the features produced while predicting recursively disagreed with nothing
+  raised. With `skipna=True` the mean and std now leave their state untouched
+  by a NaN, the min and max ignore it and the EWM forward-fills its mean, and
+  a group whose whole lagged history was NaN, which the driver skips and whose
+  stats row it fills with NaN, seeds from the first value it sees, as the
+  transform does after a leading run of NaNs. Without `skipna` the updates are
+  unchanged.
+- `ExpandingMin`, `ExpandingMax` and `ExponentiallyWeightedMean` seeded the
+  state of an empty group from the output position before its end, which
+  belongs to another group, so a value the group got later through `update()`
+  was folded into that group's statistic. `ExpandingMean` read the same
+  position, and on an array with no elements the read raised an `IndexError`
+  from all four. An empty group now starts from a NaN state, as with the
+  other accumulators.
 - `LocalBoxCoxScaler.stats_` had an uninitialised second column: the lambda
   kernels write one value per group and the array holding them was never
   cleared. Transforms were unaffected since that column is not read, but the
