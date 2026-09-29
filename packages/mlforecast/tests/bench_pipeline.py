@@ -26,14 +26,15 @@ class SeasonalNaive(BaseEstimator):
         return X["lag7"]
 
 
-def _panel(min_length, max_length):
-    n_series = 1_000
-    n_static = 10
+N_STATIC = 10
+
+
+def _panel(min_length, max_length, n_series=1_000):
     return generate_daily_series(
         n_series=n_series,
         min_length=min_length,
         max_length=max_length,
-        n_static_features=n_static,
+        n_static_features=N_STATIC,
         static_as_categorical=False,
         equal_ends=True,
     )
@@ -50,6 +51,13 @@ def _with_exog(series):
 @pytest.fixture(scope="module")
 def series():
     return _panel(500, 2_000)
+
+
+# the per-group work in `GroupedArray` is driven by the number of series, not the
+# number of rows, so it needs a panel with many short ones
+@pytest.fixture(scope="module")
+def many_series():
+    return _panel(30, 60, n_series=50_000)
 
 
 @pytest.fixture(scope="module")
@@ -89,9 +97,23 @@ def fcst():
     )
 
 
+# `fcst` needs 42 samples per serie (differences plus the lag 28 windows),
+# which would drop most of `many_series`
 @pytest.fixture
-def statics(series):
-    return series.columns.drop(["unique_id", "ds", "y"]).tolist()
+def short_history_fcst():
+    return MLForecast(
+        models={"lr": LinearRegression()},
+        freq="D",
+        lags=[1, 7],
+        lag_transforms={1: [RollingMean(7)]},
+        date_features=["dayofweek", "month", "year", "day"],
+        target_transforms=[Differences([1]), LocalStandardScaler()],
+    )
+
+
+@pytest.fixture
+def statics():
+    return [f"static_{i}" for i in range(N_STATIC)]
 
 
 @pytest.fixture
@@ -104,6 +126,18 @@ def test_preprocess(benchmark, fcst, series, use_exog, series_with_exog, statics
     if use_exog:
         series = series_with_exog
     benchmark(fcst.preprocess, series, static_features=statics)
+
+
+@pytest.mark.parametrize("max_horizon", [None, 14])
+def test_preprocess_many_series(
+    benchmark, short_history_fcst, many_series, statics, max_horizon
+):
+    benchmark(
+        short_history_fcst.preprocess,
+        many_series,
+        static_features=statics,
+        max_horizon=max_horizon,
+    )
 
 
 @pytest.mark.parametrize("use_exog", [True, False])

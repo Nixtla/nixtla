@@ -3,7 +3,7 @@ __all__ = ["GroupedArray"]
 
 import concurrent.futures
 import warnings
-from typing import Any, Dict, Mapping, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 import numpy as np
 from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
@@ -57,6 +57,36 @@ def _transform_series_nojit(data, indptr, updates_only, lag, func, *args) -> np.
     )
 
 
+def _sizes_to_indptr(sizes: np.ndarray, dtype: np.dtype) -> np.ndarray:
+    """Builds the boundaries of consecutive groups with the given sizes."""
+    indptr = np.empty(sizes.size + 1, dtype=dtype)
+    indptr[0] = 0
+    indptr[1:] = np.cumsum(sizes)
+    return indptr
+
+
+def _gather_idxs(starts: np.ndarray, sizes: np.ndarray) -> np.ndarray:
+    """Positions of the elements of the groups that start at `starts` and have `sizes` elements.
+
+    They're ordered by group, so indexing with them lays the groups out contiguously."""
+    ends = np.cumsum(sizes)
+    total = int(ends[-1]) if ends.size else 0
+    return np.repeat(starts - (ends - sizes), sizes) + np.arange(
+        total, dtype=starts.dtype
+    )
+
+
+def _clip_slice_bound(
+    bound: Optional[int], sizes: np.ndarray, default: np.ndarray
+) -> np.ndarray:
+    """Resolves a slice bound against each group size, as python slicing would."""
+    if bound is None:
+        return default
+    if bound < 0:
+        return np.maximum(sizes + bound, 0)
+    return np.minimum(sizes, bound)
+
+
 class GroupedArray:
     """Array made up of different groups. Can be thought of (and iterated) as a list of arrays.
 
@@ -84,12 +114,12 @@ class GroupedArray:
 
     def take(self, idxs: np.ndarray) -> "GroupedArray":
         idxs = np.asarray(idxs)
-        ranges = [range(self.indptr[i], self.indptr[i + 1]) for i in idxs]
-        items = [self.data[rng] for rng in ranges]
-        sizes = np.array([item.size for item in items])
-        data = np.hstack(items)
-        indptr = np.append(0, sizes.cumsum())
-        return GroupedArray(data, indptr)
+        if (idxs < 0).any():
+            raise IndexError("negative group indices are not supported")
+        starts = self.indptr[idxs]
+        sizes = self.indptr[idxs + 1] - starts
+        indptr = _sizes_to_indptr(sizes, self.indptr.dtype)
+        return GroupedArray(self.data[_gather_idxs(starts, sizes)], indptr)
 
     def apply_transforms(
         self,
@@ -175,27 +205,38 @@ class GroupedArray:
         return results
 
     def expand_target(self, max_horizon: int) -> np.ndarray:
-        out = np.full_like(
-            self.data, np.nan, shape=(self.data.size, max_horizon), order="F"
+        n = self.data.size
+        out = np.full_like(self.data, np.nan, shape=(n, max_horizon), order="F")
+        # elements from each position to the end of its group, i.e. the horizons it can fill
+        remaining = np.repeat(self.indptr[1:], np.diff(self.indptr)) - np.arange(
+            n, dtype=self.indptr.dtype
         )
-        for j in range(max_horizon):
-            for i in range(self.n_groups):
-                if self.indptr[i + 1] - self.indptr[i] > j:
-                    out[self.indptr[i] : self.indptr[i + 1] - j, j] = self.data[
-                        self.indptr[i] + j : self.indptr[i + 1]
-                    ]
+        for j in range(min(max_horizon, n)):
+            # shifting the whole array leaks values across groups, the mask restores them
+            col = out[:, j]
+            col[: n - j] = self.data[j:]
+            col[remaining <= j] = np.nan
         return out
 
     def take_from_groups(self, idx: Union[int, slice]) -> "GroupedArray":
         """Takes `idx` from each group in the array."""
-        ranges = [
-            range(self.indptr[i], self.indptr[i + 1])[idx] for i in range(self.n_groups)
-        ]
-        items = [self.data[rng] for rng in ranges]
-        sizes = np.array([item.size for item in items])
-        data = np.hstack(items)
-        indptr = np.append(0, sizes.cumsum())
-        return GroupedArray(data, indptr)
+        group_sizes = np.diff(self.indptr)
+        if isinstance(idx, slice):
+            if idx.step not in (None, 1):
+                raise NotImplementedError("stepped slices are not supported")
+            starts = _clip_slice_bound(
+                idx.start, group_sizes, np.zeros_like(group_sizes)
+            )
+            stops = _clip_slice_bound(idx.stop, group_sizes, group_sizes)
+            sizes = np.maximum(stops - starts, 0)
+            data = self.data[_gather_idxs(self.indptr[:-1] + starts, sizes)]
+        else:
+            positions = np.where(idx < 0, group_sizes + idx, idx)
+            if ((positions < 0) | (positions >= group_sizes)).any():
+                raise IndexError(f"index {idx} is out of range for some groups")
+            data = self.data[self.indptr[:-1] + positions]
+            sizes = np.ones_like(group_sizes)
+        return GroupedArray(data, _sizes_to_indptr(sizes, self.indptr.dtype))
 
     def append(self, new_data: np.ndarray) -> "GroupedArray":
         """Appends each element of `new_data` to each existing group. Returns a copy."""
@@ -211,30 +252,14 @@ class GroupedArray:
     def append_several(
         self, new_sizes: np.ndarray, new_values: np.ndarray, new_groups: np.ndarray
     ) -> "GroupedArray":
+        new_sizes = np.asarray(new_sizes)
+        new_groups = np.asarray(new_groups, dtype=bool)
+        old_sizes = np.zeros(new_sizes.size, dtype=self.indptr.dtype)
+        old_sizes[~new_groups] = np.diff(self.indptr)
+        new_indptr = _sizes_to_indptr(old_sizes + new_sizes, self.indptr.dtype)
         new_data = np.empty(self.data.size + new_values.size, dtype=self.data.dtype)
-        new_indptr = np.empty(new_sizes.size + 1, dtype=self.indptr.dtype)
-        new_indptr[0] = 0
-        old_indptr_idx = 0
-        new_vals_idx = 0
-        for i, is_new in enumerate(new_groups):
-            new_size = new_sizes[i]
-            if is_new:
-                old_size = 0
-            else:
-                prev_slice = slice(
-                    self.indptr[old_indptr_idx], self.indptr[old_indptr_idx + 1]
-                )
-                old_indptr_idx += 1
-                old_size = prev_slice.stop - prev_slice.start
-                new_size += old_size
-                new_data[new_indptr[i] : new_indptr[i] + old_size] = self.data[
-                    prev_slice
-                ]
-            new_indptr[i + 1] = new_indptr[i] + new_size
-            new_data[new_indptr[i] + old_size : new_indptr[i + 1]] = new_values[
-                new_vals_idx : new_vals_idx + new_sizes[i]
-            ]
-            new_vals_idx += new_sizes[i]
+        new_data[_gather_idxs(new_indptr[:-1], old_sizes)] = self.data
+        new_data[_gather_idxs(new_indptr[:-1] + old_sizes, new_sizes)] = new_values
         return GroupedArray(new_data, new_indptr)
 
     def __repr__(self) -> str:
