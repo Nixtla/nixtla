@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "banner": {
-    "content": "[Announcement](https://www.nixtla.io/blog/genai-announcement): Nixtla Enterprise now offers top foundation models, MCP, and agentic capabilities: [join the waitlist](https://www.nixtla.io?waitlistSheet=true)",
+    "content": "Missed What's New in the Nixtla Engine? [Watch the recording](https://www.nixtla.io/webinar-events)",
     "dismissible": true,
     "color": {
       "light": "#bfd1ff",
