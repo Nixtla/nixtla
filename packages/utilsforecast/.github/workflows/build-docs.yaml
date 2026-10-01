@@ -41,6 +41,15 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
+      - name: Mint a docs read token
+        id: docs_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.NIXTLA_DOCS_REPO_ACCESS_APP_ID }}
+          private-key: ${{ secrets.NIXTLA_DOCS_REPO_ACCESS_PRIVATE_KEY }}
+          owner: Nixtla
+          repositories: docs
+
       - name: Install dependencies
         run: uv sync --group dev --upgrade-package mkdocstrings-parser
 
@@ -76,7 +85,7 @@ jobs:
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+          github-token: ${{ steps.docs_token.outputs.token }}
           script: |
             await github.rest.actions.createWorkflowDispatch({
               owner: 'nixtla',
@@ -89,7 +98,7 @@ jobs:
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
-          github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+          github-token: ${{ steps.docs_token.outputs.token }}
           script: |
             await github.rest.actions.createWorkflowDispatch({
               owner: 'nixtla',
