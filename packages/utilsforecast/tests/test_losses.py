@@ -294,6 +294,38 @@ def test_wape_equals_nd(engine):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_smape_handles_zero_and_missing_forecasts(engine):
+    """SMAPE treats 0/0 as zero but excludes missing forecasts."""
+    data = {
+        "unique_id": ["partial"] * 4 + ["zero"] * 2 + ["missing"] * 2,
+        "y": [10.0, 20.0, 30.0, 40.0, 0.0, 10.0, 10.0, 20.0],
+        "model": [11.0, 18.0, 33.0, None, 0.0, 11.0, None, None],
+    }
+    if engine == "pandas":
+        data["model"] = [
+            float("nan") if value is None else value for value in data["model"]
+        ]
+        df = pd.DataFrame(data)
+    else:
+        import polars as pl
+
+        df = pl.DataFrame(
+            {
+                **data,
+                "model": pl.Series(data["model"], dtype=pl.Float64),
+            }
+        )
+
+    result = nw.from_native(ufl.smape(df, ["model"]))
+    values = dict(zip(result["unique_id"].to_list(), result["model"].to_list()))
+    expected_partial = np.mean([1 / 21, 2 / 38, 3 / 63])
+
+    np.testing.assert_allclose(values["partial"], expected_partial)
+    np.testing.assert_allclose(values["zero"], 1 / 42)
+    assert values["missing"] is None or np.isnan(values["missing"])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_linex_loss_numerical(engine):
     """Test linex loss with known numerical values."""
     a = 0.2

@@ -380,8 +380,13 @@ def smape(
 
     def gen_expr(model):
         abs_err = (nw.col(model) - nw.col(target_col)).abs()
-        denominator = _zero_to_nan(nw.col(model).abs() + nw.col(target_col).abs())
-        return (abs_err / denominator).alias(model).fill_null(0)
+        denominator = nw.col(model).abs() + nw.col(target_col).abs()
+        return (
+            nw.when(denominator == 0)
+            .then(0.0)
+            .otherwise(abs_err / denominator)
+            .alias(model)
+        )
 
     return _nw_agg_expr(
         df=df,
