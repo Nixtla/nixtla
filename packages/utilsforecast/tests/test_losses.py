@@ -581,6 +581,26 @@ class TestProbabilisticMetrics:
         for col in models:
             assert col in df_nw.columns
 
+    @pytest.mark.parametrize("engine", ["pandas", "polars"])
+    def test_scaled_crps_negative_target(self, engine):
+        # the normalizer is sum(|y|), so negative targets must not flip the sign
+        y = np.array([-2.0, 1.5, -1.0, 3.0, -0.5, -2.5])
+        quantiles = np.array([0.1, 0.5, 0.9])
+        y_hat = np.column_stack([y - 1.0, y + 0.3, y + 1.2])
+        cols = ["model-q10", "model-q50", "model-q90"]
+        df = pd.DataFrame({"unique_id": 0, "ds": np.arange(y.size), "y": y})
+        df[cols] = y_hat
+        if engine == "polars":
+            import polars as pl
+
+            df = pl.from_pandas(df)
+        error = y[:, None] - y_hat
+        ql = np.maximum(quantiles * error, (quantiles - 1) * error).mean(axis=1)
+        expected = 2 * ql.sum() / np.abs(y).sum()
+
+        result = ufl.scaled_crps(df, {"model": cols}, quantiles)
+        np.testing.assert_allclose(nw.from_native(result)["model"].to_numpy(), expected)
+
 
 class TestTweedieDeviance:
     @pytest.mark.parametrize("engine", ["pandas", "polars"])
