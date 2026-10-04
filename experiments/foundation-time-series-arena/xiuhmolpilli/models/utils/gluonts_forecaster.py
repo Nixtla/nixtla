@@ -58,7 +58,7 @@ class GluonTSForecaster(Forecaster):
         freq: str,
         model_name: str,
     ) -> pd.DataFrame:
-        point_forecast = fcst.mean
+        point_forecast = fcst.median
         h = len(point_forecast)
         dates = pd.date_range(
             fcst.start_date.to_timestamp(),
