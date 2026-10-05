@@ -369,6 +369,10 @@ def pipeline(
         if transformed is None:
             transformed = f_transformed
             future = f_future
+        elif h == 0:
+            # the future dataframe is empty, so the features are the new columns
+            feat_cols = [c for c in f_transformed.columns if c not in df.columns]
+            transformed = ufp.horizontal_concat([transformed, f_transformed[feat_cols]])
         else:
             feat_cols = [c for c in f_future.columns if c not in (id_col, time_col)]
             transformed = ufp.horizontal_concat([transformed, f_transformed[feat_cols]])

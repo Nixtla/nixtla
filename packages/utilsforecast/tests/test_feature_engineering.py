@@ -179,3 +179,26 @@ def test_pipeline(setup_series, freq, setup_pipeline, setup_features):
         future_df.drop(columns="unique_id"),
         check_dtype=False,
     )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_pipeline_no_horizon(setup_series, setup_features, engine):
+    # with h=0 there are no future values, but every feature must be computed
+    series, series_pl = setup_series
+    individual_results = [f(series, freq="D", h=0) for f in setup_features]
+    expected = reduce_join(
+        [r[0] for r in individual_results], on=["unique_id", "ds", "y"]
+    )
+    if engine == "pandas":
+        transformed, future = pipeline(series, features=setup_features, freq="D", h=0)
+    else:
+        transformed, future = pipeline(
+            series_pl, features=setup_features, freq="1d", h=0
+        )
+        transformed = transformed.to_pandas()
+    pd.testing.assert_frame_equal(
+        transformed.drop(columns="unique_id"),
+        expected.drop(columns="unique_id"),
+        check_dtype=False,
+    )
+    assert future.shape == (0, 0)
