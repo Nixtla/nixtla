@@ -1105,8 +1105,11 @@ class TimeSeries:
         # DatetimeIndex date-attribute access has no narwhals equivalent
         if isinstance(dates, pd.DatetimeIndex):
             if feature in ("week", "weekofyear"):
-                dates = dates.isocalendar()
-            feat_vals = getattr(dates, feature)
+                # isocalendar() exposes the ISO week under the "week" column for
+                # both aliases; "weekofyear" is not a column of the result.
+                feat_vals = dates.isocalendar()["week"]
+            else:
+                feat_vals = getattr(dates, feature)
             if isinstance(feat_vals, (pd.Index, pd.Series)):
                 feat_vals = np.asarray(feat_vals)
                 feat_dtype = date_features_dtypes.get(feature)

@@ -2543,3 +2543,24 @@ def test_update_validation_polars_ns_timestamps():
         }
     )
     ts.update(update, validate_new_data=True)
+
+
+# Regression: the "weekofyear" date feature on a pandas DatetimeIndex used to
+# raise AttributeError because isocalendar() exposes the ISO week under the
+# "week" column, not "weekofyear". Both aliases must return that column.
+def test_pandas_weekofyear_alias():
+    dates = pd.date_range("2020-12-20", periods=40, freq="D")
+    df = pd.DataFrame({"unique_id": ["a"] * 40, "ds": dates, "y": np.arange(40.0)})
+
+    prep_week = TimeSeries(freq="D", date_features=["week"]).fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y"
+    )
+    prep_woy = TimeSeries(freq="D", date_features=["weekofyear"]).fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y"
+    )
+
+    expected = dates.isocalendar()["week"].to_numpy()
+    np.testing.assert_array_equal(np.asarray(prep_woy["weekofyear"]), expected)
+    np.testing.assert_array_equal(
+        np.asarray(prep_woy["weekofyear"]), np.asarray(prep_week["week"])
+    )
