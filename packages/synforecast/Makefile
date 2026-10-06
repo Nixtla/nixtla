@@ -39,6 +39,7 @@ format_docs:
 	sed -i -e 's|_docs|docs/mintlify|g' docs-scripts/docs-final-formatting.bash
 	bash docs-scripts/docs-final-formatting.bash
 	python docs-scripts/docs_replace_imgs.py --path docs/mintlify
+	find docs/mintlify -name "*.mdx" -exec sed -i -e 's/^``` text$$/```shell/' {} +
 
 execute_docs:
 	python scripts/execute_notebooks.py --include-network --write
