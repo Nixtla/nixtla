@@ -47,7 +47,8 @@ from mlforecast.target_transforms import (
 )
 
 from .compat import CatBoostRegressor
-from .data_validation import _index_to_series
+from .data_validation import _index_to_series, _validate_no_null_times
+from .date_features import _DUMMY_ALIASES, CalendarFeature
 from .grouped_array import GroupedArray, _gather_idxs
 from .lag_transforms import Lag, _BaseLagTransform
 from .pooled import (
@@ -59,9 +60,7 @@ from .pooled import (
     lookup,
 )
 from .utils import (
-    _DUMMY_FEATURE_VALUES,
     _ShortSeriesException,
-    _compute_date_dummies,
     _resolve_num_threads,
 )
 
@@ -158,10 +157,18 @@ Freq = Union[int, str]
 Lags = Iterable[int]
 LagTransform = Union[Callable, Tuple[Callable, Any]]
 LagTransforms = Dict[int, List[LagTransform]]
-DateFeature = Union[str, Callable]
+DateFeature = Union[str, Callable, CalendarFeature]
 Models = Union[BaseEstimator, List[BaseEstimator], Dict[str, BaseEstimator]]
 TargetTransform = Union[BaseTargetTransform, _BaseGroupedArrayTargetTransform]
 Transforms = Dict[str, Union[Tuple[Any, ...], _BaseLagTransform]]
+
+
+def _date_feature_name(feature: DateFeature) -> str:
+    if isinstance(feature, CalendarFeature):
+        return feature.name
+    if callable(feature):
+        return feature.__name__
+    return feature
 
 
 def _validate_horizon_params(
@@ -706,21 +713,39 @@ class TimeSeries:
                 "(recursive prediction advances all series in lockstep)."
             )
 
+    def _dummy_values(self, feature: DateFeature) -> Optional[range]:
+        """Values to one-hot encode `feature` with, or None if it stays as is."""
+        if not self.date_features_as_dummies:
+            return None
+        if isinstance(feature, CalendarFeature):
+            return feature.values
+        if isinstance(feature, str) and feature in _DUMMY_ALIASES:
+            return _DUMMY_ALIASES[feature].values
+        return None
+
+    def _date_feature_output_names(self, feature: DateFeature) -> List[str]:
+        name = _date_feature_name(feature)
+        values = self._dummy_values(feature)
+        if values is None:
+            return [name]
+        return [f"{name}_{v}" for v in values]
+
+    @property
+    def _dummy_date_sources(self) -> Set[str]:
+        """Names of the date features that are replaced by their dummies."""
+        return {
+            _date_feature_name(f)
+            for f in self.date_features
+            if self._dummy_values(f) is not None
+        }
+
     @property
     def _date_feature_names(self) -> List[str]:
-        names: List[str] = []
-        for f in self.date_features:
-            if (
-                self.date_features_as_dummies
-                and isinstance(f, str)
-                and f in _DUMMY_FEATURE_VALUES
-            ):
-                names.extend(f"{f}_{v}" for v in _DUMMY_FEATURE_VALUES[f])
-            elif callable(f):
-                names.append(f.__name__)
-            else:
-                names.append(f)
-        return names
+        return [
+            name
+            for f in self.date_features
+            for name in self._date_feature_output_names(f)
+        ]
 
     @property
     def features(self) -> List[str]:
@@ -731,13 +756,7 @@ class TimeSeries:
         """Identify user-provided exogenous columns that need time-alignment."""
         static_cols = set(self.static_features_.columns)
         lag_cols = set(self.transforms.keys())
-        date_cols = set(self._date_feature_names) | {
-            f
-            for f in self.date_features
-            if self.date_features_as_dummies
-            and isinstance(f, str)
-            and f in _DUMMY_FEATURE_VALUES
-        }
+        date_cols = set(self._date_feature_names) | self._dummy_date_sources
         exclude = (
             static_cols
             | lag_cols
@@ -804,6 +823,7 @@ class TimeSeries:
     ) -> "TimeSeries":
         """Save the series values, ids and last dates."""
         validate_format(df, id_col, time_col, target_col)
+        _validate_no_null_times(df, time_col)
         validate_freq(df[time_col], self.freq)
         if ufp.is_nan_or_none(df[target_col]).any():
             raise ValueError(f"{target_col} column contains null values.")
@@ -890,13 +910,7 @@ class TimeSeries:
                     "are dynamic please set `static_features=[]`."
                 )
         self.static_features_ = statics_on_ends
-        raw_date_sources = {
-            f
-            for f in self.date_features
-            if self.date_features_as_dummies
-            and isinstance(f, str)
-            and f in _DUMMY_FEATURE_VALUES
-        }
+        raw_date_sources = self._dummy_date_sources
         self.features_order_ = [
             c for c in df.columns if c not in to_drop and c not in raw_date_sources
         ] + [f for f in self.features if f not in df.columns]
@@ -1062,12 +1076,19 @@ class TimeSeries:
 
     def _compute_date_feature(self, dates, feature) -> Dict[str, Any]:
         """Compute date feature(s) and return as a ``{col_name: values}`` dict."""
-        if (
-            self.date_features_as_dummies
-            and isinstance(feature, str)
-            and feature in _DUMMY_FEATURE_VALUES
-        ):
-            return _compute_date_dummies(dates, feature)
+        dummy_values = self._dummy_values(feature)
+        if dummy_values is not None:
+            calendar_feature = (
+                feature
+                if isinstance(feature, CalendarFeature)
+                else _DUMMY_ALIASES[feature]
+            )
+            vals = calendar_feature.compute(dates)
+            name = _date_feature_name(feature)
+            return {f"{name}_{v}": (vals == v).astype(np.uint8) for v in dummy_values}
+
+        if isinstance(feature, CalendarFeature):
+            return {feature.name: feature.compute(dates)}
 
         if callable(feature):
             feat_name = feature.__name__
@@ -1194,19 +1215,11 @@ class TimeSeries:
                 df = ufp.assign_columns(df, feat, features[feat])
 
         # date features
-        def _feature_in_df(f, cols):
-            if (
-                self.date_features_as_dummies
-                and isinstance(f, str)
-                and f in _DUMMY_FEATURE_VALUES
-            ):
-                return all(f"{f}_{v}" in cols for v in _DUMMY_FEATURE_VALUES[f])
-            name = f.__name__ if callable(f) else f
-            return name in cols
-
         df_cols = set(df.columns)
         date_features = [
-            f for f in self.date_features if not _feature_in_df(f, df_cols)
+            f
+            for f in self.date_features
+            if not all(name in df_cols for name in self._date_feature_output_names(f))
         ]
         if date_features:
             unique_dates = df[self.time_col].unique()
@@ -1226,11 +1239,10 @@ class TimeSeries:
                 nw_feats: Dict[str, Any] = {}
                 for feat in date_features:  # type: ignore
                     if (
-                        self.date_features_as_dummies
-                        and isinstance(feat, str)
-                        and feat in _DUMMY_FEATURE_VALUES
+                        isinstance(feat, CalendarFeature)
+                        or self._dummy_values(feat) is not None
                     ):
-                        nw_feats.update(_compute_date_dummies(unique_dates, feat))
+                        nw_feats.update(self._compute_date_feature(unique_dates, feat))
                     else:
                         for name, vals in self._compute_date_feature(
                             pl.col(self.time_col), feat
@@ -2245,6 +2257,7 @@ class TimeSeries:
             validate_new_data: If True, validate continuity, start dates, and frequency.
         """
         validate_format(df, self.id_col, self.time_col, self.target_col)
+        _validate_no_null_times(df, self.time_col)
         uids = _index_to_series(self.uids)
         uids, new_ids = ufp.match_if_categorical(uids, df[self.id_col])
         df = ufp.copy_if_pandas(df, deep=False)

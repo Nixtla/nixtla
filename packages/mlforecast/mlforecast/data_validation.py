@@ -12,7 +12,7 @@ from typing import Tuple, Union
 import narwhals as nw
 import pandas as pd
 from utilsforecast.compat import DFType
-from utilsforecast.processing import offset_times
+from utilsforecast.processing import is_none, offset_times
 
 
 def _index_to_series(x):
@@ -22,6 +22,11 @@ def _index_to_series(x):
     ``uids``/``last_dates`` before ``nw.from_native``.
     """
     return pd.Series(x) if isinstance(x, pd.Index) else x
+
+
+def _validate_no_null_times(df: DFType, time_col: str) -> None:
+    if is_none(df[time_col]).any():
+        raise ValueError(f"{time_col} column contains null values.")
 
 
 def validate_update_start_dates(

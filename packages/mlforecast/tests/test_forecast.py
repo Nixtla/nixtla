@@ -2849,3 +2849,32 @@ def test_predict_new_df_keeps_state_when_intervals_fail():
     assert fcst.ts is original_ts
     fcst.predict(1, new_df=df, level=[80])
     assert fcst.ts is not original_ts
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_null_times_raise(engine):
+    series = generate_daily_series(2, min_length=50, max_length=50)
+    series_with_nulls = series.copy()
+    series_with_nulls.loc[3, "ds"] = pd.NaT
+    freq = "D"
+    if engine == "polars":
+        series = pl.from_pandas(series)
+        series_with_nulls = pl.from_pandas(series_with_nulls)
+        freq = "1d"
+    fcst = MLForecast(models=[LinearRegression()], freq=freq, lags=[1])
+    calls = [
+        lambda: fcst.preprocess(series_with_nulls),
+        lambda: fcst.preprocess(series_with_nulls, validate_data=False),
+        lambda: fcst.fit(series_with_nulls),
+        lambda: fcst.cross_validation(series_with_nulls, n_windows=2, h=2),
+        lambda: fcst.ts.fit_transform(series_with_nulls, "unique_id", "ds", "y"),
+        lambda: LightGBMCV(freq=freq, lags=[1]).fit(
+            series_with_nulls, n_windows=2, h=2, num_iterations=1
+        ),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match="ds column contains null values"):
+            call()
+    fcst.fit(series)
+    with pytest.raises(ValueError, match="ds column contains null values"):
+        fcst.update(series_with_nulls)

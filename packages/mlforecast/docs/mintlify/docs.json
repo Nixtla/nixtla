@@ -75,6 +75,7 @@
               "core.html",
               "target_transforms.html",
               "lag_transforms.html",
+              "date_features.html",
               "feature_engineering.html",
               "callbacks.html"
             ]
