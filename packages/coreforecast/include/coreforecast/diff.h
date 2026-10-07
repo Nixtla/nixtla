@@ -58,9 +58,11 @@ void NumDiffs(std::span<const T> x, std::span<T> out, index_t max_d) {
   }
   constexpr T threshold = 0.463; // alpha = 0.05
   index_t d = 0;
-  const index_t n_lags = std::floor(3 * std::sqrt(n) / 13);
+  const auto n_lags = [](index_t len) {
+    return static_cast<index_t>(std::floor(3 * std::sqrt(len) / 13));
+  };
   std::vector<T> x_vec(x.begin(), x.end());
-  bool do_diff = KPSS(std::span<const T>{x_vec}, n_lags) > threshold;
+  bool do_diff = KPSS(std::span<const T>{x_vec}, n_lags(n)) > threshold;
   std::vector<T> diff_x(n);
   while (do_diff && d < max_d) {
     ++d;
@@ -72,7 +74,8 @@ void NumDiffs(std::span<const T> x, std::span<T> out, index_t max_d) {
     std::copy(diff_x.begin(), diff_x.end(), x_vec.begin());
     if (n > d) {
       // we've taken d differences, so we have d NaNs
-      do_diff = KPSS(std::span<const T>{x_vec}.subspan(d), n_lags) > threshold;
+      do_diff =
+          KPSS(std::span<const T>{x_vec}.subspan(d), n_lags(n - d)) > threshold;
     } else {
       do_diff = false;
     }

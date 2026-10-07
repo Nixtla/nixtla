@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 import pytest
-from coreforecast.differences import diff
+from coreforecast.differences import diff, num_diffs
 from coreforecast.grouped_array import GroupedArray
 from coreforecast.scalers import (
     AutoDifferences,
@@ -117,6 +117,15 @@ def test_guerrero_correctness(dtype):
     expected_lambda = 1.99  # value from R's BoxCox.lambda function (forecast package)
     calculated_lambda = boxcox_lambda(data, method="guerrero", season_length=4)
     np.testing.assert_allclose(calculated_lambda, expected_lambda, atol=0.1)
+
+
+def test_num_diffs_against_r():
+    x = np.array([
+        0.062627, -0.404694, -1.371174, -2.375583, -4.232515, -4.486966, -4.42123,
+        -3.927546, -6.171507, -5.725627, -6.106631, -8.044207, -8.447748, -8.05527,
+        -7.904924, -7.481338, -6.745412, -5.971468, -6.134676,
+    ])
+    assert num_diffs(x, max_d=2) == 2
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])

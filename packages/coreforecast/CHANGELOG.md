@@ -67,6 +67,11 @@
   so quantiles scale like the other kernels (4x on four threads, from 0.5x) and
   are slightly faster on a single thread. Results are unchanged: the heights
   only affect how the list is searched, not the order it keeps.
+- `num_diffs` computed the number of KPSS lags once, from the length of the
+  original series, and reused it after differencing. R's `forecast::ndiffs`
+  uses the length of the series being tested, which is one shorter after each
+  difference, so the two disagreed for lengths where `trunc(3 * sqrt(n) / 13)`
+  changes (19, 76, 169, ...). The lags are now recomputed for each difference.
 
 ### Performance
 
