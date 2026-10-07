@@ -2100,10 +2100,6 @@ div:has(> #chat-assistant-sheet) {
   background-color: transparent !important;
 }
 
-/* At page end Mintlify hides the floating input with opacity-0 +
-   translate-y-[100px], but its inner box keeps pointer-events-auto, so the
-   invisible textarea still sits on top of the footer and swallows clicks on the
-   social links. Make the hidden state fully click-through. */
 .chat-assistant-floating-input.opacity-0,
 .chat-assistant-floating-input.opacity-0 * {
   pointer-events: none !important;
