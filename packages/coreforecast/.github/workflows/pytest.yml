@@ -217,6 +217,8 @@ jobs:
         run: uv run python scripts/bench_threads.py --check
 
   run_benchmarks:
+    # disabled until we have a CodSpeed token
+    if: false
     runs-on: ubuntu-22.04
     steps:
       - name: Clone repo
