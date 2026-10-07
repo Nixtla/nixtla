@@ -2100,6 +2100,11 @@ div:has(> #chat-assistant-sheet) {
   background-color: transparent !important;
 }
 
+.chat-assistant-floating-input.opacity-0,
+.chat-assistant-floating-input.opacity-0 * {
+  pointer-events: none !important;
+}
+
 /* Chat input box (the rounded container wrapping the textarea): solid tokenized
    bg (#fff / #000), pill radius + the Intercom launcher shadow so it reads as
    part of the same control family. Targeted via the textarea's box ancestor. */
