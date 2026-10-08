@@ -1,12 +1,9 @@
 #include <algorithm>
-#include <exception>
 #include <limits>
 #include <memory>
 #include <span>
 #include <stdexcept>
 #include <string>
-#include <thread>
-#include <vector>
 
 #include "bindings.h"
 #include "diff.h"
@@ -14,6 +11,7 @@
 #include "exponentially_weighted.h"
 #include "grouped_array_functions.h"
 #include "lag.h"
+#include "parallel.h"
 #include "rolling.h"
 #include "scalers.h"
 #include "seasonal.h"
@@ -129,54 +127,14 @@ public:
   }
 
   // The workers only touch raw buffers, never the Python API, so the GIL is
-  // released around them. Exceptions can't cross a thread boundary, so each
-  // worker stashes its own and we rethrow once everything has been joined.
+  // released around them; the scheduling itself lives in parallel.h, which
+  // knows nothing about Python. It takes the indptr because how long each
+  // group is decides the order the chunks go out in, read here while the GIL
+  // is still held since it comes out of a pybind11 array.
   template <typename Func> void ForEach(Func f) const {
-    const index_t n_groups = NumGroups();
-    const int n_threads = static_cast<int>(
-        std::clamp<index_t>(num_threads_, 1, std::max<index_t>(1, n_groups)));
-    if (n_threads < 2) {
-      py::gil_scoped_release release;
-      f(0, n_groups);
-      return;
-    }
-    std::vector<std::exception_ptr> errors(n_threads);
-    std::vector<std::thread> threads;
-    threads.reserve(n_threads);
-    const index_t groups_per_thread = n_groups / n_threads;
-    const index_t remainder = n_groups % n_threads;
-    std::exception_ptr spawn_error;
-    {
-      py::gil_scoped_release release;
-      try {
-        for (int t = 0; t < n_threads; ++t) {
-          const index_t start_group =
-              t * groups_per_thread + std::min<index_t>(t, remainder);
-          const index_t end_group =
-              (t + 1) * groups_per_thread + std::min<index_t>(t + 1, remainder);
-          threads.emplace_back([&f, &errors, t, start_group, end_group]() {
-            try {
-              f(start_group, end_group);
-            } catch (...) {
-              errors[t] = std::current_exception();
-            }
-          });
-        }
-      } catch (...) {
-        spawn_error = std::current_exception();
-      }
-      for (auto &thread : threads) {
-        thread.join();
-      }
-    }
-    if (spawn_error) {
-      std::rethrow_exception(spawn_error);
-    }
-    for (auto &error : errors) {
-      if (error) {
-        std::rethrow_exception(error);
-      }
-    }
+    const auto indptr = Indptr();
+    py::gil_scoped_release release;
+    parallel::ForEach(indptr, num_threads_, f);
   }
 
   // One row of n_out results per group, from the group minus its leading NaN

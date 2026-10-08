@@ -130,16 +130,21 @@ jobs:
             uv run --no-sync pytest tests -k "not efficiency"
 
   cpp_tests:
-    name: Run the C++ kernel tests under the sanitizers on ${{ matrix.os }}
+    name: Run the C++ kernel tests under ${{ matrix.sanitizer }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       # gcc + libstdc++ on Ubuntu, AppleClang + libc++ on macOS: the two
       # differ on what they constant-fold, so a narrowing that gcc accepts
-      # in a braced initializer is an error under clang
+      # in a braced initializer is an error under clang.
+      # TSan is its own build because it can't be combined with ASan, and this
+      # is the only job that runs the scheduler in parallel.h under it: the
+      # Python suite covers it under ASan but never TSan. AppleClang supports
+      # it on arm64, so both OSes get both.
       matrix:
         os: [ubuntu-latest, macos-latest]
+        sanitizer: ["address,undefined", "thread"]
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
@@ -174,7 +179,7 @@ jobs:
             -DCOREFORECAST_BUILD_TESTS=ON \
             -DCOREFORECAST_WERROR=ON \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG" \
+            -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG" \
             -Dpybind11_DIR="$(uv run --no-sync python -m pybind11 --cmakedir)"
           cmake --build build/cpp --target kernel_tests --parallel
 
@@ -182,6 +187,7 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
         run: ctest --test-dir build/cpp --output-on-failure
 
   # CodSpeed counts instructions, so the benchmarks below say nothing about what

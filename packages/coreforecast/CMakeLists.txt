@@ -6,6 +6,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(PYBIND11_NEWPYTHON ON)
 
 find_package(pybind11 CONFIG REQUIRED)
+# the scheduler in parallel.h spawns std::threads in both targets
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
 
 include_directories(include/coreforecast)
 # SYSTEM keeps the third-party headers out of the warning gate below
@@ -24,6 +27,7 @@ endif()
 file(GLOB SOURCES src/*.cpp)
 pybind11_add_module(_lib ${SOURCES})
 target_compile_options(_lib PRIVATE ${COREFORECAST_WARNINGS})
+target_link_libraries(_lib PRIVATE Threads::Threads)
 
 # Off by default so wheel builds are unchanged. ON builds a doctest runner for
 # the kernels in tests/cpp, which need no Python; CI runs it under the
@@ -38,6 +42,7 @@ if(COREFORECAST_BUILD_TESTS)
   target_include_directories(kernel_tests SYSTEM
                              PRIVATE external_libs/doctest/doctest)
   target_compile_options(kernel_tests PRIVATE ${COREFORECAST_WARNINGS})
+  target_link_libraries(kernel_tests PRIVATE Threads::Threads)
   add_test(NAME kernel_tests COMMAND kernel_tests)
 endif()
 
