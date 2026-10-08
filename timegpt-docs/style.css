@@ -256,7 +256,7 @@ html.dark {
   --tw-prose-code: var(--primary);
   --tw-prose-th-borders: var(--border);
   --tw-prose-td-borders: var(--border);
-  color: var(--primary) !important;
+  color: var(--primary);
 }
 
 html,
@@ -272,7 +272,7 @@ body {
 *,
 ::before,
 ::after {
-  font-feature-settings: normal !important;
+  font-feature-settings: normal;
 }
 
 html {
@@ -367,7 +367,7 @@ p {
 
 #navbar-transition {
   background: var(--background);
-  border-bottom-color: var(--border) !important;
+  border-bottom-color: var(--border);
 }
 
 /* Mono-label recipe (BASE) at navbar size. */
@@ -1498,7 +1498,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 }
 
 .prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  font-weight: var(--font-weight-regular) !important;
+  font-weight: var(--font-weight-regular);
 }
 
 .accordion-group {
@@ -1949,7 +1949,7 @@ details.expandable .primitive-param-field {
    square like the rest of the DLS. */
 .frame .rounded-xl,
 .frame img {
-  border-radius: 0 !important;
+  border-radius: 0;
 }
 
 /* ================================  BANNER  ================================ */
