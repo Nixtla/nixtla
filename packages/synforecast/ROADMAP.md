@@ -20,11 +20,19 @@
 
 ## Evaluation
 
-- **Feature-space coverage** — a minimal native, targeting-scoped feature set
-  now ships through `synforecast/_features.py`; add the full tsfeatures/catch22
-  diversity and coverage metrics.
+- **Feature-space coverage** — shipped in `synforecast.evaluation`: a frozen
+  twelve-feature `native_v1` schema and real-anchored PCA grid coverage. The
+  benchmarks score coverage instead by full-feature nearest-neighbour distance
+  at a radius calibrated on held-out real series; promote that score to the
+  API so users can reproduce them. Then add tsfeatures/catch22 parity and
+  per-feature attribution of uncovered regions. Benchmark scripts follow
+  separately.
+- **Seasonal coverage** — `seasonal_pool` is opt-in. Next: measure the
+  forecasting utility of pool + `seasonal_pool` pretraining on a seasonal
+  panel, and run a pre-declared test of a period-aware default (on only for
+  periods 4 and 12).
 - **Nearest-neighbour distance to real data** — promote the memorization check
-  from notebook to API.
+  from notebook to API; it shares the machinery of calibrated coverage above.
 - **Fidelity scores** — discriminative and predictive scores for comparing
   generation methods.
 - **Wider benchmarks** — extend `when_synthetic_helps` beyond one model and

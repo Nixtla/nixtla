@@ -661,7 +661,7 @@ configuration, so a pool spans
 trend-only, pure-seasonal, causally-structured, and noise-dominated regimes.
 
 The `pretraining_pool()` preset collects these four meta-generators (plus the
-interpretable `balanced_pool` by default) into a breadth-maximizing corpus:
+`interpretable_pool` by default) into a breadth-maximizing corpus:
 
 ```python
 from synforecast import SynSet, pretraining_pool
@@ -674,6 +674,24 @@ df = SynSet(pretraining_pool(min_length=512, max_length=512, freq="h")).generate
 KernelSynth and Gaussian-process sampling require covariance factorizations,
 whose cost grows cubically with series length. Scale the length and number of
 series gradually when building a large corpus.
+
+The opt-in `seasonal_pool()` preset adds eight configured instances of
+`TSIGenerator`, `ETSGenerator`, and `SeasonalGenerator` with a pronounced
+seasonal cycle on a moving level, under moderate to heavy noise. Feature-space
+coverage benchmarks found that region under-represented for quarterly and
+monthly panels such as tourism demand and hospital counts; adding the preset
+on top of `interpretable_pool` raised coverage on those panels and on M1 monthly,
+was neutral on M4, and gave nothing on intermittent data. It is an addition
+on top of a pool, not a replacement for any part of it, and its effect on
+forecasting accuracy has not been measured. `freq` is required; pass the same
+value to the pool it is added to:
+
+```python
+from synforecast import SynSet, interpretable_pool, seasonal_pool
+
+pool = interpretable_pool(freq="MS") + seasonal_pool(freq="MS")
+df = SynSet(pool).generate(n_series_per_generator=1)
+```
 
 ### TSIGenerator
 

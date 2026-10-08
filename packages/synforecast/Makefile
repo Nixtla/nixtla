@@ -42,7 +42,7 @@ format_docs:
 	find docs/mintlify -name "*.mdx" -exec sed -i -e 's/^``` text$$/```shell/' {} +
 
 execute_docs:
-	python scripts/execute_notebooks.py --include-network --write
+	python scripts/execute_notebooks.py --include-network --include-benchmark-data --write
 
 test_docs:
 	python scripts/execute_notebooks.py

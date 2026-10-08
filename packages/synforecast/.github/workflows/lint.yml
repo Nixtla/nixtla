@@ -53,6 +53,9 @@ jobs:
         run: >-
           uv run mypy
           synforecast/_fitting.py
+          synforecast/_coverage.py
+          synforecast/_features.py
+          synforecast/evaluation.py
           synforecast/utils.py
           synforecast/presets.py
 

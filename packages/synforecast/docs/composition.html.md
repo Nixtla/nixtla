@@ -5,9 +5,13 @@ description: Convenience APIs, generator pools, and multivariate composition
 
 ::: synforecast.utils.generate_series
 
+::: synforecast.presets.interpretable_pool
+
 ::: synforecast.presets.balanced_pool
 
 ::: synforecast.presets.pretraining_pool
+
+::: synforecast.presets.seasonal_pool
 
 ::: synforecast.multivariatize.Multivariatizer
     options:

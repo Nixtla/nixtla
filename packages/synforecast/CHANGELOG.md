@@ -2,7 +2,41 @@
 
 ## Unreleased
 
-- `balanced_pool` derives the seasonal period of its seasonal variants from
+- Added `synforecast.evaluation`: `compute_features` extracts a frozen
+  twelve-feature `native_v1` schema per series in one parallel native call,
+  and `feature_coverage` / `compare_feature_coverage` score how well synthetic
+  corpora occupy a real-anchored PCA grid, with retained/dropped diagnostics,
+  out-of-range counts, and a `CoverageResult.summary()` table row. All twelve
+  features are computed on the normalized series, so none depends on input
+  scale; a declared period that cannot fit two cycles leaves the three
+  decomposition-based features undefined. The period is declared through
+  `seasonal_period` or derived from `freq` with the preset convention, and a
+  warning is logged when undeclared seasonality drops out of the space.
+  `n_jobs` defaults to -1, as in the generators.
+- Coverage findings, from benchmarks whose scripts land in a follow-up release:
+  on fresh M4 queries the pools come within a few points of the real-to-real
+  baseline on Yearly and Quarterly, about 5 to 30 points below it on Monthly,
+  Weekly, and Daily, and far below it on Hourly (1–2% against 91%). Several
+  independent strongly seasonal panels (tourism quarterly and monthly,
+  hospital monthly, weather daily) are also under-covered. The gaps are panel-specific rather than
+  frequency-specific, with strong regular seasonality on a moving level as
+  the recurring theme. Default presets are unchanged.
+- Added the opt-in `seasonal_pool(freq=...)` preset: eight configured TSI,
+  ETS, and Seasonal generators with a pronounced seasonal cycle on a moving
+  level, meant to be added on top of `interpretable_pool` or
+  `pretraining_pool`. `freq` is required so the combined corpus never mixes
+  frequencies by default. In a pre-declared test it raised coverage on M1
+  monthly, was neutral on M4, and did not help intermittent data.
+- Added `pretraining_pool(include_seasonal=...)`, which appends the
+  `seasonal_pool` instances at the derived period. A pre-declared fifteen-panel
+  test found gains on every quarterly and monthly panel but small losses on
+  weekly, daily, and intermittent ones, so the default stays False.
+- Renamed `balanced_pool` to `interpretable_pool` and `pretraining_pool`'s
+  `include_balanced` to `include_interpretable`. Every instance of the pool is
+  an interpretable single-mechanism process, while both pools are balanced
+  across niches. The old names remain as deprecated aliases that warn.
+
+- `interpretable_pool` derives the seasonal period of its seasonal variants from
   `freq` (hourly 24, daily 7, weekly 52, monthly 12, quarterly 4) instead of
   hardcoding 12, and accepts an explicit `seasonal_period` override that
   `pretraining_pool` forwards.

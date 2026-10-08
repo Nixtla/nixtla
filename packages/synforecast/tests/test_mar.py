@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from synforecast._features import acf1, compute_features
+from synforecast._features import acf1, compute_targeting_features
 from synforecast.base import _GEN_TYPE_MAP, BaseGenerator
 from synforecast.generators import MARGenerator
 from tests.helpers import assert_acf, assert_long_format, sample_acf, series_values
@@ -829,7 +829,7 @@ class TestMarFeatureTargeting:
         )
         realized = np.mean(
             [
-                compute_features(
+                compute_targeting_features(
                     generator.generate_single_series(length), seasonal_period
                 )[feature]
                 for length in (64, 96, 128)

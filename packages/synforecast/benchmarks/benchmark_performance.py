@@ -42,7 +42,7 @@ except ImportError:
 
 from _env import environment_metadata  # noqa: E402
 
-from synforecast import balanced_pool, pretraining_pool  # noqa: E402
+from synforecast import interpretable_pool, pretraining_pool  # noqa: E402
 from synforecast.generators import (  # noqa: E402
     BoundedProcessGenerator,
     ChaoticSystemGenerator,
@@ -323,7 +323,7 @@ def benchmark_grid():
 
     pools: dict[int, list] = {}
     for length in SERIES_LENGTHS:
-        pools[length] = balanced_pool(
+        pools[length] = interpretable_pool(
             min_length=length,
             max_length=length,
             freq="1d",

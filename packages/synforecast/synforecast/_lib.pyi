@@ -5,6 +5,20 @@ import numpy.typing as npt
 
 class augmentation:
     @staticmethod
+    def compute_feature_set(
+        values: npt.NDArray[np.float64],
+        period: int | None = None,
+        window_size: int | None = None,
+    ) -> list[float]: ...
+    @staticmethod
+    def compute_feature_set_batch(
+        values: npt.NDArray[np.float64],
+        offsets: npt.NDArray[np.int64],
+        period: int | None = None,
+        window_size: int | None = None,
+        n_workers: int = 0,
+    ) -> npt.NDArray[np.float64]: ...
+    @staticmethod
     def dtw_alignment(
         a: npt.NDArray[np.float64],
         b: npt.NDArray[np.float64],

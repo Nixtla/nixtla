@@ -472,7 +472,7 @@ class MARGenerator(BaseGenerator):
 
         Supported names are ``spectral_entropy``, ``trend_strength``,
         ``seasonal_strength``, and ``acf1``, as defined by
-        :func:`synforecast._features.compute_features`. This implements
+        :func:`synforecast._features.compute_targeting_features`. This implements
         GRATIS feature-targeted generation (Kang et al. 2020,
         https://arxiv.org/abs/1903.02787) as a seeded evolutionary search over
         MAR parameters. The elitism, PACF-space Gaussian mutation, and minimal

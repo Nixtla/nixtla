@@ -4,7 +4,7 @@ import narwhals.stable.v2 as nw
 import numpy as np
 import pytest
 
-from synforecast import SynSet, balanced_pool
+from synforecast import SynSet, interpretable_pool
 from synforecast.generators import (
     GARCHGenerator,
     RandomWalkGenerator,
@@ -70,7 +70,7 @@ class TestReproducibility:
 
     def test_synset_same_seed_identical(self):
         pools = [
-            balanced_pool(min_length=30, max_length=30, freq="D", seed=7)[:4]
+            interpretable_pool(min_length=30, max_length=30, freq="D", seed=7)[:4]
             for _ in range(2)
         ]
         df1 = SynSet(pools[0]).generate(n_series_per_generator=4)
@@ -79,7 +79,7 @@ class TestReproducibility:
 
     def test_synset_n_jobs_invariance(self):
         pools = [
-            balanced_pool(min_length=30, max_length=30, freq="D", seed=7)[:4]
+            interpretable_pool(min_length=30, max_length=30, freq="D", seed=7)[:4]
             for _ in range(2)
         ]
         df1 = SynSet(pools[0]).generate(n_series_per_generator=4, n_jobs=1)

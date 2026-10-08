@@ -8,7 +8,7 @@ import narwhals.stable.v2 as nw
 from narwhals.stable.v2.typing import IntoDataFrame
 
 from synforecast.base import BaseGenerator, _categorize_ids
-from synforecast.presets import balanced_pool
+from synforecast.presets import interpretable_pool
 
 __all__ = ["generate_series"]
 
@@ -25,7 +25,7 @@ def generate_series(
 ) -> IntoDataFrame:
     """Generate a synthetic panel of time series.
 
-    Series are drawn from a balanced pool of generators covering diverse
+    Series are drawn from the interpretable pool of generators covering diverse
     temporal behaviors (or from `generators` when provided) and returned in
     long format, mirroring `utilsforecast.data.generate_series`.
 
@@ -43,7 +43,7 @@ def generate_series(
         min_length (int): Minimum length of each series. Defaults to 50.
         max_length (int): Maximum length of each series. Defaults to 500.
         generators (list[BaseGenerator], optional): Generators to draw from.
-            Defaults to `synforecast.balanced_pool`. Ignores min_length /
+            Defaults to `synforecast.interpretable_pool`. Ignores min_length /
             max_length / freq / engine / seed when provided.
         engine (str): Output dataframe library. Defaults to 'pandas'.
         seed (int): Random seed. Defaults to 0.
@@ -58,7 +58,7 @@ def generate_series(
         raise ValueError(f"n_series must be a positive integer, got {n_series}.")
 
     if generators is None:
-        generators = balanced_pool(
+        generators = interpretable_pool(
             min_length=min_length,
             max_length=max_length,
             freq=freq,

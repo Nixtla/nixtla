@@ -162,3 +162,30 @@ def test_every_exported_generator_has_api_reference() -> None:
             missing.append(name)
 
     assert not missing, "Missing generator API references: " + ", ".join(missing)
+
+
+def test_evaluation_exports_have_api_reference() -> None:
+    import synforecast.evaluation as evaluation
+
+    source = (ROOT / "docs" / "evaluation.html.md").read_text(encoding="utf-8")
+    for name in evaluation.__all__:
+        assert f"::: synforecast.evaluation.{name}" in source
+
+
+def test_every_exported_preset_has_api_reference() -> None:
+    """New presets must reach the composition page, aliases included."""
+    import synforecast
+
+    source = (ROOT / "docs" / "composition.html.md").read_text(encoding="utf-8")
+    exported = [
+        name
+        for name in synforecast.__all__
+        # Defined in presets, not merely imported into its namespace.
+        if getattr(getattr(synforecast, name), "__module__", None)
+        == "synforecast.presets"
+    ]
+    assert exported, "no presets resolved from the top-level namespace"
+    missing = [
+        name for name in exported if f"::: synforecast.presets.{name}" not in source
+    ]
+    assert not missing, "Missing preset API references: " + ", ".join(missing)

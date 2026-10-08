@@ -22,21 +22,32 @@ struct RealFftPlanCache {
 fn real_fft_plan(len: usize) -> RealFftPlan {
     static CACHE: OnceLock<Mutex<RealFftPlanCache>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(RealFftPlanCache::default()));
-    let mut cache = cache
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let lock = || {
+        cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    };
 
-    if let Some(plan) = cache.plans.get(&len).cloned() {
-        cache.order.retain(|cached_len| *cached_len != len);
-        cache.order.push_back(len);
-        return plan;
+    {
+        let mut cache = lock();
+        if let Some(plan) = cache.plans.get(&len).cloned() {
+            cache.order.retain(|cached_len| *cached_len != len);
+            cache.order.push_back(len);
+            return plan;
+        }
     }
 
+    // Plan outside the lock so a miss does not serialize other threads.
     // Plans own their shared internal data, so the planner can be dropped.
     // Creating it per cache miss keeps this cache genuinely bounded instead
     // of retaining the planner's own unbounded history of requested lengths.
     let mut planner = RealFftPlanner::<f64>::new();
     let plan = planner.plan_fft_forward(len);
+    let mut cache = lock();
+    if let Some(existing) = cache.plans.get(&len).cloned() {
+        // Another thread planned the same length meanwhile; keep one copy.
+        return existing;
+    }
     if cache.plans.len() == REAL_FFT_PLAN_CACHE_CAPACITY {
         if let Some(evicted) = cache.order.pop_front() {
             cache.plans.remove(&evicted);

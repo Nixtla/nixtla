@@ -87,7 +87,7 @@ def test_notebook_generator_configs_match_current_api(path: Path) -> None:
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
-                and node.func.id == "balanced_pool"
+                and node.func.id in ("balanced_pool", "interpretable_pool")
             ):
                 keyword_values = {
                     keyword.arg: keyword.value for keyword in node.keywords

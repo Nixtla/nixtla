@@ -61,7 +61,8 @@
             "group": "Evaluation",
             "pages": [
               "docs/capabilities/when_synthetic_helps.html",
-              "docs/capabilities/robustness_testing.html"
+              "docs/capabilities/robustness_testing.html",
+              "docs/capabilities/feature_coverage.html"
             ]
           },
           "docs/capabilities/custom_generator.html"
@@ -145,6 +146,7 @@
           "core.html",
           "exogenous.html",
           "dataset.html",
+          "evaluation.html",
           "generators_statistical.html",
           "generators_stochastic.html",
           "generators_multivariate.html",

@@ -36,7 +36,7 @@ except ImportError:
     sys.exit(1)
 
 
-from synforecast import balanced_pool  # noqa: E402
+from synforecast import interpretable_pool  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -140,7 +140,7 @@ def main() -> None:
     # Build one pool per length (length is baked into the generator config)
     pools: dict[int, list] = {}
     for length in SERIES_LENGTHS:
-        pools[length] = balanced_pool(
+        pools[length] = interpretable_pool(
             min_length=length,
             max_length=length,
             freq="1d",

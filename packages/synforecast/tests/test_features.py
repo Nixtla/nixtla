@@ -6,7 +6,7 @@ import pytest
 from synforecast._features import (
     acf1,
     classical_decompose,
-    compute_features,
+    compute_targeting_features,
     seasonal_strength,
     spectral_entropy,
     trend_strength,
@@ -74,7 +74,7 @@ class TestFeatureComputation:
         actual = classical_decompose(values, period)
         for got, expected in zip(actual, (trend, seasonal, remainder), strict=True):
             np.testing.assert_allclose(got, expected, atol=1e-12)
-        features = compute_features(values, period)
+        features = compute_targeting_features(values, period)
         expected_trend = 1 - np.var(remainder) / np.var(trend + remainder)
         expected_seasonal = 1 - np.var(remainder) / np.var(seasonal + remainder)
         assert features["trend_strength"] == pytest.approx(expected_trend)
@@ -96,7 +96,7 @@ class TestFeatureComputation:
 
     def test_compute_features_contract(self) -> None:
         values = np.random.default_rng(0).normal(size=128)
-        features = compute_features(values, 12)
+        features = compute_targeting_features(values, 12)
         assert set(features) == {
             "spectral_entropy",
             "trend_strength",
@@ -109,7 +109,7 @@ class TestFeatureComputation:
     @pytest.mark.parametrize("length", [63, 64, 121, 1000, 1001, 4093, 4095, 4096])
     def test_native_feature_tuple_matches_public_helpers(self, length: int) -> None:
         values = np.random.default_rng(length).normal(size=length)
-        features = compute_features(values, 12)
+        features = compute_targeting_features(values, 12)
         assert features["spectral_entropy"] == pytest.approx(
             spectral_entropy(values), abs=1e-12
         )
@@ -156,7 +156,7 @@ class TestFeatureComputation:
 
     def test_constant_and_length_three_edges(self) -> None:
         constant = np.ones(3)
-        features = compute_features(constant, None)
+        features = compute_targeting_features(constant, None)
         assert features["spectral_entropy"] == 0.0
         assert features["acf1"] == 0.0
         assert all(np.isfinite(value) for value in features.values())
@@ -164,12 +164,12 @@ class TestFeatureComputation:
     @pytest.mark.parametrize("values", [[1.0, np.nan, 2.0], [1.0, np.inf, 2.0]])
     def test_nonfinite_input_rejected(self, values: list[float]) -> None:
         with pytest.raises(ValueError, match="finite"):
-            compute_features(np.asarray(values), None)
+            compute_targeting_features(np.asarray(values), None)
 
     @pytest.mark.parametrize("values", [np.ones((2, 3)), np.ones(2)])
     def test_invalid_shape_or_length_rejected(self, values: np.ndarray) -> None:
         with pytest.raises(ValueError, match="one-dimensional|at least 3"):
-            compute_features(values, None)
+            compute_targeting_features(values, None)
 
     def test_invalid_decomposition_period_rejected(self) -> None:
         with pytest.raises(ValueError, match="period must be >= 2"):

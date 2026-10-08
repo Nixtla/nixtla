@@ -33,6 +33,17 @@ def _is_network_notebook(notebook: nbformat.NotebookNode) -> bool:
     return bool(metadata.get("requires_network", False))
 
 
+def _needs_benchmark_data(notebook: nbformat.NotebookNode) -> bool:
+    """Whether a notebook reads run artifacts under benchmarks/data.
+
+    Those artifacts are reproducible but not tracked, so only a checkout that
+    has regenerated them can execute these notebooks. Their stored outputs are
+    what the rendered docs publish.
+    """
+    metadata = notebook.metadata.get("synforecast", {})
+    return bool(metadata.get("requires_benchmark_data", False))
+
+
 def _normalize(notebook: nbformat.NotebookNode) -> None:
     """Remove volatile execution metadata while retaining rendered outputs."""
     notebook.metadata.pop("widgets", None)
@@ -95,6 +106,11 @@ def main() -> None:
         help="also execute notebooks that download public datasets",
     )
     parser.add_argument(
+        "--include-benchmark-data",
+        action="store_true",
+        help="also execute notebooks that read untracked artifacts under benchmarks/data",
+    )
+    parser.add_argument(
         "--write",
         action="store_true",
         help="write normalized outputs back to the source notebooks",
@@ -120,6 +136,9 @@ def main() -> None:
             continue
         if _is_network_notebook(notebook) and not args.include_network:
             print(f"SKIP {path.relative_to(ROOT)} (requires network)", flush=True)
+            continue
+        if _needs_benchmark_data(notebook) and not args.include_benchmark_data:
+            print(f"SKIP {path.relative_to(ROOT)} (requires benchmarks/data)", flush=True)
             continue
         print(f"RUN  {path.relative_to(ROOT)}", flush=True)
         execute(path, write=args.write)

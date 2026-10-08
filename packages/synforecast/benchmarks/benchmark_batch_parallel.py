@@ -31,7 +31,7 @@ except ImportError:
     sys.exit(1)
 
 import synforecast.base as base_mod
-from synforecast import SynSet, balanced_pool
+from synforecast import SynSet, interpretable_pool
 from synforecast.generators import (
     ETSGenerator,
     GARCHGenerator,
@@ -343,7 +343,7 @@ def benchmark_balanced_pool(quick: bool = False):
 
     for length in pool_lengths:
         # Create SynSet from balanced_pool preset
-        gens = balanced_pool(
+        gens = interpretable_pool(
             min_length=length,
             max_length=length,
             freq="1d",

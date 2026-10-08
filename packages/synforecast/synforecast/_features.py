@@ -10,6 +10,69 @@ import numpy as np
 from synforecast._analysis import _autocorrelation
 from synforecast._lib import augmentation as _rs_augmentation
 
+# v1 freezes the names, order, formulas, and undefined-value rules below.
+# Period/window settings remain explicit extraction parameters, not new schemas.
+FEATURE_SCHEMA = "native_v1"
+FEATURE_NAMES = (
+    "spectral_entropy",
+    "trend_strength",
+    "seasonal_strength",
+    "acf1",
+    "x_acf10",
+    "diff1_acf1",
+    "seas_acf1",
+    "spike",
+    "lumpiness",
+    "max_level_shift",
+    "max_var_shift",
+    "crossing_points",
+)
+
+
+def compute_feature_set(
+    values: np.ndarray, seasonal_period: int | None, window_size: int | None = None
+) -> dict[str, float]:
+    """Compute the native_v1 coverage features (independent of MAR targeting).
+
+    Every feature is computed on the series normalized to zero mean and unit
+    variance, so none depends on the input scale. All features require >=3
+    observations. A declared period needs two cycles, otherwise the three
+    decomposition-based features (trend and seasonal strength, spike) are
+    NaN; x_acf10 needs 11 observations; seas_acf1 needs period+1. Window
+    summaries need two complete windows (explicit window_size, period, or
+    otherwise 10). Undefined features return NaN.
+    """
+    values = np.asarray(values, dtype=float)
+    if values.ndim != 1 or not len(values) or not np.all(np.isfinite(values)):
+        raise ValueError("values must be non-empty, finite and one-dimensional")
+    result = _rs_augmentation.compute_feature_set(
+        np.ascontiguousarray(values), seasonal_period, window_size
+    )
+    return dict(zip(FEATURE_NAMES, result, strict=True))
+
+
+def compute_feature_matrix(
+    values: np.ndarray,
+    offsets: np.ndarray,
+    seasonal_period: int | None,
+    window_size: int | None = None,
+    n_workers: int = 0,
+) -> np.ndarray:
+    """Return an ``(n_series, 12)`` native_v1 matrix for a flat, finite panel.
+
+    ``offsets`` holds the ``n_series + 1`` strictly increasing series bounds
+    into ``values``. One native call releases the GIL and processes series in
+    parallel; ``n_workers=0`` uses the global Rayon pool.
+    """
+    rows = _rs_augmentation.compute_feature_set_batch(
+        np.ascontiguousarray(values, dtype=np.float64),
+        np.ascontiguousarray(offsets, dtype=np.int64),
+        seasonal_period,
+        window_size,
+        n_workers,
+    )
+    return np.asarray(rows).reshape(-1, len(FEATURE_NAMES))
+
 
 def _validate_values(values: np.ndarray) -> np.ndarray:
     """Return a finite one-dimensional float array with at least three values."""
@@ -93,7 +156,7 @@ def acf1(values: np.ndarray) -> float:
     return 0.0 if np.isnan(result) else float(result)
 
 
-def compute_features(
+def compute_targeting_features(
     values: np.ndarray, seasonal_period: int | None
 ) -> dict[str, float]:
     """Compute the minimal tsfeatures-style set used by MAR targeting.

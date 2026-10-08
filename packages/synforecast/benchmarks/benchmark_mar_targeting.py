@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 from _env import environment_metadata
 
-from synforecast._features import compute_features
+from synforecast._features import compute_targeting_features
 from synforecast.generators.mar import MARGenerator
 
 TARGETS = [
@@ -63,7 +63,7 @@ def held_out_distance(generator, target, seed):
     )
     frame = fresh.generate(n_series=24, n_jobs=1)
     features = [
-        compute_features(part["y"].to_numpy(), 12)
+        compute_targeting_features(part["y"].to_numpy(), 12)
         for part in frame.partition_by("unique_id", maintain_order=True)
     ]
     return float(
