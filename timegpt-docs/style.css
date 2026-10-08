@@ -1621,7 +1621,7 @@ details.expandable .primitive-param-field {
   :where(table td):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table th,
 [data-table-wrapper] table td {
-  padding: 0.875rem 1rem;
+  padding: var(--space-8) var(--space-12);
   border-right: 1px solid var(--table-border) !important;
   border-bottom: 1px solid var(--table-border) !important;
   text-align: left;
