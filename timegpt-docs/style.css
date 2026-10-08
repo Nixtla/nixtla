@@ -118,8 +118,6 @@
   --ease-standard: ease;
   --duration-fast: 0.15s;
   --duration-base: 0.2s;
-  --duration-shift: 220ms;
-  --shift-distance: 115%; /* text/icon hover-shift travel */
   --duration-slow: 0.4s;
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --transition-hover: background-color var(--duration-base) var(--ease-standard);
@@ -332,8 +330,7 @@ p {
 }
 
 /* Copy-page descendants: same face but WITHOUT forcing line-height — the label
-   spans keep Tailwind's text-sm leading (20px), which defines the text-shift
-   travel box; 92% shrinks it and the swap clips/janks. */
+   spans keep Tailwind's text-sm leading (20px). */
 #page-context-menu-button *,
 #page-context-menu-button + button * {
   font-family: var(--font-mono) !important;
@@ -456,205 +453,23 @@ p {
   color: var(--primary-foreground) !important;
 }
 
-/* ---- Text-shift hover: ONE machinery for every label that slides out and is
-   replaced by its own copy. Each trigger sets --shift-label (and --shift-color
-   when the host text is transparent) on the element hosting the pseudos; the
-   geometry, motion and hover states live here once. ---- */
-
-#assistant-entry span::before,
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  content: var(--shift-label);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  color: var(--shift-color, currentColor);
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Resting: visible layer at 0, incoming copy parked below. The copy-page real
-   label rides the same groups. */
-#assistant-entry span::before,
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transform: translateY(0);
-}
-
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  transform: translateY(var(--shift-distance));
-}
-
-/* Hover/focus: outgoing layer exits up, incoming copy settles at 0. */
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div::before,
-#assistant-entry:is(:hover, :focus-visible) span::before,
-#page-context-menu-button:is(:hover, :focus-visible)
-  span.grid
-  > span:not(.invisible) {
-  transform: translateY(calc(-1 * var(--shift-distance)));
-}
-
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div::after,
-#assistant-entry:is(:hover, :focus-visible) span::after,
-#page-context-menu-button:is(:hover, :focus-visible) span.grid::after {
-  transform: translateY(0);
-}
-
-/* ---- Icon hover swap. Same technique + same --duration-shift as the text-shift
-   so text and icon move as one piece. Real icon hidden (or exiting), masked
-   pseudo copies ride the swap. Each case sets --icon-mask (+ --icon-mask-size)
-   and its own geometry; mechanics and transforms are shared here. ---- */
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::before,
-#page-context-menu-button div::after,
-#assistant-entry::before {
-  content: "";
-  position: absolute;
-  background-color: currentColor;
-  -webkit-mask: var(--icon-mask) center / var(--icon-mask-size, contain)
-    no-repeat;
-  mask: var(--icon-mask) center / var(--icon-mask-size, contain) no-repeat;
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Icon-only swaps travel 150%; resting + hover states grouped per layer. */
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu-button div::before {
-  transform: translateY(0);
-}
-
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::after,
-#assistant-entry::before {
-  transform: translateY(150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::before,
-#page-context-menu-button:hover div::before {
-  transform: translateY(-150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::after,
-#page-context-menu-button:hover div::after,
-#assistant-entry:hover::before {
-  transform: translateY(0);
-}
-
-/* Real icons that exit on hover (their masked copy enters via the rules above). */
-#assistant-entry > svg {
-  transition: transform var(--duration-shift) var(--ease-standard);
-}
-
-#assistant-entry:hover > svg {
-  transform: translateY(-150%);
-}
-
-/* Copy-page "More actions" chevron (icon-only; rotation baked into the mask so
-   the swap is vertical). */
+/* "More actions" chevron button: square like the rest of the toolbar. */
 #page-context-menu button[aria-haspopup="menu"] {
-  position: relative;
   border-radius: 0 !important;
 }
-#page-context-menu button[aria-haspopup="menu"] > svg {
-  visibility: hidden;
-}
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25' transform='rotate(90 9 9)'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  inset: 0;
-}
 
-/* Copy-page button copy icon (icon+text; the label shifts via span.grid). */
-#page-context-menu-button {
-  overflow: hidden;
-}
-#page-context-menu-button div {
-  position: relative;
-}
-#page-context-menu-button div > svg {
-  visibility: hidden;
-}
-#page-context-menu-button div::before,
-#page-context-menu-button div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.25 5.25H7.25C6.14543 5.25 5.25 6.14543 5.25 7.25V14.25C5.25 15.3546 6.14543 16.25 7.25 16.25H14.25C15.3546 16.25 16.25 15.3546 16.25 14.25V7.25C16.25 6.14543 15.3546 5.25 14.25 5.25Z'/%3E%3Cpath d='M2.80103 11.998L1.77203 5.07397C1.61003 3.98097 2.36403 2.96397 3.45603 2.80197L10.38 1.77297C11.313 1.63397 12.19 2.16297 12.528 3.00097'/%3E%3C/svg%3E");
-  left: 0;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
-}
-
-/* Assistant sparkle (icon+text; label shifts via its span). The incoming copy
-   uses ::before while the real sparkle exits. */
-#assistant-entry::before {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
-  left: 12px;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
+#page-context-menu button[aria-haspopup="menu"] svg {
+  color: var(--primary) !important;
 }
 
 /* "Ask Assistant" — outline chrome from the toolbar-button molecule (NAVBAR);
    filter reset kills Mintlify's dark:brightness. */
 #assistant-entry {
   filter: none !important;
-  position: relative !important;
-  overflow: hidden !important;
 }
 
 #assistant-entry svg {
   color: var(--primary) !important;
-}
-
-/* Label rides the shared text-shift machinery (NAVBAR section). */
-#assistant-entry span {
-  --shift-label: "Ask Assistant";
-  --shift-color: var(--primary);
-  position: relative;
-  overflow: hidden;
-  color: transparent !important;
-}
-
-/* Zeroes every text-shift / icon-swap transition at once — they all read
-   --duration-shift. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-shift: 0s;
-  }
-}
-
-/* Copy page + More actions: outline chrome from the toolbar-button molecule
-   (NAVBAR). */
-#page-context-menu button[aria-haspopup="menu"] svg {
-  color: var(--primary) !important;
-}
-
-/* Label rides the shared text-shift machinery (NAVBAR section); the real label
-   span needs its own transition since it isn't a pseudo.
-   Travel is 170% here (not the global 115%): the label box is ~20px inside a
-   34px button, and clipping happens at the BUTTON's own overflow:hidden, so the
-   text must travel span-height + button padding to visibly reach the top edge
-   before vanishing — the same read as the navbar buttons. span.grid must NOT
-   clip (no overflow:hidden) or the swap dies at the text's own line box. */
-#page-context-menu-button span.grid {
-  --shift-label: "Copy page";
-  --shift-distance: 170%;
-  position: relative;
-}
-
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transition: transform var(--duration-shift) var(--ease-standard);
 }
 
 /* CTA — secondary */
