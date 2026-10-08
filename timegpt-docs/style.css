@@ -1899,12 +1899,6 @@ details.expandable .primitive-param-field {
   border-bottom: 0 !important;
 }
 
-/* Wrapper-only: first column stays centered. */
-[data-table-wrapper] table th:first-child,
-[data-table-wrapper] table td:first-child {
-  text-align: center;
-}
-
 /* ================================  FRAME  ================================= */
 
 /* Strip <Frame> chrome */
