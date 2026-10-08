@@ -240,6 +240,25 @@ html.dark {
 
 /* =================================  BASE  ================================= */
 
+/* Mintlify's prose colours come from Tailwind's gray scale (body gray-700,
+   headings a blue-tinted gray-900). Map them onto the Nixtla text tokens, as
+   the website does (foreground + 58% muted). */
+.prose {
+  --tw-prose-body: var(--primary);
+  --tw-prose-headings: var(--primary);
+  --tw-prose-lead: var(--primary);
+  --tw-prose-bold: var(--primary);
+  --tw-prose-links: var(--primary);
+  --tw-prose-counters: var(--primary-muted);
+  --tw-prose-bullets: var(--primary);
+  --tw-prose-quotes: var(--primary);
+  --tw-prose-captions: var(--primary-muted);
+  --tw-prose-code: var(--primary);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  color: var(--primary) !important;
+}
+
 html,
 body {
   background-color: var(--background);
@@ -1556,6 +1575,15 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 @media (min-width: 992px) {
   #page-context-menu.mt-3 {
     display: none !important;
+  }
+
+  /* The menu is absolutely positioned over the title row, so keep the title's
+     first line clear of it (156px is the menu's min-width). */
+  #header:has(#page-context-menu.ml-auto) #page-title {
+    max-width: min(
+      var(--page-title-max-width),
+      calc(100% - 156px - var(--space-16))
+    );
   }
 
   #header #page-context-menu.ml-auto {
