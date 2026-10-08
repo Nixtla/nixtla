@@ -1945,6 +1945,13 @@ details.expandable .primitive-param-field {
   border-radius: 0 !important;
 }
 
+/* Image + its wrapper: Mintlify adds rounded-xl to frame images; keep them
+   square like the rest of the DLS. */
+.frame .rounded-xl,
+.frame img {
+  border-radius: 0 !important;
+}
+
 /* ================================  BANNER  ================================ */
 
 #banner {
