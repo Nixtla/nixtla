@@ -280,7 +280,7 @@ h2 span {
   font-size: 30px;
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 95%;
+  line-height: 120%;
 }
 
 p {
@@ -664,8 +664,8 @@ p {
   --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E");
 }
 
-/* Assistant sparkle (icon+text; label shifts via its span). ::after is the grain,
-   so the incoming copy uses ::before while the real sparkle exits. */
+/* Assistant sparkle (icon+text; label shifts via its span). The incoming copy
+   uses ::before while the real sparkle exits. */
 #assistant-entry::before {
   --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
   left: 12px;
@@ -1123,8 +1123,8 @@ body .code-group {
 /* The API playground code-group has no .code-block inside NOR role=tabpanel
    on its panels (unlike the MDX one: its panels are
    <div data-state=... id=radix-…-content-N> without a role). That's why we target
-   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/grain/position
-   never apply. We recreate the frame + grain + square corners to match the look of
+   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/position
+   never apply. We recreate the frame + square corners to match the look of
    the .code-block. No @layer and high specificity to beat Tailwind's rounded-xt!,
    rounded-2xl and rounded-[inherit]. */
 .code-group:not(:has(.code-block)),
@@ -1143,7 +1143,6 @@ body .code-group {
     border-radius: 0 !important;
   }
 }
-/* position:relative anchors its grain ::after — see the grain list in UTILITIES. */
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"] {
   border: 1px solid var(--blog-code-border) !important;
   position: relative;
@@ -1655,7 +1654,7 @@ html.dark div.card svg {
   font-size: 26px !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: 120% !important;
   font-family: var(--font-sans) !important;
   color: var(--primary) !important;
   margin: 0 !important;
@@ -1993,7 +1992,7 @@ details.expandable .primitive-param-field {
   font-family: var(--font-sans) !important;
   font-size: 28px !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: 120% !important;
   color: var(--primary) !important;
 }
 
@@ -2268,32 +2267,8 @@ html.dark .bg-background-dark,
   }
 }
 
-:root {
-  --grain-opacity: 0.08;
-  --grain-size: 160px;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-.grain-layer {
-  position: relative;
-}
-
-/* Search button: --border outline (no ring/shadow); position:relative so its
-   grain ::after anchors to it. */
+/* Search button: --border outline (no ring/shadow). */
 #search-bar-entry {
-  position: relative;
   border: 1px solid var(--border) !important;
   box-shadow: none !important;
 }
@@ -2313,63 +2288,7 @@ body::after {
   margin-inline-end: var(--space-8) !important;
 }
 
-/* Search modal needs position:relative so its grain ::after anchors to it. */
-[data-component-part="search-modal"] {
-  position: relative;
-}
 
-.grain-layer::after,
-#navbar::after,
-#banner::after,
-#sidebar::after,
-#mobile-nav::after,
-#search-bar-entry::after,
-#assistant-entry::after,
-.chat-assistant-sheet::after,
-[data-component-part="search-modal"]::after,
-[data-component-part="search-input-container"]::after,
-[data-radix-menu-content]::after,
-[data-component-part="theme-preference-menu-content"]::after,
-[role="dialog"]:has(> nav[aria-label="Mobile menu"])::after,
-.code-group:not(:has(.code-block))
-  [data-component-part="code-block-root"]::after,
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-#sidebar::after {
-  z-index: 11;
-}
-
-/* Playground header: grain below its children so the language dropdown and copy
-   button render clean on top. */
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  z-index: 0;
-}
-
-/* Grain follows the input's rounded-2xl so it doesn't poke past the corners. */
-[data-component-part="search-input-container"]::after {
-  border-radius: inherit;
-}
-
-/* Every grain layer reads its opacity from this token, so zeroing it here kills
-   all of them (body, chrome, code-group) without repeating the selector list. */
-@media (prefers-contrast: more) {
-  :root {
-    --grain-opacity: 0;
-  }
-}
 
 /* Deliberate 0px on desktop: kills the `.space-y-4` (16px) spacing between the
    operation sections. Below lg it becomes --space-20 (see the media query). */
