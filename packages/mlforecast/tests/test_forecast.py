@@ -41,7 +41,7 @@ def fcst():
     """Main forecast object for testing."""
     # train, valid = setup_forecast_data
     fcst = MLForecast(
-        models=lgb.LGBMRegressor(random_state=0, verbosity=-1),
+        models=LinearRegression(),
         freq=1,
         lags=[24 * (i + 1) for i in range(7)],
         lag_transforms={

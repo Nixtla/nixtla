@@ -58,7 +58,7 @@ def grouped_expanding_mean_df():
     return df
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def setup_forecast_data():
     df = pd.read_parquet('https://datasets-nixtla.s3.amazonaws.com/m4-hourly.parquet')
     ids = df['unique_id'].unique()

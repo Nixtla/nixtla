@@ -17,6 +17,7 @@ from mlforecast.auto import (
     AutoModel,
     AutoRidge,
     PredictionIntervals,
+    lightgbm_space,
     ridge_space,
 )
 from mlforecast.lag_transforms import ExpandingMean
@@ -60,7 +61,16 @@ def test_automlforecast_pipeline(weekly_data):
     auto_mlf = AutoMLForecast(
         freq=1,
         season_length=season_length,
-        models={"lgb": AutoLightGBM(), "ridge": auto_ridge},
+        models={
+            "lgb": AutoLightGBM(
+                config=lambda trial: {
+                    **lightgbm_space(trial),
+                    "n_estimators": 20,
+                    "num_leaves": 31,
+                }
+            ),
+            "ridge": auto_ridge,
+        },
         fit_config=lambda trial: {"static_features": ["unique_id"]},
         num_threads=2,
     )
