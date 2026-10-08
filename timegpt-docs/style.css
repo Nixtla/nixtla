@@ -456,32 +456,11 @@ p {
   color: var(--primary-foreground) !important;
 }
 
-#navbar nav li:not(#topbar-cta-button) a {
-  position: relative !important;
-  overflow: hidden !important;
-}
-
-#navbar nav li:not(#topbar-cta-button) a > span {
-  color: transparent;
-}
-
 /* ---- Text-shift hover: ONE machinery for every label that slides out and is
    replaced by its own copy. Each trigger sets --shift-label (and --shift-color
    when the host text is transparent) on the element hosting the pseudos; the
    geometry, motion and hover states live here once. ---- */
 
-#navbar nav li.navbar-link a {
-  --shift-label: "Book a meeting";
-}
-
-#navbar nav li:not(.navbar-link):not(#topbar-cta-button) a {
-  --shift-label: "Get Started";
-}
-
-#navbar nav li:not(#topbar-cta-button) a::before,
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div > span::after,
 #assistant-entry span::before,
 #assistant-entry span::after,
 #page-context-menu-button span.grid::after {
@@ -497,19 +476,13 @@ p {
   pointer-events: none;
 }
 
-/* Resting: visible layer at 0, incoming copy parked below. The topbar arrow
-   pseudos and the copy-page real label ride the same groups. */
-#navbar nav li:not(#topbar-cta-button) a::before,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div::before,
+/* Resting: visible layer at 0, incoming copy parked below. The copy-page real
+   label rides the same groups. */
 #assistant-entry span::before,
 #page-context-menu-button span.grid > span:not(.invisible) {
   transform: translateY(0);
 }
 
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::after,
-#topbar-cta-button a div::after,
 #assistant-entry span::after,
 #page-context-menu-button span.grid::after {
   transform: translateY(var(--shift-distance));
@@ -534,51 +507,14 @@ p {
   transform: translateY(0);
 }
 
-#topbar-cta-button a div > span {
-  --shift-label: "Get Started";
-  --shift-color: var(--primary-foreground);
-  position: relative;
-  overflow: hidden;
-  height: var(--button-height);
-  margin-block: calc(-1 * var(--space-4));
-  box-sizing: border-box;
-  color: transparent !important;
-}
-
-/* Get Started arrow: the inline arrow can't be duplicated via content, so it's
-   reproduced as a mask on the two free pseudos of the content div; the real svg
-   is hidden but keeps its width. Mechanics come from the icon-swap block below;
-   transforms ride the text-shift groups above (same trigger, same travel). */
-#topbar-cta-button a div {
-  position: relative;
-  overflow: hidden;
-}
-
-#topbar-cta-button a div > svg {
-  visibility: hidden;
-}
-
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 0.75rem;
-}
-
 /* ---- Icon hover swap. Same technique + same --duration-shift as the text-shift
    so text and icon move as one piece. Real icon hidden (or exiting), masked
    pseudo copies ride the swap. Each case sets --icon-mask (+ --icon-mask-size)
    and its own geometry; mechanics and transforms are shared here. ---- */
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after,
 #page-context-menu button[aria-haspopup="menu"]::before,
 #page-context-menu button[aria-haspopup="menu"]::after,
 #page-context-menu-button div::before,
 #page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
 #assistant-entry::before {
   content: "";
   position: absolute;
@@ -598,7 +534,6 @@ p {
 
 #page-context-menu button[aria-haspopup="menu"]::after,
 #page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
 #assistant-entry::before {
   transform: translateY(150%);
 }
@@ -610,18 +545,15 @@ p {
 
 #page-context-menu button[aria-haspopup="menu"]:hover::after,
 #page-context-menu-button:hover div::after,
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon]::after,
 #assistant-entry:hover::before {
   transform: translateY(0);
 }
 
 /* Real icons that exit on hover (their masked copy enters via the rules above). */
-#theme-preference-menu-trigger span[data-theme-preference-icon] > svg,
 #assistant-entry > svg {
   transition: transform var(--duration-shift) var(--ease-standard);
 }
 
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon] > svg,
 #assistant-entry:hover > svg {
   transform: translateY(-150%);
 }
@@ -660,27 +592,6 @@ p {
   width: 1rem;
   height: 1rem;
   margin-top: -0.5rem;
-}
-
-/* Theme toggle (icon-only, 3 dynamic icons): real icon exits, matching masked
-   copy enters. position (not display) keeps the component's display:none hiding
-   of inactive icons; clipped by the button's overflow-hidden. */
-#theme-preference-menu-trigger {
-  position: relative;
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after {
-  --icon-mask-size: 1rem;
-  inset: 0;
-}
-#theme-preference-menu-trigger
-  span[data-theme-preference-icon="system"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5L9 14.5L13.5 15.5'/%3E%3Cpath d='M9 11.75V14.5'/%3E%3Cpath d='M14.25 2.75H3.75C2.64543 2.75 1.75 3.64543 1.75 4.75V9.75C1.75 10.8546 2.64543 11.75 3.75 11.75H14.25C15.3546 11.75 16.25 10.8546 16.25 9.75V4.75C16.25 3.64543 15.3546 2.75 14.25 2.75Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="light"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 1.25V2.25'/%3E%3Cpath d='M14.48 3.52002L13.773 4.22702'/%3E%3Cpath d='M16.75 9H15.75'/%3E%3Cpath d='M14.48 14.4799L13.773 13.7729'/%3E%3Cpath d='M9 16.75V15.75'/%3E%3Cpath d='M3.52 14.4799L4.227 13.7729'/%3E%3Cpath d='M1.25 9H2.25'/%3E%3Cpath d='M3.52 3.52002L4.227 4.22702'/%3E%3Cpath d='M9 13.25C11.3472 13.25 13.25 11.3472 13.25 9C13.25 6.65279 11.3472 4.75 9 4.75C6.65279 4.75 4.75 6.65279 4.75 9C4.75 11.3472 6.65279 13.25 9 13.25Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="dark"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E");
 }
 
 /* Assistant sparkle (icon+text; label shifts via its span). The incoming copy
