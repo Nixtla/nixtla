@@ -1,23 +1,45 @@
 /* ================================  FONTS  ================================= */
 
+/* Inter for text and JetBrains Mono for code/UI chrome, matching the website.
+   Self-hosted Latin subsets; Inter is a variable font (100–900). */
+
 @font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
-  font-weight: 400;
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable-Latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
-  font-weight: 500;
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable-Italic-Latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Supply";
-  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-400-Latin.woff2") format("woff2");
   font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-400-Italic-Latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-700-Latin.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -103,8 +125,12 @@
   --transition-hover: background-color var(--duration-base) var(--ease-standard);
 
   /* FONTS */
-  --font-sans: "NeueMontreal", sans-serif;
-  --font-mono: "Supply", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  /* Mintlify's code/pre/kbd font comes from Tailwind's mono variable. */
+  --default-mono-font-family: var(--font-mono);
 
   /* FONTS WEIGHT */
   --font-weight-regular: 400;
@@ -221,6 +247,15 @@ body {
   font-weight: var(--font-weight-regular);
 }
 
+/* Mintlify turns on Inter's cv02/cv03/cv04/cv11 alternates for every element,
+   which also swaps glyphs in JetBrains Mono. Use the faces' defaults, as the
+   website does. */
+*,
+::before,
+::after {
+  font-feature-settings: normal !important;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -313,6 +348,7 @@ p {
 
 #navbar-transition {
   background: var(--background);
+  border-bottom-color: var(--border) !important;
 }
 
 /* Mono-label recipe (BASE) at navbar size. */
@@ -368,7 +404,9 @@ p {
 }
 
 #topbar-cta-button a {
-  padding: var(--space-4) var(--space-8) !important;
+  /* The chevron glyph sits centred in its 12px box, leaving ~3px of empty space
+     on its right; trim the right padding so the ink is evenly inset. */
+  padding: var(--space-4) calc(var(--space-8) - 3px) var(--space-4) var(--space-8) !important;
   height: var(--button-height) !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -1429,6 +1467,20 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 
 .callout {
   margin-block: 0 !important;
+}
+
+/* Prose margins are zeroed globally and spacing comes from .mdx-content's gap,
+   which doesn't reach inside callouts — space their children here instead. */
+[data-component-part="callout-content"] > span[data-as="p"] {
+  display: block;
+}
+
+.mdx-content .callout [data-component-part="callout-content"] > * + * {
+  margin-top: var(--space-12) !important;
+}
+
+.prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  font-weight: var(--font-weight-regular) !important;
 }
 
 .accordion-group {
