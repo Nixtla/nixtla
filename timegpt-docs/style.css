@@ -1,23 +1,45 @@
 /* ================================  FONTS  ================================= */
 
+/* Inter for text and JetBrains Mono for code/UI chrome, matching the website.
+   Self-hosted Latin subsets; Inter is a variable font (100–900). */
+
 @font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
-  font-weight: 400;
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable-Latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
-  font-weight: 500;
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable-Italic-Latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Supply";
-  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-400-Latin.woff2") format("woff2");
   font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-400-Italic-Latin.woff2") format("woff2");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-700-Latin.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
   font-display: swap;
 }
 
@@ -96,15 +118,17 @@
   --ease-standard: ease;
   --duration-fast: 0.15s;
   --duration-base: 0.2s;
-  --duration-shift: 220ms;
-  --shift-distance: 115%; /* text/icon hover-shift travel */
   --duration-slow: 0.4s;
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --transition-hover: background-color var(--duration-base) var(--ease-standard);
 
   /* FONTS */
-  --font-sans: "NeueMontreal", sans-serif;
-  --font-mono: "Supply", monospace;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  /* Mintlify's code/pre/kbd font comes from Tailwind's mono variable. */
+  --default-mono-font-family: var(--font-mono);
 
   /* FONTS WEIGHT */
   --font-weight-regular: 400;
@@ -214,11 +238,39 @@ html.dark {
 
 /* =================================  BASE  ================================= */
 
+/* Mintlify's prose colours come from Tailwind's gray scale (body gray-700,
+   headings a blue-tinted gray-900). Map them onto the Nixtla text tokens, as
+   the website does (foreground + 58% muted). */
+.prose {
+  --tw-prose-body: var(--primary);
+  --tw-prose-headings: var(--primary);
+  --tw-prose-lead: var(--primary);
+  --tw-prose-bold: var(--primary);
+  --tw-prose-links: var(--primary);
+  --tw-prose-counters: var(--primary-muted);
+  --tw-prose-bullets: var(--primary);
+  --tw-prose-quotes: var(--primary);
+  --tw-prose-captions: var(--primary-muted);
+  --tw-prose-code: var(--primary);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  color: var(--primary);
+}
+
 html,
 body {
   background-color: var(--background);
   font-family: var(--font-sans);
   font-weight: var(--font-weight-regular);
+}
+
+/* Mintlify turns on Inter's cv02/cv03/cv04/cv11 alternates for every element,
+   which also swaps glyphs in JetBrains Mono. Use the faces' defaults, as the
+   website does. */
+*,
+::before,
+::after {
+  font-feature-settings: normal;
 }
 
 html {
@@ -245,7 +297,7 @@ h2 span {
   font-size: 30px;
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 95%;
+  line-height: 120%;
 }
 
 p {
@@ -278,8 +330,7 @@ p {
 }
 
 /* Copy-page descendants: same face but WITHOUT forcing line-height — the label
-   spans keep Tailwind's text-sm leading (20px), which defines the text-shift
-   travel box; 92% shrinks it and the swap clips/janks. */
+   spans keep Tailwind's text-sm leading (20px). */
 #page-context-menu-button *,
 #page-context-menu-button + button * {
   font-family: var(--font-mono) !important;
@@ -313,6 +364,7 @@ p {
 
 #navbar-transition {
   background: var(--background);
+  border-bottom-color: var(--border);
 }
 
 /* Mono-label recipe (BASE) at navbar size. */
@@ -368,7 +420,9 @@ p {
 }
 
 #topbar-cta-button a {
-  padding: var(--space-4) var(--space-8) !important;
+  /* The chevron glyph sits centred in its 12px box, leaving ~3px of empty space
+     on its right; trim the right padding so the ink is evenly inset. */
+  padding: var(--space-4) calc(var(--space-8) - 3px) var(--space-4) var(--space-8) !important;
   height: var(--button-height) !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -399,294 +453,23 @@ p {
   color: var(--primary-foreground) !important;
 }
 
-#navbar nav li:not(#topbar-cta-button) a {
-  position: relative !important;
-  overflow: hidden !important;
-}
-
-#navbar nav li:not(#topbar-cta-button) a > span {
-  color: transparent;
-}
-
-/* ---- Text-shift hover: ONE machinery for every label that slides out and is
-   replaced by its own copy. Each trigger sets --shift-label (and --shift-color
-   when the host text is transparent) on the element hosting the pseudos; the
-   geometry, motion and hover states live here once. ---- */
-
-#navbar nav li.navbar-link a {
-  --shift-label: "Book a meeting";
-}
-
-#navbar nav li:not(.navbar-link):not(#topbar-cta-button) a {
-  --shift-label: "Get Started";
-}
-
-#navbar nav li:not(#topbar-cta-button) a::before,
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div > span::after,
-#assistant-entry span::before,
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  content: var(--shift-label);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  color: var(--shift-color, currentColor);
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Resting: visible layer at 0, incoming copy parked below. The topbar arrow
-   pseudos and the copy-page real label ride the same groups. */
-#navbar nav li:not(#topbar-cta-button) a::before,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div::before,
-#assistant-entry span::before,
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transform: translateY(0);
-}
-
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::after,
-#topbar-cta-button a div::after,
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  transform: translateY(var(--shift-distance));
-}
-
-/* Hover/focus: outgoing layer exits up, incoming copy settles at 0. */
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div::before,
-#assistant-entry:is(:hover, :focus-visible) span::before,
-#page-context-menu-button:is(:hover, :focus-visible)
-  span.grid
-  > span:not(.invisible) {
-  transform: translateY(calc(-1 * var(--shift-distance)));
-}
-
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div::after,
-#assistant-entry:is(:hover, :focus-visible) span::after,
-#page-context-menu-button:is(:hover, :focus-visible) span.grid::after {
-  transform: translateY(0);
-}
-
-#topbar-cta-button a div > span {
-  --shift-label: "Get Started";
-  --shift-color: var(--primary-foreground);
-  position: relative;
-  overflow: hidden;
-  height: var(--button-height);
-  margin-block: calc(-1 * var(--space-4));
-  box-sizing: border-box;
-  color: transparent !important;
-}
-
-/* Get Started arrow: the inline arrow can't be duplicated via content, so it's
-   reproduced as a mask on the two free pseudos of the content div; the real svg
-   is hidden but keeps its width. Mechanics come from the icon-swap block below;
-   transforms ride the text-shift groups above (same trigger, same travel). */
-#topbar-cta-button a div {
-  position: relative;
-  overflow: hidden;
-}
-
-#topbar-cta-button a div > svg {
-  visibility: hidden;
-}
-
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 0.75rem;
-}
-
-/* ---- Icon hover swap. Same technique + same --duration-shift as the text-shift
-   so text and icon move as one piece. Real icon hidden (or exiting), masked
-   pseudo copies ride the swap. Each case sets --icon-mask (+ --icon-mask-size)
-   and its own geometry; mechanics and transforms are shared here. ---- */
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after,
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::before,
-#page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
-#assistant-entry::before {
-  content: "";
-  position: absolute;
-  background-color: currentColor;
-  -webkit-mask: var(--icon-mask) center / var(--icon-mask-size, contain)
-    no-repeat;
-  mask: var(--icon-mask) center / var(--icon-mask-size, contain) no-repeat;
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Icon-only swaps travel 150%; resting + hover states grouped per layer. */
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu-button div::before {
-  transform: translateY(0);
-}
-
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
-#assistant-entry::before {
-  transform: translateY(150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::before,
-#page-context-menu-button:hover div::before {
-  transform: translateY(-150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::after,
-#page-context-menu-button:hover div::after,
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon]::after,
-#assistant-entry:hover::before {
-  transform: translateY(0);
-}
-
-/* Real icons that exit on hover (their masked copy enters via the rules above). */
-#theme-preference-menu-trigger span[data-theme-preference-icon] > svg,
-#assistant-entry > svg {
-  transition: transform var(--duration-shift) var(--ease-standard);
-}
-
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon] > svg,
-#assistant-entry:hover > svg {
-  transform: translateY(-150%);
-}
-
-/* Copy-page "More actions" chevron (icon-only; rotation baked into the mask so
-   the swap is vertical). */
+/* "More actions" chevron button: square like the rest of the toolbar. */
 #page-context-menu button[aria-haspopup="menu"] {
-  position: relative;
   border-radius: 0 !important;
 }
-#page-context-menu button[aria-haspopup="menu"] > svg {
-  visibility: hidden;
-}
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25' transform='rotate(90 9 9)'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  inset: 0;
-}
 
-/* Copy-page button copy icon (icon+text; the label shifts via span.grid). */
-#page-context-menu-button {
-  overflow: hidden;
-}
-#page-context-menu-button div {
-  position: relative;
-}
-#page-context-menu-button div > svg {
-  visibility: hidden;
-}
-#page-context-menu-button div::before,
-#page-context-menu-button div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.25 5.25H7.25C6.14543 5.25 5.25 6.14543 5.25 7.25V14.25C5.25 15.3546 6.14543 16.25 7.25 16.25H14.25C15.3546 16.25 16.25 15.3546 16.25 14.25V7.25C16.25 6.14543 15.3546 5.25 14.25 5.25Z'/%3E%3Cpath d='M2.80103 11.998L1.77203 5.07397C1.61003 3.98097 2.36403 2.96397 3.45603 2.80197L10.38 1.77297C11.313 1.63397 12.19 2.16297 12.528 3.00097'/%3E%3C/svg%3E");
-  left: 0;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
-}
-
-/* Theme toggle (icon-only, 3 dynamic icons): real icon exits, matching masked
-   copy enters. position (not display) keeps the component's display:none hiding
-   of inactive icons; clipped by the button's overflow-hidden. */
-#theme-preference-menu-trigger {
-  position: relative;
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after {
-  --icon-mask-size: 1rem;
-  inset: 0;
-}
-#theme-preference-menu-trigger
-  span[data-theme-preference-icon="system"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5L9 14.5L13.5 15.5'/%3E%3Cpath d='M9 11.75V14.5'/%3E%3Cpath d='M14.25 2.75H3.75C2.64543 2.75 1.75 3.64543 1.75 4.75V9.75C1.75 10.8546 2.64543 11.75 3.75 11.75H14.25C15.3546 11.75 16.25 10.8546 16.25 9.75V4.75C16.25 3.64543 15.3546 2.75 14.25 2.75Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="light"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 1.25V2.25'/%3E%3Cpath d='M14.48 3.52002L13.773 4.22702'/%3E%3Cpath d='M16.75 9H15.75'/%3E%3Cpath d='M14.48 14.4799L13.773 13.7729'/%3E%3Cpath d='M9 16.75V15.75'/%3E%3Cpath d='M3.52 14.4799L4.227 13.7729'/%3E%3Cpath d='M1.25 9H2.25'/%3E%3Cpath d='M3.52 3.52002L4.227 4.22702'/%3E%3Cpath d='M9 13.25C11.3472 13.25 13.25 11.3472 13.25 9C13.25 6.65279 11.3472 4.75 9 4.75C6.65279 4.75 4.75 6.65279 4.75 9C4.75 11.3472 6.65279 13.25 9 13.25Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="dark"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E");
-}
-
-/* Assistant sparkle (icon+text; label shifts via its span). ::after is the grain,
-   so the incoming copy uses ::before while the real sparkle exits. */
-#assistant-entry::before {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
-  left: 12px;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
+#page-context-menu button[aria-haspopup="menu"] svg {
+  color: var(--primary) !important;
 }
 
 /* "Ask Assistant" — outline chrome from the toolbar-button molecule (NAVBAR);
    filter reset kills Mintlify's dark:brightness. */
 #assistant-entry {
   filter: none !important;
-  position: relative !important;
-  overflow: hidden !important;
 }
 
 #assistant-entry svg {
   color: var(--primary) !important;
-}
-
-/* Label rides the shared text-shift machinery (NAVBAR section). */
-#assistant-entry span {
-  --shift-label: "Ask Assistant";
-  --shift-color: var(--primary);
-  position: relative;
-  overflow: hidden;
-  color: transparent !important;
-}
-
-/* Zeroes every text-shift / icon-swap transition at once — they all read
-   --duration-shift. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-shift: 0s;
-  }
-}
-
-/* Copy page + More actions: outline chrome from the toolbar-button molecule
-   (NAVBAR). */
-#page-context-menu button[aria-haspopup="menu"] svg {
-  color: var(--primary) !important;
-}
-
-/* Label rides the shared text-shift machinery (NAVBAR section); the real label
-   span needs its own transition since it isn't a pseudo.
-   Travel is 170% here (not the global 115%): the label box is ~20px inside a
-   34px button, and clipping happens at the BUTTON's own overflow:hidden, so the
-   text must travel span-height + button padding to visibly reach the top edge
-   before vanishing — the same read as the navbar buttons. span.grid must NOT
-   clip (no overflow:hidden) or the swap dies at the text's own line box. */
-#page-context-menu-button span.grid {
-  --shift-label: "Copy page";
-  --shift-distance: 170%;
-  position: relative;
-}
-
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transition: transform var(--duration-shift) var(--ease-standard);
 }
 
 /* CTA — secondary */
@@ -1085,8 +868,8 @@ body .code-group {
 /* The API playground code-group has no .code-block inside NOR role=tabpanel
    on its panels (unlike the MDX one: its panels are
    <div data-state=... id=radix-…-content-N> without a role). That's why we target
-   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/grain/position
-   never apply. We recreate the frame + grain + square corners to match the look of
+   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/position
+   never apply. We recreate the frame + square corners to match the look of
    the .code-block. No @layer and high specificity to beat Tailwind's rounded-xt!,
    rounded-2xl and rounded-[inherit]. */
 .code-group:not(:has(.code-block)),
@@ -1105,7 +888,6 @@ body .code-group {
     border-radius: 0 !important;
   }
 }
-/* position:relative anchors its grain ::after — see the grain list in UTILITIES. */
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"] {
   border: 1px solid var(--blog-code-border) !important;
   position: relative;
@@ -1431,6 +1213,20 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
   margin-block: 0 !important;
 }
 
+/* Prose margins are zeroed globally and spacing comes from .mdx-content's gap,
+   which doesn't reach inside callouts — space their children here instead. */
+[data-component-part="callout-content"] > span[data-as="p"] {
+  display: block;
+}
+
+.mdx-content .callout [data-component-part="callout-content"] > * + * {
+  margin-top: var(--space-12) !important;
+}
+
+.prose :where(code):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+  font-weight: var(--font-weight-regular);
+}
+
 .accordion-group {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
@@ -1464,6 +1260,13 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 
 #header p {
   max-width: 420px;
+}
+
+/* Page description (frontmatter `description`): a lead, so larger than body. */
+#header .text-lg p {
+  font-size: 20px;
+  line-height: 28px;
+  max-width: var(--page-title-max-width);
 }
 
 @media (min-width: 640px) {
@@ -1505,6 +1308,15 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 @media (min-width: 992px) {
   #page-context-menu.mt-3 {
     display: none !important;
+  }
+
+  /* The menu is absolutely positioned over the title row, so keep the title's
+     first line clear of it (156px is the menu's min-width). */
+  #header:has(#page-context-menu.ml-auto) #page-title {
+    max-width: min(
+      var(--page-title-max-width),
+      calc(100% - 156px - var(--space-16))
+    );
   }
 
   #header #page-context-menu.ml-auto {
@@ -1603,7 +1415,7 @@ html.dark div.card svg {
   font-size: 26px !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: 120% !important;
   font-family: var(--font-sans) !important;
   color: var(--primary) !important;
   margin: 0 !important;
@@ -1809,7 +1621,7 @@ details.expandable .primitive-param-field {
   :where(table td):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table th,
 [data-table-wrapper] table td {
-  padding: 0.875rem 1rem;
+  padding: var(--space-8) var(--space-12);
   border-right: 1px solid var(--table-border) !important;
   border-bottom: 1px solid var(--table-border) !important;
   text-align: left;
@@ -1848,12 +1660,6 @@ details.expandable .primitive-param-field {
   border-bottom: 0 !important;
 }
 
-/* Wrapper-only: first column stays centered. */
-[data-table-wrapper] table th:first-child,
-[data-table-wrapper] table td:first-child {
-  text-align: center;
-}
-
 /* ================================  FRAME  ================================= */
 
 /* Strip <Frame> chrome */
@@ -1870,6 +1676,13 @@ details.expandable .primitive-param-field {
 /* Caption: no rounding */
 .frame [data-component-part="frame-caption"] {
   border-radius: 0 !important;
+}
+
+/* Image + its wrapper: Mintlify adds rounded-xl to frame images; keep them
+   square like the rest of the DLS. */
+.frame .rounded-xl,
+.frame img {
+  border-radius: 0;
 }
 
 /* ================================  BANNER  ================================ */
@@ -1941,7 +1754,7 @@ details.expandable .primitive-param-field {
   font-family: var(--font-sans) !important;
   font-size: 28px !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: 120% !important;
   color: var(--primary) !important;
 }
 
@@ -2216,32 +2029,8 @@ html.dark .bg-background-dark,
   }
 }
 
-:root {
-  --grain-opacity: 0.08;
-  --grain-size: 160px;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-.grain-layer {
-  position: relative;
-}
-
-/* Search button: --border outline (no ring/shadow); position:relative so its
-   grain ::after anchors to it. */
+/* Search button: --border outline (no ring/shadow). */
 #search-bar-entry {
-  position: relative;
   border: 1px solid var(--border) !important;
   box-shadow: none !important;
 }
@@ -2261,63 +2050,7 @@ body::after {
   margin-inline-end: var(--space-8) !important;
 }
 
-/* Search modal needs position:relative so its grain ::after anchors to it. */
-[data-component-part="search-modal"] {
-  position: relative;
-}
 
-.grain-layer::after,
-#navbar::after,
-#banner::after,
-#sidebar::after,
-#mobile-nav::after,
-#search-bar-entry::after,
-#assistant-entry::after,
-.chat-assistant-sheet::after,
-[data-component-part="search-modal"]::after,
-[data-component-part="search-input-container"]::after,
-[data-radix-menu-content]::after,
-[data-component-part="theme-preference-menu-content"]::after,
-[role="dialog"]:has(> nav[aria-label="Mobile menu"])::after,
-.code-group:not(:has(.code-block))
-  [data-component-part="code-block-root"]::after,
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-#sidebar::after {
-  z-index: 11;
-}
-
-/* Playground header: grain below its children so the language dropdown and copy
-   button render clean on top. */
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  z-index: 0;
-}
-
-/* Grain follows the input's rounded-2xl so it doesn't poke past the corners. */
-[data-component-part="search-input-container"]::after {
-  border-radius: inherit;
-}
-
-/* Every grain layer reads its opacity from this token, so zeroing it here kills
-   all of them (body, chrome, code-group) without repeating the selector list. */
-@media (prefers-contrast: more) {
-  :root {
-    --grain-opacity: 0;
-  }
-}
 
 /* Deliberate 0px on desktop: kills the `.space-y-4` (16px) spacing between the
    operation sections. Below lg it becomes --space-20 (see the media query). */
