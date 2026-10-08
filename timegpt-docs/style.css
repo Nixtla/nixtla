@@ -1536,6 +1536,13 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
   max-width: 420px;
 }
 
+/* Page description (frontmatter `description`): a lead, so larger than body. */
+#header .text-lg p {
+  font-size: 20px;
+  line-height: 28px;
+  max-width: var(--page-title-max-width);
+}
+
 @media (min-width: 640px) {
   #header > div > .eyebrow {
     padding-right: 180px;
