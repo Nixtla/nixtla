@@ -89,6 +89,24 @@ def test_fourier_transform(setup_series):
     )
 
 
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_time_features_weekofyear(setup_series, engine):
+    # weekofyear is an alias of the ISO week
+    series, series_pl = setup_series
+    features = ["week", "weekofyear"]
+    if engine == "pandas":
+        transformed, future = time_features(series, freq="D", features=features, h=2)
+    else:
+        transformed, future = time_features(
+            series_pl, freq="1d", features=features, h=2
+        )
+        transformed, future = transformed.to_pandas(), future.to_pandas()
+    expected = transformed["ds"].dt.isocalendar().week.to_numpy()
+    np.testing.assert_array_equal(transformed["weekofyear"].to_numpy(), expected)
+    for df in (transformed, future):
+        pd.testing.assert_series_equal(df["weekofyear"], df["week"], check_names=False)
+
+
 def is_weekend(times):
     if isinstance(times, pd.Index):
         dow = times.weekday + 1  # monday=0 in pandas and 1 in polars

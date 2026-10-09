@@ -199,8 +199,10 @@ def _compute_time_feature(
             feat_name = feature.__name__
     else:
         feat_name = feature
+        if feature == "weekofyear":
+            feature = "week"
         if isinstance(times, pd.DatetimeIndex):
-            if feature in ("week", "weekofyear"):
+            if feature == "week":
                 times = times.isocalendar()
             feat_vals = getattr(times, feature).to_numpy()
         else:
