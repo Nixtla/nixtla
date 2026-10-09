@@ -1,5 +1,7 @@
+import json
 import pickle
 from pathlib import Path
+from types import SimpleNamespace
 
 import lightgbm as lgb
 import numpy as np
@@ -9,8 +11,8 @@ import ray
 import xgboost as xgb
 from sklearn.base import clone
 
-from mlforecast.distributed.models.ray.lgb import RayLGBMForecast
-from mlforecast.distributed.models.ray.xgb import RayXGBForecast
+from mlforecast.distributed.models.ray.lgb import RayLGBMForecast, _lgb_train_loop
+from mlforecast.distributed.models.ray.xgb import RayXGBForecast, _xgb_train_loop
 
 
 @pytest.mark.ray
@@ -116,6 +118,105 @@ def test_model_is_the_estimator_fitted_in_the_worker(model_cls, local_cls):
         )
 
 
+@pytest.fixture
+def run_train_loop(monkeypatch):
+    """Runs a train loop in this process, recording its ray.train.report calls."""
+    import ray.train
+    import ray.train.lightgbm
+
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({"x": rng.normal(size=100), "y": rng.random(size=100)})
+    shard = SimpleNamespace(
+        materialize=lambda: SimpleNamespace(to_pandas=lambda: df.copy())
+    )
+    monkeypatch.setattr(ray.train, "get_dataset_shard", lambda _name: shard)
+    # the driver isn't a worker, so it has no assigned resources to read
+    for module in ("lgb", "xgb"):
+        monkeypatch.setattr(
+            f"mlforecast.distributed.models.ray.{module}.worker_n_jobs",
+            lambda _requested: 1,
+        )
+    monkeypatch.setattr(ray.train.lightgbm, "get_network_params", lambda: {})
+
+    def run(train_loop, params, rank=0):
+        reports = []
+
+        def report(metrics, checkpoint=None):
+            # the checkpoint's directory is removed once report returns
+            files, model = None, None
+            if checkpoint is not None:
+                ckpt_dir = Path(checkpoint.path)
+                files = sorted(p.name for p in ckpt_dir.iterdir())
+                with open(ckpt_dir / "model.pkl", "rb") as f:
+                    model = pickle.load(f)
+            reports.append((metrics, files, model))
+
+        context = SimpleNamespace(get_world_rank=lambda: rank)
+        monkeypatch.setattr(ray.train, "get_context", lambda: context)
+        monkeypatch.setattr(ray.train, "report", report)
+        if train_loop is _lgb_train_loop:
+            params = {"verbosity": -1, **params}
+        train_loop({"params": params, "target_col": "y"})
+        return reports
+
+    return run
+
+
+@pytest.mark.ray
+@pytest.mark.parametrize(
+    "train_loop,data,metric,booster_file",
+    [
+        (_lgb_train_loop, "train", "l2", "model.txt"),
+        (_xgb_train_loop, "validation_0", "rmse", "model.ubj"),
+    ],
+    ids=["lightgbm", "xgboost"],
+)
+@pytest.mark.parametrize("rank", [0, 1])
+def test_train_loop_reports_once(
+    run_train_loop, train_loop, data, metric, booster_file, rank
+):
+    """Each worker reports once, with the final metrics; only rank 0 checkpoints."""
+    reports = run_train_loop(train_loop, {"n_estimators": 5}, rank=rank)
+
+    assert len(reports) == 1
+    metrics, files, model = reports[0]
+    assert list(metrics) == [f"{data}-{metric}"]
+    if rank != 0:
+        assert files is None
+        return
+    assert files == sorted(["model.pkl", booster_file])
+    assert metrics[f"{data}-{metric}"] == model.evals_result_[data][metric][-1]
+
+
+@pytest.mark.ray
+def test_xgb_train_loop_without_evaluated_metrics(run_train_loop):
+    """xgboost doesn't set evals_result_ when no metric is evaluated."""
+    reports = run_train_loop(
+        _xgb_train_loop, {"n_estimators": 2, "disable_default_eval_metric": True}
+    )
+    assert [metrics for metrics, *_ in reports] == [{}]
+
+
+@pytest.mark.ray
+@pytest.mark.parametrize(
+    "n_jobs,user_nthread,nthread",
+    [(None, None, 0), (2, None, 2), (None, 3, 3), (2, 3, 3)],
+)
+def test_xgb_train_loop_restores_the_thread_params_with_a_metric_list(
+    run_train_loop, n_jobs, user_nthread, nthread
+):
+    """Restoring them mustn't push the eval_metric list into the booster."""
+    params = {"n_estimators": 2, "eval_metric": ["rmse", "mae"], "n_jobs": n_jobs}
+    if user_nthread is not None:
+        params["nthread"] = user_nthread
+    reports = run_train_loop(_xgb_train_loop, params)
+    metrics, _, model = reports[0]
+    assert set(metrics) == {"validation_0-rmse", "validation_0-mae"}
+    assert model.n_jobs == n_jobs
+    config = json.loads(model.get_booster().save_config())
+    assert int(config["learner"]["generic_param"]["nthread"]) == nthread
+
+
 @pytest.mark.ray
 def test_lgb_honors_param_aliases():
     """The hand rolled translation dropped lightgbm's aliases; its own does not.
@@ -134,13 +235,8 @@ def test_lgb_honors_param_aliases():
 
 
 @pytest.mark.ray
-def test_xgb_keeps_random_state_and_drops_the_ray_callback():
-    """xgb.train knows `random_state`, so there was never a `seed` to translate to.
-
-    xgboost also stores callbacks as a parameter, so the ray reporting callback
-    would otherwise ride back to the driver and into whatever the user pickles
-    through DistributedMLForecast.save.
-    """
+def test_xgb_keeps_random_state_and_model_is_picklable():
+    """xgb.train knows `random_state`, so there was never a `seed` to translate to."""
     rng = np.random.default_rng(0)
     df = pd.DataFrame({"x": rng.normal(size=100), "y": rng.random(size=100)})
     model = RayXGBForecast(random_state=0, n_estimators=5)
@@ -149,7 +245,6 @@ def test_xgb_keeps_random_state_and_drops_the_ray_callback():
     params = model.model_.get_params()
     assert params["random_state"] == 0
     assert "seed" not in params
-    assert params["callbacks"] is None
     pickle.loads(pickle.dumps(model.model_))
 
 

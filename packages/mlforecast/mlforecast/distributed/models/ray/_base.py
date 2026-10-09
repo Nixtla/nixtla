@@ -2,10 +2,9 @@ __all__ = ["RayForecastBase"]
 
 
 import contextlib
-import pickle
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 _RAY_PARAMS = ("num_workers", "resources_per_worker", "storage_path")
 _MODEL_FILE = "model.pkl"
@@ -29,19 +28,16 @@ def worker_n_jobs(requested: Any) -> int:
     return assigned if requested <= 0 else min(requested, assigned)
 
 
-class KeepLastMetrics:
-    """Remember the last iteration's metrics so the final report can carry them."""
+def _last_metrics(evals_result: Dict[str, Dict[str, List[float]]]) -> Dict[str, float]:
+    """Final value of each eval metric."""
+    return {
+        f"{data}-{name}": values[-1]
+        for data, metrics in evals_result.items()
+        for name, values in metrics.items()
+    }
 
-    last_metrics: Dict[str, Any] = {}
 
-    def _report_metrics(self, report_dict: Dict[str, Any]) -> None:
-        self.last_metrics = report_dict
-        super()._report_metrics(report_dict)  # type: ignore[misc]
-
-
-def report_fitted_model(
-    model: Any, booster: Any, booster_file: str, metrics: Dict[str, Any]
-) -> None:
+def report_fitted_model(model: Any, booster: Any, booster_file: str) -> None:
     """Report ray's standard booster artifact along with the fitted estimator.
 
     The estimator is what becomes ``model_``, which is why it's checkpointed;
@@ -52,15 +48,18 @@ def report_fitted_model(
     reporting from rank 0 only deadlocks.
     """
     import ray.train
+    from ray import cloudpickle
     from ray.train import Checkpoint
 
+    # xgboost doesn't set evals_result_ when no metric was evaluated
+    metrics = _last_metrics(getattr(model, "evals_result_", {}))
     if ray.train.get_context().get_world_rank() != 0:
         ray.train.report(metrics)
         return
     with tempfile.TemporaryDirectory() as tmp_dir:
         booster.save_model(Path(tmp_dir, booster_file).as_posix())
         with open(Path(tmp_dir, _MODEL_FILE), "wb") as f:
-            pickle.dump(model, f)
+            cloudpickle.dump(model, f)
         ray.train.report(metrics, checkpoint=Checkpoint.from_directory(tmp_dir))
 
 
@@ -133,6 +132,7 @@ class RayForecastBase:
         dataset: Any,
         target_col: str,
     ) -> "RayForecastBase":
+        from ray import cloudpickle
         from ray.train import RunConfig, ScalingConfig
 
         params = self.get_params()  # type: ignore[attr-defined]
@@ -163,5 +163,5 @@ class RayForecastBase:
             )
             with trainer.fit().checkpoint.as_directory() as ckpt_dir:
                 with open(Path(ckpt_dir, _MODEL_FILE), "rb") as f:
-                    self.model_ = pickle.load(f)
+                    self.model_ = cloudpickle.load(f)
         return self

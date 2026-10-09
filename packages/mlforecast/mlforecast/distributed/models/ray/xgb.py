@@ -5,42 +5,32 @@ from typing import Any, Dict
 
 import xgboost as xgb
 
-from ._base import KeepLastMetrics, RayForecastBase, report_fitted_model, worker_n_jobs
+from ._base import RayForecastBase, report_fitted_model, worker_n_jobs
 
 
 def _xgb_train_loop(config: Dict[str, Any]) -> None:
     import ray.train
     from ray.train.xgboost import RayTrainReportCallback
 
-    class _ReportCallback(KeepLastMetrics, RayTrainReportCallback):
-        pass
-
     shard = ray.train.get_dataset_shard("train")
     # unlike lightgbm, xgboost accepts arrow backed pandas columns.
     df = shard.materialize().to_pandas()
     label = df.pop(config["target_col"])
-    callback = _ReportCallback(checkpoint_at_end=False)
-    params = {
-        **config["params"],
-        "n_jobs": worker_n_jobs(config["params"].get("n_jobs")),
-        # get_params already carries a callbacks key, so it has to be merged in
-        # rather than passed alongside.
-        "callbacks": [callback],
-    }
+    n_jobs = config["params"].get("n_jobs")
+    params = {**config["params"], "n_jobs": worker_n_jobs(n_jobs)}
     # XGBoostConfig wraps the loop in a CommunicatorContext, so unlike lightgbm
     # there are no network params to pass: training is distributed already.
     model = xgb.XGBRegressor(**params)
     model.fit(df, label, eval_set=[(df, label)])
-    # xgboost keeps callbacks as a parameter, so without this the ray callback
-    # rides back to the driver and into DistributedMLForecast.save's pickle.
-    # the n_jobs clamp is for this worker's thread pool; model_ is shipped to the
-    # forecasting workers and returned by to_local, so it keeps what was asked for
-    model.set_params(callbacks=None, n_jobs=config["params"].get("n_jobs"))
+    # model_ keeps the requested threads rather than the worker's clamp. Not via
+    # set_params, which pushes a list eval_metric into the booster and breaks it.
+    model.n_jobs = n_jobs
+    nthread = config["params"].get("nthread")
+    if nthread is None:
+        nthread = 0 if n_jobs is None else n_jobs
+    model.get_booster().set_param("nthread", nthread)
     report_fitted_model(
-        model,
-        model.get_booster(),
-        _ReportCallback.CHECKPOINT_NAME,
-        callback.last_metrics,
+        model, model.get_booster(), RayTrainReportCallback.CHECKPOINT_NAME
     )
 
 

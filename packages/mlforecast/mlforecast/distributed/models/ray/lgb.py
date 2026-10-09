@@ -5,13 +5,7 @@ from typing import Any, Dict
 
 import lightgbm as lgb
 
-from ._base import (
-    _RAY_PARAMS,
-    KeepLastMetrics,
-    RayForecastBase,
-    report_fitted_model,
-    worker_n_jobs,
-)
+from ._base import _RAY_PARAMS, RayForecastBase, report_fitted_model, worker_n_jobs
 
 
 def _lgb_train_loop(config: Dict[str, Any]) -> None:
@@ -22,19 +16,13 @@ def _lgb_train_loop(config: Dict[str, Any]) -> None:
         normalize_pandas_for_lightgbm,
     )
 
-    class _ReportCallback(KeepLastMetrics, RayTrainReportCallback):
-        pass
-
     shard = ray.train.get_dataset_shard("train")
     # since ray 2.56 to_pandas yields pd.ArrowDtype columns, which lightgbm's
     # input validation rejects, so they're mapped back to numpy dtypes here.
     df = normalize_pandas_for_lightgbm(shard.materialize().to_pandas())
     label = df.pop(config["target_col"])
-    params = {
-        **config["params"],
-        "n_jobs": worker_n_jobs(config["params"].get("n_jobs")),
-    }
-    callback = _ReportCallback(checkpoint_at_end=False)
+    n_jobs = config["params"].get("n_jobs")
+    params = {**config["params"], "n_jobs": worker_n_jobs(n_jobs)}
     # each worker only sees its own shard. ray's LightGBMConfig stashes the
     # network params in a per worker global rather than injecting them, so
     # without these every worker trains an independent model on 1/N of the data
@@ -43,15 +31,11 @@ def _lgb_train_loop(config: Dict[str, Any]) -> None:
     model = lgb.LGBMRegressor(
         **params, tree_learner="data_parallel", **get_network_params()
     )
-    model.fit(
-        df, label, eval_set=[(df, label)], eval_names=["train"], callbacks=[callback]
-    )
+    model.fit(df, label, eval_set=[(df, label)], eval_names=["train"])
     # the clamp is for this worker's thread pool; model_ is shipped to the
     # forecasting workers and returned by to_local, so it keeps what was asked for
-    model.set_params(n_jobs=config["params"].get("n_jobs"))
-    report_fitted_model(
-        model, model.booster_, _ReportCallback.CHECKPOINT_NAME, callback.last_metrics
-    )
+    model.set_params(n_jobs=n_jobs)
+    report_fitted_model(model, model.booster_, RayTrainReportCallback.CHECKPOINT_NAME)
 
 
 class RayLGBMForecast(RayForecastBase, lgb.LGBMRegressor):
