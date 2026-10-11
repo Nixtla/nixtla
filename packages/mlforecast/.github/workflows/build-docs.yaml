@@ -34,7 +34,7 @@ jobs:
         id: docs_token
         # fork PRs don't get secrets, and only the same-repo steps use the token
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.NIXTLA_DOCS_REPO_ACCESS_APP_ID }}
           private-key: ${{ secrets.NIXTLA_DOCS_REPO_ACCESS_PRIVATE_KEY }}
