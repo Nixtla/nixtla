@@ -233,8 +233,11 @@ def filter_with_mask(
 def is_nan(s: Series) -> Series:
     if isinstance(s, pd.Series):
         out = s.isna()
-    else:
+    elif s.dtype.is_float():
         out = s.is_nan()
+    else:
+        # polars only supports is_nan on numeric columns and only floats can hold NaN
+        out = pl.repeat(False, s.len(), eager=True).alias(s.name)
     return out
 
 

@@ -93,6 +93,20 @@ def test_is_nan():
         is_nan(pl.Series([np.nan, 1.0, None])).to_numpy(),
         np.array([True, False, None]),
     )
+    for series in (
+        pl.Series(["a", None, "b"]),
+        pl.Series([True, None, False]),
+        pl.Series([1, None, 2]),
+        pl.Series(["a", None, "b"], dtype=pl.Categorical),
+    ):
+        np.testing.assert_equal(
+            is_nan(series).to_numpy(),
+            np.array([False, False, False]),
+        )
+        np.testing.assert_equal(
+            is_nan_or_none(series).to_numpy(),
+            np.array([False, True, False]),
+        )
 
 
 def test_is_none():
