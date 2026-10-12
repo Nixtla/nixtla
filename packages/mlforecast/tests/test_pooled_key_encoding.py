@@ -25,16 +25,23 @@ assert equivalence to it rather than re-deriving the expected values:
   product of the cardinalities.
 * **G3.4 the null contract** -- ``None``, ``NaN``, ``NaT`` and ``pd.NA`` all
   collapse to the one sentinel bucket and match nothing else, which is SQL
-  ``PARTITION BY`` semantics. ``pd.NA`` is a deliberate behaviour change: the
-  per-row path raised ``TypeError`` on it, because ``_encode_column``'s object
-  branch evaluates ``v != v``, which is ambiguous for ``pd.NA``.
+  ``PARTITION BY`` semantics.
 """
+
+import decimal
+import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from mlforecast.pooled import _NULL_KEY, _join_keys, factorize
+from mlforecast.pooled import (
+    _NULL_KEY,
+    _encode_column,
+    _join_keys,
+    factorize,
+    lookup,
+)
 
 
 def _reference(arrays):
@@ -245,16 +252,132 @@ def test_g3_4_mixed_none_and_nan_share_one_bucket():
 
 
 def test_g3_4_pd_na_lands_in_the_sentinel_bucket():
-    """Deliberate behaviour change, pinned so it cannot regress silently.
-
-    The per-row path raises on ``pd.NA``: ``_encode_column``'s object branch
-    tests ``v != v``, which returns ``pd.NA`` rather than a bool. Factorizing
-    first hands the check to pandas, which treats it as missing like any other
-    NA -- consistent with the ``_NULL_KEY`` contract, so it is kept.
-    """
     column = np.array(["a", pd.NA, "b"], dtype=object)
-    with pytest.raises(TypeError, match="ambiguous"):
-        _reference([column])
+    _assert_matches_reference([column])
     ids, uniques = factorize([column])
     assert uniques[ids[1]] == _NULL_KEY
     assert len(uniques) == 3
+
+
+def test_out_of_int64_floats_keep_distinct_keys():
+    values = [np.inf, -np.inf, 1e300, -1e300, 2.0**63, float(2**62), 3.0]
+    floats = _encode_column(np.array(values))
+    objects = _encode_column(np.array(values, dtype=object))
+    np.testing.assert_array_equal(floats, objects)
+    assert len(set(floats)) == len(values)
+    assert floats[-1] == "3"
+
+
+def test_out_of_int64_integral_floats_encode_like_ints():
+    ints = np.array([2**63, 10**19], dtype=np.uint64)
+    np.testing.assert_array_equal(
+        _encode_column(ints.astype(np.float64)), _encode_column(ints)
+    )
+    np.testing.assert_array_equal(
+        _encode_column(np.array([2.0**63, 1e19], dtype=object)),
+        _encode_column(np.array([2**63, 10**19], dtype=object)),
+    )
+
+
+def test_equal_mixed_values_factorize_and_lookup_alike():
+    column = np.array([2**63, 2.0**63, 10**19, 1e19], dtype=object)
+    ids, uniques = factorize([column])
+    assert len(uniques) == 2
+    np.testing.assert_array_equal(lookup([column], uniques), ids)
+
+
+def test_numpy_float_in_object_column_encodes_like_int():
+    column = np.array([np.float32(1.0), np.float64(2.0), 1, 2], dtype=object)
+    out = _encode_column(column)
+    np.testing.assert_array_equal(out, ["1", "2", "1", "2"])
+
+
+def test_timedelta_nat_lands_in_the_sentinel_bucket():
+    out = _encode_column(np.array([np.timedelta64("NaT"), np.timedelta64(1, "D")]))
+    assert out[0] == _NULL_KEY
+    assert out[1] != _NULL_KEY
+
+
+def test_int64_bounds_encode_like_ints():
+    ints = np.array([-(2**63), 2**62], dtype=np.int64)
+    np.testing.assert_array_equal(
+        _encode_column(ints.astype(np.float64)), _encode_column(ints)
+    )
+    np.testing.assert_array_equal(
+        _encode_column(ints.astype(np.float64).astype(object)), _encode_column(ints)
+    )
+
+
+def test_float16_keys_encode_without_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = _encode_column(np.array([1.0, 0.5, np.inf], dtype=np.float16))
+    assert out[0] == "1"
+
+
+@pytest.mark.parametrize("raw", [True, 1 + 0j])
+def test_equal_values_of_other_types_keep_their_own_key(raw):
+    ids, uniques = factorize([np.array([raw, 1], dtype=object)])
+    assert len(uniques) == 2
+    np.testing.assert_array_equal(
+        lookup([np.array([1, raw], dtype=object)], uniques), ids[::-1]
+    )
+
+
+@pytest.mark.skipif(
+    np.finfo(np.longdouble).nmant <= np.finfo(np.float64).nmant,
+    reason="longdouble is float64 on this platform",
+)
+def test_longdouble_keys_keep_their_precision():
+    big = np.longdouble(2) ** 1100
+    near = np.longdouble(2) ** 60 + np.longdouble(0.5)
+    column = np.array([big, near, np.longdouble(2) ** 60], dtype=np.longdouble)
+    out = _encode_column(column)
+    assert out[0] == str(2**1100)
+    assert out[2] == str(2**60)
+    assert len(set(out)) == 3
+
+
+def test_float_widths_in_object_column_keep_their_own_key():
+    narrow = np.float32(0.1)
+    ids, uniques = factorize([np.array([narrow, np.float64(narrow)], dtype=object)])
+    assert len(uniques) == 2
+    np.testing.assert_array_equal(
+        lookup([np.array([np.float64(narrow), narrow], dtype=object)], uniques),
+        ids[::-1],
+    )
+
+
+def test_every_row_looks_up_its_own_bucket():
+    pool = [
+        True,
+        False,
+        1,
+        0,
+        1.0,
+        0.0,
+        -0.0,
+        0.1,
+        np.float32(0.1),
+        np.float64(np.float32(0.1)),
+        np.int64(1),
+        np.uint64(1),
+        1 + 0j,
+        decimal.Decimal("1.0"),
+        2**63,
+        2.0**63,
+        "a",
+        "1",
+        None,
+        np.nan,
+        pd.NA,
+    ]
+    rng = np.random.default_rng(0)
+    for _ in range(50):
+        column = np.empty(rng.integers(1, 10), dtype=object)
+        column[:] = [pool[i] for i in rng.integers(0, len(pool), len(column))]
+        ids, uniques = factorize([column])
+        for i in range(len(column)):
+            single = np.empty(1, dtype=object)
+            single[0] = column[i]
+            assert lookup([single], uniques)[0] == ids[i], repr(column[i])

@@ -5067,3 +5067,38 @@ def test_get_kernel_resolves_subclasses():
 
     with pytest.raises(NotImplementedError, match="NotPooled"):
         get_kernel(NotPooled())
+
+
+def test_static_partition_key_with_pd_na_shares_one_bucket():
+    def fit_update(keys):
+        df = pd.DataFrame(
+            {
+                "unique_id": np.repeat(["a", "b", "c"], 3),
+                "ds": [1, 2, 3] * 3,
+                "y": np.arange(9.0),
+                "k": pd.array(np.repeat(keys, 3), dtype="string"),
+            }
+        )
+        ts = TimeSeries(
+            freq=1, lag_transforms={1: [RollingMean(2, partition_by=["k"])]}
+        )
+        fitted = ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=["k"],
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            ts.update(df[df.ds == 3].assign(ds=4, y=[1.0, 2.0, 3.0]))
+        ts._predict_setup()
+        return fitted, ts._get_features_for_next_step()
+
+    fitted, feats = fit_update(["x", pd.NA, pd.NA])
+    expected_fitted, expected_feats = fit_update(["x", "z", "z"])
+    pd.testing.assert_frame_equal(
+        fitted.drop(columns="k"), expected_fitted.drop(columns="k")
+    )
+    pd.testing.assert_frame_equal(feats, expected_feats)

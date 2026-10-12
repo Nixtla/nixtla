@@ -42,50 +42,58 @@ _NULL_KEY = "\x00__MLF_NULL__"
 
 
 # %% key encoding
-def _encode_column(values: np.ndarray) -> np.ndarray:
-    """Encode one key column as strings, canonically across dtypes.
+# object column contents whose equal values always print alike
+_PRINT_STABLE = {"empty", "string", "integer", "boolean"}
 
-    Two things have to hold. Every missing value (null, NaN, ``None``) maps to a
-    single sentinel, so missing matches missing and nothing else -- SQL
-    ``PARTITION BY`` semantics. And a key must encode the same whether it
-    arrives as an int or as a float: a column can be float at fit (one NaN is
-    enough to widen it) and int in ``X_df`` at predict, and those must land in
-    the same bucket. So integral values encode as an int string and only
-    fractional ones keep a decimal point, which cannot collide with an integer.
+
+def _encode_value(v: Any) -> str:
+    # integral floats encode as ints so a key matches whether it arrives as int or float
+    if isinstance(v, float):
+        integral = v.is_integer()
+    elif isinstance(v, np.floating):
+        # checked in its own dtype so longdouble keeps its precision
+        integral = np.isfinite(v) and v == np.floor(v)
+    else:
+        return str(v)
+    return str(int(v)) if integral else str(v)
+
+
+def _factorize_column(values: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Codes and encoded distinct values of one key column.
+
+    Every missing value maps to a single sentinel, so missing matches missing
+    and nothing else, and a key encodes the same whether it arrives as an int
+    or a float.
     """
     values = np.asarray(values)
-    if values.dtype.kind in "fc":
-        missing = np.isnan(values)
-    elif values.dtype.kind == "O":
-        missing = np.array([v is None or v != v for v in values], dtype=bool)
-    elif values.dtype.kind == "M":
-        missing = np.isnat(values)
+    if values.dtype.kind == "f" and values.dtype.itemsize > 8:
+        # pandas factorizes longdouble through float64
+        values = values.astype(object)
+    if (
+        values.dtype.kind == "O"
+        and pd.api.types.infer_dtype(values, skipna=True) not in _PRINT_STABLE
+    ):
+        # pandas merges equal values that print differently (True and 1), so
+        # these are factorized by their encoding
+        encoded = np.array([_encode_value(v) for v in values], dtype=object)
+        encoded[pd.isna(values)] = None
+        values = encoded
+    codes, uniques = pd.factorize(values)
+    uniques = np.asarray(uniques)
+    if uniques.dtype.kind == "f":
+        enc = np.array([_encode_value(v) for v in uniques], dtype=object)
     else:
-        missing = np.zeros(values.shape, dtype=bool)
-    if values.dtype.kind == "f":
-        safe = np.where(missing, 0.0, values)
-        integral = safe == np.floor(safe)
-        out = np.empty(values.shape, dtype=object)
-        if integral.any():
-            out[integral] = safe[integral].astype(np.int64).astype(str)
-        if (~integral).any():
-            out[~integral] = safe[~integral].astype(str)
-    elif values.dtype.kind == "O":
-        # object columns may mix ints and floats; normalise the numeric ones
-        out = np.array(
-            [
-                str(int(v))
-                if isinstance(v, float) and not (v != v) and v == int(v)
-                else str(v)
-                for v in values
-            ],
-            dtype=object,
-        )
-    else:
-        out = values.astype(str).astype(object)
-    if missing.any():
-        out[missing] = _NULL_KEY
-    return out
+        enc = uniques.astype(str).astype(object)
+    # pandas codes every missing value as -1, so it gets the trailing sentinel slot
+    enc = np.append(enc, _NULL_KEY)
+    codes = np.where(codes < 0, len(enc) - 1, codes).astype(np.int64, copy=False)
+    return codes, enc
+
+
+def _encode_column(values: np.ndarray) -> np.ndarray:
+    """Encode one key column as strings, canonically across dtypes."""
+    codes, enc = _factorize_column(values)
+    return enc[codes]
 
 
 def _join_encoded(parts: Sequence[np.ndarray]) -> np.ndarray:
@@ -121,14 +129,8 @@ def factorize(arrays: Sequence[np.ndarray]) -> Tuple[np.ndarray, np.ndarray]:
     codes: List[np.ndarray] = []
     encoded: List[np.ndarray] = []
     for arr in arrays:
-        col_codes, col_uniques = pd.factorize(np.asarray(arr))
-        enc = _encode_column(np.asarray(col_uniques))
-        if (col_codes < 0).any():
-            # pandas parks every missing value at -1; give it a slot of its own
-            # so it encodes to the sentinel like any other key
-            enc = np.append(enc, _NULL_KEY)
-            col_codes = np.where(col_codes < 0, len(col_uniques), col_codes)
-        codes.append(col_codes.astype(np.int64, copy=False))
+        col_codes, enc = _factorize_column(arr)
+        codes.append(col_codes)
         encoded.append(enc)
     combined = codes[0]
     for col_codes, enc in zip(codes[1:], encoded[1:]):
