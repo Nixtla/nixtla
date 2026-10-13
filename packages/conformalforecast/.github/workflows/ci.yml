@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Superseded PR runs are worth cancelling; `main` runs are not. The release gate
+# requires a *successful* run of this workflow on the release commit, and a run
+# cancelled by the next merge concludes `cancelled` -- never `success` -- which
+# would leave that commit permanently unreleasable.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  unit-tests:
+    name: Unit tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      # Core only, plus the dev group. The unit suite is adapter-free by design
+      # (CLAUDE.md), so this also proves the tests do not quietly depend on an
+      # extra -- and it keeps the matrix cheap. The extras-gated unit tests are
+      # covered by `unit-tests-extras` below, which is the only job that runs
+      # them; without it they report SKIPPED everywhere.
+      - name: Setup devenv
+        run: uv sync --group dev
+
+      # Spelled out rather than `make test`: this is the only job that runs on
+      # Windows and macOS, and depending on GNU make there buys a cross-platform
+      # failure mode to save one line. The Linux-only jobs below do use the
+      # Makefile targets. Keep this in step with `make test`.
+      - name: Run unit tests
+        run: uv run pytest tests/unit --cov=conformalforecast --cov-report=term-missing
+
+  # The matrix above is deliberately core-only, and the sdist and lowest-direct
+  # jobs are too, so nothing else in CI ever executes a test behind an extra:
+  # the quantile-forest tests in tests/unit/test_quantile_regressors.py and
+  # tests/unit/methods/test_spci.py, and all of
+  # tests/unit/test_mlforecast_shim.py. One extras-enabled cell is enough to run
+  # them -- they are platform-independent -- and avoids installing torch fifteen
+  # times.
+  unit-tests-extras:
+    name: Unit tests (extras)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Setup devenv
+        run: uv sync --all-extras --group dev
+
+      - name: Run unit tests with every extra installed
+        run: make test_extras
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Setup devenv
+        run: uv sync --all-extras --group dev
+
+      # Both sessions, and the reason they are two, live in the Makefile.
+      - name: Run integration tests
+        run: make test_integration
+
+  lowest-direct-dependencies:
+    name: Test lowest direct dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Install lowest direct dependencies
+        run: |
+          uv venv --python 3.10 .venv-lowest
+          uv pip install --python .venv-lowest/bin/python --resolution lowest-direct --editable .
+          uv pip install --python .venv-lowest/bin/python 'pytest>=8'
+
+      # The declared floors (numpy>=1.24, narwhals>=2.9, scipy>=1.11,
+      # pydantic>=2.7) are a promise to users; this is the only thing that
+      # checks it is a real one.
+      - name: Verify runtime dependency floor
+        run: >-
+          .venv-lowest/bin/python -I -c
+          "import numpy, narwhals, scipy, pydantic;
+          assert numpy.__version__.startswith('1.24'), numpy.__version__;
+          assert narwhals.__version__.startswith('2.9'), narwhals.__version__;
+          assert scipy.__version__.startswith('1.11'), scipy.__version__;
+          assert pydantic.__version__.startswith('2.7'), pydantic.__version__"
+
+      - name: Run unit tests at the dependency floor
+        run: .venv-lowest/bin/python -m pytest tests/unit -o addopts='-q'
+
+      # The core-only install above never builds an adapter, so a floor that
+      # breaks them (narwhals' frame aliases, the `nixtla` extra's pins) would
+      # pass. The polars backend suite builds statsforecast and mlforecast
+      # adapters on both frame libraries.
+      - name: Install the nixtla extra at its floor
+        run: >-
+          uv pip install --python .venv-lowest/bin/python --resolution lowest-direct
+          --editable '.[nixtla]' 'pandas>=2.2' 'polars>=1.0' 'scikit-learn>=1.4'
+
+      - name: Build adapters at the dependency floor
+        run: .venv-lowest/bin/python -m pytest tests/integration/test_polars_backend.py -o addopts='-q'
+
+  build-sdist:
+    name: Build and verify source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      - name: Build wheel and sdist
+        run: uv build
+
+      # [tool.hatch.build.targets.sdist] carries hand-maintained exclude rules.
+      # Nothing else verifies that what survives them still builds, installs,
+      # imports, and can run its own test suite.
+      - name: Install and test the sdist
+        run: |
+          set -euxo pipefail
+          mkdir -p sdist-check && tar -xzf dist/*.tar.gz -C sdist-check --strip-components=1
+          uv venv .venv-sdist
+          uv pip install --python .venv-sdist/bin/python ./sdist-check
+          uv pip install --python .venv-sdist/bin/python 'pytest>=8'
+          .venv-sdist/bin/python -I -c "import conformalforecast; assert conformalforecast.__version__"
+          cd sdist-check && ../.venv-sdist/bin/python -m pytest tests/unit -q
+
+      # `shell: python` rather than `python -c` in a folded scalar: `>-` turns
+      # the newline after the opening quote into a leading space, which Python
+      # reads as an unexpected indent.
+      - name: Verify the sdist excludes docs and repo tooling
+        shell: python
+        run: |
+          import glob
+          import sys
+          import tarfile
+
+          excluded = ("/nbs/", "/docs/", "/.github/", "uv.lock", "CLAUDE.md")
+          archive = glob.glob("dist/*.tar.gz")[0]
+          names = tarfile.open(archive).getnames()
+          shipped = [n for n in names if any(part in n for part in excluded)]
+          if shipped:
+              sys.exit(f"sdist should not ship: {shipped!r}")
+          print(f"sdist contents OK: {len(names)} entries, none excluded")
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/*

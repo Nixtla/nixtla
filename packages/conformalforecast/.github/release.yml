@@ -1,0 +1,33 @@
+# Release-note sections, generated from PR labels. Every label named here must
+# exist in the repository -- a category pointing at a label nobody can apply is
+# a section that stays permanently empty while its PRs fall through to "Other
+# Changes". The `Changelog label` job in .github/workflows/pr-checks.yml
+# requires one of these on every PR; keep the two lists in step.
+changelog:
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking change
+    - title: New Features
+      labels:
+        - enhancement
+    - title: Bug Fixes
+      labels:
+        - bug
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Maintenance
+      labels:
+        - maintenance
+    - title: Dependencies
+      labels:
+        - dependencies
+    # Unreachable while the label check holds, but a PR merged before the check
+    # was required, or one carrying only an unrelated label, still needs a home.
+    - title: Other Changes
+      labels:
+        - "*"
+  exclude:
+    labels:
+      - skip-changelog

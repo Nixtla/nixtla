@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      # --all-extras: mypy needs the Nixtla libraries to type-check the adapter
+      # modules that import them.
+      # --group docs: the notebook-normalizer pre-commit hook is `language:
+      # system`, so it runs scripts/execute_notebooks.py out of this venv, and
+      # that imports nbformat/nbclient at module scope. The `integration-docs`
+      # group is deliberately not synced -- `--normalize-only` never executes
+      # notebook cells, so none of torch/lightgbm/neuralforecast is needed to lint.
+      - name: Setup devenv
+        run: uv sync --all-extras --group dev --group docs
+
+      # Covers ruff check, ruff format, the YAML/TOML checks, and the
+      # documentation-notebook normalizer.
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files --show-diff-on-failure
+
+      - name: Run mypy
+        run: uv run mypy

@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+wheels/
+.installed.cfg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# uv
+.uv-cache/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# pt_lightning
+lightning_logs/
+
+# Linting & type checking
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docs
+docs/_build/
+site/
+
+# Local working notes and editor/agent tooling.
+/docs/superpowers/
+/.claude/
+/.superpowers/
+
+# Generated documentation build artifacts. `docs/mintlify/docs.json` is the one
+# committed file in that directory -- everything else there is rendered output.
+/docs-scripts/
+/docs/mintlify/*.mdx
+/docs/mintlify/docs/
+# Brand marks copied from the pinned docs-scripts commit by `make brand_docs`.
+/docs/mintlify/light.png
+/docs/mintlify/dark.png
+/docs/mintlify/favicon.svg
+/nbs/_extensions/
+lightning_logs/
+
+# OS
+Thumbs.db

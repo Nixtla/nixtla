@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose an improvement to ConformalForecast
+title: "[Feature] "
+labels: [enhancement, feature]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thank you for helping improve the Nixtlaverse. For a new conformal
+        method or a new forecaster adapter, please open this issue before a PR --
+        a short design discussion up front avoids rework.
+  - type: textarea
+    attributes:
+      label: Use case
+      description: Describe the forecasting or research workflow this feature would support.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Proposed behavior
+      description: Describe the public API and expected behavior, if you have one in mind.
+    validations:
+      required: true
+  - type: dropdown
+    attributes:
+      label: What kind of feature is this?
+      options:
+        - "A new conformal method"
+        - "A new forecaster adapter"
+        - "A new nonconformity score, aggregator, or quantile regressor"
+        - "A new diagnostic"
+        - "An API change to something that exists"
+        - "Documentation"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: References
+      description: >-
+        Link the primary sources. A new method needs the paper that defines it,
+        and ideally a reference implementation to validate coverage against.

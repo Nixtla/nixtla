@@ -1,0 +1,20 @@
+format:
+  mintlify-md:
+    code-fold: true
+project:
+  render:
+  - docs/
+  type: mintlify
+website:
+  navbar:
+    left:
+    - href: docs/getting-started/quickstart.ipynb
+      text: Get Started
+    - href: docs/methods/index.qmd
+      text: Methods
+    - href: docs/capabilities/diagnostics.ipynb
+      text: Capabilities
+    - href: docs/adapters/index.qmd
+      text: Nixtlaverse
+  sidebar:
+    style: floating

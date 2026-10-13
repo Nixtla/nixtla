@@ -1,0 +1,238 @@
+name: Publish Python Package
+
+on:
+  release:
+    types: [published]
+
+# An explicit block sets every *unlisted* scope to `none`, so each entry here is
+# load-bearing. `actions: read` is what the release gate's
+# `listWorkflowRunsForRepo` call needs -- `checks: read` covers the *check-runs*
+# API, which is a different endpoint. Without it the gate 403s, `build` and
+# `publish` are skipped via `needs:`, and nothing reaches PyPI.
+permissions:
+  actions: read
+  checks: read
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  validate-version:
+    name: Validate release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # The version is dynamic (hatch reads __init__.py), so it is read from
+      # there rather than from pyproject.toml.
+      - name: Check the release tag matches the package version
+        shell: python
+        env:
+          IS_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          import os
+          import pathlib
+          import re
+
+          source = pathlib.Path("src/conformalforecast/__init__.py").read_text()
+          match = re.search(r'^__version__ = "([^"]+)"', source, re.MULTILINE)
+          if match is None:
+              raise SystemExit("Could not find __version__ in src/conformalforecast/__init__.py")
+          version = match.group(1)
+
+          # Kept strict for pre-releases too: a TestPyPI rehearsal is only
+          # meaningful if it exercises the same tag/version agreement the real
+          # release does.
+          tag = os.environ["GITHUB_REF_NAME"]
+          expected = f"v{version}"
+          if tag != expected:
+              raise SystemExit(f"Release tag {tag!r} does not match package version {expected!r}")
+
+          # Citation metadata records real releases only, so a `0.1.0.dev1`
+          # rehearsal must not be forced to write a dev version into CITATION.cff.
+          if os.environ["IS_PRERELEASE"] == "true":
+              print(f"Pre-release {tag}: skipping the CITATION.cff version check.")
+          else:
+              citation = pathlib.Path("CITATION.cff").read_text()
+              if f"version: {version}" not in citation:
+                  raise SystemExit(
+                      f"CITATION.cff does not declare version {version!r}; bump it with the release."
+                  )
+
+      - name: Verify release commit is on main
+        id: release_commit
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          release_commit="$(git rev-list -n 1 "$GITHUB_REF")"
+          if ! git merge-base --is-ancestor "$release_commit" origin/main; then
+            echo "::error::Release tags must point to a commit on the protected main branch."
+            exit 1
+          fi
+          echo "sha=$release_commit" >> "$GITHUB_OUTPUT"
+
+      # Gates on whole *workflow runs*, not individual check names. The CI
+      # workflow's test job is a 15-cell matrix, so requiring its checks by name
+      # would mean listing every "Unit tests (os, Python x.y)" permutation and
+      # editing this file whenever the matrix changes. A workflow run is green
+      # only if all of its jobs were, so this is the same guarantee without the
+      # brittleness -- and it ignores this release workflow's own jobs, which are
+      # themselves check runs on this commit and would otherwise deadlock.
+      - name: Verify release checks succeeded
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const required = ['CI', 'Lint', 'Build Docs'];
+            const sha = '${{ steps.release_commit.outputs.sha }}';
+
+            // Tagging straight after a merge is the normal release motion, so the
+            // required runs are usually still going when this starts. Treating
+            // "not finished yet" as "not green" would fail the release for timing
+            // alone, with `publish` never started and no way back except manually
+            // re-running this workflow. Wait instead, and only fail on a genuinely
+            // terminal outcome or the deadline.
+            const POLL_MS = 30 * 1000;
+            const DEADLINE = Date.now() + 45 * 60 * 1000;
+
+            const classify = (runs) => {
+              // A re-run updates the same run's conclusion in place, so "any
+              // successful run for this commit" is the right test.
+              if (runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) {
+                return 'success';
+              }
+              // No run registered yet counts as pending: the workflow may not have
+              // been dispatched at the moment we looked.
+              if (runs.length === 0 || runs.some((r) => r.status !== 'completed')) {
+                return 'pending';
+              }
+              return 'failed';
+            };
+
+            const describe = (runs) =>
+              runs.map((r) => `${r.status}/${r.conclusion ?? 'pending'}`).join(', ') || 'no run';
+
+            while (true) {
+              const all = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head_sha: sha,
+                per_page: 100,
+              });
+
+              const byName = new Map(required.map((name) => [name, []]));
+              for (const run of all) {
+                if (byName.has(run.name)) byName.get(run.name).push(run);
+              }
+
+              const state = new Map(
+                required.map((name) => [name, classify(byName.get(name))])
+              );
+              for (const name of required) {
+                core.info(`${name}: ${state.get(name)} (${describe(byName.get(name))})`);
+              }
+
+              const failed = required.filter((name) => state.get(name) === 'failed');
+              if (failed.length) {
+                core.setFailed(
+                  `Release blocked: ${failed.join(', ')} did not succeed for ${sha}. ` +
+                  `Every one of ${required.join(', ')} must be green on the release commit. ` +
+                  `Fix the failure (or re-run that workflow on this commit) and re-run this release.`
+                );
+                return;
+              }
+
+              const pending = required.filter((name) => state.get(name) === 'pending');
+              if (pending.length === 0) {
+                core.info(`All required workflows are green for ${sha}.`);
+                return;
+              }
+
+              if (Date.now() >= DEADLINE) {
+                core.setFailed(
+                  `Release blocked: timed out waiting for ${pending.join(', ')} on ${sha}. ` +
+                  `They had not finished after 45 minutes -- this is a timeout, not a failure. ` +
+                  `Re-run this release workflow once they are green.`
+                );
+                return;
+              }
+
+              core.info(`Waiting on ${pending.join(', ')}; re-checking in ${POLL_MS / 1000}s.`);
+              await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+            }
+
+  build:
+    name: Build distributions
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      - name: Setup Python
+        run: uv python install 3.11
+
+      # Pure-Python hatchling: one wheel plus one sdist, no build matrix.
+      - name: Build wheel and sdist
+        run: uv build
+
+      - name: Verify the built wheel imports
+        run: |
+          set -euxo pipefail
+          uv venv .venv-wheel
+          uv pip install --python .venv-wheel/bin/python dist/*.whl
+          .venv-wheel/bin/python -I -c "import conformalforecast; print(conformalforecast.__version__)"
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 1
+
+  # A GitHub *pre-release* publishes to TestPyPI, a full release to PyPI. Both go
+  # through this one job on purpose: a separate rehearsal workflow would drift
+  # from the real one and stop proving anything. The failure direction is safe --
+  # mis-marking a real release as a pre-release sends it to TestPyPI, never the
+  # reverse. Each destination needs its own trusted publisher, matched on owner,
+  # repo, this workflow's filename, and the environment name below.
+  publish:
+    name: Publish to ${{ github.event.release.prerelease && 'TestPyPI' || 'PyPI' }}
+    if: github.repository == 'Nixtla/conformalforecast'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.release.prerelease && 'testpypi' || 'release' }}
+      # Single-line on purpose: a `>-` folded scalar keeps literal newlines when
+      # the continuation lines are more-indented than the first, which is not
+      # what this needs.
+      url: ${{ github.event.release.prerelease && 'https://test.pypi.org/project/conformalforecast/' || 'https://pypi.org/project/conformalforecast/' }}
+    # Trusted publishing: the OIDC token is minted for this job only. Do not add
+    # a PYPI_API_TOKEN secret -- configure the trusted publisher for this
+    # repository, workflow file and environment instead.
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist
+
+      # `repository-url` defaults to PyPI already; naming both destinations
+      # explicitly keeps the routing readable in one place.
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: ${{ github.event.release.prerelease && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}

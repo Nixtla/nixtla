@@ -1,0 +1,189 @@
+[build-system]
+requires = ["hatchling>=1.32.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "conformalforecast"
+dynamic = ["version"]
+description = "Conformal prediction for time series forecasting"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Nixtla", email = "business@nixtla.io" }]
+keywords = ["conformal-prediction", "time-series", "forecasting", "uncertainty"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = [
+    "narwhals>=2.9",
+    "numpy>=1.24",
+    "pydantic>=2.7",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+# Floors must stay in step with the `integration-docs` group below: that group is
+# what the documentation notebooks execute against, so a lower floor here would
+# advertise a version combination no CI job has ever run.
+nixtla = [
+    "statsforecast>=2.1.1",
+    "mlforecast>=1.1",
+    "neuralforecast>=3.2.1",
+    "utilsforecast>=0.2.16",
+]
+spci = ["quantile-forest>=1.4.2"]
+plotting = ["matplotlib>=3.7"]
+all = ["conformalforecast[nixtla,spci,plotting]"]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/conformalforecast"
+Documentation = "https://nixtlaverse.nixtla.io/conformalforecast/"
+Repository = "https://github.com/Nixtla/conformalforecast"
+Issues = "https://github.com/Nixtla/conformalforecast/issues"
+Changelog = "https://github.com/Nixtla/conformalforecast/blob/main/CHANGELOG.md"
+Security = "https://github.com/Nixtla/conformalforecast/security/policy"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-cov>=5",
+    # Keep the ruff floor in step with the pre-commit hook's `rev`, so the hook
+    # and `uv run ruff check` cannot disagree about what is a violation.
+    "ruff>=0.16.6",
+    "mypy>=2.3.0",
+    "pre-commit>=4.6.2",
+    # Test-only: exercises the DensityRatioEstimator protocol against real
+    # classifiers. Never a runtime dependency -- DensityRatio requires the
+    # caller to supply an estimator, so the shipped package needs no extra.
+    "scikit-learn>=1.4",
+    # Test-only: the adapters accept either frame library and the package
+    # depends on neither, so the tests bring both.
+    "pandas>=2.2",
+    "polars>=1.0",
+]
+docs = [
+    "ipykernel<8.0",
+    "ipython<=8.39.0",
+    "matplotlib",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@a6f375a052783c18f4ca2599c74814c05ee6d568",
+    "nbclient>=0.11.0",
+    "nbformat>=5.11.0",
+    "utilsforecast>=0.2.0",
+]
+# Forecasting libraries the documentation notebooks execute against. Kept out of
+# `docs` so a prose-only build stays light.
+integration-docs = [
+    "ipywidgets>=8.1.0",
+    "lightgbm>=4.0",
+    "mlforecast>=1.1",
+    "neuralforecast>=3.2.1",
+    "polars>=1.0",
+    # The `spci` extra, needed by nbs/docs/methods/spci.ipynb. The docs CI job
+    # installs dependency groups only -- never extras -- so without this line
+    # that page dies on `import quantile_forest` in `make test_docs`.
+    "quantile-forest>=1.4.2",
+    "scikit-learn>=1.4",
+    "statsforecast>=2.1.1",
+    "torch",
+    "utilsforecast>=0.2.16",
+]
+
+[tool.uv.sources]
+# CI runs on Linux, where the default wheel is a multi-gigabyte CUDA build. The
+# docs never train on GPU, so pull the CPU build everywhere except macOS (which
+# has no separate CPU index).
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.hatch.version]
+path = "src/conformalforecast/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/conformalforecast"]
+
+# The sdist ships the source needed to build and test the package. Documentation
+# sources, notebooks, and repo tooling are excluded: they are large, they are
+# useless without Quarto and the docs dependency groups, and `nbs/data/` carries
+# datasets we do not want to redistribute in a Python artifact (see
+# THIRD_PARTY_NOTICES.md).
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.claude",
+    "/.github",
+    "/.gitignore",
+    "/.pre-commit-config.yaml",
+    "/uv.lock",
+    "/CLAUDE.md",
+    "/Makefile",
+    "/benchmarks",
+    "/docs",
+    "/docs-scripts",
+    "/nbs",
+    "/scripts",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Beyond ruff's E4/E7/E9/F default: import sorting, bugbear, comprehensions,
+# pyupgrade, unused arguments, and simplification.
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
+# Method classes, adapters and score functions all implement fixed contracts
+# that mandate parameters an individual implementation may not need -- every
+# method's array surface accepts `X` whether or not it is exogenous-aware, and
+# every offline method accepts `update`'s arguments. Flagging those is noise,
+# not a finding.
+ignore = ["ARG002"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test doubles stand in for the same contracts, at function scope too.
+"tests/**" = ["ARG"]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# No --cov here: pytest-cov lives in the `dev` group, and baking the flag into
+# addopts makes a bare `pytest` fail inside an unpacked sdist. CI and the
+# Makefile pass --cov explicitly.
+addopts = "-v --strict-markers --strict-config"
+markers = [
+    "perf: wall-clock guards against reintroducing a quadratic Python loop (generous budgets)",
+    "torch: needs neuralforecast/torch; must run in its own pytest session (see Makefile)",
+]
+
+[tool.coverage.run]
+source = ["conformalforecast"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.$",
+]

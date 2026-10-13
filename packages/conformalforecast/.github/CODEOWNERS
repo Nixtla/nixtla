@@ -1,0 +1,14 @@
+# Review is requested automatically for these paths. This only has teeth once
+# branch protection requires code-owner review on the default branch.
+
+# Supply-chain and release surface: a change here can publish an artifact or
+# widen a workflow's token scope.
+/.github/workflows/  @marcopeix
+/.github/dependabot.yml  @marcopeix
+/pyproject.toml  @marcopeix
+/uv.lock  @marcopeix
+
+# The contracts every method and adapter is written against.
+/src/conformalforecast/base.py  @marcopeix
+/src/conformalforecast/methods/base.py  @marcopeix
+/src/conformalforecast/capabilities.py  @marcopeix

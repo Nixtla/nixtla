@@ -1,0 +1,159 @@
+name: Build Docs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Deploy target'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+# See ci.yml: never cancel a `main` run, because the release gate needs a
+# successful one on the release commit and a cancelled run can never be that.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build-docs:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.10'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: uv sync --group docs --group integration-docs
+
+      - name: Setup Quarto
+        uses: quarto-dev/quarto-actions/setup@8a96df13519ee81fd526f2dfca5962811136661b # v2.2.0
+        with:
+          version: '1.4.515'
+
+      # The correctness gate: every published notebook must still run against
+      # the current API. Timed out rather than left to consume the job budget,
+      # since a neuralforecast page can hang rather than fail.
+      - name: Execute documentation notebooks
+        timeout-minutes: 25
+        run: uv run --no-sync make test_docs
+
+      - name: Build docs
+        run: uv run --no-sync make all_docs
+
+      - name: Check navigation
+        run: uv run --no-sync python scripts/check_docs_nav.py
+
+      - name: Upload docs site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: docs-site
+          path: docs/mintlify
+          retention-days: 1
+
+  deploy-docs:
+    needs: build-docs
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download docs site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: docs-site
+          path: docs/mintlify
+
+      - name: Deploy shared docs preview
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'staging')
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/mintlify
+          publish_branch: docs-preview
+
+      - name: Deploy pull request docs preview
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/mintlify
+          publish_branch: docs-preview
+          destination_dir: pull/${{ github.event.pull_request.number }}
+
+      - name: Deploy to docs
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production')
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/mintlify
+          publish_branch: docs
+
+      # Publishing to nixtlaverse.nixtla.io needs a token this repo may not have
+      # yet. Absent it, the build and the gh-pages preview still work; only the
+      # cross-repository hop is skipped, and it says so rather than failing.
+      - name: Check Nixtla docs dispatch configuration
+        id: docs_dispatch
+        env:
+          DOCS_WORKFLOW_TOKEN: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+        run: |
+          if [[ -n "$DOCS_WORKFLOW_TOKEN" ]]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DOCS_WORKFLOW_TOKEN is not configured; cross-repository docs dispatch was skipped."
+          fi
+
+      - name: Trigger Nixtla docs preview
+        if: steps.docs_dispatch.outputs.configured == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'staging'))
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'nixtla',
+              repo: 'docs',
+              workflow_id: 'preview.yml',
+              ref: 'main',
+            });
+
+      - name: Trigger Nixtla docs production
+        if: steps.docs_dispatch.outputs.configured == 'true' && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.deploy_target == 'production'))
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ secrets.DOCS_WORKFLOW_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: 'nixtla',
+              repo: 'docs',
+              workflow_id: 'production.yml',
+              ref: 'main',
+            });

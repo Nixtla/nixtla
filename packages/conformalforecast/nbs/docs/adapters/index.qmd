@@ -1,0 +1,96 @@
+---
+title: "Adapters"
+description: "The uniform interface over statsforecast, mlforecast, neuralforecast and plain callables."
+---
+
+A `ForecasterAdapter` is the uniform interface a `ConformalMethod` talks to. It
+converts library-specific objects — Nixtla long-format DataFrames, for instance —
+into the numpy arrays a method's array surface consumes, so the calibration math
+never sees framework types.
+
+Four adapters ship with the package:
+
+| Adapter | Wraps | Extra | Worked example |
+|---|---|---|---|
+| `CallableAdapter` | any function | none | [Exogenous features](../capabilities/exogenous) |
+| `StatsForecastAdapter` | statsforecast | `nixtla` | [StatsForecast](statsforecast) |
+| `MLForecastAdapter` | mlforecast | `nixtla` | [MLForecast](mlforecast) |
+| `NeuralForecastAdapter` | neuralforecast | `nixtla` | [NeuralForecast](neuralforecast) |
+
+## Capabilities
+
+Optional features are mixins. An adapter inherits only the ones it implements, a
+method declares what it needs through `REQUIRED_CAPABILITIES`, and the check runs
+where the forecaster is bound — at the top of `calibrate` / `calibrate_cv`.
+
+| | Refit | Quantiles | Bootstrap | CV | CV + quantiles |
+|---|:--:|:--:|:--:|:--:|:--:|
+| `CallableAdapter` | – | – | – | – | – |
+| `StatsForecastAdapter` | ✅ | ✅ | – | ✅ | ✅ |
+| `MLForecastAdapter` | ✅ | – | – | ✅ | – |
+| `NeuralForecastAdapter` | ✅ | ✅ | – | ✅ | ✅ |
+
+Two consequences worth knowing before you pick one:
+
+- **`CallableAdapter` declares nothing**, so it works with `calibrate()` and
+  explicit arrays but not `calibrate_cv()`. It is the simplest way to wrap a
+  model you already have, and the workhorse of the test suite. A
+  quantile-capable variant lives in `tests/helpers.py`.
+- **`MLForecastAdapter` has no quantile support**, so it cannot back
+  `ConformalizedQuantileRegression`. Calibration fails immediately rather than
+  at predict time.
+
+::: {.callout-important}
+## Capability errors surface at calibration, never in `predict()`
+
+```python
+method = ConformalizedQuantileRegression(alpha=0.1)  # config only, always fine
+# Raises UnsupportedCapability here, before any forecasting.
+method.calibrate_cv(point_forecaster, n_windows=20)
+```
+
+This is a deliberate contract: a fitted object is only ever built after the
+check passed, so the adapter it holds is known to support everything it will
+need.
+:::
+
+### Capabilities that depend on configuration
+
+`ForecasterAdapter.supports()` defaults to an `isinstance` check, but an adapter
+may override it when a capability depends on runtime configuration rather than on
+the class. `NeuralForecastAdapter` does exactly this: it inspects the model's
+loss, so a point-loss model fails `ConformalizedQuantileRegression` calibration
+while an `MQLoss` model of the same class succeeds.
+
+## Lazy imports
+
+`StatsForecastAdapter`, `MLForecastAdapter` and `NeuralForecastAdapter` are
+re-exported lazily from `conformalforecast.adapters`, so importing the package
+never pulls in statsforecast, mlforecast, neuralforecast or torch; the library is
+only imported when you first touch the adapter that needs it. Without the extra
+installed, that first access raises `ImportError` with the exact command:
+
+```bash
+pip install conformalforecast[nixtla]
+```
+
+`CallableAdapter` is always available; it is pure numpy.
+
+## Writing your own
+
+Inherit `ForecasterAdapter` plus the capability mixins you implement, and
+implement every abstract method including the keyword-only `X=None` on
+`predict`/`predict_batch`/`cross_validate` and the `aligned` CV mode. Read
+`adapters/callable.py` first, it is the smallest complete example, and
+[Exogenous features](../capabilities/exogenous) shows it wrapping a real model.
+
+## Next
+
+- [StatsForecast](statsforecast) — the most capable adapter; all six methods work
+  behind it.
+- [MLForecast](mlforecast) — a global gradient-boosted model, and the one
+  capability gap.
+- [NeuralForecast](neuralforecast) — horizon from the model, quantiles from the
+  loss.
+- [Embedding](../concepts/embedding) — skipping adapters entirely and using a
+  method's array surface inside your own library.

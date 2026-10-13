@@ -1,0 +1,51 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so advisories added to the query pack after a PR merges still get
+    # applied to the code already on main.
+    - cron: "27 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze Python
+    runs-on: ubuntu-latest
+    # Code scanning needs GitHub Advanced Security on a private repository, so
+    # while this one is private the job would fail at the upload step. Skipping
+    # keeps the check from sitting red before launch; it starts running by itself
+    # the moment the repository goes public.
+    if: github.event.repository.private == false
+    # A job-level `permissions:` block REPLACES the top-level one -- every scope
+    # not named here is set to `none`. `contents: read` is therefore required
+    # even though the top level already grants it, or actions/checkout gets a
+    # token that cannot read the repository (which git reports, confusingly, as
+    # "Repository not found").
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Pure Python needs no build step, so the autobuild phase is skipped.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: python
+          queries: security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: "/language:python"

@@ -1,0 +1,83 @@
+---
+title: "Installation"
+description: "Install conformalforecast, verify it imports, and pick the optional extras you need."
+---
+
+## From PyPI
+
+```bash
+pip install conformalforecast
+```
+
+Or with uv:
+
+```bash
+uv add conformalforecast
+```
+
+The core install is pure Python and depends only on `numpy`, `pandas` and
+`scipy`. Python 3.10 or newer is required.
+
+## Verify the install
+
+```bash
+python -c "import conformalforecast; print(conformalforecast.__version__)"
+```
+
+## Optional extras
+
+Everything beyond the calibration math is an extra, so the base install never
+pulls a forecasting framework:
+
+| Extra | Installs | Needed for |
+|---|---|---|
+| `nixtla` | statsforecast, mlforecast, neuralforecast | the Nixtla adapters |
+| `spci` | quantile-forest | `SequentialPredictiveConformalInference` |
+| `plotting` | matplotlib | plotting helpers |
+| `all` | all of the above | — |
+
+```bash
+pip install "conformalforecast[nixtla]"
+```
+
+::: {.callout-note}
+## Importing the package never imports a forecasting library
+
+The Nixtla adapters are re-exported lazily, so `import conformalforecast` does
+not import statsforecast, mlforecast, neuralforecast or torch. The library is
+imported the first time you touch the adapter that needs it, and if the extra is
+missing you get an `ImportError` naming the exact `pip install` command.
+:::
+
+`CallableAdapter` needs no extra at all — it wraps any function and is pure
+numpy, which makes it the quickest way to try the package against a model you
+already have.
+
+## From a git checkout
+
+For development, clone the repository and use the `devenv` target, which syncs
+every extra plus the dev group and installs the pre-commit hooks:
+
+```bash
+git clone https://github.com/Nixtla/conformalforecast.git
+cd conformalforecast
+make devenv
+```
+
+See [CONTRIBUTING](https://github.com/Nixtla/conformalforecast/blob/main/CONTRIBUTING.md)
+for the test, lint and documentation workflow.
+
+::: {.callout-warning}
+## Alpha versioning
+
+`conformalforecast` is in early development and the API is unstable until
+v0.2.0. Pin a version if you depend on exact interval values.
+:::
+
+## Next
+
+- [Quick start](quickstart) — calibrated intervals in one screen.
+- [Methods](../methods/index) — the six methods, and how to choose one.
+- [Nixtlaverse](../adapters/index) — statsforecast, mlforecast, neuralforecast.
+- [Architecture](../concepts/architecture) — one class per method, its two
+  surfaces, and which one you want.

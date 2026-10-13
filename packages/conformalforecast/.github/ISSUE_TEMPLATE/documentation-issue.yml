@@ -1,0 +1,15 @@
+name: Documentation issue
+description: Report missing, unclear, or incorrect documentation
+title: "[Docs] "
+labels: [documentation]
+body:
+  - type: textarea
+    attributes:
+      label: Description
+      description: Explain what is missing, unclear, or incorrect.
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Link or file
+      description: Point to the affected page or source file, if applicable.

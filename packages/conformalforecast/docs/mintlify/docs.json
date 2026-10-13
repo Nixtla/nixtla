@@ -1,0 +1,103 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "conformalforecast",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "favicon": "/favicon.svg",
+  "logo": {
+    "light": "/light.png",
+    "dark": "/dark.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/conformalforecast"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index.html"
+        ]
+      },
+      {
+        "group": "Getting Started",
+        "pages": [
+          "docs/getting-started/installation.html",
+          "docs/getting-started/quickstart.html"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "docs/concepts/architecture.html",
+          "docs/concepts/embedding.html"
+        ]
+      },
+      {
+        "group": "Capabilities",
+        "pages": [
+          "docs/capabilities/diagnostics.html",
+          "docs/capabilities/exogenous.html",
+          "docs/capabilities/ragged-panels.html",
+          "docs/capabilities/online-updating.html",
+          "docs/capabilities/transfer.html"
+        ]
+      },
+      {
+        "group": "Methods",
+        "pages": [
+          "docs/methods/index.html",
+          {
+            "group": "Offline",
+            "pages": [
+              "docs/methods/split.html",
+              "docs/methods/cqr.html",
+              "docs/methods/weighted_split.html"
+            ]
+          },
+          {
+            "group": "Online & adaptive",
+            "pages": [
+              "docs/methods/aci.html",
+              "docs/methods/agaci.html",
+              "docs/methods/nexcp.html",
+              "docs/methods/spci.html"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Nixtlaverse",
+        "pages": [
+          "docs/adapters/index.html",
+          "docs/adapters/statsforecast.html",
+          "docs/adapters/mlforecast.html",
+          "docs/adapters/neuralforecast.html"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "methods.html",
+          "base.html",
+          "adapters.html",
+          "capabilities.html",
+          "panel.html",
+          "nonconformity.html",
+          "diagnostics.html",
+          "aggregators.html",
+          "weighting.html",
+          "quantile_regressors.html",
+          "compat.html"
+        ]
+      }
+    ]
+  }
+}

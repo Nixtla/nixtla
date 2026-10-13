@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+  - repo: local
+    hooks:
+      # Strips execution counts and volatile library chatter from documentation
+      # notebooks, so committed outputs stay diff-clean. Normalizes only -- it
+      # never starts a kernel, so committing stays fast; `make execute_docs`
+      # is what refreshes the outputs themselves.
+      - id: normalize-doc-notebooks
+        name: normalize documentation notebook outputs
+        entry: python scripts/execute_notebooks.py --normalize-only
+        language: system
+        files: ^nbs/docs/.*\.ipynb$
+        pass_filenames: false

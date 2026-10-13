@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use ConformalForecast in research, please cite the software."
+title: "ConformalForecast"
+type: software
+authors:
+  - family-names: "Peixeiro"
+    given-names: "Marco"
+    email: "marco@nixtla.io"
+    affiliation: "Nixtla"
+  - family-names: "Caballero Ramirez"
+    given-names: "Saul"
+    email: "saul@nixtla.io"
+    affilitation: "Nixtla"
+  - name: "Nixtla"
+# Bump in lockstep with `__version__` in src/conformalforecast/__init__.py when
+# cutting a release; the package version is dynamic and this one is not.
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/Nixtla/conformalforecast"
+url: "https://nixtlaverse.nixtla.io/conformalforecast/"
+abstract: >-
+  Adaptive conformal prediction for time series forecasting: distribution-free
+  prediction intervals for any forecaster, with online and adaptive methods
+  designed for non-exchangeable, sequential data.
+keywords:
+  - conformal prediction
+  - time series
+  - forecasting
+  - uncertainty quantification
+  - prediction intervals
