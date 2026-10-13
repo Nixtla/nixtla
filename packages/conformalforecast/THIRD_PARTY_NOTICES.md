@@ -37,9 +37,9 @@ Optional extras install, but do not bundle, the following projects. Each is
 distributed under its own license by its own maintainers.
 
 - `nixtla`: [statsforecast](https://github.com/Nixtla/statsforecast),
-  [mlforecast](https://github.com/Nixtla/mlforecast),
-  [neuralforecast](https://github.com/Nixtla/neuralforecast), and
-  [utilsforecast](https://github.com/Nixtla/utilsforecast) (Apache-2.0)
+  [mlforecast](https://github.com/Nixtla/mlforecast), and
+  [neuralforecast](https://github.com/Nixtla/neuralforecast) (Apache-2.0), plus
+  [utilsforecast](https://github.com/Nixtla/utilsforecast)
 - `spci`: [quantile-forest](https://github.com/zillow/quantile-forest) (Apache-2.0)
 - `plotting`: [matplotlib](https://github.com/matplotlib/matplotlib) (matplotlib license, BSD-compatible)
 

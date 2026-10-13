@@ -79,9 +79,10 @@ wrong:
   Python. The per-cell quantile is one gather, and the online methods keep an
   incrementally-sorted history rather than re-quantiling from scratch each step.
   SPCI, which fits one regressor per cell, is the sanctioned exception.
-- **Five more methods.** Once the array contract is satisfied, [ACI](../methods/aci),
-  [AgACI](../methods/agaci), [NexCP](../methods/nexcp), [CQR](../methods/cqr) and
-  [SPCI](../methods/spci) are the same three calls — `fit`, `interval`, and
+- **Six more methods.** Once the array contract is satisfied, [ACI](../methods/aci),
+  [AgACI](../methods/agaci), [NexCP](../methods/nexcp), [CQR](../methods/cqr),
+  [SPCI](../methods/spci) and [WeightedSplit](../methods/weighted_split) are the
+  same three calls — `fit`, `interval`, and
   `update` for the online four. CQR's `fit` and `interval` take a quantile cube
   rather than point forecasts, with a trailing `(q_lo, q_hi)` axis.
 
