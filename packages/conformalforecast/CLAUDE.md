@@ -122,16 +122,17 @@ which **deep-copies** it — `ScoreFunction.fit` may set internal parameters,
 and the copy keeps that off the user's config — and stores the copy as the
 fitted object's `score_fn_`; `interval` and the online update invert with it.
 
-Score compatibility is a **construction-time** `ValidationError`: each method
-declares `SCORE_TYPE: ClassVar[type[ScoreFunction]]` (`QuantileScore` for CQR,
-`SignedResidual` for SPCI, `AbsoluteResidual` for WeightedSplit,
-`ScoreFunction` — the default inherited from `ConformalMethod` — otherwise) and a base `model_validator` checks
+Score compatibility is a **construction-time** `ValidationError`. Each method
+declares `SCORE_TYPE: ClassVar[type[ScoreFunction]]`: CQR requires
+`QuantileScore`, SPCI requires `SignedResidual`, and WeightedSplit requires
+`AbsoluteResidual`. The other methods inherit the `ScoreFunction` default from
+`ConformalMethod`. A base `model_validator` checks
 `isinstance(score, SCORE_TYPE)` **and** that the score's own
-`CONSUMES_QUANTILES` `ClassVar` matches the method's — so a point method
+`CONSUMES_QUANTILES` `ClassVar` matches the method's, so a point method
 rejects `QuantileScore` even though it passes the `ScoreFunction` gate. Both
-checks are `ConformalMethod._accepts_score`. Split's cross-field rule (`symmetric=False`
-needs a `SignedResidual`) is its own `model_validator`. All gates **narrow**: a
-custom score must subclass the required type.
+checks are `ConformalMethod._accepts_score`. Split's cross-field rule
+(`symmetric=False` needs a `SignedResidual`) is its own `model_validator`. All
+gates **narrow**: a custom score must subclass the required type.
 
 Scores serialize through a `kind` tag. Every concrete `ScoreFunction`
 declares its own `kind: Literal[...]`; `__pydantic_init_subclass__` registers
