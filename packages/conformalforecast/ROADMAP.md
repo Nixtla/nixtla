@@ -7,10 +7,10 @@ where a limit is deliberate rather than accidental, it says so.
 ## Defects
 
 - **The forecaster surface does not preserve `float32`.** `calibrate` and
-  `calibrate_cv` in `src/conformalforecast/methods/base.py` coerce truths and
-  predictions with `np.asarray(..., dtype=np.float64)` before handing them to
-  `fit`/`_store_calibration_point` (and CQR's quantile-pair path does the same
-  to its quantile cube). So a `float32` forecaster -- neuralforecast's
+  `calibrate_cv` in `src/conformalforecast/methods/base.py` coerce truths with
+  `np.asarray(..., dtype=np.float64)` before handing them to `fit`, and cast
+  predictions (and CQR's quantile cube) to `float64` for the retained
+  calibration copy. So a `float32` forecaster -- neuralforecast's
   output, in particular -- yields a `float64` `score_quantile_`, `float64`
   retained calibration arrays, and `float64` intervals out of `predict()`,
   even though `float32` preservation matters most for exactly that adapter.
@@ -24,8 +24,8 @@ where a limit is deliberate rather than accidental, it says so.
 
 - **Asymmetric CQR cannot be reached by any shipped adapter.**
   `ConformalizedQuantileRegression(symmetric=False, alpha_lo=..., alpha_hi=...)`
-  is implemented, validated and tested, but all three Nixtla adapters request
-  quantiles through the integer `level` API, where `level=90` means the 5th
+  is implemented, validated and tested, but the StatsForecast and
+  NeuralForecast adapters (the two with a quantile path) request quantiles through the integer `level` API, where `level=90` means the 5th
   *and* 95th percentiles inseparably. `_nixtla_common.quantiles_to_levels`
   therefore rejects `[0.02, 0.92]`. Training a neuralforecast model with
   `MQLoss(quantiles=[0.02, 0.92])` does **not** help — the adapter still routes
@@ -143,7 +143,7 @@ where a limit is deliberate rather than accidental, it says so.
   `interval()` is a calibration-set constant, so broadcasting it is legitimate
   and the number is sane. Replaying their `fit` loop step by step would be
   strictly better, but it runs straight into the unfloored `alpha_t` defect
-  below — the widths reach ~1e299 within the calibration set. Fix that first.
+  below — the widths reach ~1e300 within the calibration set. Fix that first.
 - **SPCI under-covers badly at multi-step horizons on real data.** At horizon 6
   on both bundled datasets it lands near 65% against a 90% target, while split
   conformal holds 90% on the same forecaster; at horizon 1 it reaches nominal and
@@ -174,7 +174,7 @@ where a limit is deliberate rather than accidental, it says so.
 - **ACI and AgACI can degenerate to infinite width.** Nothing bounds `alpha_t`
   below zero, and at `alpha_t <= 0` the requested quantile falls beyond the
   largest calibration score. A `gamma` of 0.2 reaches that state within a few
-  steps on a 48-month stream, producing widths around `1e299` — technically 100%
+  steps on a 48-month stream, producing widths around `1e300` — technically 100%
   covering, and useless. The constructor warns above `gamma = 0.1` but nothing
   stops it, and the threshold is off by one step: `gamma = 0.1` itself
   degenerates on that same stream (see the expert table on the AgACI page) while

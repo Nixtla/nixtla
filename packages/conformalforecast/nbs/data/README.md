@@ -18,7 +18,8 @@ format (`unique_id`, `ds`, `y`).
 
 The default dataset for the site. Strong trend and strong yearly seasonality in
 144 points makes it fast to model and easy to read on a plot, so every
-single-series page uses it. Pages that need exogenous features build them from
+single-series page except SPCI's (which streams the M4 series `H1` below) uses
+it. Pages that need exogenous features build them from
 its own calendar (a linear trend and Fourier terms) rather than joining an
 outside source.
 
@@ -46,5 +47,5 @@ Derived from the source file by:
 
 Step 3 is the point: because the series share an end date but not a length, the
 panel is ragged, and `panel.long_to_panel` gives it a real left-NaN prefix. The
-pages on ragged panels, per-series coverage, and the global mlforecast and
-neuralforecast models all use it.
+ragged-panels and transfer pages, the NexCP and SPCI method pages, and the
+statsforecast, mlforecast and neuralforecast adapter pages all use it.

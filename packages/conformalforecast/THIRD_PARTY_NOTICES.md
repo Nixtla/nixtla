@@ -16,6 +16,7 @@ corresponding method docstring.
 |---|---|---|
 | `split.py` | Split (inductive) conformal prediction | Papadopoulos, Proedrou, Vovk & Gammerman (2002); Lei et al. (2018) |
 | `cqr.py` | Conformalized Quantile Regression | Romano, Patterson & Candès (2019) |
+| `weighted_split.py` | Weighted conformal prediction under covariate shift | Tibshirani, Barber, Candès & Ramdas (2019) |
 | `aci.py` | Adaptive Conformal Inference | Gibbs & Candès (2021) |
 | `agaci.py` | Aggregated Adaptive Conformal Inference | Zaffran, Féron, Goude, Josse & Dieuleveut (2022) |
 | `nexcp.py` | Conformal prediction beyond exchangeability | Barber, Candès, Ramdas & Tibshirani (2023) |
@@ -26,8 +27,8 @@ exponentially weighted averaging as used by AgACI.
 
 ## Runtime dependencies
 
-The published package depends only on `numpy` (BSD-3-Clause), `pandas`
-(BSD-3-Clause), `scipy` (BSD-3-Clause), and `pydantic` (MIT). No third-party
+The published package depends only on `narwhals` (MIT), `numpy` (BSD-3-Clause),
+`pydantic` (MIT), and `scipy` (BSD-3-Clause). No third-party
 code from these projects is copied into this repository.
 
 ## Optional dependencies
@@ -36,8 +37,9 @@ Optional extras install, but do not bundle, the following projects. Each is
 distributed under its own license by its own maintainers.
 
 - `nixtla`: [statsforecast](https://github.com/Nixtla/statsforecast),
-  [mlforecast](https://github.com/Nixtla/mlforecast), and
-  [neuralforecast](https://github.com/Nixtla/neuralforecast) (Apache-2.0)
+  [mlforecast](https://github.com/Nixtla/mlforecast),
+  [neuralforecast](https://github.com/Nixtla/neuralforecast), and
+  [utilsforecast](https://github.com/Nixtla/utilsforecast) (Apache-2.0)
 - `spci`: [quantile-forest](https://github.com/zillow/quantile-forest) (Apache-2.0)
 - `plotting`: [matplotlib](https://github.com/matplotlib/matplotlib) (matplotlib license, BSD-compatible)
 

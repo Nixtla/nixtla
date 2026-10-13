@@ -14,7 +14,8 @@ deprecation cycle.
   `calibrate_cv` return a fitted forecaster that serves `predict`, `interval`
   and, for online methods, `update`.
 - Adapters for StatsForecast, MLForecast, NeuralForecast and plain callables.
-- Covariate-shift support through `recalibrate` and `adapt` on fitted objects,
-  with pluggable weighting functions.
+- Covariate-shift support through `adapt` on fitted `WeightedSplit` objects,
+  with pluggable weighting functions, and `recalibrate` on every fitted object
+  for labelled target domains.
 - Coverage, interval-quality and conditional-coverage diagnostics.
 - A migration shim for MLForecast's interval registry.

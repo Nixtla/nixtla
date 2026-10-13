@@ -51,7 +51,7 @@ has no `forecaster_`, so its `predict` raises `CalibrationError` pointing you at
 `interval` — the two surfaces do not have to be mixed, and for an embedding they
 should not be.
 
-The dependency you take on is numpy, pandas and scipy — nothing else. Importing
+The dependency you take on is narwhals, numpy, pydantic and scipy — nothing else. Importing
 `conformalforecast` never imports statsforecast, mlforecast, neuralforecast or
 torch.
 
@@ -61,9 +61,11 @@ A library that already computes `np.quantile` on its residuals is most of the
 way there. What the array surface adds is the parts that are easy to get subtly
 wrong:
 
-- **The exact conformal quantile.** `k = ceil((1 - alpha)(n + 1))` as an order
-  statistic, not an interpolated quantile. The `n + 1` is what makes the coverage
-  guarantee finite-sample.
+- **The exact conformal quantile.** Split and CQR take
+  `k = ceil((1 - alpha)(n + 1))` as an order statistic, not an interpolated
+  quantile. The `n + 1` is what makes the coverage guarantee finite-sample. The
+  adaptive methods need a time-varying level, so ACI and AgACI use a linear
+  quantile and NexCP and WeightedSplit a weighted one.
 - **Version-stable arithmetic.** `_quantiles.py` computes its interpolation
   constant in `float64` regardless of input dtype. numpy changed that behaviour
   in 2.5; following numpy would have shifted every `float32` interval bound on an
@@ -80,7 +82,8 @@ wrong:
 - **Five more methods.** Once the array contract is satisfied, [ACI](../methods/aci),
   [AgACI](../methods/agaci), [NexCP](../methods/nexcp), [CQR](../methods/cqr) and
   [SPCI](../methods/spci) are the same three calls — `fit`, `interval`, and
-  `update` for the online four.
+  `update` for the online four. CQR's `fit` and `interval` take a quantile cube
+  rather than point forecasts, with a trailing `(q_lo, q_hi)` axis.
 
 ## The reference migration
 

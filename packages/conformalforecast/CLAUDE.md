@@ -125,7 +125,7 @@ fitted object's `score_fn_`; `interval` and the online update invert with it.
 Score compatibility is a **construction-time** `ValidationError`: each method
 declares `SCORE_TYPE: ClassVar[type[ScoreFunction]]` (`QuantileScore` for CQR,
 `SignedResidual` for SPCI, `AbsoluteResidual` for WeightedSplit,
-`ScoreFunction` otherwise) and a base `model_validator` checks
+`ScoreFunction` — the default inherited from `ConformalMethod` — otherwise) and a base `model_validator` checks
 `isinstance(score, SCORE_TYPE)` **and** that the score's own
 `CONSUMES_QUANTILES` `ClassVar` matches the method's — so a point method
 rejects `QuantileScore` even though it passes the `ScoreFunction` gate. Both
@@ -135,8 +135,9 @@ custom score must subclass the required type.
 
 Scores serialize through a `kind` tag. Every concrete `ScoreFunction`
 declares its own `kind: Literal[...]`; `__pydantic_init_subclass__` registers
-it and raises `TypeError` at class definition if a subclass reuses its
-parent's `kind` (otherwise it would silently reload as the parent). `ScoreField`
+it and raises `TypeError` at class definition if the subclass declares no
+`kind`, or if its `kind` is already registered to a different class — typically
+a parent's, inherited (otherwise it would silently reload as the parent). `ScoreField`
 (`nonconformity/_field.py`, re-exported from the package) is the annotated type every method's `score`
 field uses: `SerializeAsAny`, a before-validator resolving a dict by `kind`
 through the registry, and a JSON schema listing the built-in kinds.
@@ -407,8 +408,8 @@ re-fit starts from uniform weights, because target labels supersede the
 unlabelled proxy.
 
 `X` is not yet threaded through cross-validation: `calibrate_cv` accepts it only
-to raise `NotImplementedError`, and `calibrate` raises for quantile-consuming
-methods.
+to raise `NotImplementedError`, and `calibrate` raises `NotImplementedError`
+when `X` is passed to a quantile-consuming method.
 
 The two calibrate entry points call `_check_capabilities(forecaster)` as their
 first statement, hand arrays to `fit`, then set `forecaster_`, the retained
@@ -671,7 +672,7 @@ Following sklearn's convention, now expressed as pydantic fields:
 
 ## What NOT to do
 
-- Don't stack PRs. Branch from `main`, target `main`; the `PR target` workflow
+- Don't stack PRs. Branch from `main`, target `main`; the `PR targets main` check
   rejects anything else. See `AGENTS.md` and `CONTRIBUTING.md`.
 - Don't leave development-process references in the code: no PR or phase
   numbers, no plan or spec item ids, no branch names, no "in a follow-up PR".

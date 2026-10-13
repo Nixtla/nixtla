@@ -13,8 +13,11 @@ git clone https://github.com/Nixtla/conformalforecast
 cd conformalforecast
 uv sync --all-extras --all-groups
 uv run pre-commit install
-uv run pytest -v
+uv run pytest tests/unit
 ```
+
+`tests/integration` and `tests/integration/torch_isolated` must run as separate
+pytest sessions — use `make test_integration` (see [Tests](#tests)).
 
 Branch from `main`, push to your fork, and open a PR against `main`. The CI
 matrix runs on Python 3.10–3.14 against `tests/unit`.
@@ -30,8 +33,8 @@ matrix runs on Python 3.10–3.14 against `tests/unit`.
 - **New aggregators or quantile-regression backends** — go in
   `src/conformalforecast/aggregators/` and `src/conformalforecast/quantile_regressors/`
   respectively. Both are pluggable ABCs designed for extension.
-- **Documentation and examples** — docstring fixes, notebook examples under
-  `examples/`, README clarifications.
+- **Documentation and examples** — docstring fixes, documentation notebooks
+  under `nbs/docs/`, README clarifications.
 - **Performance work** — benchmarked improvements to hot loops. Include
   before/after numbers in the PR description.
 
@@ -43,21 +46,26 @@ rejections — they need a design conversation before code.
 
 ```
 src/conformalforecast/
-├── base.py              # ForecasterAdapter, ScoreFunction, ConformalMethod ABCs; type aliases
+├── base.py              # Type aliases, ForecasterAdapter, ScoreFunction, result types,
+│                        #   exceptions
+├── _model.py            # ArrayModel, the pydantic base every model subclasses
+├── _quantiles.py        # NaN-aware, numpy-version-stable quantile helpers
+├── panel.py             # Long <-> panel conversion, CV assembly, level/quantile helpers
 ├── capabilities.py      # Capability mixins (SupportsRefit, SupportsQuantiles, ...)
-├── methods/             # CP methods (Split, CQR, ACI, AgACI, NexCP, SPCI)
+├── methods/             # base.py (ConformalMethod, ConformalForecaster) and the CP
+│                        #   methods (Split, CQR, WeightedSplit, ACI, AgACI, NexCP, SPCI)
 ├── adapters/            # Forecaster adapters (Callable, StatsForecast, MLForecast,
-│                        #   NeuralForecast, Darts, sktime)
+│                        #   NeuralForecast)
 ├── nonconformity/       # Score functions (AbsoluteResidual, SignedResidual, QuantileScore)
 ├── aggregators/         # Online aggregators (EWA) used by AgACI
 ├── quantile_regressors/ # Quantile regression backends (QRF) used by SPCI
+├── weighting/           # Covariate-shift weight functions used by WeightedSplit
 ├── diagnostics/         # Coverage, scoring, conditional, reports
-├── datasets/            # Small built-in datasets for tests and examples
-└── utils/               # Validation, plotting, type helpers
+└── compat/              # Migration shim for mlforecast's interval registry
 
-tests/unit/              # Fast tests, no optional dependencies required
+tests/unit/              # Fast tests; those behind an extra skip without it
 tests/integration/       # Slower tests across adapters; gated on extras
-examples/                # Runnable notebooks
+nbs/docs/                # Documentation notebooks and pages
 ```
 
 ## Conventions that matter
@@ -135,7 +143,8 @@ example.
 ### Dependencies
 
 Core dependencies are `narwhals`, `numpy`, `pydantic`, `scipy`. Anything else
-is an extra in `pyproject.toml` (`nixtla`, `spci`, `plotting`).
+is an extra in `pyproject.toml` (`nixtla`, `spci`, `plotting`, and `all` for the
+three).
 Adapters soft-import their underlying library and raise an `ImportError` with
 the exact install command if it's missing:
 
@@ -184,19 +193,24 @@ Do not add a new top-level dependency without opening an issue first.
 4. Implement every abstract method from each parent class. Convert
    framework-specific types (DataFrames, TimeSeries, etc.) to numpy at the
    boundary.
-5. Add an entry under `[project.optional-dependencies]` in `pyproject.toml`
+5. Register the class in `adapters/__init__.py`'s `_LAZY_ADAPTERS` map and
+   `__all__`, so importing the package never imports the library.
+6. Add an entry under `[project.optional-dependencies]` in `pyproject.toml`
    and reference it from the install message.
-6. Add `tests/integration/test_<library>_adapter.py`. Gate the module on
-   `pytest.importorskip("<library>")` so unit-test runs without extras still
-   pass.
+7. Add `tests/integration/test_<library>_adapter.py` — under
+   `tests/integration/torch_isolated/` if the library pulls in torch. Gate the
+   module on `pytest.importorskip("<library>")` so unit-test runs without
+   extras still pass.
 
 ### Adding a new nonconformity score
 
 1. Read `src/conformalforecast/nonconformity/absolute.py` (the simplest reference).
 2. Create `src/conformalforecast/nonconformity/<name>.py` with a class inheriting
-   `ScoreFunction`.
-3. Implement `score`, `invert`, and `fit` (no-op if there's no internal
-   state to learn).
+   `ScoreFunction`, declaring its own unique tag, e.g.
+   `kind: Literal["my_score"] = "my_score"`. A concrete score without one, or
+   reusing another class's tag, raises `TypeError` at class definition.
+3. Implement `score` and `invert` (the abstract methods). Override `fit` only if
+   there is internal state to learn; the default is a no-op.
 4. Export the class from `src/conformalforecast/nonconformity/__init__.py`.
 5. Add a unit test alongside the existing `test_absolute_residual.py` and
    `test_quantile_score.py`.
@@ -215,32 +229,40 @@ Do not add a new top-level dependency without opening an issue first.
   - `uv run ruff format .` — format (or `--check` for CI parity)
   - `uv run mypy src/` — strict type-checking on `src/`; tests are looser
   - `uv run pre-commit install` — wire up the pre-commit hooks (ruff,
-    ruff-format, trailing whitespace, end-of-file, YAML/TOML syntax)
+    ruff-format, trailing whitespace, end-of-file, YAML/TOML syntax, and
+    `normalize-doc-notebooks`, which normalizes documentation notebook outputs)
 
 ## Tests
 
-- Every method in `methods/` has a matching `tests/unit/test_<method>.py`.
-- Every method test includes:
+- Every method in `methods/` has two test files in `tests/unit/methods/`:
+  `test_<name>.py` for the array surface and `test_<name>_forecaster.py` for
+  the adapter surface.
+- The array-surface tests include:
   - **Coverage** on synthetic data: empirical coverage matches `1 - alpha`
     within a documented tolerance.
-  - **Shape**: outputs match the documented shapes for `n_series` in `{1, 3}`
-    and `horizon` in `{1, 6}`.
+  - **Shape**: outputs match the documented shapes for `n_series` in `{1, 5}`
+    and `horizon` in `{1, 12}`, plus a `float32`-preservation case.
   - **Determinism**: same input plus same seed produces the same output.
-  - **Capability errors**: a method that needs `SupportsQuantiles` /
-    `SupportsBootstrap` raises `UnsupportedCapability` from `calibrate` /
-    `calibrate_cv` when given an inadequate adapter.
+  - **NaN masking**: a ragged calibration set gives the same result as fitting
+    each series on its dense sub-array, and `InsufficientCalibrationSamples`
+    names the right series.
+- The adapter-surface tests include **capability errors**: a method with
+  `REQUIRED_CAPABILITIES` raises `UnsupportedCapability` from `calibrate` /
+  `calibrate_cv` when given an inadequate adapter. Today only CQR declares one
+  (`SupportsQuantiles`); `SupportsBootstrap` is implemented by no adapter.
 - Use `numpy.random.default_rng(seed)` everywhere. Never `np.random.seed`.
-- Unit tests use `CallableAdapter` (and its CV variant in
-  `tests/_online_helpers.py`) so they run without optional dependencies.
+- Unit tests use `CallableAdapter` so they run without optional dependencies;
+  shared quantile-capable test adapters live in `tests/helpers.py`.
 - Integration tests gate on `pytest.importorskip("<library>")` for the
   relevant backend.
 
-Reference: `tests/unit/test_aci.py` for the typical online-method pattern.
+Reference: `tests/unit/methods/test_aci.py` and `test_aci_forecaster.py` for the
+typical online-method pattern.
 
 Run the suites with:
 
 ```bash
-uv run pytest tests/unit          # fast, no extras required
+uv run pytest tests/unit          # fast; tests behind an extra skip without it
 make test_integration             # slower, needs extras
 ```
 
@@ -273,7 +295,7 @@ both dependency groups:
 ```bash
 uv sync --group docs --group integration-docs
 
-make test_docs     # execute every notebook — this is what CI gates on
+make test_docs     # execute every non-network notebook — this is what CI gates on
 make all_docs      # full site build into docs/mintlify/
 uv run python scripts/check_docs_nav.py   # docs.json vs built pages, both ways
 ```
@@ -286,8 +308,9 @@ exists so a push to that mutable branch cannot change a build unreviewed.
 
 Add the file under `nbs/docs/`, add one line to `docs/mintlify/docs.json`, and
 run `make execute_docs` to write refreshed outputs back into the notebook. Commit
-those outputs: CI re-executes every notebook, so a page calling a removed API
-fails the build rather than rotting quietly.
+those outputs: CI re-executes every notebook not flagged `requires_network` in
+its `conformalforecast` metadata, so a page calling a removed API fails the build
+rather than rotting quietly. Flagged pages run only under `make execute_docs`.
 
 #### Keep the models fast
 
@@ -347,7 +370,7 @@ Three things to highlight:
 
 - Keep each PR focused on one change. Split unrelated work into separate PRs.
 - **Branch from `main` and target `main`. No stacked PRs.** A PR based on
-  another unmerged branch is rejected by the `PR target` check. Stacks make
+  another unmerged branch is rejected by the `PR targets main` check. Stacks make
   review order load-bearing, turn one review comment into a rebase of every
   branch above it, and leave the diff of the upper PRs unreadable until the
   lower ones land. If your work genuinely depends on an unmerged PR, either
@@ -361,7 +384,7 @@ Three things to highlight:
   check enforces it.
 - **Add exactly one changelog label.** Release notes are generated from labels,
   not from titles, so an unlabelled PR would land in "Other Changes". The
-  `Changelog label` check enforces it.
+  `Changelog label` check requires at least one; exactly one is the convention.
 
   | Label | Release-note section | Use for |
   | --- | --- | --- |
@@ -385,7 +408,8 @@ Three things to highlight:
   skip), the integration suite on Linux, the unit suite again at the declared
   dependency floor, and an sdist build that is installed and tested from the
   packed archive. `make lint`, `make test`, `make test_extras` and
-  `make test_integration` reproduce all of it locally.
+  `make test_integration` reproduce most of it locally; the dependency-floor,
+  sdist and cross-OS jobs have no `make` target.
 
 ## Releasing
 

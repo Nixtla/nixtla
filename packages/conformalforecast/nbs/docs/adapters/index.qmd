@@ -60,7 +60,10 @@ need.
 may override it when a capability depends on runtime configuration rather than on
 the class. `NeuralForecastAdapter` does exactly this: it inspects the model's
 loss, so a point-loss model fails `ConformalizedQuantileRegression` calibration
-while an `MQLoss` model of the same class succeeds.
+while an `MQLoss` model of the same class succeeds. It also refuses the quantile
+and refit capabilities when the model has exogenous features.
+`StatsForecastAdapter` does the same when `exog_features` is set, and
+`MLForecastAdapter`, which has no quantile path, refuses refit.
 
 ## Lazy imports
 
