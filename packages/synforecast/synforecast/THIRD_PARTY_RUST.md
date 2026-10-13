@@ -13,7 +13,7 @@ https://github.com/HEnquist/realfft/tree/d0d4eee0525fd27c96c8a046d6d107acd5ed84a
 ## Apache License 2.0
 
 Applies to:
-- rand_mt 6.0.3
+- rand_mt
 
 ```
 
@@ -224,7 +224,7 @@ Applies to:
 ## Apache License 2.0
 
 Applies to:
-- target-lexicon 0.13.5
+- target-lexicon
 
 ```
 
@@ -453,7 +453,7 @@ Software.
 ## Apache License 2.0
 
 Applies to:
-- approx 0.5.1
+- approx
 
 ```
 
@@ -664,9 +664,9 @@ Applies to:
 ## Apache License 2.0
 
 Applies to:
-- nalgebra-macros 0.3.0
-- nalgebra 0.35.0
-- simba 0.10.0
+- nalgebra-macros
+- nalgebra
+- simba
 
 ```
                                  Apache License
@@ -876,8 +876,8 @@ Applies to:
 ## Apache License 2.0
 
 Applies to:
-- rustfft 6.4.1
-- strength_reduce 0.2.4
+- rustfft
+- strength_reduce
 
 ```
                                  Apache License
@@ -1088,7 +1088,7 @@ Applies to:
 ## Apache License 2.0
 
 Applies to:
-- typenum 1.19.0
+- typenum
 
 ```
                               Apache License
@@ -1297,24 +1297,24 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- autocfg 1.5.0
-- cfg-if 1.0.4
-- crossbeam-deque 0.8.6
-- crossbeam-epoch 0.9.18
-- crossbeam-utils 0.8.21
-- either 1.15.0
-- heck 0.5.0
-- matrixmultiply 0.3.10
-- ndarray 0.16.1
-- num-complex 0.4.6
-- num-integer 0.1.46
-- num-rational 0.4.2
-- num-traits 0.2.19
-- once_cell 1.21.3
-- primal-check 0.3.4
-- rawpointer 0.2.1
-- rayon-core 1.13.0
-- rayon 1.12.0
+- autocfg
+- cfg-if
+- crossbeam-deque
+- crossbeam-epoch
+- crossbeam-utils
+- either
+- heck
+- matrixmultiply
+- ndarray
+- num-complex
+- num-integer
+- num-rational
+- num-traits
+- once_cell
+- primal-check
+- rawpointer
+- rayon-core
+- rayon
 
 ```
                               Apache License
@@ -1524,8 +1524,8 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- chacha20 0.10.1
-- cpufeatures 0.3.0
+- chacha20
+- cpufeatures
 
 ```
                               Apache License
@@ -1735,8 +1735,8 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- rand_core 0.10.1
-- rand_distr 0.6.0
+- rand_core
+- rand_distr
 
 ```
                               Apache License
@@ -1932,7 +1932,7 @@ APPENDIX: How to apply the Apache License to your work.
 ## Apache License 2.0
 
 Applies to:
-- getrandom 0.4.3
+- getrandom
 
 ```
                               Apache License
@@ -2142,7 +2142,7 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- transpose 0.2.3
+- transpose
 
 ```
                               Apache License
@@ -2352,8 +2352,8 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- bytemuck 1.25.0
-- safe_arch 1.1.0
+- bytemuck
+- safe_arch
 
 ```
 Apache License
@@ -2423,23 +2423,23 @@ limitations under the License.
 ## Apache License 2.0
 
 Applies to:
-- synforecast 0.1.0
-- libc 0.2.182
-- portable-atomic-util 0.2.5
-- portable-atomic 1.13.1
-- proc-macro2 1.0.106
-- pyo3-build-config 0.29.2
-- pyo3-ffi 0.29.2
-- pyo3-macros-backend 0.29.2
-- pyo3-macros 0.29.2
-- pyo3 0.29.2
-- quote 1.0.44
-- r-efi 6.0.0
-- rand 0.10.2
-- rustc-hash 2.1.1
-- syn 2.0.117
-- unicode-ident 1.0.24
-- wide 1.5.0
+- synforecast
+- libc
+- portable-atomic-util
+- portable-atomic
+- proc-macro2
+- pyo3-build-config
+- pyo3-ffi
+- pyo3-macros-backend
+- pyo3-macros
+- pyo3
+- quote
+- r-efi
+- rand
+- rustc-hash
+- syn
+- unicode-ident
+- wide
 
 ```
 Apache License
@@ -2521,7 +2521,7 @@ limitations under the License.
 ## BSD 2-Clause "Simplified" License
 
 Applies to:
-- numpy 0.29.0
+- numpy
 
 ```
 BSD 2-Clause License
@@ -2555,8 +2555,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## MIT License
 
 Applies to:
-- libm 0.2.16
-- realfft 3.5.0
+- libm
+- realfft
 
 ```
 MIT License
@@ -2583,7 +2583,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 ## Unicode License v3
 
 Applies to:
-- unicode-ident 1.0.24
+- unicode-ident
 
 ```
 UNICODE LICENSE V3
