@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 import narwhals.stable.v2 as nw
 from narwhals.stable.v2.typing import IntoDataFrame
@@ -98,7 +98,5 @@ def generate_series(
         start_id += count
 
     id_col = generators[0].id_col
-    # narwhals' concat stubs return the non-stable DataFrame class; the
-    # runtime object is the stable one the inputs are.
-    combined = cast("nw.DataFrame[Any]", nw.concat(dfs))
+    combined = nw.concat(dfs)
     return _categorize_ids(combined, id_col).to_native()
