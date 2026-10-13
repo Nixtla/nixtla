@@ -5069,6 +5069,68 @@ def test_get_kernel_resolves_subclasses():
         get_kernel(NotPooled())
 
 
+def _update_validation_df(engine):
+    return _make_df(
+        engine,
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0, 1, 1, 1, 1],
+            "price": [1.0, 2.0, 1.0, 2.0, 1.0, 1.0, 2.0, 2.0],
+        },
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_missing_partition_key_mutates_nothing(engine):
+    tfms = [
+        RollingMean(2, min_samples=1, global_=True),
+        RollingMean(2, min_samples=1, global_=True, partition_by=["price"]),
+    ]
+    ts = TimeSeries(freq=1, lag_transforms={1: tfms})
+    ts.fit_transform(
+        _update_validation_df(engine),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["promo"],
+    )
+    before = copy.deepcopy(ts._pooled_states)
+    data_before = ts.ga.data.copy()
+    update = _make_df(
+        engine,
+        {"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0], "promo": [0, 1]},
+    )
+    with pytest.raises(ValueError, match=r"\['price'\] must be provided"):
+        ts.update(update)
+    np.testing.assert_array_equal(ts.ga.data, data_before)
+    for key, state in before.items():
+        for name, values in state.base.items():
+            np.testing.assert_array_equal(ts._pooled_states[key].base[name], values)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_empty_frame_without_partition_key(engine):
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={1: [RollingMean(2, min_samples=1, partition_by=["price"])]},
+    )
+    ts.fit_transform(
+        _update_validation_df(engine),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["promo"],
+    )
+    data = ts.ga.data.copy()
+    empty = _make_df(engine, {"unique_id": ["a"], "ds": [5], "y": [5.0]})[:0]
+    ts.update(empty)
+    np.testing.assert_array_equal(ts.ga.data, data)
+
+
 def test_static_partition_key_with_pd_na_shares_one_bucket():
     def fit_update(keys):
         df = pd.DataFrame(

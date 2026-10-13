@@ -1822,10 +1822,11 @@ class PooledState:
     def set_series_bucket_id(self, bucket_id: np.ndarray) -> None:
         self.series_bucket_id = bucket_id
 
-    # -- cheap rollback for TimeSeries._backup ---------------------------
+    # -- cheap rollback for TimeSeries._backup and update -------------
     def snapshot(self):
-        # aggregates are only appended to during predict, so copying the array
-        # references is enough -- no deep copy of the whole state per model
+        # predict and update only append to the aggregates and grow_buckets
+        # replaces them, so copying the array references is enough -- no deep
+        # copy of the whole state per model
         return (
             dict(self.base),
             dict(self.shift),

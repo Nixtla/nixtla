@@ -27,7 +27,12 @@ from mlforecast.lag_transforms import (
     RollingStd,
 )
 from mlforecast.date_features import _DUMMY_ALIASES
-from mlforecast.target_transforms import Differences, LocalStandardScaler
+from mlforecast.pooled import PooledState
+from mlforecast.target_transforms import (
+    BaseTargetTransform,
+    Differences,
+    LocalStandardScaler,
+)
 from mlforecast.utils import (
     generate_daily_series,
     generate_prices_for_series,
@@ -2564,3 +2569,310 @@ def test_pandas_weekofyear_alias():
     np.testing.assert_array_equal(
         np.asarray(prep_woy["weekofyear"]), np.asarray(prep_week["week"])
     )
+
+
+def _update_validation_df(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+    return df
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_new_series_without_static_features_mutates_nothing(engine):
+    ts = TimeSeries(freq=1, lags=[1])
+    ts.fit_transform(
+        _update_validation_df(engine),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=["promo"],
+    )
+    uids = list(ts.uids)
+    new = pd.DataFrame({"unique_id": ["a", "b", "c"], "ds": [5] * 3, "y": [1.0] * 3})
+    if engine == "polars":
+        new = pl.from_pandas(new)
+    with pytest.raises(ValueError, match="New series must include"):
+        ts.update(new)
+    assert list(ts.uids) == uids
+    assert ts.ga.n_groups == len(uids)
+
+
+def test_update_new_series_with_target_transforms_mutates_nothing():
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=[LocalStandardScaler()])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    uids = list(ts.uids)
+    new = pd.DataFrame({"unique_id": ["a", "b", "c"], "ds": [5] * 3, "y": [1.0] * 3})
+    with pytest.raises(ValueError, match="Can not update target_transforms"):
+        ts.update(new)
+    assert list(ts.uids) == uids
+
+
+def test_update_failing_target_transform_mutates_nothing():
+    class FailingDifferences(Differences):
+        fail = True
+
+        def update(self, ga):
+            ga = super().update(ga)
+            if self.fail:
+                raise RuntimeError("update failed")
+            return ga
+
+    def fitted_ts(tfm):
+        ts = TimeSeries(freq=1, lags=[1], target_transforms=[tfm])
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            static_features=[],
+        )
+        return ts
+
+    ts = fitted_ts(FailingDifferences([1]))
+    last_dates = list(ts.last_dates)
+    data = ts.ga.data.copy()
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(RuntimeError, match="update failed"):
+        ts.update(new)
+    assert list(ts.last_dates) == last_dates
+    np.testing.assert_array_equal(ts.ga.data, data)
+
+    ts.target_transforms[0].fail = False
+    ts.update(new)
+    expected = fitted_ts(Differences([1]))
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+
+
+@pytest.mark.parametrize(
+    "ts_kwargs",
+    [
+        {"lag_transforms": {1: [RollingMean(2, min_samples=1, global_=True)]}},
+        {"lags": [1]},
+    ],
+)
+def test_update_duplicate_rows_mutates_nothing(ts_kwargs):
+    ts = TimeSeries(freq=1, **ts_kwargs)
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
+    )
+    uids = list(ts.uids)
+    data = ts.ga.data.copy()
+    dup = pd.DataFrame(
+        {"unique_id": ["a", "a", "b"], "ds": [5, 5, 5], "y": [5.0, 6.0, 50.0]}
+    )
+    with pytest.raises(ValueError, match="duplicate rows"):
+        ts.update(dup)
+    assert list(ts.uids) == uids
+    np.testing.assert_array_equal(ts.ga.data, data)
+
+
+def _features_after(ts):
+    ts._predict_setup()
+    return ts._get_features_for_next_step()
+
+
+@pytest.mark.parametrize(
+    "new",
+    [
+        pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]}),
+        pd.DataFrame(
+            {
+                "unique_id": ["a", "b", "c"],
+                "ds": [5] * 3,
+                "y": [5.0, 50.0, 7.0],
+                "promo": [0, 1, 2],
+            }
+        ),
+    ],
+)
+def test_update_failing_after_target_transforms_mutates_nothing(monkeypatch, new):
+    def fitted_ts():
+        ts = TimeSeries(
+            freq=1,
+            lags=[1],
+            lag_transforms={
+                1: [
+                    ExpandingMean(),
+                    ExpandingMean(global_=True),
+                    RollingMean(2, min_samples=1, groupby=["promo"]),
+                ]
+            },
+            target_transforms=None if "promo" in new else [Differences([1])],
+        )
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=["promo"],
+        )
+        return ts
+
+    def fail(*_):
+        raise RuntimeError("update failed")
+
+    ts = fitted_ts()
+    with monkeypatch.context() as m:
+        m.setattr(PooledState, "set_series_bucket_id", fail)
+        with pytest.raises(RuntimeError, match="update failed"):
+            ts.update(new)
+    expected = fitted_ts()
+    assert list(ts.uids) == list(expected.uids)
+    pd.testing.assert_frame_equal(ts.static_features_, expected.static_features_)
+    pd.testing.assert_frame_equal(_features_after(ts), _features_after(expected))
+    ts.update(new)
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+    pd.testing.assert_frame_equal(_features_after(ts), _features_after(expected))
+
+
+def test_update_interrupted_target_transform_chain_mutates_nothing():
+    class Interrupted(LocalStandardScaler):
+        interrupt = False
+
+        def update(self, ga):
+            if self.interrupt:
+                raise KeyboardInterrupt
+            return super().update(ga)
+
+    def fitted_ts():
+        ts = TimeSeries(
+            freq=1, lags=[1], target_transforms=[Differences([1]), Interrupted()]
+        )
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            static_features=[],
+        )
+        return ts
+
+    ts = fitted_ts()
+    ts.target_transforms[1].interrupt = True
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(KeyboardInterrupt):
+        ts.update(new)
+    ts.target_transforms[1].interrupt = False
+    ts.update(new)
+    expected = fitted_ts()
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+
+
+def test_update_failure_restores_target_transforms_in_place():
+    class Failing(LocalStandardScaler):
+        def update(self, _ga):
+            raise RuntimeError("update failed")
+
+    diffs = Differences([1])
+    tfms = (diffs, Failing())
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=tfms)
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    tails = copy.deepcopy(diffs.scalers_[0].tails_)
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(RuntimeError, match="update failed"):
+        ts.update(new)
+    assert ts.target_transforms[0] is diffs
+    np.testing.assert_array_equal(diffs.scalers_[0].tails_, tails)
+
+
+def test_update_duplicate_rows_with_validation_names_series():
+    ts = TimeSeries(freq=1, lags=[1])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    dup = pd.DataFrame(
+        {"unique_id": ["a", "a", "b"], "ds": [5, 5, 5], "y": [5.0, 6.0, 50.0]}
+    )
+    with pytest.raises(ValueError, match="'a'"):
+        ts.update(dup, validate_new_data=True)
+
+
+def test_update_target_transform_returning_only_target():
+    class OnlyTarget(BaseTargetTransform):
+        def fit_transform(self, df):
+            return df
+
+        def update(self, df):
+            return df[[self.id_col, self.target_col]]
+
+        def inverse_transform(self, df):
+            return df
+
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=[OnlyTarget()])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    ts.update(pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]}))
+    assert list(ts.last_dates) == [5, 5]
+
+
+def test_update_target_transform_returning_only_target_with_partition():
+    class OnlyTarget(BaseTargetTransform):
+        def fit_transform(self, df):
+            return df
+
+        def update(self, df):
+            return df[[self.id_col, self.target_col]]
+
+        def inverse_transform(self, df):
+            return df
+
+    df = _update_validation_df("pandas").assign(price=1.0)
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={
+            1: [RollingMean(2, min_samples=1, global_=True, partition_by=["price"])]
+        },
+        target_transforms=[OnlyTarget()],
+    )
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
+    )
+    ts.update(
+        pd.DataFrame(
+            {"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0], "price": 2.0}
+        )
+    )
+    assert list(ts.last_dates) == [5, 5]

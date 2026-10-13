@@ -2878,3 +2878,35 @@ def test_null_times_raise(engine):
     fcst.fit(series)
     with pytest.raises(ValueError, match="ds column contains null values"):
         fcst.update(series_with_nulls)
+
+
+def _without_pooled_states_df():
+    return pd.DataFrame(
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+        }
+    )
+
+
+@pytest.mark.parametrize("max_horizon", [None, 2])
+def test_predict_and_update_without_pooled_states(max_horizon):
+    """Models pickled before pooled transforms existed have no `_pooled_states`."""
+    fcst = MLForecast(models=[LinearRegression()], freq=1, lags=[1])
+    fcst.fit(_without_pooled_states_df(), max_horizon=max_horizon)
+    expected = fcst.predict(2)
+    del fcst.ts._pooled_states
+    pd.testing.assert_frame_equal(fcst.predict(2), expected)
+    fcst.update(pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]}))
+    assert fcst.predict(1)["ds"].tolist() == [6, 6]
+
+
+def test_forecast_fitted_values_without_pooled_states():
+    fcst = MLForecast(models=[LinearRegression()], freq=1, lags=[1])
+    fcst.fit(_without_pooled_states_df(), fitted=True)
+    with pytest.warns(UserWarning, match="on demand"):
+        expected = fcst.forecast_fitted_values(h=2)
+    del fcst.ts._pooled_states
+    with pytest.warns(UserWarning, match="on demand"):
+        pd.testing.assert_frame_equal(fcst.forecast_fitted_values(h=2), expected)
