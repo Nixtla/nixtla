@@ -451,18 +451,24 @@ def _offset_times_array_n(
         raise ValueError(f"Expected n to have shape ({len(times)},), got {n.shape}.")
     if not np.issubdtype(n.dtype, np.integer):
         raise TypeError(f"Expected n to have an integer dtype, got {n.dtype}.")
+    if len(times) == 0:
+        return times.copy()
+    if n.dtype.kind == "u" and n.max() > np.iinfo(np.int64).max:
+        raise OverflowError("Expected n to fit in int64.")
     # a python int multiplier keeps n's dtype, so narrower ints would overflow
     n = n.astype(np.int64, copy=False)
     if isinstance(freq, pd.offsets.Tick):
-        # the coarsest resolution that can hold both the times and the offset,
-        # which is the one pandas uses with a scalar n
-        times_nanos = _NANOS_PER_UNIT[_dt_unit(times)]
-        unit, unit_nanos = next(
-            (u, k)
-            for u, k in _NANOS_PER_UNIT.items()
-            if k <= times_nanos and freq.nanos % k == 0
+        # pandas uses the finer of the times' and the offset's resolutions
+        unit = min(
+            _dt_unit(times), pd.Timedelta(freq).unit, key=_NANOS_PER_UNIT.__getitem__
         )
-        deltas = (n * (freq.nanos // unit_nanos)).astype(f"timedelta64[{unit}]")
+        step = freq.nanos // _NANOS_PER_UNIT[unit]
+        bound = np.iinfo(np.int64).max // max(abs(step), 1)
+        if n.max() > bound or n.min() < -bound:
+            raise pd.errors.OutOfBoundsTimedelta(
+                f"{freq} multiplied by n overflows timedelta64[{unit}]."
+            )
+        deltas = (n * step).astype(f"timedelta64[{unit}]")
         return times + deltas
     # pandas only vectorizes non-fixed offsets for a scalar n, so we apply each
     # distinct n to its own run of times and then restore the original order
@@ -478,14 +484,14 @@ def _offset_times_array_n(
         ]
     inv_order = np.empty_like(order)
     inv_order[order] = np.arange(order.size)
-    # the empty slice preserves the dtype in case there are no times
-    out = dt_index[:0].append(runs).take(inv_order)
+    out = runs[0].append(runs[1:]).take(inv_order)
+    if isinstance(times.dtype, pd.ArrowDtype):
+        # DatetimeIndex converts arrow times to numpy
+        out = out.astype(times.dtype)
     if isinstance(times, pd.Series):
         out = pd.Series(out, index=times.index, name=times.name)
     else:
         out = out.rename(times.name)
-    if out.dtype != times.dtype:
-        out = out.astype(times.dtype)
     return out
 
 
@@ -547,21 +553,20 @@ def time_ranges(
             starts_np = starts.to_numpy(copy=False)  # may be pyarrow
             steps = (np.arange(periods) * freq).astype(starts_np.dtype)
             out = np.repeat(starts_np, periods) + np.tile(steps, starts_np.size)
+            out = pd.Series(out, dtype=starts.dtype)
         elif _is_dt_dtype(starts):
-            if isinstance(freq, str):
-                freq = pd.tseries.frequencies.to_offset(freq)
-            out = []
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
-                for i in range(periods):
-                    out.append([starts + i * freq])
-            # pyarrow timestamps don't seem to work with offsets yet, keeping np.vstack
-            out = np.vstack(out).ravel(order="F")
+            per_period = [offset_times(starts, freq, i) for i in range(periods)]
+            if per_period:
+                series_major = np.arange(starts.size * periods).reshape(periods, -1)
+                out = per_period[0].append(per_period[1:])
+                out = out.take(series_major.ravel(order="F"))
+            else:
+                out = starts[:0]
+            out = pd.Series(out.rename(None))
         else:
             raise ValueError(
                 f"`starts` must be integers or timestamps, got '{starts.dtype}'."
             )
-        out = pd.Series(out, dtype=starts.dtype)
     else:
         try:
             is_int = starts.dtype.is_integer()
