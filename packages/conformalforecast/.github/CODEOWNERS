@@ -3,12 +3,12 @@
 
 # Supply-chain and release surface: a change here can publish an artifact or
 # widen a workflow's token scope.
-/.github/workflows/  @marcopeix
-/.github/dependabot.yml  @marcopeix
-/pyproject.toml  @marcopeix
-/uv.lock  @marcopeix
+/.github/workflows/  @marcopeix @nasaul
+/.github/dependabot.yml  @marcopeix @nasaul
+/pyproject.toml  @marcopeix @nasaul
+/uv.lock  @marcopeix @nasaul
 
 # The contracts every method and adapter is written against.
-/src/conformalforecast/base.py  @marcopeix
-/src/conformalforecast/methods/base.py  @marcopeix
-/src/conformalforecast/capabilities.py  @marcopeix
+/src/conformalforecast/base.py  @marcopeix @nasaul
+/src/conformalforecast/methods/base.py  @marcopeix @nasaul
+/src/conformalforecast/capabilities.py  @marcopeix @nasaul
