@@ -168,10 +168,41 @@ documentation deployment.
 To make a release:
 
 1. Create a release-preparation branch from the latest `main`. Update the
-   version in `pyproject.toml` and `rust/Cargo.toml`, refresh `uv.lock` and
-   `rust/Cargo.lock`.
+   version in `pyproject.toml`, `rust/Cargo.toml`, and `CITATION.cff`, rename
+   the `## Unreleased` heading in `CHANGELOG.md` to `## X.Y.Z - YYYY-MM-DD`,
+   and refresh `uv.lock` and `rust/Cargo.lock` (see below).
+   `tests/test_release_metadata.py` fails if any of these versions disagree.
 2. Open a pull request titled `Prepare vX.Y.Z release` and merge it after its
    required checks pass.
 3. On GitHub, choose **Releases → Draft a new release**. Create the matching
    `vX.Y.Z` tag targeting `main`, generate or edit the release notes, and
    publish the release.
+
+### Refreshing the lockfiles
+
+After updating the `version` fields, refresh only the `synforecast` entry in
+each lockfile:
+
+```bash
+uv lock
+cargo update -p synforecast --manifest-path rust/Cargo.toml
+```
+
+Then check that the lockfiles match the manifests:
+
+```bash
+uv lock --check
+cargo metadata --locked --manifest-path rust/Cargo.toml > /dev/null
+```
+
+The Rust license notices list the crate's own version, so regenerate them too
+(otherwise the `rust-licenses` pre-commit hook fails in lint):
+
+```bash
+make rust_licenses
+```
+
+The diff should touch only `pyproject.toml`, `rust/Cargo.toml`,
+`CITATION.cff`, `CHANGELOG.md`, `uv.lock`, `rust/Cargo.lock`, and
+`synforecast/THIRD_PARTY_RUST.md`, with one version line changed in each
+lockfile and in the license notices.

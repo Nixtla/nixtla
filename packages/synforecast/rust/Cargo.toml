@@ -1,6 +1,6 @@
 [package]
 name = "synforecast"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Rust acceleration for SynForecast synthetic time-series generation"
 license = "Apache-2.0"
