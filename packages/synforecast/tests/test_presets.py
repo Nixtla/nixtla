@@ -10,6 +10,7 @@ import pytest
 from synforecast import SynSet, interpretable_pool, pretraining_pool
 from synforecast.base import BaseGenerator
 from synforecast.generators import (
+    CyclicGenerator,
     ETSGenerator,
     GaussianProcessGenerator,
     IntermittentDemandGenerator,
@@ -400,6 +401,46 @@ class TestInterpretablePoolSeasonalPeriod:
     def test_pretraining_pool_derives_from_freq(self) -> None:
         pool = pretraining_pool(min_length=64, max_length=64, freq="MS")
         assert self._seasonal_periods(pool) == {12}
+
+
+class TestInterpretablePoolCyclicPeriod:
+    """Tests that the cyclic variants' period follows the seasonal period."""
+
+    @staticmethod
+    def _cyclic(generators: list[BaseGenerator]) -> list[CyclicGenerator]:
+        cyclic = [g for g in generators if isinstance(g, CyclicGenerator)]
+        assert len(cyclic) == 2
+        return cyclic
+
+    @pytest.mark.parametrize(
+        ("freq", "expected"),
+        [("h", 24), ("D", 7), ("W", 52), ("MS", 12), ("QS", 4), (1, 12)],
+    )
+    def test_mean_derived_from_freq(self, freq: str | int, expected: int) -> None:
+        cyclic = self._cyclic(interpretable_pool(freq=freq))
+        assert {g.cycle_period_mean for g in cyclic} == {float(expected)}
+
+    def test_std_proportional_to_period(self) -> None:
+        for freq, period in (("h", 24.0), ("QS", 4.0)):
+            cyclic = self._cyclic(interpretable_pool(freq=freq))
+            assert sorted(g.cycle_period_std for g in cyclic) == pytest.approx(
+                [0.04 * period, 0.2 * period]
+            )
+
+    def test_no_seasonal_cycle_keeps_default(self) -> None:
+        _skip_if_alias_unsupported("YS")
+        cyclic = self._cyclic(interpretable_pool(freq="YS"))
+        assert {g.cycle_period_mean for g in cyclic} == {50.0}
+        assert sorted(g.cycle_period_std for g in cyclic) == pytest.approx([2.0, 10.0])
+
+    def test_explicit_override(self) -> None:
+        cyclic = self._cyclic(interpretable_pool(freq="h", seasonal_period=168))
+        assert {g.cycle_period_mean for g in cyclic} == {168.0}
+
+    def test_pretraining_pool_derives_from_freq(self) -> None:
+        pool = pretraining_pool(min_length=64, max_length=64, freq="h")
+        cyclic = self._cyclic(pool)
+        assert {g.cycle_period_mean for g in cyclic} == {24.0}
 
 
 class TestSeasonalPool:

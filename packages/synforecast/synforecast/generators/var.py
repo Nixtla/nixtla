@@ -294,12 +294,13 @@ class VARGenerator(BaseGenerator):
         samples = self._generate_multivariate(length, n_series)
 
         timestamps = self._timestamps(length)
+        pi_seeds = self._draw_pi_seeds(n_series)
         all_metadata: list[SeriesMetadata] = []
 
         for i in range(n_series):
             values = np.ascontiguousarray(samples[:, i])
             values, cp_indices, anom_indices, miss_indices = (
-                self._apply_pattern_injection(values)
+                self._apply_pattern_injection(values, pi_seeds[i])
             )
             all_metadata.append(
                 SeriesMetadata(

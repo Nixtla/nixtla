@@ -342,8 +342,10 @@ class StateSpaceGenerator(BaseGenerator):
 
         for i in range(n_series):
             observations, states = self._simulate(length)
+            miss_seed = int(self._draw_pi_seeds(1)[0, 2])
             values, miss_indices = self._add_missingness(
-                np.ascontiguousarray(observations[:, 0])
+                np.ascontiguousarray(observations[:, 0]),
+                np.random.default_rng(miss_seed),
             )
             all_metadata.append(
                 SeriesMetadata(

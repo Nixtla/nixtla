@@ -75,4 +75,13 @@
 - MBB reports explicit seasonal periods that cannot fit two cycles, DBA
   reports near-zero reference scales, and infinity errors identify the source.
 
+- The cyclic variants of `interpretable_pool` take their mean period from
+  the seasonal period instead of a fixed 50 steps.
+- Overlays (changepoints, anomalies, missingness) no longer affect each
+  other or the base series. Previously, enabling one could move another, and
+  for IoTSensor and DailyActiveUsers change later series.
+- Same-seed output changes for the cyclic pool variants, IoTSensor,
+  DailyActiveUsers, and multi-series ETS/StateSpace `generate_with_states`;
+  with overlays enabled also for KernelSynth, Copula, VAR and TCM.
+
 ## 0.1.0 - Initial release

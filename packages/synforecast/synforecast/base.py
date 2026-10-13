@@ -2,6 +2,7 @@
 
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
@@ -567,12 +568,13 @@ class BaseGenerator(BaseModel, ABC):
         return cfg
 
     def _add_missingness(
-        self, values: np.ndarray
+        self, values: np.ndarray, rng: np.random.Generator | None = None
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """Add missing data patterns to a time series.
 
         Args:
             values: Array of time series values
+            rng: Stream for the missingness draws. Defaults to ``self.rng``.
 
         Returns:
             Tuple of (modified values, missing indices or None)
@@ -582,7 +584,7 @@ class BaseGenerator(BaseModel, ABC):
 
         values, metadata = _add_missingness(
             values=values,
-            rng=self.rng,
+            rng=self.rng if rng is None else rng,
             missing_pattern=self.missing_pattern,
             missing_rate=self.missing_rate,
             missing_block_size=self.missing_block_size,
@@ -594,12 +596,13 @@ class BaseGenerator(BaseModel, ABC):
         return values, None
 
     def _add_anomalies(
-        self, values: np.ndarray
+        self, values: np.ndarray, rng: np.random.Generator | None = None
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """Add anomalies to a time series.
 
         Args:
             values: Array of time series values
+            rng: Stream for the anomaly draws. Defaults to ``self.rng``.
 
         Returns:
             Tuple of (modified values, anomaly indices or None)
@@ -609,7 +612,7 @@ class BaseGenerator(BaseModel, ABC):
 
         values, metadata = _add_anomalies(
             values=values,
-            rng=self.rng,
+            rng=self.rng if rng is None else rng,
             anomaly_types=self.anomaly_types,
             anomaly_fraction=self.anomaly_fraction,
             spike_magnitude=self.spike_magnitude,
@@ -623,12 +626,13 @@ class BaseGenerator(BaseModel, ABC):
         return values, None
 
     def _add_changepoints(
-        self, values: np.ndarray
+        self, values: np.ndarray, rng: np.random.Generator | None = None
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """Add changepoints (structural breaks) to a time series.
 
         Args:
             values: Array of time series values
+            rng: Stream for the changepoint draws. Defaults to ``self.rng``.
 
         Returns:
             Tuple of (modified values, changepoint indices or None)
@@ -659,7 +663,7 @@ class BaseGenerator(BaseModel, ABC):
 
         values, metadata = _add_changepoints(
             values=values,
-            rng=self.rng,
+            rng=self.rng if rng is None else rng,
             num_changepoints=self.num_changepoints,
             changepoint_locations=changepoint_locations,
             changepoint_type=self.changepoint_type,
@@ -672,22 +676,34 @@ class BaseGenerator(BaseModel, ABC):
             return values, metadata["changepoint_indices"]
         return values, None
 
+    def _draw_pi_seeds(self, n_series: int) -> np.ndarray:
+        """Draw (changepoint, anomaly, missingness) seeds per series, as in the Rust batch path."""
+        return self.rng.integers(0, 2**63, size=(n_series, 3), dtype=np.uint64)
+
     def _apply_pattern_injection(
-        self, values: np.ndarray
+        self, values: np.ndarray, pi_seeds: Sequence[int] | np.ndarray
     ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
         """Apply the full pattern injection pipeline.
 
-        Runs changepoints → anomalies → missingness in order.
+        Runs changepoints → anomalies → missingness in order, each on its own stream.
 
         Args:
             values: Array of time series values
+            pi_seeds: One row of :meth:`_draw_pi_seeds`.
 
         Returns:
             Tuple of (values, changepoint_indices, anomaly_indices, missing_indices). Index arrays are None when the corresponding flag is not requested.
         """
-        values, cp_indices = self._add_changepoints(values)
-        values, anom_indices = self._add_anomalies(values)
-        values, miss_indices = self._add_missingness(values)
+        cp_seed, anom_seed, miss_seed = (int(s) for s in pi_seeds)
+        values, cp_indices = self._add_changepoints(
+            values, np.random.default_rng(cp_seed)
+        )
+        values, anom_indices = self._add_anomalies(
+            values, np.random.default_rng(anom_seed)
+        )
+        values, miss_indices = self._add_missingness(
+            values, np.random.default_rng(miss_seed)
+        )
         return values, cp_indices, anom_indices, miss_indices
 
     def _build_dataframe(
@@ -774,36 +790,28 @@ class BaseGenerator(BaseModel, ABC):
         self,
         length: int,
         series_id: int,
-        thread_rng: np.random.Generator | None = None,
-        thread_gen_rng: np.random.Generator | None = None,
+        gen_seed: int,
+        pi_seeds: Sequence[int] | np.ndarray,
     ) -> SeriesMetadata:
         """Generate a single series with timestamps and pattern injection.
 
         Args:
             length: Length of the series to generate
             series_id: ID for this series
-            thread_rng: Per-thread RNG for pattern injection (parallel mode).
-                If None, uses self.rng (sequential mode).
-            thread_gen_rng: Per-thread RNG for series generation (parallel mode).
-                If None, uses self.rng (sequential mode).
+            gen_seed: Seed for the series' generation stream.
+            pi_seeds: One row of :meth:`_draw_pi_seeds`.
 
         Returns:
             SeriesMetadata for the generated series
         """
         timestamps = self._timestamps(length)
 
-        if thread_gen_rng is not None:
-            # Thread-safe: use a shallow copy with thread-local RNG
-            local_copy = self.model_copy()
-            local_copy._rng = thread_gen_rng
-            values = local_copy.generate_single_series(length=length)
-        else:
-            values = self.generate_single_series(length=length)
+        local_copy = self.model_copy()
+        local_copy._rng = np.random.default_rng(gen_seed)
+        values = local_copy.generate_single_series(length=length)
 
-        # Pattern injection uses the provided RNG (thread-local or shared)
-        rng = thread_rng if thread_rng is not None else self.rng
-        values, cp_indices, anom_indices, miss_indices = (
-            self._apply_pattern_injection_with_rng(values, rng)
+        values, cp_indices, anom_indices, miss_indices = self._apply_pattern_injection(
+            values, pi_seeds
         )
 
         return SeriesMetadata(
@@ -815,15 +823,6 @@ class BaseGenerator(BaseModel, ABC):
             changepoint_indices=cp_indices,
             missing_indices=miss_indices,
         )
-
-    def _apply_pattern_injection_with_rng(
-        self, values: np.ndarray, rng: np.random.Generator
-    ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-        """Apply pattern injection using a specific RNG (for thread safety)."""
-        # Use a shallow copy with the given RNG to avoid mutating shared state
-        local_copy = self.model_copy()
-        local_copy._rng = rng
-        return local_copy._apply_pattern_injection(values)
 
     def generate(
         self,
@@ -879,7 +878,7 @@ class BaseGenerator(BaseModel, ABC):
         )
         gen_seeds = self.rng.integers(0, 2**63, size=n_series, dtype=np.uint64)
         # 3 PI seeds per series: changepoint, anomaly, missingness
-        pi_seeds = self.rng.integers(0, 2**63, size=n_series * 3, dtype=np.uint64)
+        pi_seeds = self._draw_pi_seeds(n_series).ravel()
 
         pi_config = self._build_pi_config_dict()
 
@@ -913,18 +912,16 @@ class BaseGenerator(BaseModel, ABC):
             for _ in range(n_series)
         ]
         gen_seeds = [int(self.rng.integers(0, 2**63)) for _ in range(n_series)]
-        pi_seeds = [int(self.rng.integers(0, 2**63)) for _ in range(n_series)]
+        pi_seeds = self._draw_pi_seeds(n_series)
 
         workers = max(1, min(n_series, n_jobs))
 
         def gen_one(i: int) -> SeriesMetadata:
-            thread_gen_rng = np.random.default_rng(gen_seeds[i])
-            thread_pi_rng = np.random.default_rng(pi_seeds[i])
             return self._generate_one_series(
                 length=lengths[i],
                 series_id=start_id + i,
-                thread_rng=thread_pi_rng,
-                thread_gen_rng=thread_gen_rng,
+                gen_seed=gen_seeds[i],
+                pi_seeds=pi_seeds[i],
             )
 
         with ThreadPoolExecutor(max_workers=workers) as pool:

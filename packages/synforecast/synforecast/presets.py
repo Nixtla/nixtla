@@ -145,8 +145,9 @@ def interpretable_pool(
 
     The seasonal variants (seasonal SARIMA, Holt-Winters ETS, seasonal
     intermittent demand and the periodic Gaussian process) share one seasonal
-    period. Unless ``seasonal_period`` is given it is derived from ``freq``
-    as the number of steps in the next-larger calendar cycle: hourly data
+    period, which also sets the mean period of the two cyclic variants. Unless
+    ``seasonal_period`` is given it is derived from ``freq`` as the number of
+    steps in the next-larger calendar cycle: hourly data
     gets 24, daily 7, business-daily 5, weekly 52, monthly 12, quarterly 4,
     and multiples divide accordingly (``"15min"`` gives 4, ``"2h"`` gives 12).
     Integer frequencies and offsets without a calendar convention fall back
@@ -187,6 +188,12 @@ def interpretable_pool(
         raise ValueError(f"seasonal_period must be >= 1, got {seasonal_period}")
     else:
         season = seasonal_period
+
+    cycle_period = (
+        float(season)
+        if season > 1
+        else CyclicGenerator.model_fields["cycle_period_mean"].default
+    )
 
     def _seed(i: int) -> int | None:
         return seed + i if seed is not None else None
@@ -341,14 +348,16 @@ def interpretable_pool(
                 **base,
                 seed=_seed(16),
                 num_cycles=1,
-                cycle_period_std=2.0,
+                cycle_period_mean=cycle_period,
+                cycle_period_std=0.04 * cycle_period,
             ),
             # Highly irregular multi-cycle overlay
             CyclicGenerator(
                 **base,
                 seed=_seed(17),
                 num_cycles=4,
-                cycle_period_std=10.0,
+                cycle_period_mean=cycle_period,
+                cycle_period_std=0.2 * cycle_period,
             ),
         ],
         # --- Intermittent Demand: 3 sparsity patterns ---

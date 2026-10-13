@@ -294,10 +294,11 @@ class IoTSensorGenerator(BaseGenerator):
             else:
                 samples = self._generate_multivariate(length, self.n_sensors)
 
+            pi_seeds = self._draw_pi_seeds(samples.shape[1])
             for sensor_idx in range(samples.shape[1]):
                 values = np.ascontiguousarray(samples[:, sensor_idx])
                 values, cp_indices, anom_indices, miss_indices = (
-                    self._apply_pattern_injection(values)
+                    self._apply_pattern_injection(values, pi_seeds[sensor_idx])
                 )
 
                 all_metadata.append(

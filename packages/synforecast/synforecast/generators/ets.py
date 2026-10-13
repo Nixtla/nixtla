@@ -462,9 +462,9 @@ class ETSGenerator(BaseGenerator):
                 series = self._inverse_box_cox(series)
 
             # Apply pattern injection
-            series, _ = self._add_changepoints(series)
-            series, _ = self._add_anomalies(series)
-            series, _ = self._add_missingness(series)
+            series, _, _, _ = self._apply_pattern_injection(
+                series, self._draw_pi_seeds(1)[0]
+            )
 
             all_values.append(series)
             all_lengths.append(length)

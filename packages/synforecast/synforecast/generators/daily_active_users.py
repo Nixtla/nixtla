@@ -175,8 +175,9 @@ class DailyActiveUsersGenerator(BaseGenerator):
             # Capture events before pattern injection modifies anything
             events = self._current_events.copy()
 
+            pi_seeds = self._draw_pi_seeds(1)[0]
             values, cp_indices, anom_indices, miss_indices = (
-                self._apply_pattern_injection(values)
+                self._apply_pattern_injection(values, pi_seeds)
             )
 
             all_metadata.append(
