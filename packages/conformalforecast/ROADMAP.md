@@ -143,7 +143,7 @@ where a limit is deliberate rather than accidental, it says so.
   `interval()` is a calibration-set constant, so broadcasting it is legitimate
   and the number is sane. Replaying their `fit` loop step by step would be
   strictly better, but it runs straight into the unfloored `alpha_t` defect
-  below — the widths reach ~1e300 within the calibration set. Fix that first.
+  below — the widths reach ~1e299 within the calibration set. Fix that first.
 - **SPCI under-covers badly at multi-step horizons on real data.** At horizon 6
   on both bundled datasets it lands near 65% against a 90% target, while split
   conformal holds 90% on the same forecaster; at horizon 1 it reaches nominal and
@@ -174,7 +174,7 @@ where a limit is deliberate rather than accidental, it says so.
 - **ACI and AgACI can degenerate to infinite width.** Nothing bounds `alpha_t`
   below zero, and at `alpha_t <= 0` the requested quantile falls beyond the
   largest calibration score. A `gamma` of 0.2 reaches that state within a few
-  steps on a 48-month stream, producing widths around `1e300` — technically 100%
+  steps on a 48-month stream, producing widths around `1e299` — technically 100%
   covering, and useless. The constructor warns above `gamma = 0.1` but nothing
   stops it, and the threshold is off by one step: `gamma = 0.1` itself
   degenerates on that same stream (see the expert table on the AgACI page) while

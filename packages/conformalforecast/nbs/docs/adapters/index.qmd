@@ -63,7 +63,7 @@ loss, so a point-loss model fails `ConformalizedQuantileRegression` calibration
 while an `MQLoss` model of the same class succeeds. It also refuses the quantile
 and refit capabilities when the model has exogenous features.
 `StatsForecastAdapter` does the same when `exog_features` is set, and
-`MLForecastAdapter`, which has no quantile path, refuses refit.
+`MLForecastAdapter`, which has no quantile path, refuses refit when `exog_features` is set.
 
 ## Lazy imports
 
@@ -89,7 +89,7 @@ implement every abstract method including the keyword-only `X=None` on
 
 ## Next
 
-- [StatsForecast](statsforecast) — the most capable adapter; all six methods work
+- [StatsForecast](statsforecast) — the most capable adapter; all seven methods work
   behind it.
 - [MLForecast](mlforecast) — a global gradient-boosted model, and the one
   capability gap.
