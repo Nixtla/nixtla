@@ -4,6 +4,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    labels: ["dependencies"]
     groups:
       ci-dependencies:
         applies-to: version-updates
@@ -16,7 +20,10 @@ updates:
       interval: weekly
     # Keep compatible library lower bounds stable while updating uv.lock.
     versioning-strategy: increase-if-necessary
-    labels: ["dependencies", "python:uv"]
+    commit-message:
+      prefix: build
+      include: scope
+    labels: ["dependencies"]
     groups:
       python-dependencies:
         applies-to: version-updates
@@ -27,6 +34,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
     labels: ["dependencies"]
     groups:
       pre-commit-dependencies:
