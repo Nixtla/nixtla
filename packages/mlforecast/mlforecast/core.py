@@ -54,7 +54,6 @@ from .lag_transforms import Lag, _BaseLagTransform
 from .pooled import (
     PooledState,
     base_channels,
-    encode_keys,
     factorize,
     get_kernel,
     lookup,
@@ -248,6 +247,20 @@ def _static_feature_changes_over_time(start_series, end_series) -> bool:
     return bool(changed.fill_null(False).any())
 
 
+def _assign_buckets(state, leaves, arrays) -> np.ndarray:
+    """Bucket ids of the key `arrays`, adding unseen keys to `state`."""
+    ids, uniques = factorize(arrays)
+    remap = state.grow_buckets(uniques)
+    if remap is not None:
+        # growing renumbers buckets, so the per-kernel inner state
+        # has to be permuted and extended to match
+        for leaf in leaves:
+            leaf._pooled_kernel.remap_buckets(
+                leaf._pooled_inner, remap, state.n_buckets
+            )
+    return np.searchsorted(state.bucket_uniques, uniques)[ids]
+
+
 def _to_native_index(values, *, df):
     """Wrap ids/dates into the backend-native container mlforecast exposes as
     ``TimeSeries.uids`` / ``TimeSeries.last_dates``.
@@ -393,6 +406,43 @@ class TimeSeries:
         group = self._leaf_cols("_gb_cols")
         return group + [c for c in self._leaf_cols("_pt_cols") if c not in group]
 
+    @property
+    def _dynamic_key_cols(self) -> List[str]:
+        statics = self.static_features_.columns
+        return _dedupe_preserve_order(
+            c
+            for key in getattr(self, "_pooled_states", {})
+            for c in self._bucket_cols(key)
+            if c not in statics
+        )
+
+    def _bucket_cols(self, key) -> List[str]:
+        """Columns whose values identify a bucket of the pooled `key`."""
+        mode, gcols, pcols = key
+        id_cols = [self.id_col] if mode == "local" else []
+        return [*id_cols, *gcols, *pcols]
+
+    def _key_values(self, cols, frame, reps=None) -> List[np.ndarray]:
+        """Values of pooled key columns: statics broadcast by `reps`, else `frame`'s."""
+        statics = self.static_features_
+        frame_cols = set(getattr(frame, "columns", []))
+        missing = [c for c in cols if c not in statics.columns and c not in frame_cols]
+        if missing:
+            raise ValueError(
+                f"Pooled key column(s) {missing} must be static features or be "
+                "provided in the data."
+            )
+        out = []
+        for c in cols:
+            if c in statics.columns:
+                vals = np.asarray(statics[c].to_numpy())
+                if reps is not None:
+                    vals = np.repeat(vals, reps)
+            else:
+                vals = np.asarray(frame[c].to_numpy())
+            out.append(vals)
+        return out
+
     def _pooled_feature_values(self, tfm, updates_only: bool) -> np.ndarray:
         """Evaluate a (possibly wrapped) pooled feature.
 
@@ -486,48 +536,23 @@ class TimeSeries:
         n_series = len(counts)
         # values arrive grouped by id, so column j is the j-th new timestamp
         per_step = np.asarray(values, dtype=np.float64).reshape(n_series, n_new)
-        uids = np.asarray(
-            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
-        )
-        statics = self.static_features_
-        part_cols = self._partition_cols
-        part: Dict[str, np.ndarray] = {}
-        if part_cols:
-            pdf = df[part_cols]
-            part = {
-                c: np.asarray(pdf[c].to_numpy()).reshape(n_series, n_new)
-                for c in part_cols
-            }
         leaves_by_key = self._get_pooled_tfms()
         for key, state in states.items():
-            mode, gcols, pcols = key
             leaves = leaves_by_key.get(key, ())
             accumulators = [leaf for leaf in leaves if leaf._pooled_kernel.primes_state]
-            bids = None
+            cols = self._bucket_cols(key)
+            keys = [
+                k.reshape(n_series, n_new)
+                for k in self._key_values(cols, df, reps=np.full(n_series, n_new))
+            ]
+            bids = np.zeros(n_series, dtype=np.int64)
             for j in range(n_new):
-                if mode == "global" and not pcols:
-                    bids = np.zeros(n_series, dtype=np.int64)
-                else:
-                    arrays = []
-                    if mode == "local":
-                        arrays.append(uids)
-                    elif gcols:
-                        arrays += [np.asarray(statics[c].to_numpy()) for c in gcols]
-                    arrays += [part[c][:, j] for c in pcols]
-                    remap = state.grow_buckets(np.unique(encode_keys(arrays)))
-                    if remap is not None:
-                        # growing renumbers buckets, so the per-kernel inner state
-                        # has to be permuted and extended to match
-                        for leaf in leaves:
-                            leaf._pooled_kernel.remap_buckets(
-                                leaf._pooled_inner, remap, state.n_buckets
-                            )
-                    bids = lookup(arrays, state.bucket_uniques)
+                if keys:
+                    bids = _assign_buckets(state, leaves, [k[:, j] for k in keys])
                 for leaf in accumulators:
                     state.update(leaf._pooled_kernel, leaf._pooled_inner)
                 state.append(per_step[:, j], bucket_ids=bids)
-            if bids is not None:
-                state.set_series_bucket_id(bids)
+            state.set_series_bucket_id(bids)
 
     def _stateful_cores(self) -> List[Any]:
         """Inner coreforecast transforms that carry a per-group accumulator."""
@@ -894,7 +919,8 @@ class TimeSeries:
             static_features = [
                 c
                 for c in df.columns
-                if c not in [time_col, target_col] and c not in partition_cols
+                if c not in [time_col, target_col]
+                and (c == id_col or c not in partition_cols)
             ]
         else:
             if id_col not in static_features:
@@ -976,41 +1002,25 @@ class TimeSeries:
         _, row_ord = np.unique(times, return_inverse=True)
         row_ord = row_ord.astype(np.int64, copy=False).ravel()
         n_ordinals = int(row_ord.max()) + 1
-        uid_vals = np.asarray(
-            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
-        )
         statics = self.static_features_
-        # Key columns for a partitioned bucket are read per row, so they may vary
-        # over time; a groupby column that is static is broadcast from statics.
-        key_cols = self._pooled_aux_cols
-        row_cols = [c for c in key_cols if c in df.columns]
-        part_cols = self._partition_cols
-        missing = [
-            c for c in part_cols if c not in df.columns and c not in statics.columns
+        row_cols = [
+            c
+            for c in self._pooled_aux_cols
+            if c in df.columns and c not in statics.columns
         ]
-        if missing:
-            raise ValueError(
-                f"partition_by column(s) {missing} not found in dataframe."
-            )
-        key_rows: Dict[str, np.ndarray] = {}
+        key_df = None
         if row_cols:
-            kdf = df[row_cols]
+            key_df = df[row_cols]
             if self._sort_idxs is not None:
-                kdf = ufp.take_rows(kdf, self._sort_idxs)
-            key_rows = {c: np.asarray(kdf[c].to_numpy()) for c in row_cols}
-
-        def _row_values(col):
-            """Per-row values for a key column, from the frame or the statics."""
-            if col in key_rows:
-                return key_rows[col]
-            return np.repeat(np.asarray(statics[col].to_numpy()), lens)
+                key_df = ufp.take_rows(key_df, self._sort_idxs)
 
         for key, leaves in pooled.items():
             mode, gcols, pcols = key
+            cols = self._bucket_cols(key)
             if not pcols:
                 # a pure groupby bucket is broadcast from the statics at predict,
-                # so its key has to be static; with partition_by the key is read
-                # per row instead and may come from the frame
+                # so its key has to be static; with partition_by its dynamic
+                # columns are read per row from the frame
                 missing_static = [c for c in gcols if c not in statics.columns]
                 if missing_static:
                     raise ValueError(
@@ -1018,27 +1028,19 @@ class TimeSeries:
                         f"Missing from static_features: {missing_static}."
                     )
             uniques = None
-            if not pcols:
-                if mode == "global":
-                    n_buckets = 1
-                    series_bid = np.zeros(len(lens), dtype=np.int64)
-                else:
-                    series_bid, uniques = factorize(
-                        [np.asarray(statics[c].to_numpy()) for c in gcols]
-                    )
+            if all(c in statics.columns for c in cols):
+                if cols:
+                    series_bid, uniques = factorize(self._key_values(cols, None))
                     n_buckets = len(uniques)
+                else:
+                    series_bid = np.zeros(len(lens), dtype=np.int64)
+                    n_buckets = 1
                 row_bid = np.repeat(series_bid, lens)
             else:
-                arrays = []
-                if mode == "local":
-                    arrays.append(np.repeat(uid_vals, lens))
-                elif gcols:
-                    arrays += [_row_values(c) for c in gcols]
-                arrays += [_row_values(c) for c in pcols]
-                row_bid, uniques = factorize(arrays)
+                row_bid, uniques = factorize(self._key_values(cols, key_df, reps=lens))
                 n_buckets = len(uniques)
                 # seed with each series' assignment at its last observed
-                # timestamp; predict overwrites this per step from X_df
+                # timestamp; predict re-buckets every step
                 series_bid = row_bid[indptr[1:] - 1]
             needed: Set[str] = set()
             needs_rows = False
@@ -1749,50 +1751,25 @@ class TimeSeries:
         return ufp.drop_index_if_pandas(ufp.take_rows(X_df, rows))
 
     def _update_partition_assignments(self, X_df):
-        """Re-bucket every series for the current step from the dynamic columns.
+        """Re-bucket every series for the current step from its partitioned keys.
 
         Returns the sliced ``X_row`` (one row per series for this step) so
-        ``_get_features_for_next_step`` can reuse it, or ``None`` when there are
-        no partition columns.
+        ``_get_features_for_next_step`` can reuse it, or ``None`` when no key
+        was read from it.
         """
-        if not self._partition_cols:
-            return None
-        X_row = self._current_step_rows(X_df)
-        x_cols = set(getattr(X_row, "columns", []))
-        uids = np.asarray(
-            self.uids.to_numpy() if hasattr(self.uids, "to_numpy") else self.uids
-        )
-        for key, state in self._pooled_states.items():
-            mode, gcols, pcols = key
+        X_row = None
+        for key, state in getattr(self, "_pooled_states", {}).items():
+            _, _, pcols = key
             if not pcols:
                 continue
-            sf_cols = set(self.static_features_.columns)
-            needed = list(gcols) + list(pcols)
-            missing = [c for c in needed if c not in x_cols and c not in sf_cols]
-            if missing:
-                raise ValueError(
-                    f"Partition/group key column(s) {missing} not found in X_df "
-                    "or static_features. Provide these columns in X_df for "
-                    "prediction."
-                )
-
-            def _ctx(col):
-                src = X_row if col in x_cols else self.static_features_
-                return np.asarray(src[col].to_numpy())
-
-            arrays = []
-            if mode == "local":
-                arrays.append(uids)
-            elif gcols:
-                arrays += [_ctx(c) for c in gcols]
-            arrays += [_ctx(c) for c in pcols]
-            state.set_series_bucket_id(lookup(arrays, state.bucket_uniques))
+            if X_row is None and X_df is not None:
+                X_row = self._current_step_rows(X_df)
+            keys = self._key_values(self._bucket_cols(key), X_row)
+            state.set_series_bucket_id(lookup(keys, state.bucket_uniques))
         return X_row
 
     def _get_features_for_next_step(self, X_df=None):
-        X_row = None
-        if X_df is not None:
-            X_row = self._update_partition_assignments(X_df)
+        X_row = self._update_partition_assignments(X_df)
         # same frame _update_features builds, but with the statics trimmed to
         # model features (_statics_keep) so columns dropped by the
         # features_order_ selection below aren't carried through every step
@@ -2141,7 +2118,7 @@ class TimeSeries:
             required_future_cols = set(
                 self._get_dynamic_exog_cols(self.features_order_)
             )
-            required_future_cols.update(getattr(self, "_partition_cols", set()))
+            required_future_cols.update(self._dynamic_key_cols)
             if required_future_cols:
                 raise ValueError(
                     "X_df is required for prediction because future values are needed "
@@ -2175,7 +2152,7 @@ class TimeSeries:
                 required_future_cols = set(
                     self._get_dynamic_exog_cols(self.features_order_)
                 )
-                required_future_cols.update(getattr(self, "_partition_cols", set()))
+                required_future_cols.update(self._dynamic_key_cols)
                 missing = sorted(required_future_cols - set(dynamics))
                 if missing:
                     raise ValueError(
@@ -2213,6 +2190,9 @@ class TimeSeries:
                 drop_cols = [self.id_col, self.time_col, "_start", "_end"] + common
                 X_df = ufp.sort(X_df, [self.id_col, self.time_col])
                 X_df = ufp.drop_columns(X_df, drop_cols)
+                if not X_df.shape[1]:
+                    # only statics were provided; a polars frame with no columns has no rows
+                    X_df = None
             if getattr(self, "max_horizon", None) is None:
                 preds = self._predict_recursive(
                     models=models,
@@ -2312,10 +2292,10 @@ class TimeSeries:
                 raise ValueError(
                     "Pooled lag transforms require updates to include all series for each timestamp."
                 )
-            missing = [c for c in self._partition_cols if c not in df.columns]
+            missing = [c for c in self._dynamic_key_cols if c not in df.columns]
             if missing and df.shape[0] > 0:
                 raise ValueError(
-                    f"`partition_by` column(s) {missing} must be provided in the "
+                    f"Pooled key column(s) {missing} must be provided in the "
                     "update frame."
                 )
         id_counts = ufp.counts_by_id(df, self.id_col)

@@ -65,15 +65,17 @@ across **multiple series at once**:
   value at each timestamp.
 - **`groupby: Sequence[str]`** — column names to group by before computing the
   statistic. Columns must be declared as static features when calling
-  `fit` / `preprocess`. Series in the same group share the feature value at
+  `fit` / `preprocess`, unless the transform also sets `partition_by` and the
+  column is left out of an explicit `static_features`; such columns may vary
+  over time and must be supplied via `X_df` and in `update`. Series in the same group share the feature value at
   each timestamp; series in different groups get different values.
 - **`partition_by: Sequence[str]`** — column names to partition further along
   a **dynamic** (time-varying) key, such as `promo` or `regime`. Each unique
   combination of partition values gets its own bucket. Composes with `global_`
   (cross-series aggregates within each partition), with `groupby` (group
   aggregates within each partition), or stands alone (per-(id, partition)
-  buckets — *local* mode). Partition columns must be supplied via `X_df` at
-  prediction.
+  buckets — *local* mode). Dynamic partition columns must be supplied via
+  `X_df` at prediction and in `update`; static ones are taken from the static features.
 
 `global_` and `groupby` are **mutually exclusive** on the same transform.
 `partition_by` composes with either one or stands alone. All pooled modes
