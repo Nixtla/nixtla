@@ -5,7 +5,9 @@ repos:
     rev: v0.15.18
     hooks:
       - id: ruff-check
+        exclude: ^tests/
       - id: ruff-format
+        exclude: ^tests/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.8.0
