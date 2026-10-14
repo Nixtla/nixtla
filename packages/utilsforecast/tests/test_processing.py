@@ -4,8 +4,10 @@ from datetime import datetime as dt
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 from conftest import assert_raises_with_message
+from packaging.version import Version
 from polars import Series as pl_Series
 
 import utilsforecast.processing as ufp
@@ -451,6 +453,198 @@ def test_offset_times_with_empty_array_n(freq, times):
     assert res is not times
     assert len(res) == 0
     assert res.dtype == times.dtype
+
+
+_PA_TIMES = pd.DatetimeIndex(
+    ["2020-01-01", "2020-01-31", "2020-02-29", "2021-03-13", "2021-10-31"]
+)
+_PYARROW_DATES = [
+    (None, "ns", "timestamp[ns][pyarrow]"),
+    (None, "s", "timestamp[s][pyarrow]"),
+    ("America/New_York", "ns", "timestamp[ns, tz=America/New_York][pyarrow]"),
+    (None, "s", "date32[pyarrow]"),
+    (None, "s", "date64[pyarrow]"),
+]
+_skip_pandas_lt_2 = pytest.mark.skipif(
+    Version(pd.__version__) < Version("2.0"),
+    reason="pyarrow dates are only supported on pandas>=2",
+)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+@pytest.mark.parametrize("freq", ["D", "h", "W", "ME", "MS", "QS"])
+@pytest.mark.parametrize("n", [2, np.array([1, 0, 3, -2, 1])])
+@pytest.mark.parametrize("container", [pd.Series, pd.Index])
+def test_offset_times_pyarrow(tz, unit, dtype, freq, n, container):
+    times = _PA_TIMES.tz_localize(tz).as_unit(unit)
+    if dtype.startswith("date") and freq == "h":
+        pytest.skip("dates can't be offset by a sub-daily frequency")
+    times = container(times, name="ds")
+    arrow_times = times.astype(dtype)
+    res = offset_times(arrow_times, freq, n)
+    expected = offset_times(times, freq, n).astype(dtype)
+    assert res.dtype == arrow_times.dtype
+    if container is pd.Series:
+        pd.testing.assert_series_equal(res, expected)
+    else:
+        pd.testing.assert_index_equal(res, expected)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+@pytest.mark.parametrize("freq", ["D", "h", "W", "ME", "MS", "QS"])
+def test_time_ranges_pyarrow(tz, unit, dtype, freq):
+    times = _PA_TIMES.tz_localize(tz).as_unit(unit)
+    if dtype.startswith("date") and freq == "h":
+        pytest.skip("dates can't be offset by a sub-daily frequency")
+    starts = pd.Series(times)
+    arrow_starts = starts.astype(dtype)
+    res = time_ranges(arrow_starts, freq, 3)
+    expected = time_ranges(starts, freq, 3).astype(dtype)
+    assert res.dtype == arrow_starts.dtype
+    pd.testing.assert_series_equal(res, expected)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize(
+    "freq",
+    [
+        "h",
+        "15min",
+        "500ms",
+        pd.offsets.Hour(25),
+        pd.DateOffset(hours=12),
+        pd.offsets.BusinessHour(),
+        pd.DateOffset(microseconds=1),
+    ],
+)
+@pytest.mark.parametrize("n", [1, np.array([1, 0, 3, -2, 1])])
+@pytest.mark.parametrize("dtype", ["date32[pyarrow]", "date64[pyarrow]"])
+def test_offset_times_pyarrow_dates_sub_daily(freq, n, dtype):
+    dates = pd.Series(_PA_TIMES).astype(dtype)
+    with pytest.raises(ValueError, match="aren't at midnight"):
+        offset_times(dates, freq, n)
+    with pytest.raises(ValueError, match="aren't at midnight"):
+        time_ranges(dates, freq, 2)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+def test_offset_times_pyarrow_with_nulls(tz, unit, dtype):
+    times = _PA_TIMES.tz_localize(tz).as_unit(unit)
+    times = pd.Series(times).astype(dtype)
+    times.iloc[1] = None
+    for n in [1, np.array([1, 0, 3, -2, 1])]:
+        res = offset_times(times, "D", n)
+        assert res.isna().tolist() == times.isna().tolist()
+    res = time_ranges(times, "D", 2)
+    assert res.isna().tolist() == [False, False, True, True] + [False] * 6
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("unit", ["s", "ms", "us", "ns"])
+@pytest.mark.parametrize("container", [pd.Series, pd.Index])
+def test_offset_times_pyarrow_tz_aware_around_dst(unit, container):
+    tz = "Europe/Madrid"
+    times = pd.DatetimeIndex(
+        ["2021-03-28 00:30", "2021-03-28 03:30", None, "2021-10-31 01:30"]
+    )
+    times = container(times.tz_localize("UTC").tz_convert(tz).as_unit(unit))
+    arrow_times = times.astype(pd.ArrowDtype(pa.timestamp(unit, tz=tz)))
+    for freq in ["h", "D", "MS"]:
+        res = offset_times(arrow_times, freq, 1)
+        expected = offset_times(times, freq, 1).astype(arrow_times.dtype)
+        if container is pd.Series:
+            pd.testing.assert_series_equal(res, expected)
+        else:
+            pd.testing.assert_index_equal(res, expected)
+
+
+@_skip_pandas_lt_2
+def test_offset_times_pyarrow_date64_not_at_midnight():
+    dates = pd.Series(
+        pa.array([86_400_000 + 500], pa.date64()), dtype="date64[pyarrow]"
+    )
+    for n in [1, np.array([1])]:
+        with pytest.raises(ValueError, match="some of them have a time part"):
+            offset_times(dates, "D", n)
+    with pytest.raises(ValueError, match="some of them have a time part"):
+        time_ranges(dates, "D", 2)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+def test_time_ranges_pyarrow_zero_periods(tz, unit, dtype):
+    starts = pd.Series(_PA_TIMES.tz_localize(tz).as_unit(unit)).astype(dtype)
+    res = time_ranges(starts, "D", 0)
+    pd.testing.assert_series_equal(res, pd.Series([], dtype=starts.dtype))
+
+
+@_skip_pandas_lt_2
+def test_time_ranges_pyarrow_int_freq():
+    starts = pd.Series(_PA_TIMES).astype("date32[pyarrow]")
+    with pytest.raises(ValueError, match=r"data type: 'date32\[day\]\[pyarrow\]'"):
+        time_ranges(starts, 1, 2)
+
+
+@_skip_pandas_lt_2
+def test_offset_times_pyarrow_dates_whole_days():
+    dates = pd.Series(_PA_TIMES).astype("date32[pyarrow]")
+    res = offset_times(dates, "h", 48)
+    expected = offset_times(dates, "2D", 1)
+    pd.testing.assert_series_equal(res, expected)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz", [None, "America/New_York"])
+def test_offset_times_pyarrow_finer_freq(tz):
+    times = pd.Series(_PA_TIMES.tz_localize(tz).as_unit("ms"))
+    arrow_times = times.astype(pd.ArrowDtype(pa.timestamp("ms", tz=tz)))
+    for n in [1, np.array([1, 0, 3, -2, 1])]:
+        res = offset_times(arrow_times, "us", n)
+        expected = offset_times(times, "us", n)
+        assert res.dtype == pd.ArrowDtype(pa.timestamp("us", tz=tz))
+        pd.testing.assert_series_equal(res, expected.astype(res.dtype))
+    res = time_ranges(arrow_times, "us", 2)
+    expected = time_ranges(times, "us", 2)
+    assert res.dtype == pd.ArrowDtype(pa.timestamp("us", tz=tz))
+    pd.testing.assert_series_equal(res, expected.astype(res.dtype))
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+def test_make_future_dataframe_pyarrow(tz, unit, dtype):
+    times = _PA_TIMES.tz_localize(tz).as_unit(unit)
+    ids = pd.Series(np.arange(times.size))
+    res = make_future_dataframe(ids, pd.Series(times).astype(dtype), freq="D", h=3)
+    expected = make_future_dataframe(ids, pd.Series(times), freq="D", h=3)
+    expected["ds"] = expected["ds"].astype(dtype)
+    pd.testing.assert_frame_equal(res, expected)
+
+
+@_skip_pandas_lt_2
+@pytest.mark.parametrize("tz, unit, dtype", _PYARROW_DATES)
+def test_backtest_splits_pyarrow(tz, unit, dtype):
+    times = _PA_TIMES.tz_localize(tz).as_unit(unit)
+    df = pd.DataFrame(
+        {
+            "unique_id": np.repeat(np.arange(times.size), 10),
+            "ds": time_ranges(pd.Series(times), "D", 10),
+            "y": np.arange(10 * times.size, dtype=np.float64),
+        }
+    )
+    arrow_df = df.assign(ds=df["ds"].astype(dtype))
+    kwargs = dict(n_windows=2, h=3, id_col="unique_id", time_col="ds", freq="D")
+    for res, expected in zip(
+        backtest_splits(arrow_df, **kwargs), backtest_splits(df, **kwargs)
+    ):
+        for res_df, expected_df in zip(res, expected):
+            expected_df = expected_df.copy()
+            for col in ("ds", "cutoff"):
+                if col in expected_df:
+                    expected_df[col] = expected_df[col].astype(dtype)
+            pd.testing.assert_frame_equal(res_df, expected_df)
 
 
 def test_offset_times_pl():
