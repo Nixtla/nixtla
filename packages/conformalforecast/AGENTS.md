@@ -11,8 +11,8 @@ undo. It is not a substitute for the architecture guide: read
 ## Branching and PRs
 
 - **Branch from `main`. Target `main`. Never stack PRs.** A PR based on another
-  unmerged branch is rejected by the `PR target` CI check. If the user asks you
-  to split work, create *independent* branches off `main`, not a chain.
+  unmerged branch is rejected by the `PR targets main` CI check. If the user asks
+  you to split work, create *independent* branches off `main`, not a chain.
 - If a change genuinely depends on unmerged work, say so and stop. Do not build
   the stack anyway. Either the prerequisite merges first, or both changes go in
   one PR.
@@ -66,7 +66,8 @@ These are the ones an agent gets wrong without noticing. Each is explained in
   and calling `super().update()` is infinite recursion. `update` mutates in
   place; snapshots are `model_copy(deep=True)`.
 - Never override `calibrate`, `calibrate_cv`, `predict` or `recalibrate`.
-- Every quantile comes from `conformalforecast._quantiles`, never `np.quantile`.
+- Every conformal quantile comes from `conformalforecast._quantiles`, never
+  `np.quantile`.
 - No pandas, polars or narwhals inside `methods/`, `nonconformity/`, `diagnostics/`,
   `panel.py` or `_quantiles.py`.
 - Multi-horizon is mandatory. A method that only works for `horizon=1` is wrong.

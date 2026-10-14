@@ -63,7 +63,7 @@ dev = [
     "pytest-cov>=5",
     # Keep the ruff floor in step with the pre-commit hook's `rev`, so the hook
     # and `uv run ruff check` cannot disagree about what is a violation.
-    "ruff>=0.16.6",
+    "ruff>=0.16.10",
     "mypy>=2.3.0",
     "pre-commit>=4.6.2",
     # Test-only: exercises the DensityRatioEstimator protocol against real

@@ -199,11 +199,17 @@ CQR consumes quantile forecasts rather than point forecasts, so the
 A NaN cell in `predictions`/`truths` at `fit` time means "this window does not
 exist for this series". The math propagates NaN through scoring — never impute —
 and takes per-`(series, horizon)` quantiles with masked helpers. Each series
-needs at least `ceil(1/alpha)` effective windows or `fit` raises
-`InsufficientCalibrationSamples` naming the offending series.
+needs enough effective windows or `fit` raises `InsufficientCalibrationSamples`
+naming the offending series. The floor is `ceil(1/alpha)` for most methods;
+asymmetric split takes one quantile per tail and needs
+`max(ceil(1/alpha_lo), ceil(1/(1 - alpha_hi)))`, SPCI needs
+`max(window_size + 1, ceil(1/alpha))`, and NexCP and WeightedSplit test the
+weighted effective sample size `(Σw)² / Σw²` rather than a raw count.
 
-Quantiles are the exact `k = ceil((1 - alpha)(n + 1))` order statistic, not an
-interpolated quantile — matching the conformal literature.
+Split and CQR take the exact `k = ceil((1 - alpha)(n + 1))` order statistic, not
+an interpolated quantile — matching the conformal literature. ACI and AgACI need
+a quantile at a time-varying level, so they use a numpy-version-stable linear
+quantile; NexCP and WeightedSplit take weighted quantiles.
 
 ## Ragged panels and long-format data
 

@@ -15,8 +15,9 @@ Or with uv:
 uv add conformalforecast
 ```
 
-The core install is pure Python and depends only on `numpy`, `pandas` and
-`scipy`. Python 3.10 or newer is required.
+The core install is pure Python and depends only on `narwhals`, `numpy`,
+`pydantic` and `scipy`; pandas and polars are both optional. Python 3.10 or
+newer is required.
 
 ## Verify the install
 
@@ -31,7 +32,7 @@ pulls a forecasting framework:
 
 | Extra | Installs | Needed for |
 |---|---|---|
-| `nixtla` | statsforecast, mlforecast, neuralforecast | the Nixtla adapters |
+| `nixtla` | statsforecast, mlforecast, neuralforecast, utilsforecast | the Nixtla adapters |
 | `spci` | quantile-forest | `SequentialPredictiveConformalInference` |
 | `plotting` | matplotlib | plotting helpers |
 | `all` | all of the above | — |
@@ -77,7 +78,7 @@ v0.2.0. Pin a version if you depend on exact interval values.
 ## Next
 
 - [Quick start](quickstart) — calibrated intervals in one screen.
-- [Methods](../methods/index) — the six methods, and how to choose one.
+- [Methods](../methods/index) — the seven methods, and how to choose one.
 - [Nixtlaverse](../adapters/index) — statsforecast, mlforecast, neuralforecast.
 - [Architecture](../concepts/architecture) — one class per method, its two
   surfaces, and which one you want.

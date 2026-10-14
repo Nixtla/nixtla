@@ -38,7 +38,7 @@ maintainers still update non-runtime dependencies or document why an upstream
 advisory is not exploitable in the repository's workflows. Dependabot raises
 those alerts and the version-update PRs behind them (see
 `.github/dependabot.yml`), and CodeQL scans the Python source on every pull
-request and weekly (see `.github/workflows/codeql.yml`). Code scanning is free
+request targeting `main`, every push to it, and weekly (see `.github/workflows/codeql.yml`). Code scanning is free
 for public repositories but needs GitHub Advanced Security on private ones, so
 that workflow skips itself until this repository is public.
 

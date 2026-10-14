@@ -7,10 +7,10 @@ where a limit is deliberate rather than accidental, it says so.
 ## Defects
 
 - **The forecaster surface does not preserve `float32`.** `calibrate` and
-  `calibrate_cv` in `src/conformalforecast/methods/base.py` coerce truths and
-  predictions with `np.asarray(..., dtype=np.float64)` before handing them to
-  `fit`/`_store_calibration_point` (and CQR's quantile-pair path does the same
-  to its quantile cube). So a `float32` forecaster -- neuralforecast's
+  `calibrate_cv` in `src/conformalforecast/methods/base.py` coerce truths with
+  `np.asarray(..., dtype=np.float64)` before handing them to `fit`, and cast
+  predictions (and CQR's quantile cube) to `float64` for the retained
+  calibration copy. So a `float32` forecaster -- neuralforecast's
   output, in particular -- yields a `float64` `score_quantile_`, `float64`
   retained calibration arrays, and `float64` intervals out of `predict()`,
   even though `float32` preservation matters most for exactly that adapter.
@@ -24,8 +24,8 @@ where a limit is deliberate rather than accidental, it says so.
 
 - **Asymmetric CQR cannot be reached by any shipped adapter.**
   `ConformalizedQuantileRegression(symmetric=False, alpha_lo=..., alpha_hi=...)`
-  is implemented, validated and tested, but all three Nixtla adapters request
-  quantiles through the integer `level` API, where `level=90` means the 5th
+  is implemented, validated and tested, but the StatsForecast and
+  NeuralForecast adapters (the two with a quantile path) request quantiles through the integer `level` API, where `level=90` means the 5th
   *and* 95th percentiles inseparably. `_nixtla_common.quantiles_to_levels`
   therefore rejects `[0.02, 0.92]`. Training a neuralforecast model with
   `MQLoss(quantiles=[0.02, 0.92])` does **not** help — the adapter still routes

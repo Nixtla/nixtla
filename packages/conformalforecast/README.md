@@ -40,7 +40,7 @@ your forecasting library uses.
 Everything else is an extra:
 
 ```bash
-pip install "conformalforecast[nixtla]"    # statsforecast, mlforecast, neuralforecast
+pip install "conformalforecast[nixtla]"    # statsforecast, mlforecast, neuralforecast, utilsforecast
 pip install "conformalforecast[spci]"      # quantile-forest, for SPCI
 pip install "conformalforecast[plotting]"  # matplotlib
 pip install "conformalforecast[all]"       # all of the above
@@ -181,6 +181,8 @@ is never modified by fitting; everything learned from calibration lives on the
 returned object.
 
 ```python
+from conformalforecast import AbsoluteResidual, AdaptiveConformalInference
+
 method = AdaptiveConformalInference(alpha=0.1, gamma=0.01, score=AbsoluteResidual())
 fitted = method.calibrate_cv(forecaster, n_windows=50)
 result = fitted.predict(history)
@@ -216,9 +218,11 @@ explains when to reach for which.
   surface for embedding and a forecaster surface for standalone use
 - Panels are first class — every method is multi-series and multi-horizon
 - Ragged panels through NaN masking, with no imputation
-- Exact `ceil((1 - alpha)(n + 1))` order statistics, never an interpolated quantile
-- `float32` preserved end to end, so neuralforecast output is not silently upcast
-- Exogenous features threaded through calibration and prediction
+- NaN-aware quantiles identical across numpy versions — the exact
+  `ceil((1 - alpha)(n + 1))` order statistic for split and CQR
+- `float32` preserved on the array surface (`fit` / `interval` / `update`)
+- Exogenous features threaded through `calibrate` and `predict` (see the roadmap
+  for the limits)
 - Coverage and interval-quality diagnostics in `conformalforecast.diagnostics`
 - Deterministic given a config and inputs; `seed` defaults to `0`, never `None`
 
@@ -282,7 +286,7 @@ so GitHub's "Cite this repository" button gives you BibTeX directly:
 
 ```bibtex
 @software{conformalforecast,
-  author = {Peixeiro, Marco and {Nixtla}},
+  author = {Peixeiro, Marco and Caballero Ramirez, Saul and {Nixtla}},
   title = {{ConformalForecast}: Adaptive conformal prediction for time series forecasting},
   year = {2026},
   license = {Apache-2.0},

@@ -112,4 +112,5 @@ practice.
 - **Finite calibration sets quantise the achievable coverage.** With `n`
   calibration windows the attainable levels are multiples of `1/(n+1)`, which is
   why every method demands at least `ceil(1/alpha)` effective windows per series
-  and raises `InsufficientCalibrationSamples` otherwise.
+  (asymmetric split and SPCI demand more) and raises
+  `InsufficientCalibrationSamples` otherwise.

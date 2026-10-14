@@ -674,7 +674,7 @@ dev = [
     { name = "pre-commit", specifier = ">=4.6.2" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=5" },
-    { name = "ruff", specifier = ">=0.16.6" },
+    { name = "ruff", specifier = ">=0.16.10" },
     { name = "scikit-learn", specifier = ">=1.4" },
 ]
 docs = [

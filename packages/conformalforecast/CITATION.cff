@@ -10,7 +10,7 @@ authors:
   - family-names: "Caballero Ramirez"
     given-names: "Saul"
     email: "saul@nixtla.io"
-    affilitation: "Nixtla"
+    affiliation: "Nixtla"
   - name: "Nixtla"
 # Bump in lockstep with `__version__` in src/conformalforecast/__init__.py when
 # cutting a release; the package version is dynamic and this one is not.
