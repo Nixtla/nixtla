@@ -1,0 +1,30 @@
+{
+  "source": {
+    "repo": "mono-nixtla",
+    "path": "packages/tokens/src",
+    "commit": "16e754451bc8",
+    "syncedAt": "2026-10-15"
+  },
+  "files": {
+    "tokens/primitives.css": {
+      "from": "packages/tokens/src/primitives.css",
+      "sha256": "b7b641499533d0c89f3caa7d0b6056949be20edf5d513aa53bc092125ae34211"
+    },
+    "tokens/theme.css": {
+      "from": "packages/tokens/src/theme.css",
+      "sha256": "27dc7d72a4718960c0931d6be79c50ce64d89831983aab887a9e396b451005c8"
+    },
+    "tokens/semantic.css": {
+      "from": "packages/tokens/src/semantic.css",
+      "sha256": "724313b803f2dc502ebf70ea30d307217065c57d6bb94e5104451c06e6b250ce"
+    },
+    "tokens/typography.css": {
+      "from": "packages/tokens/src/typography.css",
+      "sha256": "e2a68d20a5d1f67c1fc6d5ddfc67d6fadc711874aec8ddce7029c2a5c5177533"
+    },
+    "tokens/motion.css": {
+      "from": "packages/tokens/src/motion.css",
+      "sha256": "517d55b4165768f2674005bf440246ae012b296e5c188dbb21912703b4acbd89"
+    }
+  }
+}
