@@ -3,8 +3,9 @@
 __all__ = ["fourier", "trend", "time_features", "future_exog_to_historic", "pipeline"]
 
 
+from collections import Counter
 from functools import partial
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ import pandas as pd
 import utilsforecast.processing as ufp
 
 from .compat import DataFrame, DFType, pl, pl_DataFrame, pl_Expr
+from .date_features import CalendarFeature, _compute_features
 from .validation import validate_format, validate_freq
 
 _Features = Tuple[List[str], np.ndarray, np.ndarray]
@@ -210,30 +212,74 @@ def _compute_time_feature(
     return feat_name, feat_vals
 
 
+def _validate_names(names: List[str], columns: Set[str], time_col: str) -> None:
+    if time_col in names:
+        raise ValueError(
+            f"Time features can't have the name of the time column ({time_col!r})."
+        )
+    duplicates = [name for name, count in Counter(names).items() if count > 1]
+    if duplicates:
+        raise ValueError(f"Found duplicate time feature names: {duplicates}.")
+    existing = [name for name in names if name in columns]
+    if existing:
+        raise ValueError(
+            f"Time features can't have the names of existing columns: {existing}."
+        )
+
+
 def _add_time_features(
     df: DFType,
-    features: List[Union[str, Callable]],
+    features: List[Union[str, Callable, CalendarFeature]],
     time_col: str = "ds",
 ) -> DFType:
     df = ufp.copy_if_pandas(df, deep=False)
-    unique_times = df[time_col].unique()
+    calendar = [f for f in features if isinstance(f, CalendarFeature)]
     if isinstance(df, pd.DataFrame):
-        times = pd.Index(unique_times)
-        time2pos = {time: i for i, time in enumerate(times)}
-        restore_idxs = df[time_col].map(time2pos).to_numpy()
+        restore_idxs, uniques = pd.factorize(df[time_col], use_na_sentinel=False)
+        # infers datetimes from object columns
+        times = pd.Index(uniques.array)
+        if hasattr(times.dtype, "pyarrow_dtype"):
+            times = ufp._arrow_times_to_numpy(times)
+        calendar_vals = dict(zip(calendar, _compute_features(times, calendar)))
+        columns = []
+        names: List[str] = []
+        name: Union[str, List[str]]
         for feature in features:
-            name, vals = _compute_time_feature(times, feature)
+            if isinstance(feature, CalendarFeature):
+                name, vals = feature.name, calendar_vals[feature]
+            else:
+                name, vals = _compute_time_feature(times, feature)
+            if isinstance(name, list):
+                names.extend(name)
+            else:
+                names.append(name)
+            columns.append((name, vals))
+        _validate_names(names, set(df.columns), time_col)
+        for name, vals in columns:
+            if isinstance(vals, pd.Series):
+                # assigning a series aligns it on the index
+                vals = vals.array
             df[name] = vals[restore_idxs]
     elif isinstance(df, pl_DataFrame):
-        exprs = []
+        unique_times = df[time_col].unique()
+        calendar_vals = dict(zip(calendar, _compute_features(unique_times, calendar)))
+        feats = unique_times.to_frame()
+        exprs: List[Union[pl_Expr, pl.Series]] = []
+        names = []
         for feature in features:
+            if isinstance(feature, CalendarFeature):
+                names.append(feature.name)
+                exprs.append(pl.Series(feature.name, calendar_vals[feature]))
+                continue
             name, vals = _compute_time_feature(pl.col(time_col), feature)
-            if isinstance(vals, list):
-                exprs.extend(vals)
-            else:
+            if not isinstance(vals, list):
                 assert isinstance(vals, pl_Expr)
-                exprs.append(vals.alias(name))
-        feats = unique_times.to_frame().with_columns(*exprs)
+                vals = [vals.alias(name)]
+            # some expressions (e.g. regex or renamed columns) only get their names when run
+            names.extend(feats.lazy().select(*vals).collect_schema().names())
+            exprs.extend(vals)
+        _validate_names(names, set(df.columns), time_col)
+        feats = feats.with_columns(*exprs)
         df = df.join(feats, on=time_col, how="left")
     return df
 
@@ -241,7 +287,7 @@ def _add_time_features(
 def time_features(
     df: DFType,
     freq: Union[str, int],
-    features: List[Union[str, Callable]],
+    features: List[Union[str, Callable, CalendarFeature]],
     h: int = 0,
     id_col: str = "unique_id",
     time_col: str = "ds",
@@ -253,8 +299,10 @@ def time_features(
             for the exogenous regressors.
         freq (str or int): Frequency of the data. Must be a valid pandas or
             polars offset alias, or an integer.
-        features (list of str or callable): Features to compute. Can be string
-            aliases of timestamp attributes or functions to apply to the times.
+        features (list of str, callable or calendar feature): Features to compute.
+            Can be calendar features from `utilsforecast.date_features` (listed by
+            `utilsforecast.date_features.available()`), string aliases of timestamp
+            attributes of the dataframe backend or functions to apply to the times.
         h (int, optional): Forecast horizon. Defaults to 0.
         id_col (str, optional): Column that identifies each serie.
             Defaults to 'unique_id'.
@@ -265,7 +313,14 @@ def time_features(
         tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple
             containing the original DataFrame with the computed features and
             DataFrame with future values.
+
+    Raises:
+        ValueError: If there are null times, if feature names are repeated or
+            match existing columns, or if calendar features are computed from
+            times that aren't datetimes.
     """
+    if ufp.is_none(df[time_col]).any():
+        raise ValueError("Can't compute time features, found null dates.")
     transformed = _add_time_features(df=df, features=features, time_col=time_col)
     if h == 0:
         return transformed, type(df)({})

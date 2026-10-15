@@ -25,7 +25,7 @@ keywords = ["time-series", "analysis", "forecasting"]
 dependencies = [
     "numpy",
     "packaging",
-    "pandas",
+    "pandas>=1.5",
     "narwhals>=2.0",
 ]
 
@@ -36,7 +36,7 @@ plotting = [
     "plotly-resampler; python_version < '3.14'",
 ]
 polars = [
-    "polars[numpy]<=1.31",
+    "polars[numpy]>=1.0,<=1.31",
 ]
 
 [dependency-groups]
@@ -49,7 +49,7 @@ dev = [
     "pandas[plot]",
     "plotly",
     "plotly-resampler; python_version < '3.14'",
-    "polars[numpy]",
+    "polars[numpy]>=1.0",
     "pytest",
     "pytest-cov",
     "fugue[dask,spark]>=0.9.4",
