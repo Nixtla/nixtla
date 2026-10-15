@@ -55,6 +55,7 @@ from .conformal_prediction import (
     TransferConformal,
     TransferResult,
     _add_signed_transfer_intervals,
+    _resolve_user_weights,
     get_conformal_method,
     get_transfer_method_spec,
     compute_conformity_scores,
@@ -1538,20 +1539,11 @@ class MLForecast:
             and new_df is None
             and self._cs_df is not None
         ):
-            if callable(transfer_conformal.weights):
-                model_cols = set(self.models.keys())
-                non_feat = {self.ts.id_col, self.ts.time_col, "cutoff"} | model_cols
-                feat_cols = [c for c in self._cs_df.columns if c not in non_feat]
-                src = (
-                    np.column_stack(
-                        [self._cs_df[c].to_numpy() for c in feat_cols]
-                    ).astype(float)
-                    if feat_cols
-                    else None
-                )
-                w_arr = transfer_conformal.weights(src)
-            else:
-                w_arr = np.asarray(transfer_conformal.weights, dtype=float)
+            non_feat = {self.ts.id_col, self.ts.time_col, "cutoff", *self.models}
+            feat_cols = [c for c in self._cs_df.columns if c not in non_feat]
+            w_arr = _resolve_user_weights(
+                transfer_conformal.weights, self._cs_df, feat_cols
+            )
             _transfer_result = TransferResult(cs_df=self._cs_df, weights=w_arr)
 
         conformity_scores = self._cs_df
@@ -1658,6 +1650,13 @@ class MLForecast:
                     .unique()
                     .to_list()
                 )
+                # weighted transfer pools the source scores for every target
+                # series, so `ids` only selects which forecasts to return
+                uses_source_scores = (
+                    new_df is not None
+                    and _transfer_result is not None
+                    and _transfer_result.weights is not None
+                )
                 if ids is None:
                     active_ids = set(ts.uids)
                     if cs_ids != active_ids and new_df is None:
@@ -1666,7 +1665,7 @@ class MLForecast:
                             "than the current forecasting state. Please rerun `fit` before "
                             "requesting intervals."
                         )
-                else:
+                elif not uses_source_scores:
                     missing_ids = set(ids) - cs_ids
                     if missing_ids:
                         raise ValueError(
@@ -1739,7 +1738,7 @@ class MLForecast:
                         "PredictionIntervals(method='weighted_conformal_error') or "
                         "'weighted_conformal_distribution'."
                     )
-                if ids is not None:
+                if ids is not None and not uses_source_scores:
                     if _cs_weights is not None:
                         raise ValueError(
                             "TransferConformal with DRE weights cannot be used together with "

@@ -715,3 +715,162 @@ def test_transfer_new_df_missing_dynamic_exog_raises(method):
             level=[90],
             transfer_conformal=method,
         )
+
+
+# ---------------------------------------------------------------------------
+# #762: weighted transfer methods
+# ---------------------------------------------------------------------------
+WEIGHTED_TRANSFER_METHODS = ["weighted_conformal", "scale_aligned_weighted"]
+LR = "LinearRegression"
+
+
+def _weighted_transfer_setup(pi_method):
+    src = generate_daily_series(8, min_length=80, max_length=80, seed=0)
+    tgt = generate_daily_series(4, min_length=50, max_length=50, seed=1)
+    tgt["unique_id"] = "tgt_" + tgt["unique_id"].astype(str)
+    fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
+    fcst.fit(
+        src,
+        prediction_intervals=PredictionIntervals(
+            n_windows=5, h=3, method=pi_method, scale_estimator="std"
+        ),
+    )
+    return fcst, tgt
+
+
+@pytest.fixture(scope="module")
+def weighted_transfer_setup():
+    return _weighted_transfer_setup("weighted_conformal_error")
+
+
+def _feature_cols(fcst):
+    non_feat = {fcst.ts.id_col, fcst.ts.time_col, "cutoff", *fcst.models.keys()}
+    return [c for c in fcst._cs_df.columns if c not in non_feat]
+
+
+def _random_weights(fcst):
+    return np.random.default_rng(0).exponential(size=len(fcst._cs_df))
+
+
+@pytest.mark.parametrize("method", WEIGHTED_TRANSFER_METHODS)
+def test_user_weights_used_with_new_df(weighted_transfer_setup, method):
+    fcst, tgt = weighted_transfer_setup
+    auto = fcst.predict(3, new_df=tgt, level=[90], transfer_conformal=method)
+    user = fcst.predict(
+        3,
+        new_df=tgt,
+        level=[90],
+        transfer_conformal=TransferConformal(
+            method=method, weights=_random_weights(fcst)
+        ),
+    )
+    pd.testing.assert_series_equal(auto[LR], user[LR])
+    assert not np.allclose(auto[f"{LR}-hi-90"], user[f"{LR}-hi-90"])
+
+
+def test_user_weights_length_checked(weighted_transfer_setup):
+    fcst, tgt = weighted_transfer_setup
+    bad = TransferConformal(
+        method="weighted_conformal", weights=np.ones(len(fcst._cs_df) + 1)
+    )
+    msg = "one entry per source calibration row"
+    with pytest.raises(ValueError, match=msg):
+        fcst.predict(3, level=[90], transfer_conformal=bad)
+    with pytest.raises(ValueError, match=msg):
+        fcst.predict(3, new_df=tgt, level=[90], transfer_conformal=bad)
+    w = _random_weights(fcst)
+    flat = fcst.predict(
+        3,
+        new_df=tgt,
+        level=[90],
+        transfer_conformal=TransferConformal(method="weighted_conformal", weights=w),
+    )
+    column = fcst.predict(
+        3,
+        new_df=tgt,
+        level=[90],
+        transfer_conformal=TransferConformal(
+            method="weighted_conformal", weights=w[:, None]
+        ),
+    )
+    pd.testing.assert_frame_equal(flat, column)
+
+
+def test_user_weights_callable_gets_source_features(weighted_transfer_setup):
+    fcst, tgt = weighted_transfer_setup
+    seen = []
+
+    def weight_fn(X):
+        seen.append(X.shape)
+        return np.ones(len(X))
+
+    fcst.predict(
+        3,
+        new_df=tgt,
+        level=[90],
+        transfer_conformal=TransferConformal(
+            method="weighted_conformal", weights=weight_fn
+        ),
+    )
+    assert seen == [(len(fcst._cs_df), len(_feature_cols(fcst)))]
+
+
+@pytest.mark.parametrize(
+    "pi_method", ["weighted_conformal_error", "weighted_conformal_distribution"]
+)
+@pytest.mark.parametrize("method", WEIGHTED_TRANSFER_METHODS)
+@pytest.mark.parametrize("user_weights", [False, True])
+def test_weighted_transfer_ids_filters_output(pi_method, method, user_weights):
+    fcst, tgt = _weighted_transfer_setup(pi_method)
+    ids = ["tgt_id_2", "tgt_id_0"]
+    tc = TransferConformal(
+        method=method, weights=_random_weights(fcst) if user_weights else None
+    )
+    # h=2 < calibration h=3 also checks the horizon slice
+    full = fcst.predict(2, new_df=tgt, level=[80, 90], transfer_conformal=tc)
+    subset = fcst.predict(
+        2, new_df=tgt, level=[80, 90], transfer_conformal=tc, ids=ids
+    )
+    expected = full[full["unique_id"].isin(ids)]
+    pd.testing.assert_frame_equal(
+        subset.sort_values(["unique_id", "ds"]).reset_index(drop=True),
+        expected.sort_values(["unique_id", "ds"]).reset_index(drop=True),
+    )
+
+
+def test_same_domain_user_weights_reject_ids():
+    fcst, _ = _weighted_transfer_setup("weighted_conformal_error")
+    tc = TransferConformal(method="weighted_conformal", weights=_random_weights(fcst))
+    with pytest.raises(ValueError, match="cannot be used together with"):
+        fcst.predict(3, level=[90], transfer_conformal=tc, ids=["id_0"])
+
+
+def test_scale_aligned_weighted_keeps_target_weights(weighted_transfer_setup):
+    from functools import partial
+
+    from mlforecast.conformal_prediction import (
+        _scale_aligned_weighted_transfer,
+        _weighted_conformal_transfer,
+    )
+
+    fcst, tgt = weighted_transfer_setup
+
+    def run(fn, method):
+        scratch = fcst._with_ts(fcst.ts._clone_cold())
+        return fn(
+            new_df=tgt,
+            prediction_intervals=fcst.prediction_intervals,
+            tc=TransferConformal(method=method),
+            model_names=list(fcst.models.keys()),
+            target_col=fcst.ts.target_col,
+            id_col=fcst.ts.id_col,
+            time_col=fcst.ts.time_col,
+            preprocess_fn=partial(scratch.preprocess, **fcst.ts._feature_settings()),
+            source_cs_df=fcst._cs_df,
+            source_scales=fcst._cs_source_scales_,
+        )
+
+    sa = run(_scale_aligned_weighted_transfer, "scale_aligned_weighted")
+    wc = run(_weighted_conformal_transfer, "weighted_conformal")
+    assert sa.target_weights is not None
+    np.testing.assert_allclose(sa.target_weights, wc.target_weights)

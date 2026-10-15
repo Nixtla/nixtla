@@ -873,6 +873,27 @@ def _recalibrate_transfer(
     )
 
 
+def _resolve_user_weights(
+    weights: Union[np.ndarray, Callable], cs_df: DFType, feature_cols: List[str]
+) -> np.ndarray:
+    """Evaluate ``TransferConformal.weights`` on the rows of ``cs_df``."""
+    if callable(weights):
+        X = (
+            np.column_stack([cs_df[c].to_numpy() for c in feature_cols]).astype(float)
+            if feature_cols
+            else None
+        )
+        weights = weights(X)
+    weights = np.asarray(weights, dtype=float)
+    if weights.size != len(cs_df):
+        raise ValueError(
+            "TransferConformal.weights must have one entry per source calibration "
+            f"row ({len(cs_df)},), got shape {weights.shape}."
+        )
+    # accept column vectors such as predict_proba(X)[:, 1:]
+    return weights.ravel()
+
+
 def _weighted_conformal_transfer(
     new_df: DFType,
     prediction_intervals: PredictionIntervals,  # noqa: ARG001
@@ -907,6 +928,11 @@ def _weighted_conformal_transfer(
 
     non_feature_cols = set(list(model_names) + [id_col, time_col, "cutoff"])
     feature_cols = [c for c in source_cs_df.columns if c not in non_feature_cols]
+
+    if tc.weights is not None:
+        # user weights replace the density ratio
+        weights = _resolve_user_weights(tc.weights, source_cs_df, feature_cols)
+        return TransferResult(cs_df=source_cs_df, weights=weights)
 
     if not feature_cols:
         raise ValueError(
@@ -1037,6 +1063,7 @@ def _scale_aligned_weighted_transfer(
         cs_df=source_cs_df,
         weights=wc_result.weights,
         target_scales=sa_result.target_scales,
+        target_weights=wc_result.target_weights,
     )
 
 
