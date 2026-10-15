@@ -1,0 +1,27 @@
+name: Docs tokens
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'timegpt-docs/**'
+      - 'scripts/docs-tokens/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'timegpt-docs/**'
+      - 'scripts/docs-tokens/**'
+
+permissions:
+  contents: read
+
+jobs:
+  tokens-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Uses the runner's Node (>= 20); the scripts have no dependencies.
+      - name: Check tokens contract
+        run: node scripts/docs-tokens/check.mjs

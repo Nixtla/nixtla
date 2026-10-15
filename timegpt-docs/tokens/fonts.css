@@ -1,0 +1,25 @@
+/* Self-hosted font faces for the docs (hand-maintained, not synced).
+   @repo/fonts also ships Tiempos (headings), Berkeley Mono (code) and
+   LisaTerminal Paper (alt). They are commercial faces and this repository is
+   public, so they are not hosted here yet — see tokens/README.md. */
+
+@font-face {
+  font-family: "NeueMontreal";
+  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "NeueMontreal";
+  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Supply";
+  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}

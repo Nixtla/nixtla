@@ -1,0 +1,108 @@
+/* Docs-only design tokens and host overrides. Hand-maintained (not synced).
+
+   Rules
+   - Every value resolves to a primitive (--nixtla-*) or to a semantic token
+     from tokens/semantic.css, directly or through color-mix(). No hex, rgb()
+     or named-colour literals here; those belong to primitives.css only.
+   - Overrides of SYNCED tokens use `html:root` / `html.dark` (specificity
+     0,1,1). They beat the generated `:root` / `.dark` blocks whatever order
+     Mintlify injects the files in. New docs-only tokens use plain `:root`.
+   - A token overridden here for light mode must also get its dark value here
+     (same file), or the generated `.dark` value loses to `html:root`. */
+
+/* ---- Host overrides: fonts hosted in this repository ---------------------
+   @repo/tokens points --font-mono / --font-code at Berkeley Mono and
+   --font-heading at Tiempos. Neither is hosted here (see fonts.css), so the
+   mono stack is repointed at Supply and headings keep the sans. */
+html:root {
+  --font-mono:
+    "Supply", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  --font-code: var(--font-mono);
+  --font-heading: var(--font-sans);
+}
+
+/* ---- Host overrides: weights ----------------------------------------------
+   The DLS uses a single 400 weight. Mintlify's utilities read
+   --font-weight-medium / --font-weight-semibold, so flattening them here
+   restyles its components without touching their classes. */
+html:root {
+  --font-weight-regular: 400;
+  --font-weight-medium: 400;
+  --font-weight-semibold: 400;
+}
+
+/* ---- Spacing primitives ---------------------------------------------------
+   Component-internal spacing on Tailwind's 4px grid (px-named). The DS layout
+   scale (--spacing-space-xs … 7xl, 12px and up) sits on top of it in
+   tokens/semantic.css; components use these, layout rhythm uses those. */
+:root {
+  --space-2: 0.125rem;
+  --space-4: 0.25rem;
+  --space-6: 0.375rem;
+  --space-8: 0.5rem;
+  --space-10: 0.625rem;
+  --space-12: 0.75rem;
+  --space-14: 0.875rem;
+  --space-16: 1rem;
+  --space-20: 1.25rem;
+  --space-24: 1.5rem;
+  --space-32: 2rem;
+}
+
+/* ---- Layout rhythm -------------------------------------------------------- */
+:root {
+  --spacing-header-description: var(--space-8);
+  --spacing-content-area: var(--spacing-space-2xl);
+  --spacing-footer-top: var(--spacing-space-md);
+  --spacing-component-top: var(--spacing-space-md);
+  --spacing-mdx-content: var(--spacing-space-md);
+  --spacing-mdx-content-prose-headers: var(--spacing-space-xl);
+  --spacing-mdx-content-prose-headers-small: var(--spacing-space-md);
+  --spacing-mdx-content-prose-li: var(--space-8);
+  --spacing-list-steps-gap: var(--spacing-space-2xl);
+
+  --page-title-max-width: 34rem;
+  --button-height: 2.125rem;
+  --image-link-badge-height: 1.75rem;
+  --chat-launcher-gap: 4.5rem; /* mobile: room reserved for the Intercom launcher */
+}
+
+/* ---- Surfaces the DS has no slot for ------------------------------------- */
+:root {
+  /* Table lines: typeset.css draws them as border-table-ring/15. */
+  --table-border: color-mix(in oklch, var(--table-ring) 15%, transparent);
+
+  /* Always-dark code frame extras; --blog-code-* come from semantic.css. */
+  --code-hover-overlay: color-mix(in oklch, var(--blog-code-text) 8%, transparent);
+  --code-tab-hover: var(--nixtla-neutral-700);
+  --code-block-radius: var(--radius);
+
+  /* Chat input: Intercom-launcher shadow so both read as one control family. */
+  --chat-shadow:
+    0 1px 6px 0 color-mix(in oklch, var(--nixtla-neutral-950) 6%, transparent),
+    0 2px 32px 0 color-mix(in oklch, var(--nixtla-neutral-950) 16%, transparent);
+}
+
+/* ---- Motion: docs recipes -------------------------------------------------
+   Text-shift / icon-swap hover travel. Reading --duration-base means
+   motion.css's reduced-motion override (1ms) covers every recipe at once. */
+:root {
+  --duration-shift: var(--duration-base);
+  --shift-distance: 115%;
+  --transition-hover: background-color var(--duration-base) var(--ease-standard);
+}
+
+/* ---- Grain texture --------------------------------------------------------
+   Every grain layer reads these, so zeroing the opacity here kills all of them
+   (body, chrome, code-group) without repeating the selector list. */
+:root {
+  --grain-opacity: 0.08;
+  --grain-size: 160px;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --grain-opacity: 0;
+  }
+}
