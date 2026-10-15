@@ -1,196 +1,22 @@
-/* ================================  FONTS  ================================= */
+/* timegpt-docs/style.css — component styles for Mintlify.
 
-@font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
+   Design tokens live in tokens/ (Mintlify loads every .css in this folder):
+     tokens/primitives.css   --nixtla-{ramp}-{step}   GENERATED from mono-nixtla
+     tokens/theme.css        --color-nixtla-*         GENERATED (Tailwind bridge, materialized)
+     tokens/semantic.css     --background, --foreground, --primary, --card, …  GENERATED
+     tokens/typography.css   --fs-* and --lh-*, --text-*--letter-spacing, --text-mono-*  GENERATED
+     tokens/motion.css       --duration-*, --ease-*   GENERATED
+     tokens/fonts.css        @font-face for the hosted faces
+     tokens/docs.css         docs-only tokens + host overrides (hand-maintained)
+   Sync: `node scripts/docs-tokens/sync.mjs`. Lint: `node scripts/docs-tokens/check.mjs`.
 
-@font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Supply";
-  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-
-/* ============================  TOKENS · LIGHT  ============================ */
-
-:root {
-  --background: #f6f4f0;
-  --primary: #222121;
-  --primary-foreground: #f6f4f0;
-  --primary-muted: #22212195;
-
-  --alt: #222121;
-  --surface: #eae9e6;
-
-  --hover: var(--surface);
-  --hover-alt: #2e2b27;
-  --nav-tint: color-mix(in srgb, var(--primary) 8%, transparent);
-  --toc-rail: color-mix(in srgb, var(--primary) 14%, transparent);
-
-  --secondary: #ececec;
-  --secondary-foreground: #222121;
-  --border: #222121;
-  --accent: #bfd1ff; /* brand accent */
-  --radius: 0rem;
-
-  --code-block-radius: 0;
-
-  --page-title-max-width: 34rem;
-
-  --image-link-badge-height: 28px;
-
-  /* Card */
-  --card-bg: rgba(252, 252, 252, 0.5);
-  --card-border: var(--primary);
-
-  /* Feedback toolbar */
-  --feedback-btn-bg: var(--secondary);
-  --feedback-btn-color: var(--secondary-foreground);
-
-  /* Table — blog parity */
-  --table-bg: #ffffff;
-  --table-header-bg: #e7e7e7;
-  --table-border: var(--border);
-
-  /* Dropdown */
-  --dropdown-bg: #ffffff;
-  --dropdown-text: var(--secondary-foreground);
-  --dropdown-border: var(--card-border);
-  --dropdown-hover: var(--hover);
-
-  /* Accordion surface */
-  --accordion-bg: #ffffff;
-
-  /* Chat assistant */
-  --chat-input-bg: #ffffff;
-  --chat-shadow:
-    0 1px 6px 0 rgba(0, 0, 0, 0.06), 0 2px 32px 0 rgba(0, 0, 0, 0.16);
-  --chat-launcher-gap: 72px; /* mobile: room reserved for the Intercom launcher */
-
-  --code-group-bg: #000000;
-  --code-group-border: var(--blog-code-border);
-
-  /* Code palette (always-dark frame, both themes) */
-  --blog-code-bg: #171614;
-  --blog-code-header-bg: #201f1d;
-  --blog-code-border: rgba(246, 244, 240, 0.22);
-  --blog-code-text: #f4f1ea;
-  --blog-code-muted: rgba(244, 241, 234, 0.62);
-  --code-hover-overlay: rgba(246, 244, 240, 0.08);
-  --code-tab-hover: #2e2b27;
-
-  /* Buttons */
-  --button-height: 34px;
-
-  /* Motion */
-  --ease-standard: ease;
-  --duration-fast: 0.15s;
-  --duration-base: 0.2s;
-  --duration-shift: 220ms;
-  --shift-distance: 115%; /* text/icon hover-shift travel */
-  --duration-slow: 0.4s;
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-hover: background-color var(--duration-base) var(--ease-standard);
-
-  /* FONTS */
-  --font-sans: "NeueMontreal", sans-serif;
-  --font-mono: "Supply", monospace;
-
-  /* FONTS WEIGHT */
-  --font-weight-regular: 400;
-  /* Override medium from mintlify to our own 400 weight instead of changing it in mintlify classes, our DLS only uses 400 weight */
-  --font-weight-medium: 400;
-  --font-weight-semibold: 400;
-
-  /* SPACE TOKENS */
-  --space-2: 0.125rem;
-  --space-4: 0.25rem;
-  --space-6: 0.375rem;
-  --space-8: 0.5rem;
-  --space-10: 0.625rem;
-  --space-12: 0.75rem;
-  --space-14: 0.875rem;
-  --space-16: 1rem;
-  --space-20: 1.25rem;
-  --space-24: 1.5rem;
-  --space-32: 2rem;
-  --space-40: 2.5rem;
-  --space-48: 3rem;
-  --space-56: 3.5rem;
-  --space-64: 4rem;
-
-  /* SPACING LAYOUT */
-  --spacing-header-description: var(--space-8);
-  --spacing-content-area: var(--space-40);
-  --spacing-footer-top: var(--space-20);
-  --spacing-component-top: var(--space-20);
-
-  /* SPACING MDX CONTENT */
-  --spacing-mdx-content: var(--space-20);
-  --spacing-mdx-content-prose-headers: var(--space-32);
-  --spacing-mdx-content-prose-headers-small: var(--space-20);
-  --spacing-mdx-content-prose-li: var(--space-8);
-
-  --spacing-list-steps-gap: var(--space-40);
-}
-
-/* ============================  TOKENS · DARK  ============================= */
-
-html.dark {
-  --background: #222121;
-  --primary: #dedddd;
-  --primary-foreground: #222121;
-  --primary-muted: #dedddd95;
-
-  --alt: #f6f4f0;
-  --surface: #2e2b27;
-
-  --hover: var(--surface);
-  --hover-alt: #eae9e6;
-
-  --secondary: #ececec;
-  --secondary-foreground: #222121;
-  --border: rgba(212, 212, 216, 0.6);
-  --accent: #9187e8;
-
-  /* Card */
-  --card-bg: rgba(255, 255, 255, 0.03);
-  --card-border: var(--primary);
-
-  /* Feedback toolbar */
-  --feedback-btn-bg: rgba(255, 255, 255, 0.1);
-  --feedback-btn-color: var(--primary);
-
-  /* Table — blog parity */
-  --table-bg: #171614;
-  --table-header-bg: #201f1d;
-  --table-border: var(--border);
-
-  /* Dropdown */
-  --dropdown-bg: var(--alt);
-  --dropdown-text: var(--secondary-foreground);
-  --dropdown-border: var(--secondary);
-  --dropdown-hover: var(--hover-alt);
-
-  /* Accordion surface */
-  --accordion-bg: #000000;
-
-  /* Chat assistant */
-  --chat-input-bg: #000000;
-
-  --code-group-bg: #000000;
-  --code-group-border: var(--blog-code-border);
-}
+   This file consumes tokens only: no colour, font-size or duration literals.
+   Semantic names follow the shadcn contract used across Nixtla (see tokens/README.md):
+     ink → --foreground / --muted-foreground      filled control → --primary + --primary-foreground
+     page → --background                          raised surface → --card / --popover
+     hover surface → --accent (content) / --muted (outline controls)
+     lines → --border (hairline), --rule, --table-border, --ring (strong)
+     sidebar → --sidebar-*                        code frame (always dark) → --blog-code-* */
 
 /* =============================  SYSTEM NOTES  ============================= */
 
@@ -210,6 +36,9 @@ html.dark {
     #header .mt-2.text-lg / .w-full:not(table)   header + card utility hooks
     #api-playground-2-operation-page .mt-6...    generated id + utility
   Quick audit before upgrading: grep  :has(   [class*=   #api-playground
+
+  TOKENS: style.css declares no tokens. Add/adjust them in tokens/docs.css, or
+  re-sync the generated files from mono-nixtla (see tokens/README.md).
 */
 
 /* =================================  BASE  ================================= */
@@ -231,34 +60,39 @@ html.dark > body {
 
 #page-title,
 h1 {
-  font-size: 50px;
+  font-family: var(--font-heading) !important;
+  font-size: var(--fs-3xl);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 112%;
-  letter-spacing: -0.5px;
-  color: var(--primary);
+  line-height: var(--lh-3xl);
+  letter-spacing: var(--text-3xl--letter-spacing);
+  color: var(--foreground);
   max-width: var(--page-title-max-width);
 }
 
 h2,
 h2 span {
-  font-size: 30px;
+  font-family: var(--font-heading) !important;
+  font-size: var(--fs-2xl);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 95%;
+  line-height: var(--lh-2xl);
+  letter-spacing: var(--text-2xl--letter-spacing);
 }
 
 p {
-  color: var(--primary);
-  font-size: 16px;
+  color: var(--foreground);
+  font-size: var(--fs-base);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 24px;
+  line-height: var(--lh-base);
 }
 
 /* Mono-label recipe — single source for every small uppercase mono label
    (eyebrows, sidebar/TOC titles, navbar links, banner, copy-page toolbar).
-   Size/leading vary per case via --label-size / --label-leading. */
+   Sizes are the DS mono roles (--text-mono-nano = eyebrow-xs, --text-mono-mini =
+   eyebrow-sm); leading stays a ratio because these labels sit inside fixed-height
+   chrome. Override per case via --label-size / --label-leading. */
 .eyebrow,
 .eyebrow-sm,
 #sidebar-title,
@@ -271,7 +105,7 @@ p {
 #page-context-menu-button + button {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: var(--label-size, 12px) !important;
+  font-size: var(--label-size, var(--text-mono-nano)) !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
   line-height: var(--label-leading, 92%) !important;
@@ -283,15 +117,15 @@ p {
 #page-context-menu-button *,
 #page-context-menu-button + button * {
   font-family: var(--font-mono) !important;
-  font-size: var(--label-size, 12px) !important;
+  font-size: var(--label-size, var(--text-mono-nano)) !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
 }
 
 .eyebrow {
-  --label-size: 14px;
+  --label-size: var(--text-mono-mini);
   --label-leading: 110%;
-  color: var(--primary-muted);
+  color: var(--muted-foreground);
 }
 
 @media (max-width: 767px) {
@@ -317,7 +151,7 @@ p {
 
 /* Mono-label recipe (BASE) at navbar size. */
 #navbar nav a {
-  --label-size: 0.74375rem;
+  --label-size: var(--text-mono-nano);
 }
 
 #navbar nav ul > li:not(:last-child) {
@@ -335,7 +169,7 @@ p {
 #theme-preference-menu-trigger {
   background: var(--background) !important;
   border-color: var(--border) !important;
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
   box-shadow: none !important;
   transition: var(--transition-hover) !important;
 }
@@ -354,8 +188,8 @@ p {
 #page-context-menu-button:hover,
 #page-context-menu button[aria-haspopup="menu"]:hover,
 #theme-preference-menu-trigger:hover {
-  background: var(--hover) !important;
-  color: var(--primary) !important;
+  background: var(--muted) !important;
+  color: var(--foreground) !important;
 }
 
 #navbar nav li:not(#topbar-cta-button) a {
@@ -377,12 +211,12 @@ p {
 }
 
 #topbar-cta-button a span.absolute {
-  background: var(--alt) !important;
+  background: var(--primary) !important;
   transition: var(--transition-hover) !important;
 }
 
 #topbar-cta-button a:hover span.absolute {
-  background: var(--hover-alt) !important;
+  background: color-mix(in oklch, var(--primary) 80%, transparent) !important;
   opacity: 1 !important;
 }
 
@@ -646,30 +480,22 @@ p {
 }
 
 #assistant-entry svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* Label rides the shared text-shift machinery (NAVBAR section). */
 #assistant-entry span {
   --shift-label: "Ask Assistant";
-  --shift-color: var(--primary);
+  --shift-color: var(--foreground);
   position: relative;
   overflow: hidden;
   color: transparent !important;
 }
 
-/* Zeroes every text-shift / icon-swap transition at once — they all read
-   --duration-shift. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-shift: 0s;
-  }
-}
-
 /* Copy page + More actions: outline chrome from the toolbar-button molecule
    (NAVBAR). */
 #page-context-menu button[aria-haspopup="menu"] svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* Label rides the shared text-shift machinery (NAVBAR section); the real label
@@ -692,12 +518,12 @@ p {
 /* CTA — secondary */
 a.font-semibold {
   background: var(--background);
-  border: 1px solid var(--primary);
+  border: 1px solid var(--border);
   font-family: var(--font-mono);
   font-weight: var(--font-weight-regular);
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--primary);
+  color: var(--foreground);
 }
 
 /* CTA — primary (dark) */
@@ -710,18 +536,7 @@ a.font-semibold[class*="dark"],
 }
 
 a.font-semibold svg {
-  background: var(--primary);
-}
-
-html.dark a.font-semibold {
-  background: var(--background);
-  border: 1px solid var(--secondary);
-  outline-color: var(--secondary);
-  color: var(--primary);
-}
-
-html.dark a.font-semibold svg {
-  background: var(--primary);
+  background: var(--foreground);
 }
 
 /* ==============================  NAV ITEMS  =============================== */
@@ -742,7 +557,7 @@ html.dark a.font-semibold svg {
   border: none !important;
   border-bottom: none !important;
   text-decoration: none !important;
-  color: var(--primary) !important;
+  color: var(--sidebar-foreground) !important;
   opacity: 0.7;
   transition:
     opacity var(--duration-base) var(--ease-standard),
@@ -759,20 +574,20 @@ html.dark a.font-semibold svg {
 }
 
 #navigation-items a.nav-anchor:hover svg {
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 #navigation-items a.nav-anchor:hover {
   opacity: 1;
-  background-color: var(--nav-tint) !important;
+  background-color: var(--sidebar-accent) !important;
   text-decoration: none !important;
-  color: var(--primary) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
 /* ===============================  SIDEBAR  ================================ */
 
 div:has(> div > #navigation-items) {
-  background-color: var(--background) !important;
+  background-color: var(--sidebar) !important;
 }
 
 .sidebar-group-header {
@@ -792,34 +607,34 @@ div:has(> div > #navigation-items) {
 #navigation-items .sidebar-group a,
 #navigation-items .sidebar-group button {
   border-left: 2px solid transparent !important;
-  color: var(--primary-muted) !important;
+  color: var(--muted-foreground) !important;
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard) !important;
+    background-color var(--duration-quick) var(--ease-standard),
+    border-color var(--duration-quick) var(--ease-standard),
+    color var(--duration-quick) var(--ease-standard) !important;
 }
 
 #navigation-items .sidebar-group a svg {
-  background-color: var(--primary-muted) !important;
+  background-color: var(--muted-foreground) !important;
 }
 
 /* Hover */
 #navigation-items .sidebar-group a:hover,
 #navigation-items .sidebar-group button:hover {
-  background-color: var(--nav-tint) !important;
-  color: var(--primary) !important;
+  background-color: var(--sidebar-accent) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
 #navigation-items .sidebar-group a[class*="bg-primary"] {
-  border-left-color: var(--primary) !important;
-  background-color: var(--nav-tint) !important;
-  color: var(--primary) !important;
+  border-left-color: var(--sidebar-primary) !important;
+  background-color: var(--sidebar-accent) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
 /* Hover/active icons */
 #navigation-items .sidebar-group a:hover svg,
 #navigation-items .sidebar-group a[class*="bg-primary"] svg {
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 ul li a {
@@ -839,13 +654,8 @@ a.link {
 /* =================================  CODE  ================================= */
 
 :not(pre) > code {
-  --code-bg: #ececec;
-  background-color: var(--code-bg) !important;
-  color: var(--primary) !important;
-}
-
-html.dark :not(pre) > code {
-  --code-bg: rgba(222, 221, 221, 0.1);
+  background-color: var(--secondary) !important;
+  color: var(--foreground) !important;
 }
 
 pre code {
@@ -920,7 +730,7 @@ pre code {
   align-items: center;
   min-height: 2.25rem;
   padding: 0.375rem 0.625rem 0.375rem 1rem;
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   color: var(--blog-code-muted);
   background-color: var(--blog-code-header-bg);
   border-bottom: 1px solid var(--blog-code-border);
@@ -932,8 +742,7 @@ pre code {
 
 /* ---- Shared code palette: applies to BOTH branches — the MDX .code-block and
    the API-playground code-group (which has no .code-block inside). Same bg as
-   the MDX .code-block (--blog-code-bg #171614), not --code-group-bg (pure
-   #000), so the colors match across both. ---- */
+   the MDX .code-block (--blog-code-bg), so the colors match across both. ---- */
 :is(.code-block, .code-group:not(:has(.code-block)))
   [data-component-part="code-block-root"],
 :is(.code-block, .code-group:not(:has(.code-block))) pre.shiki {
@@ -956,7 +765,7 @@ html:not(.dark)
 }
 
 /* The playground renders in light theme with a white fade overlay
-   (--fade-color-light: #FFFFFF) that would show over the forced dark bg. */
+   (Mintlify's --fade-color-light) that would show over the forced dark bg. */
 :is(.code-block, .code-group:not(:has(.code-block))) [data-fade-overlay] {
   display: none !important;
 }
@@ -1145,20 +954,7 @@ body .code-group {
   button[aria-haspopup="menu"]
   > div
   * {
-  color: var(--primary-foreground) !important;
-}
-html.dark
-  .code-group
-  [data-component-part="code-group-tab-bar"]
-  button[aria-haspopup="menu"]
-  > div,
-html.dark
-  .code-group
-  [data-component-part="code-group-tab-bar"]
-  button[aria-haspopup="menu"]
-  > div
-  * {
-  color: var(--primary) !important;
+  color: var(--blog-code-text) !important;
 }
 .code-group
   [data-component-part="code-group-tab-bar"]
@@ -1184,8 +980,8 @@ html.dark
 
 #table-of-contents-content a,
 .toc a {
-  color: var(--primary-muted) !important;
-  transition: color var(--duration-fast) var(--ease-standard);
+  color: var(--muted-foreground) !important;
+  transition: color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content a:hover,
@@ -1193,7 +989,7 @@ html.dark
 #table-of-contents-content .toc-item[data-active="true"] > a,
 #table-of-contents-content a[aria-current="location"],
 .toc a[aria-current="location"] {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 #table-of-contents-content .toc-item > ul {
@@ -1202,20 +998,20 @@ html.dark
 }
 
 #table-of-contents-content .toc-item[data-depth="0"] > a {
-  border-left: 1.5px solid var(--toc-rail);
+  border-left: 1.5px solid var(--rule);
   padding-left: 1rem;
-  transition: border-color var(--duration-fast) var(--ease-standard);
+  transition: border-color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content .toc-item:not([data-depth="0"]) {
-  border-left: 1.5px solid var(--toc-rail);
+  border-left: 1.5px solid var(--rule);
   padding-left: 1rem;
-  transition: border-color var(--duration-fast) var(--ease-standard);
+  transition: border-color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content .toc-item[data-depth="0"][data-active="true"] > a,
 #table-of-contents-content .toc-item[data-active="true"]:not([data-depth="0"]) {
-  border-left-color: var(--primary);
+  border-left-color: var(--foreground);
 }
 
 #table-of-contents-content .toc-item[data-active="true"] > a,
@@ -1291,9 +1087,9 @@ html.dark
   position: relative;
   margin: 0 !important;
   padding: var(--space-32) !important;
-  background-color: var(--surface);
+  background-color: var(--secondary);
   border: none !important;
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
   overflow: hidden;
@@ -1523,7 +1319,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 }
 
 #content-side-layout a.font-medium {
-  color: var(--primary);
+  color: var(--foreground);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -1533,8 +1329,8 @@ a.card,
 div.card {
   margin: 0 !important;
   padding: 0 !important;
-  background: var(--card-bg) !important;
-  border: 1px solid var(--card-border) !important;
+  background: var(--card) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   outline: none !important;
@@ -1546,8 +1342,8 @@ div.card {
 
 .card-group {
   gap: 0 !important;
-  border-top: 1px solid var(--card-border);
-  border-left: 1px solid var(--card-border);
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
 }
 
 .card-group a.card,
@@ -1558,7 +1354,7 @@ div.card {
 
 a.card:hover,
 div.card:hover {
-  background: var(--hover) !important;
+  background: var(--accent) !important;
   box-shadow: none !important;
   outline: none !important;
   --tw-ring-offset-shadow: 0 0 0 0 transparent !important;
@@ -1568,7 +1364,7 @@ div.card:hover {
 
 html.dark a.card svg,
 html.dark div.card svg {
-  background: var(--primary);
+  background: var(--foreground);
 }
 
 /* Content container */
@@ -1589,7 +1385,7 @@ html.dark div.card svg {
 [data-component-part="card-icon"] svg {
   width: var(--space-24) !important;
   height: var(--space-24) !important;
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 [data-component-part="card-content-container"] .w-full:not(table) {
@@ -1600,12 +1396,13 @@ html.dark div.card svg {
 
 /* Title */
 [data-component-part="card-title"] {
-  font-size: 26px !important;
+  font-size: var(--fs-xl) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: var(--lh-xl) !important;
+  letter-spacing: var(--text-xl--letter-spacing) !important;
   font-family: var(--font-sans) !important;
-  color: var(--primary) !important;
+  color: var(--card-foreground) !important;
   margin: 0 !important;
 }
 
@@ -1615,11 +1412,11 @@ html.dark div.card svg {
 
 /* Description */
 [data-component-part="card-content"] {
-  font-size: 16px !important;
+  font-size: var(--fs-base) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 24px !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-base) !important;
+  color: var(--card-foreground) !important;
   margin: 0 !important;
   opacity: 0.7;
   display: flex;
@@ -1644,11 +1441,11 @@ details.accordion {
 
 html:not(.dark) details.accordion,
 html.dark details.accordion {
-  background-color: var(--accordion-bg) !important;
+  background-color: var(--card) !important;
 }
 
 details.accordion summary:hover {
-  background-color: var(--hover) !important;
+  background-color: var(--accent) !important;
 }
 
 [data-component-part="accordion-button"] {
@@ -1675,8 +1472,8 @@ details.accordion::details-content {
   height: 0;
   overflow: hidden;
   transition:
-    height var(--duration-slow) var(--ease-in-out),
-    content-visibility var(--duration-slow) var(--ease-in-out) allow-discrete;
+    height var(--duration-slow) var(--ease-standard),
+    content-visibility var(--duration-slow) var(--ease-standard) allow-discrete;
 }
 
 details.accordion[open]::details-content {
@@ -1702,21 +1499,21 @@ details.expandable .expandable-content {
 
 html:not(.dark) details.expandable,
 html.dark details.expandable {
-  background-color: var(--accordion-bg) !important;
+  background-color: var(--card) !important;
   border-color: var(--border) !important;
 }
 
 details.expandable > summary {
-  color: var(--primary-muted) !important;
+  color: var(--muted-foreground) !important;
 }
 
 details.expandable > summary:hover {
-  background-color: var(--hover) !important;
-  color: var(--primary) !important;
+  background-color: var(--accent) !important;
+  color: var(--foreground) !important;
 }
 
 details.expandable > summary svg[data-component-part="icon-svg"] {
-  background-color: var(--primary-muted) !important;
+  background-color: var(--muted-foreground) !important;
 }
 
 details.expandable .expandable-content {
@@ -1731,7 +1528,7 @@ details.expandable .primitive-param-field {
 /* ================================  STEPS  ================================= */
 
 [data-component-part="step-number"] > div {
-  background-color: var(--primary) !important;
+  background-color: var(--primary) !important; /* filled control */
   color: var(--primary-foreground) !important;
 }
 
@@ -1793,8 +1590,8 @@ details.expandable .primitive-param-field {
 .prose :where(table):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table {
   border-collapse: collapse;
-  font-size: 0.875rem;
-  color: var(--primary);
+  font-size: var(--fs-sm);
+  color: var(--foreground);
 }
 
 [data-table-wrapper] table thead,
@@ -1809,14 +1606,14 @@ details.expandable .primitive-param-field {
   :where(table td):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table th,
 [data-table-wrapper] table td {
-  padding: 0.875rem 1rem;
+  padding: var(--space-14) var(--space-16);
   border-right: 1px solid var(--table-border) !important;
   border-bottom: 1px solid var(--table-border) !important;
   text-align: left;
   vertical-align: middle;
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   font-weight: var(--font-weight-regular);
-  color: var(--primary);
+  color: var(--foreground);
   background-color: transparent !important;
 }
 
@@ -1875,7 +1672,7 @@ details.expandable .primitive-param-field {
 /* ================================  BANNER  ================================ */
 
 #banner {
-  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
+  border-bottom: 1px solid var(--border) !important;
   height: auto !important;
   max-height: none !important;
 }
@@ -1890,21 +1687,21 @@ details.expandable .primitive-param-field {
 @layer utilities {
   #banner,
   #banner * {
-    color: var(--primary) !important;
+    color: var(--foreground) !important;
   }
 }
 
 #banner a:hover {
   opacity: 0.8;
-  color: var(--primary) !important;
-  text-decoration-color: var(--primary) !important;
+  color: var(--foreground) !important;
+  text-decoration-color: var(--foreground) !important;
 }
 
 #banner p,
 #banner p a {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: 14px !important;
+  font-size: var(--text-mono-mini) !important;
   text-transform: uppercase !important;
   font-stretch: expanded !important;
   line-height: 92% !important;
@@ -1912,50 +1709,51 @@ details.expandable .primitive-param-field {
 
 #banner p a {
   text-decoration: underline !important;
-  text-decoration-color: var(--primary) !important;
+  text-decoration-color: var(--foreground) !important;
   text-underline-offset: 1px !important;
 }
 
 #banner svg path {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* Banner dismiss button: no background change (overrides Tailwind's
-   hover:bg-gray-800); only the icon changes, from --primary-muted (rest) to --primary
-   (hover) for a visible intensity change. Both tokens are theme-aware. */
+   hover:bg-gray-800); only the icon changes, from --muted-foreground (rest) to
+   --foreground (hover) for a visible intensity change. Both tokens are theme-aware. */
 #banner button[aria-label="Dismiss banner"]:hover {
   background-color: transparent !important;
 }
 #banner button[aria-label="Dismiss banner"] svg,
 #banner button[aria-label="Dismiss banner"] svg path {
-  color: var(--primary-muted) !important;
+  color: var(--muted-foreground) !important;
 }
 #banner button[aria-label="Dismiss banner"]:hover svg,
 #banner button[aria-label="Dismiss banner"]:hover svg path {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* ==============================  PAGINATION  ============================== */
 
 #pagination {
   font-family: var(--font-sans) !important;
-  font-size: 28px !important;
+  font-size: var(--fs-xl) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-xl) !important;
+  letter-spacing: var(--text-xl--letter-spacing) !important;
+  color: var(--foreground) !important;
 }
 
 #pagination a span {
-  font-size: 20px !important;
+  font-size: var(--fs-lg) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 120% !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-lg) !important;
+  color: var(--foreground) !important;
 }
 
 #pagination svg {
   height: var(--space-10) !important;
   width: var(--space-10) !important;
-  stroke: var(--primary) !important;
+  stroke: var(--foreground) !important;
 }
 
 #pagination svg path {
@@ -1963,7 +1761,7 @@ details.expandable .primitive-param-field {
 }
 
 #pagination a {
-  transition: opacity var(--duration-slow) var(--ease-in-out);
+  transition: opacity var(--duration-slow) var(--ease-standard);
 }
 
 #pagination {
@@ -1990,17 +1788,17 @@ details.expandable .primitive-param-field {
 }
 
 .feedback-toolbar p {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
   font-family: var(--font-sans) !important;
-  font-size: 12px !important;
+  font-size: var(--fs-xs) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 16px !important;
+  line-height: var(--lh-xs) !important;
 }
 
 .feedback-toolbar button,
 .feedback-toolbar a {
-  background: var(--feedback-btn-bg) !important;
-  color: var(--feedback-btn-color) !important;
+  background: var(--secondary) !important;
+  color: var(--secondary-foreground) !important;
   padding: var(--space-2) var(--space-6) !important;
   border-radius: var(--radius) !important;
   border: none !important;
@@ -2012,10 +1810,10 @@ details.expandable .primitive-param-field {
 .feedback-toolbar a * {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: 10px !important;
+  font-size: var(--text-mono-nano) !important;
   text-transform: uppercase !important;
-  line-height: 22px !important;
-  color: var(--feedback-btn-color) !important;
+  line-height: var(--lh-sm) !important;
+  color: var(--secondary-foreground) !important;
 }
 
 .feedback-toolbar button svg,
@@ -2024,21 +1822,21 @@ details.expandable .primitive-param-field {
 }
 
 [role="menu"][data-orientation="vertical"] {
-  background-color: var(--dropdown-bg) !important;
+  background-color: var(--popover) !important;
   border-radius: 0 !important;
-  border-color: var(--dropdown-border) !important;
+  border-color: var(--border) !important;
 }
 
 /* Covers menuitem (normal menus) and menuitemradio (code-group language
    selector). Without this, menuitemradio keeps `dark:text-primary-light`
-   (= #FFF via docs.json light:#FFF) and ends up white text over the cream background
-   that --dropdown-bg forces in dark mode → looks "all white". */
+   (docs.json light colour) and ends up unreadable over the --popover surface
+   in dark mode. */
 [role="menu"][data-orientation="vertical"] [role="menuitem"],
 [role="menu"][data-orientation="vertical"] [role="menuitem"] *,
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"],
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"] * {
   border-radius: 0 !important;
-  color: var(--dropdown-text) !important;
+  color: var(--popover-foreground) !important;
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
@@ -2046,7 +1844,7 @@ details.expandable .primitive-param-field {
 
 [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover,
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"]:hover {
-  background-color: var(--dropdown-hover) !important;
+  background-color: var(--popover-accent) !important;
 }
 
 /* Check indicator: only the active item shows it. Mintlify hides inactive checks
@@ -2075,8 +1873,8 @@ details.expandable .primitive-param-field {
 /* =================================  TABS  ================================= */
 
 [data-component-part="tab-button"][data-active="true"] svg {
-  color: var(--primary) !important;
-  background-color: var(--primary) !important;
+  color: var(--foreground) !important;
+  background-color: var(--foreground) !important;
 }
 
 /* ============================  CHAT ASSISTANT  ============================ */
@@ -2086,14 +1884,14 @@ details.expandable .primitive-param-field {
   margin-bottom: -80px !important;
 }
 
-/* Desktop assistant panel: solid #fff / #000 surface (the mobile drawer —
-   [role="dialog"] — keeps its default background). Covers both the inner sheet
-   and its outer sticky wrapper so no cream shows behind it. The #id selector is
+/* Desktop assistant panel: --card surface (the mobile drawer — [role="dialog"]
+   — keeps its default background). Covers both the inner sheet and its outer
+   sticky wrapper so no page background shows behind it. The #id selector is
    needed to outrank the global html:not(.dark) .bg-background-light rule (0,2,1),
-   which otherwise repaints the sheet with --background (cream). */
+   which otherwise repaints the sheet with --background. */
 #chat-assistant-sheet:not([role="dialog"]),
 div:has(> #chat-assistant-sheet) {
-  background-color: var(--chat-input-bg) !important;
+  background-color: var(--card) !important;
 }
 
 .chat-assistant-floating-input::before {
@@ -2105,11 +1903,11 @@ div:has(> #chat-assistant-sheet) {
   pointer-events: none !important;
 }
 
-/* Chat input box (the rounded container wrapping the textarea): solid tokenized
-   bg (#fff / #000), pill radius + the Intercom launcher shadow so it reads as
-   part of the same control family. Targeted via the textarea's box ancestor. */
+/* Chat input box (the rounded container wrapping the textarea): input surface
+   + the Intercom launcher shadow so it reads as part of the same control
+   family. Targeted via the textarea's box ancestor. */
 div:has(> div > #chat-assistant-textarea) {
-  background-color: var(--chat-input-bg) !important;
+  background-color: var(--input-background-focus) !important;
   border-radius: 0px !important;
   box-shadow: var(--chat-shadow) !important;
 }
@@ -2134,10 +1932,10 @@ div:has(> .chat-assistant-floating-input) {
   height: 60px !important;
 }
 
-/* Send button: --alt surface with --primary-foreground icon (beats the inline
-   background:black and the bg-primary utility). */
+/* Send button: filled control (beats the inline background:black and the
+   bg-primary utility). */
 .chat-assistant-send-button {
-  background: var(--alt) !important;
+  background: var(--primary) !important;
 }
 
 .chat-assistant-send-button svg {
@@ -2216,11 +2014,6 @@ html.dark .bg-background-dark,
   }
 }
 
-:root {
-  --grain-opacity: 0.08;
-  --grain-size: 160px;
-}
-
 body::after {
   content: "";
   position: fixed;
@@ -2253,7 +2046,7 @@ body::after {
 }
 
 #theme-preference-menu-trigger svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 /* space-x-4 containers: 8px inline gap between children. */
@@ -2309,14 +2102,6 @@ body::after {
 /* Grain follows the input's rounded-2xl so it doesn't poke past the corners. */
 [data-component-part="search-input-container"]::after {
   border-radius: inherit;
-}
-
-/* Every grain layer reads its opacity from this token, so zeroing it here kills
-   all of them (body, chrome, code-group) without repeating the selector list. */
-@media (prefers-contrast: more) {
-  :root {
-    --grain-opacity: 0;
-  }
 }
 
 /* Deliberate 0px on desktop: kills the `.space-y-4` (16px) spacing between the
