@@ -56,8 +56,9 @@ Augmentation strategies are frozen specs (`FitAndSimulate`, `Mixup`,
 method, for example `Mixup(seed=0, n_series=4).apply(df)`. Calls with the same
 spec and seed return identical output, non-target columns are carried through,
 and `apply(df, source_col="source")` adds a column naming the input series each
-row derives from. `SynAugment` is a facade with the same methods. The note
-below applies to both.
+row derives from. `SynAugment` is a facade with the same methods; it advances
+its seed on every call, so repeated calls give fresh draws and a new instance
+with the same seed replays the same sequence. The note below applies to both.
 
 A note on fit-and-simulate: fit-and-simulate outputs match the source series' mean,
 standard deviation, and lag-1 autocorrelation **by construction** through a

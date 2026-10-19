@@ -151,12 +151,39 @@ def test_facade_analyze_and_single_series_match():
     assert [(i, v.tolist()) for i, v, _ in old] == [(i, v.tolist()) for i, v, _ in new]
 
 
-def test_facade_repeat_calls_identical():
+def test_facade_advances_seed_per_call():
     s = SynAugment(seed=1)
+    first, second = s.mbb(src, n_augment=2), s.mbb(src, n_augment=2)
+    assert not to_pandas(first).equals(to_pandas(second))
     assert_frame_equal(
-        to_pandas(s.mbb(src, n_augment=2)), to_pandas(s.mbb(src, n_augment=2))
+        to_pandas(first),
+        to_pandas(MovingBlockBootstrap(n_augment=2).apply(src, seed=1)),
     )
-    assert not hasattr(s, "rng")
+    replay = SynAugment(seed=1)
+    assert_frame_equal(to_pandas(replay.mbb(src, n_augment=2)), to_pandas(first))
+    assert_frame_equal(to_pandas(replay.mbb(src, n_augment=2)), to_pandas(second))
+
+
+def test_facade_chunked_augment_draws_differ():
+    # Two chunks holding the same values: a restarted stream would copy draws.
+    one = to_pandas(src)
+    one = one[one["unique_id"] == one["unique_id"].iloc[0]]
+    s = SynAugment(seed=1)
+    first = to_pandas(s.augment(one, n_augment=2))
+    second = to_pandas(s.augment(one, n_augment=2))
+    assert_frame_equal(first.iloc[: len(one)], second.iloc[: len(one)])
+    assert not np.allclose(first["y"][len(one) :], second["y"][len(one) :])
+
+
+def test_facade_single_series_advances_seed():
+    values = to_pandas(src)["y"].to_numpy()[:80]
+    ts = np.arange(80)
+    s = SynAugment(seed=1)
+    first = s.augment_single_series("a", values, ts)[0][1]
+    second = s.augment_single_series("a", values, ts)[0][1]
+    assert not np.array_equal(first, second)
+    expected = FitAndSimulate().apply_series("a", values, ts, seed=1)[0][1]
+    np.testing.assert_array_equal(first, expected)
 
 
 def _sorted(df):

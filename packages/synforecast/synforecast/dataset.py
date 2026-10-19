@@ -253,9 +253,11 @@ class SynAugment:
     which are the primary API: :class:`~synforecast.FitAndSimulate`,
     :class:`~synforecast.Mixup`, :class:`~synforecast.MovingBlockBootstrap`
     and :class:`~synforecast.DBA`. Each method builds the matching spec and
-    calls its ``apply`` with this instance's seed, columns and engine, so when
-    ``seed`` is set, repeated calls with the same arguments return the same
-    output.
+    calls its ``apply`` with this instance's columns, engine and a seed. The
+    first drawing call uses ``seed`` itself; each later call uses a distinct
+    seed derived from it, so repeated calls give fresh draws while a new
+    instance with the same ``seed`` replays the same sequence of outputs.
+    Call a spec's ``apply`` directly for output that is identical per call.
 
     - :meth:`augment` fits a parametric generator per series and simulates
       from it (IDs ``"{original_id}_aug_{i}"``).
@@ -335,6 +337,16 @@ class SynAugment:
         self.seed = seed
         self.engine = engine
         self.on_error = on_error
+        self._seeds = None if seed is None else np.random.SeedSequence(seed)
+
+    def _next_seed(self) -> int | None:
+        """Seed for the next drawing call: ``seed`` first, then derived ones."""
+        if self._seeds is None:
+            return None
+        child = self._seeds.spawn(1)[0]
+        if self._seeds.n_children_spawned == 1:
+            return self.seed
+        return int(child.generate_state(1)[0])
 
     def _apply(
         self,
@@ -345,7 +357,7 @@ class SynAugment:
     ) -> IntoFrameT:
         return spec.apply(
             df,
-            seed=self.seed,
+            seed=self._next_seed(),
             include_original=include_original,
             id_col=self.id_col,
             time_col=self.time_col,
@@ -576,5 +588,9 @@ class SynAugment:
         """
         spec = FitAndSimulate(n_augment=n_augment, on_error=self.on_error)
         return spec.apply_series(
-            series_id, values, timestamps, generator_name=generator_name, seed=self.seed
+            series_id,
+            values,
+            timestamps,
+            generator_name=generator_name,
+            seed=self._next_seed(),
         )

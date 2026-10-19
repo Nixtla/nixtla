@@ -16,8 +16,10 @@
 
 ### Changed
 
-- Repeated `SynAugment` calls with the same seed return identical output;
-  specs are frozen.
+- A spec's `apply` is reproducible per call: the same spec, data and seed
+  return identical output, and specs are frozen. The `SynAugment` facade
+  still advances its seed on every call, so a fresh instance with the same
+  seed reproduces the same sequence of outputs.
 - Invalid strategy arguments raise pydantic `ValidationError` (a `ValueError`)
   when the spec is built (for `SynAugment`, still at the method call). An
   unknown generator name and bad `scaling`/`scale` values get pydantic's

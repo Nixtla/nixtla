@@ -92,7 +92,9 @@ augmented_train_df = FitAndSimulate(seed=42, n_augment=2).apply(train_df)
 
 Pass `source_col="source"` to `apply` to record which input series each row
 came from. `Mixup`, `MovingBlockBootstrap` and `DBA` follow the same pattern.
-`SynAugment(seed=42).augment(...)` remains as a thin facade over these specs.
+`SynAugment(seed=42).augment(...)` remains as a thin facade over these specs;
+unlike `apply`, it advances its seed on every call, so repeated calls give fresh
+draws and a new instance with the same seed replays the same sequence.
 
 For non-parametric augmentation, bootstrap local remainder blocks or construct
 panel-aware DTW barycenters:
