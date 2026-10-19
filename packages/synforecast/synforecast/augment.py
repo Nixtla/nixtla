@@ -140,8 +140,15 @@ class BaseAugmenter(BaseModel, ABC):
             engine: Output dataframe library (e.g. 'pandas', 'polars').
                 None (default) matches the input DataFrame's library.
             source_col: Name of an added column holding, for every row, the
-                id of the input series it came from (as a string, with the
-                id column's dtype). None (default) adds no column.
+                input id of the series it derives from; the column has the
+                same dtype as the output id column. Original rows name
+                themselves; FitAndSimulate and MovingBlockBootstrap copies
+                name their single source. Mixup names the anchor (the first
+                chosen series, whose timestamps and extra columns are used)
+                and DBA the reference series; other blended series also
+                contribute values, so grouping CV folds by ``source_col``
+                does not prevent leakage for those two strategies. None
+                (default) adds no column.
 
         Returns:
             Frame containing generated series and, optionally, original rows.
@@ -157,6 +164,9 @@ class FitAndSimulate(BaseAugmenter):
     3. Fit generator parameters to match the series' statistical fingerprint
     4. Generate n_augment synthetic series that preserve these properties
     5. Return combined DataFrame with original and synthetic series
+
+    Series are processed in order of first appearance in the input, so
+    reordering the input rows changes seeded output.
 
     Synthetic series IDs follow the pattern ``"{original_id}_aug_{i}"``.
 
@@ -514,6 +524,12 @@ class Mixup(BaseAugmenter):
     series are excluded. When ``include_original=True``, the original
     rows and their missing values are retained unchanged.
 
+    Sources are indexed by sorted id, so seeded output does not depend on
+    the input row order. With ``source_col``, each mixup series names its
+    anchor, the first chosen source, whose window supplies the timestamps
+    and extra columns. The other blended sources also contribute values, so
+    grouping CV folds by ``source_col`` does not prevent leakage.
+
     Mixup IDs follow the pattern ``"mixup_{i}"``.
 
     Args:
@@ -722,6 +738,9 @@ class MovingBlockBootstrap(BaseAugmenter):
     Infinite values reject the call with the offending series ID; NaNs
     follow the interpolation/skip policy above.
 
+    Sources are processed in sorted id order, so seeded output does not
+    depend on the input row order.
+
     IDs follow the pattern ``"{original_id}_mbb_{i}"``.
 
     Args:
@@ -899,6 +918,11 @@ class DBA(BaseAugmenter):
     Reference scaling preserves zero scale for constant sources, producing
     constant copies. Sources with standard deviation below 1e-8 are listed
     in a warning because their copies may add little or no variation.
+
+    References are processed in sorted id order, so seeded output does not
+    depend on the input row order. With ``source_col``, each copy names its
+    reference series; its neighbors also contribute values, so grouping CV
+    folds by ``source_col`` does not prevent leakage.
 
     IDs follow the pattern ``"{original_id}_dba_{i}"``.
 

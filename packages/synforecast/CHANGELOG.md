@@ -6,8 +6,9 @@
 
 - `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: augmentation
   strategies as frozen specs with `apply()`, plus a module-level `analyze` in
-  `synforecast.augment`. `source_col` records provenance; `augment` and
-  `mixup` support extra columns.
+  `synforecast.augment`. `source_col` records provenance (for `Mixup`
+  the anchor series, for `DBA` the reference series; other blended series
+  still contribute values); `augment` and `mixup` support extra columns.
 
 ### Fixed
 

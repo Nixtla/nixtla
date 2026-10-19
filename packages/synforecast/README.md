@@ -90,8 +90,12 @@ from synforecast import FitAndSimulate
 augmented_train_df = FitAndSimulate(seed=42, n_augment=2).apply(train_df)
 ```
 
-Pass `source_col="source"` to `apply` to record which input series each row
-came from. `Mixup`, `MovingBlockBootstrap` and `DBA` follow the same pattern.
+`Mixup`, `MovingBlockBootstrap` and `DBA` follow the same pattern. Pass
+`source_col="source"` to `apply` to record which input series each row came
+from. For `Mixup` it names the anchor series (the first chosen, whose
+timestamps and extra columns are used) and for `DBA` the reference series;
+other blended series also contribute values, so grouping CV folds by
+`source_col` does not prevent leakage for those two strategies.
 `SynAugment(seed=42).augment(...)` remains as a thin facade over these specs;
 unlike `apply`, it advances its seed on every call, so repeated calls give fresh
 draws and a new instance with the same seed replays the same sequence.

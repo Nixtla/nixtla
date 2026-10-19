@@ -453,7 +453,7 @@ class SynAugment:
             df: Input DataFrame with time series (must have id_col, time_col,
                 target_col).
             n_series: Total number of synthetic series to create. Defaults to
-                the number of input series.
+                the number of usable input series.
             max_mix: Maximum number of source series combined per synthetic
                 series (default: 3).
             alpha: Concentration of the symmetric Dirichlet weight
@@ -463,7 +463,9 @@ class SynAugment:
             include_original: Prepend the original series to the output
                 (default: True).
             source_col: Name of an added column holding each row's source
-                series id; None (default) adds no column.
+                series id; None (default) adds no column. Mixup rows name the
+                anchor series only, though other blended series contribute
+                values, so grouping CV folds by it does not prevent leakage.
 
         Returns:
             DataFrame with the original series (optional) and synthetic mixup series. Mixup IDs follow the pattern ``"mixup_{i}"``.
@@ -544,7 +546,9 @@ class SynAugment:
                 to average raw values.
             include_original: Include unchanged original rows (default: True).
             source_col: Name of an added column holding each row's source
-                series id; None (default) adds no column.
+                series id; None (default) adds no column. DBA rows name the
+                reference series only, though its neighbors contribute
+                values, so grouping CV folds by it does not prevent leakage.
 
         Returns:
             Frame containing generated series and, optionally, original rows,
