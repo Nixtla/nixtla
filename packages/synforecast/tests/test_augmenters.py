@@ -316,3 +316,13 @@ def test_no_extra_columns_unchanged():
         "ds",
         "y",
     ]
+
+
+@pytest.mark.parametrize("to_polars", [True, False], ids=["pd->pl", "pl->pd"])
+def test_cross_engine_null_extra_column(aug, to_polars):
+    # "note" is entirely missing in series 0, so per-series inference would differ
+    d = src_x.assign(note=np.where(src_x["unique_id"].cat.codes == 0, None, "a"))
+    d, engine = (d, "polars") if to_polars else (pl.from_pandas(d), "pandas")
+    out = aug.apply(d, engine=engine, include_original=False, source_col="src")
+    assert isinstance(out, pl.DataFrame) == to_polars
+    assert out["src"].dtype == out["unique_id"].dtype

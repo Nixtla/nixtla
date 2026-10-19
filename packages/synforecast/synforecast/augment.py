@@ -230,6 +230,12 @@ class FitAndSimulate(BaseAugmenter):
         }
 
         partitions = _partition_series(df_nw, id_col, time_col)
+        # Slice the already converted frame so every copy shares one schema.
+        out_partitions = (
+            partitions
+            if engine is None
+            else _partition_series(output_original, id_col, time_col)
+        )
         unique_ids = df_nw[id_col].unique(maintain_order=True).to_list()
         reserved_ids = {str(series_id) for series_id in unique_ids}
         unknown = sorted(set(overrides) - {str(series_id) for series_id in unique_ids})
@@ -250,7 +256,7 @@ class FitAndSimulate(BaseAugmenter):
         for series_id in unique_ids:
             series_df = partitions[series_id]
             series_values = series_df.select(target_col).to_numpy().flatten()
-            output_sdf = _to_output_backend(series_df, engine)
+            output_sdf = out_partitions[series_id]
 
             # Determine which generator to use
             if str(series_id) in overrides:
@@ -579,8 +585,6 @@ class Mixup(BaseAugmenter):
             nw.from_native(df), id_col, time_col, target_col, source_col
         )
 
-        # Typed as Any to match FitAndSimulate: from_dict's backend accepts
-        # both a library name and an Implementation.
         out_engine: Any = engine if engine is not None else df_nw.implementation
         output_original = _to_output_backend(df_nw, engine)
 
@@ -592,6 +596,12 @@ class Mixup(BaseAugmenter):
         series: dict[Any, np.ndarray] = {}
         skipped: list[Any] = []
         partitions = _partition_series(df_nw, id_col, time_col)
+        # Slice the already converted frame so every copy shares one schema.
+        out_partitions = (
+            partitions
+            if engine is None
+            else _partition_series(output_original, id_col, time_col)
+        )
         for series_id in unique_ids:
             sdf = partitions[series_id]
             values = sdf.select(target_col).to_numpy().flatten().astype(float)
@@ -641,13 +651,13 @@ class Mixup(BaseAugmenter):
                 if anchor is None:
                     # Timestamps and extra columns come from the first
                     # chosen series' window.
-                    anchor = partitions[series_id][start : start + length]
+                    anchor = out_partitions[series_id][start : start + length]
                 mixed += w * _scale_window(window, self.scaling)
 
             synthetic_dfs.append(
                 nw.maybe_reset_index(
                     _copy_reference_frames(
-                        _to_output_backend(anchor, engine),
+                        anchor,
                         [mixup_id],
                         [mixed],
                         out_engine,
@@ -787,6 +797,12 @@ class MovingBlockBootstrap(BaseAugmenter):
         nonseasonal: list[Any] = []
 
         partitions = _partition_series(df_nw, id_col, time_col)
+        # Slice the already converted frame so every copy shares one schema.
+        out_partitions = (
+            partitions
+            if engine is None
+            else _partition_series(output_original, id_col, time_col)
+        )
         for series_id in unique_ids:
             sdf = partitions[series_id]
             raw_values = sdf.select(target_col).to_numpy().flatten().astype(float)
@@ -794,7 +810,7 @@ class MovingBlockBootstrap(BaseAugmenter):
             if values is None or len(values) < 4:
                 skipped.append(series_id)
                 continue
-            output_sdf = _to_output_backend(sdf, engine)
+            output_sdf = out_partitions[series_id]
             period = (
                 seasonal_period
                 if seasonal_period is not None
@@ -988,6 +1004,12 @@ class DBA(BaseAugmenter):
         skipped: list[Any] = []
         near_constant: list[Any] = []
         partitions = _partition_series(df_nw, id_col, time_col)
+        # Slice the already converted frame so every copy shares one schema.
+        out_partitions = (
+            partitions
+            if engine is None
+            else _partition_series(output_original, id_col, time_col)
+        )
         for series_id in unique_ids:
             sdf = partitions[series_id]
             raw_values = sdf.select(target_col).to_numpy().flatten().astype(float)
@@ -995,7 +1017,7 @@ class DBA(BaseAugmenter):
             if values is None:
                 skipped.append(series_id)
                 continue
-            output_sdf = _to_output_backend(sdf, engine)
+            output_sdf = out_partitions[series_id]
             mean = float(values.mean())
             std = float(values.std())
             if scale == "reference" and std < 1e-8:
