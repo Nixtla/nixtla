@@ -369,7 +369,7 @@ class SynAugment:
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
         """Analyze all series in DataFrame and return properties.
 
-        See :func:`synforecast.analyze`.
+        See :func:`synforecast.augment.analyze`.
 
         Args:
             df: DataFrame with time series data (must have id_col, time_col, target_col)

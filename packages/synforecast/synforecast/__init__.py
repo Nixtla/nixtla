@@ -19,7 +19,6 @@ from synforecast.augment import (
     FitAndSimulate,
     Mixup,
     MovingBlockBootstrap,
-    analyze,
 )
 from synforecast.base import BaseGenerator
 from synforecast.dataset import SynAugment, SynSet
@@ -51,7 +50,6 @@ __all__ = [
     "Multivariatizer",
     "SynAugment",
     "SynSet",
-    "analyze",
     "balanced_pool",
     "compare_feature_coverage",
     "compute_features",

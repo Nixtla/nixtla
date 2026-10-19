@@ -13,7 +13,6 @@ from synforecast import (
     Mixup,
     MovingBlockBootstrap,
     SynAugment,
-    analyze,
     augment,
     generate_series,
 )
@@ -138,7 +137,7 @@ def test_facade_matches_spec(method, kwargs, spec):
 
 
 def test_facade_analyze_and_single_series_match():
-    a, b = SynAugment(seed=1).analyze(src), analyze(src)
+    a, b = SynAugment(seed=1).analyze(src), augment.analyze(src)
     assert a.keys() == b.keys()
     for k in a:  # values may hold arrays
         assert repr(a[k]) == repr(b[k])

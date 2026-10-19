@@ -4,10 +4,10 @@
 
 ### Added
 
-- `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap`, `DBA` and `analyze` in
-  `synforecast.augment`: augmentation strategies as frozen specs with
-  `apply()`. `source_col` records provenance; `augment` and `mixup` support
-  extra columns.
+- `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: augmentation
+  strategies as frozen specs with `apply()`, plus a module-level `analyze` in
+  `synforecast.augment`. `source_col` records provenance; `augment` and
+  `mixup` support extra columns.
 
 ### Fixed
 
