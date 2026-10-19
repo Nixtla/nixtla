@@ -1,5 +1,6 @@
 """Tests for the augmentation specs and the SynAugment facade over them."""
 
+import pandas as pd
 import polars as pl
 import pytest
 from pandas.testing import assert_frame_equal
@@ -153,3 +154,34 @@ def test_facade_repeat_calls_identical():
         to_pandas(s.mbb(src, n_augment=2)), to_pandas(s.mbb(src, n_augment=2))
     )
     assert not hasattr(s, "rng")
+
+
+def _sorted(df):
+    return (
+        to_pandas(df)
+        .astype({"unique_id": str})
+        .sort_values(["unique_id", "ds"])
+        .reset_index(drop=True)
+    )
+
+
+def test_fit_simulate_polars_deterministic():
+    panel = pl.from_pandas(
+        to_pandas(
+            generate_series(n_series=50, min_length=40, max_length=40, seed=2)
+        ).astype({"unique_id": str})
+    )
+    assert_frame_equal(
+        _sorted(FitAndSimulate(seed=1).apply(panel)),
+        _sorted(FitAndSimulate(seed=1).apply(panel)),
+    )
+
+
+def test_aug_ids_never_collide():
+    a = to_pandas(
+        generate_series(n_series=1, min_length=30, max_length=30, seed=1)
+    ).astype({"unique_id": str})
+    d = pd.concat([a.assign(unique_id="A"), a.assign(unique_id="A_aug_0")])
+    out = to_pandas(FitAndSimulate(seed=1).apply(d))
+    assert not out.duplicated(["unique_id", "ds"]).any()
+    assert out["unique_id"].astype(str).nunique() == 4

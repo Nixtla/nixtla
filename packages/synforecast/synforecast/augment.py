@@ -224,7 +224,8 @@ class FitAndSimulate(BaseAugmenter):
         }
 
         partitions = _partition_series(df_nw, id_col, time_col)
-        unique_ids = df_nw[id_col].unique().to_list()
+        unique_ids = df_nw[id_col].unique(maintain_order=True).to_list()
+        reserved_ids = {str(series_id) for series_id in unique_ids}
         unknown = sorted(set(overrides) - {str(series_id) for series_id in unique_ids})
         if unknown:
             logger.warning(
@@ -269,10 +270,13 @@ class FitAndSimulate(BaseAugmenter):
                 columns=(id_col, time_col, target_col),
             )
             for i, synthetic_values in enumerate(synthetic):
+                generated_id = _reserve_generated_id(
+                    f"{series_id}_aug_{i}", reserved_ids
+                )
                 all_dfs.append(
                     nw.DataFrame.from_dict(
                         {
-                            id_col: [f"{series_id}_aug_{i}"] * len(series_values),
+                            id_col: [generated_id] * len(series_values),
                             time_col: timestamps,
                             target_col: synthetic_values,
                         },
