@@ -9,6 +9,7 @@ output.
 import functools
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
 import narwhals.stable.v2 as nw
@@ -214,30 +215,22 @@ class FitAndSimulate(BaseAugmenter):
             RuntimeError: If a fitted generator fails for a series and
                 on_error='raise' (the default)
         """
-        eff = self.seed if seed is None else seed
-        rng = np.random.default_rng(eff)
-
-        df_nw = _with_source(
-            nw.from_native(df), id_col, time_col, target_col, source_col
+        run = _Run.start(
+            df,
+            self.seed if seed is None else seed,
+            engine,
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         )
-
-        # Synthetic frames must match the input's dataframe library, or the
-        # final concat would mix backends. An explicit engine wins.
-        out_engine = engine if engine is not None else df_nw.implementation
-        output_original = _to_output_backend(df_nw, engine)
+        partitions = run.partitions
 
         overrides = {
             str(key): name for key, name in (self.generator_override or {}).items()
         }
 
-        partitions = _partition_series(df_nw, id_col, time_col)
-        # Slice the already converted frame so every copy shares one schema.
-        out_partitions = (
-            partitions
-            if engine is None
-            else _partition_series(output_original, id_col, time_col, reset=True)
-        )
-        unique_ids = df_nw[id_col].unique(maintain_order=True).to_list()
+        unique_ids = run.df[id_col].unique(maintain_order=True).to_list()
         reserved_ids = {str(series_id) for series_id in unique_ids}
         unknown = sorted(set(overrides) - {str(series_id) for series_id in unique_ids})
         if unknown:
@@ -247,8 +240,7 @@ class FitAndSimulate(BaseAugmenter):
             )
         analysis = _analyze_partitions(partitions, unique_ids, target_col)
 
-        # Collect all series (original + augmented)
-        all_dfs = [output_original] if include_original else []
+        synthetic_dfs: list[nw.DataFrame] = []
 
         # (series_id, generator_name, error) for every AR(1) substitution
         # made under on_error='ar1', reported once after the loop.
@@ -257,7 +249,7 @@ class FitAndSimulate(BaseAugmenter):
         for series_id in unique_ids:
             series_df = partitions[series_id]
             series_values = series_df.select(target_col).to_numpy().flatten()
-            output_sdf = out_partitions[series_id]
+            output_sdf = run.out_partitions[series_id]
 
             # Determine which generator to use
             if str(series_id) in overrides:
@@ -277,8 +269,8 @@ class FitAndSimulate(BaseAugmenter):
                 series_values=series_values,
                 generator_name=generator_name,
                 fitted_params=fitted_params,
-                rng=rng,
-                seeded=eff is not None,
+                rng=run.rng,
+                seeded=run.seed is not None,
                 fallbacks=fallbacks,
                 columns=(id_col, time_col, target_col),
             )
@@ -286,13 +278,13 @@ class FitAndSimulate(BaseAugmenter):
                 generated_id = _reserve_generated_id(
                     f"{series_id}_aug_{i}", reserved_ids
                 )
-                all_dfs.append(
+                synthetic_dfs.append(
                     nw.maybe_reset_index(
                         _copy_reference_frames(
                             output_sdf,
                             [generated_id],
                             [synthetic_values],
-                            out_engine,
+                            run.out_engine,
                             id_col,
                             target_col,
                         )
@@ -300,18 +292,7 @@ class FitAndSimulate(BaseAugmenter):
                 )
 
         _warn_fallbacks(fallbacks, len(unique_ids) * self.n_augment)
-
-        # Normalize concat-sensitive dtypes across backends. In particular,
-        # pandas datetimes commonly convert to Polars at microsecond precision
-        # while NumPy timestamps retain nanosecond precision.
-        return _concat_frames(
-            all_dfs,
-            output_original.schema[time_col],
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        ).to_native()
+        return run.finish(synthetic_dfs, include_original)
 
     def apply_series(
         self,
@@ -579,32 +560,26 @@ class Mixup(BaseAugmenter):
             ValueError: If the DataFrame is missing required columns, or if
                 it holds no usable series.
         """
-        eff = self.seed if seed is None else seed
-        rng = np.random.default_rng(eff)
-
-        df_nw = _with_source(
-            nw.from_native(df), id_col, time_col, target_col, source_col
+        run = _Run.start(
+            df,
+            self.seed if seed is None else seed,
+            engine,
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         )
-
-        out_engine: Any = engine if engine is not None else df_nw.implementation
-        output_original = _to_output_backend(df_nw, engine)
+        rng = run.rng
 
         # Sort ids so series selection is reproducible: some backends do not
         # guarantee an order from unique().
-        unique_ids = sorted(df_nw[id_col].unique().to_list())
+        unique_ids = sorted(run.df[id_col].unique().to_list())
 
         # Cache each series' values, sorted by time.
         series: dict[Any, np.ndarray] = {}
         skipped: list[Any] = []
-        partitions = _partition_series(df_nw, id_col, time_col)
-        # Slice the already converted frame so every copy shares one schema.
-        out_partitions = (
-            partitions
-            if engine is None
-            else _partition_series(output_original, id_col, time_col, reset=True)
-        )
         for series_id in unique_ids:
-            sdf = partitions[series_id]
+            sdf = run.partitions[series_id]
             values = sdf.select(target_col).to_numpy().flatten().astype(float)
             if (
                 len(values) >= 1
@@ -652,7 +627,7 @@ class Mixup(BaseAugmenter):
                 if anchor is None:
                     # Timestamps and extra columns come from the first
                     # chosen series' window.
-                    anchor = out_partitions[series_id][start : start + length]
+                    anchor = run.out_partitions[series_id][start : start + length]
                 mixed += w * _scale_window(window, self.scaling)
 
             synthetic_dfs.append(
@@ -661,25 +636,14 @@ class Mixup(BaseAugmenter):
                         anchor,
                         [mixup_id],
                         [mixed],
-                        out_engine,
+                        run.out_engine,
                         id_col,
                         target_col,
                     )
                 )
             )
 
-        frames = [output_original] if include_original else []
-        frames.extend(synthetic_dfs)
-        # Normalize id (mixup ids are strings) and target (mixed is float) so
-        # the frames concatenate across the original and synthetic batches.
-        return _concat_frames(
-            frames,
-            output_original.schema[time_col],
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        ).to_native()
+        return run.finish(synthetic_dfs, include_original)
 
 
 class MovingBlockBootstrap(BaseAugmenter):
@@ -779,17 +743,20 @@ class MovingBlockBootstrap(BaseAugmenter):
             ValueError: For missing required columns, infinite target values,
                 or no usable source series.
         """
-        eff = self.seed if seed is None else seed
-        rng = np.random.default_rng(eff)
+        run = _Run.start(
+            df,
+            self.seed if seed is None else seed,
+            engine,
+            id_col,
+            time_col,
+            target_col,
+            source_col,
+        )
+        rng = run.rng
         n_augment = self.n_augment
         seasonal_period = self.seasonal_period
 
-        df_nw = _with_source(
-            nw.from_native(df), id_col, time_col, target_col, source_col
-        )
-        out_engine: Any = engine if engine is not None else df_nw.implementation
-        output_original = _to_output_backend(df_nw, engine)
-        unique_ids = sorted(df_nw[id_col].unique().to_list())
+        unique_ids = sorted(run.df[id_col].unique().to_list())
         if not unique_ids:
             raise ValueError("mbb requires at least 1 series")
         reserved_ids = {str(series_id) for series_id in unique_ids}
@@ -797,21 +764,14 @@ class MovingBlockBootstrap(BaseAugmenter):
         skipped: list[Any] = []
         nonseasonal: list[Any] = []
 
-        partitions = _partition_series(df_nw, id_col, time_col)
-        # Slice the already converted frame so every copy shares one schema.
-        out_partitions = (
-            partitions
-            if engine is None
-            else _partition_series(output_original, id_col, time_col, reset=True)
-        )
         for series_id in unique_ids:
-            sdf = partitions[series_id]
+            sdf = run.partitions[series_id]
             raw_values = sdf.select(target_col).to_numpy().flatten().astype(float)
             values = _interpolate_missing(raw_values, series_id=series_id)
             if values is None or len(values) < 4:
                 skipped.append(series_id)
                 continue
-            output_sdf = out_partitions[series_id]
+            output_sdf = run.out_partitions[series_id]
             period = (
                 seasonal_period
                 if seasonal_period is not None
@@ -838,7 +798,7 @@ class MovingBlockBootstrap(BaseAugmenter):
                     output_sdf,
                     generated_ids,
                     generated_copies,
-                    out_engine,
+                    run.out_engine,
                     id_col,
                     target_col,
                 )
@@ -857,17 +817,7 @@ class MovingBlockBootstrap(BaseAugmenter):
             raise ValueError(
                 "mbb requires at least 1 usable series (finite values, >= 4 rows)"
             )
-
-        frames = [output_original] if include_original else []
-        frames.extend(synthetic_dfs)
-        return _concat_frames(
-            frames,
-            output_original.schema[time_col],
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        ).to_native()
+        return run.finish(synthetic_dfs, include_original)
 
 
 class DBA(BaseAugmenter):
@@ -986,39 +936,35 @@ class DBA(BaseAugmenter):
                 excessive alignment/output storage, or fewer than two usable
                 source series.
         """
-        eff = self.seed if seed is None else seed
-        rng = np.random.default_rng(eff)
+        run = _Run.start(
+            df,
+            self.seed if seed is None else seed,
+            engine,
+            id_col,
+            time_col,
+            target_col,
+            source_col,
+        )
+        rng = run.rng
         n_augment = self.n_augment
         scale = self.scale
         window_fraction = self.window_fraction
 
-        df_nw = _with_source(
-            nw.from_native(df), id_col, time_col, target_col, source_col
-        )
-        out_engine: Any = engine if engine is not None else df_nw.implementation
-        output_original = _to_output_backend(df_nw, engine)
-        unique_ids = sorted(df_nw[id_col].unique().to_list())
+        unique_ids = sorted(run.df[id_col].unique().to_list())
         reserved_ids = {str(series_id) for series_id in unique_ids}
         series: dict[Any, tuple[np.ndarray, nw.DataFrame]] = {}
         aligned: dict[Any, np.ndarray] = {}
         moments: dict[Any, tuple[float, float]] = {}
         skipped: list[Any] = []
         near_constant: list[Any] = []
-        partitions = _partition_series(df_nw, id_col, time_col)
-        # Slice the already converted frame so every copy shares one schema.
-        out_partitions = (
-            partitions
-            if engine is None
-            else _partition_series(output_original, id_col, time_col, reset=True)
-        )
         for series_id in unique_ids:
-            sdf = partitions[series_id]
+            sdf = run.partitions[series_id]
             raw_values = sdf.select(target_col).to_numpy().flatten().astype(float)
             values = _interpolate_missing(raw_values, series_id=series_id)
             if values is None:
                 skipped.append(series_id)
                 continue
-            output_sdf = out_partitions[series_id]
+            output_sdf = run.out_partitions[series_id]
             mean = float(values.mean())
             std = float(values.std())
             if scale == "reference" and std < 1e-8:
@@ -1103,22 +1049,13 @@ class DBA(BaseAugmenter):
                     series[reference_id][1],
                     generated_ids,
                     copies,
-                    out_engine,
+                    run.out_engine,
                     id_col,
                     target_col,
                 )
             )
 
-        frames = [output_original] if include_original else []
-        frames.extend(synthetic_dfs)
-        return _concat_frames(
-            frames,
-            output_original.schema[time_col],
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        ).to_native()
+        return run.finish(synthetic_dfs, include_original)
 
 
 def analyze(
@@ -1221,6 +1158,74 @@ def _with_source(
             "target_col or an existing input column"
         )
     return df.with_columns(nw.col(id_col).cast(nw.String()).alias(source_col))
+
+
+@dataclass(frozen=True)
+class _Run:
+    """Per-call state shared by every strategy's ``apply``."""
+
+    seed: int | None
+    rng: np.random.Generator
+    df: nw.DataFrame
+    out_engine: Any
+    original: nw.DataFrame
+    partitions: dict[Any, nw.DataFrame]
+    out_partitions: dict[Any, nw.DataFrame]
+    columns: tuple[str, str, str, str | None]
+
+    @classmethod
+    def start(
+        cls,
+        df: IntoFrameT,
+        seed: int | None,
+        engine: str | None,
+        id_col: str,
+        time_col: str,
+        target_col: str,
+        source_col: str | None,
+    ) -> "_Run":
+        """Seed the stream, validate ``df``, and partition it per series."""
+        df_nw = _with_source(
+            nw.from_native(df), id_col, time_col, target_col, source_col
+        )
+        # Synthetic frames must match the input's dataframe library, or the
+        # final concat would mix backends. An explicit engine wins.
+        original = _to_output_backend(df_nw, engine)
+        partitions = _partition_series(df_nw, id_col, time_col)
+        return cls(
+            seed=seed,
+            rng=np.random.default_rng(seed),
+            df=df_nw,
+            out_engine=engine if engine is not None else df_nw.implementation,
+            original=original,
+            partitions=partitions,
+            # Slice the already converted frame so every copy shares one schema.
+            out_partitions=(
+                partitions
+                if engine is None
+                else _partition_series(original, id_col, time_col, reset=True)
+            ),
+            columns=(id_col, time_col, target_col, source_col),
+        )
+
+    def finish(
+        self, synthetic: list[nw.DataFrame], include_original: bool
+    ) -> IntoFrameT:
+        """Concatenate the originals (optionally) and synthetic frames."""
+        id_col, time_col, target_col, source_col = self.columns
+        frames = [self.original] if include_original else []
+        frames.extend(synthetic)
+        # Normalize concat-sensitive dtypes across backends. In particular,
+        # pandas datetimes commonly convert to Polars at microsecond precision
+        # while NumPy timestamps retain nanosecond precision.
+        return _concat_frames(
+            frames,
+            self.original.schema[time_col],
+            id_col,
+            time_col,
+            target_col,
+            source_col,
+        ).to_native()
 
 
 def _to_output_backend(frame: nw.DataFrame, engine: Any) -> nw.DataFrame:
