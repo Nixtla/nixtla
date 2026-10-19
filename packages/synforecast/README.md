@@ -80,32 +80,25 @@ for the complete API.
 ## Augment observed series
 
 `FitAndSimulate` analyzes each input series, fits a suitable generator, and
-adds synthetic series with matching timestamps and statistical characteristics.
-Each strategy is a frozen spec; the same spec and seed always give the same
-output, and extra columns are carried through:
+adds synthetic series with matching timestamps and statistical characteristics:
 
 ```python
-from synforecast import FitAndSimulate
+from synforecast import FitAndSimulate, SynAugment
 
 augmented_train_df = FitAndSimulate(seed=42, n_augment=2).apply(train_df)
 ```
 
-`Mixup`, `MovingBlockBootstrap` and `DBA` follow the same pattern. Pass
-`source_col="source"` to `apply` to record which input series each row came
-from. For `Mixup` it names the anchor series (the first chosen, whose
-timestamps and extra columns are used) and for `DBA` the reference series;
-other blended series also contribute values, so grouping CV folds by
-`source_col` does not prevent leakage for those two strategies.
-`SynAugment(seed=42).augment(...)` remains as a thin facade over these specs;
-unlike `apply`, it advances its seed on every call, so repeated calls give fresh
-draws and a new instance with the same seed replays the same sequence.
+`Mixup`, `MovingBlockBootstrap` and `DBA` are specs of the same shape: `apply`
+returns identical output for the same spec, data and seed, and carries extra
+columns through. `apply(df, source_col="source")` names each row's input
+series; for `Mixup` (the anchor) and `DBA` (the reference) other series also
+contribute values, so grouping CV folds by it does not prevent leakage. The
+`SynAugment` facade below advances its seed on every call instead.
 
 For non-parametric augmentation, bootstrap local remainder blocks or construct
 panel-aware DTW barycenters:
 
 ```python
-from synforecast import SynAugment
-
 augmenter = SynAugment(seed=42)
 mbb_train_df = augmenter.mbb(
     train_df,

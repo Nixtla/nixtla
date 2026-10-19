@@ -2,35 +2,20 @@
 
 ## Unreleased
 
-### Added
-
-- `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: augmentation
-  strategies as frozen specs with `apply()`, plus a module-level `analyze` in
-  `synforecast.augment`. `source_col` records provenance (for `Mixup`
-  the anchor series, for `DBA` the reference series; other blended series
-  still contribute values); `augment` and `mixup` support extra columns.
-
-### Fixed
-
-- `augment` is reproducible on polars input, `_aug_` ids no longer collide
-  with existing ids, and unknown `generator_override` keys warn.
-
-### Changed
-
-- A spec's `apply` is reproducible per call: the same spec, data and seed
-  return identical output, and specs are frozen. The `SynAugment` facade
-  still advances its seed on every call, so a fresh instance with the same
-  seed reproduces the same sequence of outputs.
-- Invalid strategy arguments raise pydantic `ValidationError` (a `ValueError`)
-  when the spec is built (for `SynAugment`, still at the method call);
-  numeric fields reject bools and strings such as `"3"`. An
-  unknown generator name and bad `scaling`/`scale` values get pydantic's
-  message, augmentation warnings log from `synforecast.augment`, and the AR(1)
-  summary no longer starts with `SynAugment`.
-
-### Removed
-
-- `SynAugment.rng`.
+- Added `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: frozen
+  augmentation specs whose `apply()` returns identical output for the same
+  spec, data and seed, plus `analyze` in `synforecast.augment`. `source_col`
+  records provenance (`Mixup`: anchor, `DBA`: reference; other blended series
+  still contribute values); `augment` and `mixup` keep extra columns.
+- Changed: the `SynAugment` facade advances its seed per call (a fresh
+  instance replays the sequence). Invalid arguments raise pydantic
+  `ValidationError` (a `ValueError`, with pydantic's messages, including
+  bounds and unknown generator names) when a spec is built; numeric fields
+  reject bools and strings. Warnings log from `synforecast.augment`, and the
+  AR(1) summary no longer starts with `SynAugment`.
+- Fixed: `augment` is reproducible on polars input, `_aug_` ids no longer
+  collide with existing ids, and unknown `generator_override` keys warn.
+- Removed `SynAugment.rng`.
 
 ## 0.2.0 - 2026-10-12
 

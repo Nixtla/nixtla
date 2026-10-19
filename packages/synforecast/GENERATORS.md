@@ -52,19 +52,11 @@ below states how far that verification reaches:
 | Procedural (4) | TSI, TCM, KernelSynth (published Chronos recipe), MAR (GRATIS recipe) |
 
 Augmentation strategies are frozen specs (`FitAndSimulate`, `Mixup`,
-`MovingBlockBootstrap`, `DBA`) with a `seed` field and an `apply(df, ...)`
-method, for example `Mixup(seed=0, n_series=4).apply(df)`. Calls with the same
-spec and seed return identical output, non-target columns are carried through,
-and `apply(df, source_col="source")` adds a column naming the input series each
-row derives from. For `Mixup` that is the anchor series (the first chosen,
-whose timestamps and extra columns are used) and for `DBA` the reference
-series; other blended series also contribute values, so grouping CV folds by
-`source_col` does not prevent leakage for those two. `SynAugment` is a facade
-with the same methods; it advances its seed on every call, so repeated calls
-give fresh draws and a new instance with the same seed replays the same
-sequence. The note below applies to both.
+`MovingBlockBootstrap`, `DBA`) run with `apply(df, ...)`; `SynAugment` is a
+facade over them. See the [README](README.md#augment-observed-series) for seed
+semantics, extra columns and `source_col`. The note below applies to both.
 
-A note on fit-and-simulate: fit-and-simulate outputs match the source series' mean,
+A note on fit-and-simulate: outputs match the source series' mean,
 standard deviation, and lag-1 autocorrelation **by construction** through a
 rescaling step, so those matches are a property of that method, never evidence
 of fit quality. `mbb` and `dba` deliberately bypass this moment-pinning path:
