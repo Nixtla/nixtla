@@ -5,14 +5,17 @@
 - **Optional moment matching** — augmented series are pinned to the source mean,
   std, and lag-1 ACF by construction; add `match_moments=False` and test whether
   unpinned should be the default. Highest priority here.
-- **Strategy selection** — fit-and-simulate, `mixup`, `mbb`, and `dba` now ship
-  as separate methods; add a unified `SynAugment(strategy=...)` switch spanning
-  them and the jitter/scale/warp baselines.
+- **Strategy selection** — ~~unified API~~ done: fit-and-simulate, mixup, MBB
+  and DBA ship as frozen specs with `apply()`. Still open: the jitter/scale/warp
+  baselines.
 - **Wider fitter coverage** — 9 fitters against 32 generators, so only a third of
   the library is reachable; add ETS, StateSpace, INAR, multi-period seasonal.
 - **Panel-aware augmentation** — augment jointly to preserve cross-series
   correlation instead of series-by-series.
-- **Exogenous passthrough** — carry `X` columns through augmentation.
+- ~~**Exogenous passthrough**~~ — done: extra columns are carried through
+  augmentation.
+- **X-conditioned fit-and-simulate** — simulate the target driven by given
+  exogenous inputs.
 - **Fit diagnostics** — return ranked candidates with fit scores so a poor
   best-fit is visible rather than silent.
 - **Rust batch path** — route fitted-generator simulation through it so

@@ -8,6 +8,29 @@ description: Dataset composition and augmentation
       members:
         - generate
 
+::: synforecast.augment.FitAndSimulate
+    options:
+      members:
+        - apply
+        - apply_series
+
+::: synforecast.augment.Mixup
+    options:
+      members:
+        - apply
+
+::: synforecast.augment.MovingBlockBootstrap
+    options:
+      members:
+        - apply
+
+::: synforecast.augment.DBA
+    options:
+      members:
+        - apply
+
+::: synforecast.augment.analyze
+
 ::: synforecast.dataset.SynAugment
     options:
       members:

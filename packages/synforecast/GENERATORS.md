@@ -51,7 +51,15 @@ below states how far that verification reaches:
 | Simulator (5) | IoTSensor, EnergyLoad, DailyActiveUsers, VitalSigns, Clickstream |
 | Procedural (4) | TSI, TCM, KernelSynth (published Chronos recipe), MAR (GRATIS recipe) |
 
-A note on `SynAugment`: fit-and-simulate outputs match the source series' mean,
+Augmentation strategies are frozen specs (`FitAndSimulate`, `Mixup`,
+`MovingBlockBootstrap`, `DBA`) with a `seed` field and an `apply(df, ...)`
+method, for example `Mixup(seed=0, n_series=4).apply(df)`. Calls with the same
+spec and seed return identical output, non-target columns are carried through,
+and `apply(df, source_col="source")` adds a column naming the input series each
+row derives from. `SynAugment` is a facade with the same methods. The note
+below applies to both.
+
+A note on fit-and-simulate: fit-and-simulate outputs match the source series' mean,
 standard deviation, and lag-1 autocorrelation **by construction** through a
 rescaling step, so those matches are a property of that method, never evidence
 of fit quality. `mbb` and `dba` deliberately bypass this moment-pinning path:
@@ -63,9 +71,9 @@ Distribution shape and higher-order dependence are not guaranteed.
 
 ## Non-parametric Augmentation Methods
 
-### SynAugment.mbb
+### MovingBlockBootstrap
 
-`mbb` applies a moving block bootstrap to a classical-decomposition remainder,
+`MovingBlockBootstrap` (`SynAugment.mbb`) applies a moving block bootstrap to a classical-decomposition remainder,
 then restores the source trend and seasonal components. It follows Bergmeir,
 Hyndman, and Benitez (2016,
 [doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002))
@@ -77,14 +85,11 @@ reconstructed source components already anchor each generated series and
 re-pinning would distort bootstrap-remainder variability.
 
 ```python
-from synforecast import SynAugment
+from synforecast import MovingBlockBootstrap
 
-augmented = SynAugment(seed=42).mbb(
-    train_df,
-    n_augment=2,
-    seasonal_period=24,
-    block_size=12,
-)
+augmented = MovingBlockBootstrap(
+    seed=42, n_augment=2, seasonal_period=24, block_size=12
+).apply(train_df)
 ```
 
 | Parameter | Default | Description |
@@ -104,9 +109,9 @@ decomposition and are listed in a warning.
 The moving-average trend takes linear time, and decomposition is reused across
 all requested copies of a source.
 
-### SynAugment.dba
+### DBA
 
-`dba` uses panel-wide DTW nearest neighbours and weighted DTW barycenter
+`DBA` (`SynAugment.dba`) uses panel-wide DTW nearest neighbours and weighted DTW barycenter
 averaging, based on Petitjean, Ketterlin, and Gancarski (2011,
 [doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)),
 Forestier et al. (2017,
@@ -119,14 +124,16 @@ barycenter back to the reference scale, while `scale="none"` averages raw
 values.
 
 ```python
-augmented = SynAugment(seed=42).dba(
-    train_df,
+from synforecast import DBA
+
+augmented = DBA(
+    seed=42,
     n_augment=2,
     n_neighbors=3,
     n_iterations=5,
     window_fraction=0.1,
     scale="reference",
-)
+).apply(train_df)
 ```
 
 | Parameter | Default | Description |

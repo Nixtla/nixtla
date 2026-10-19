@@ -3,9 +3,9 @@ title: "Non-parametric augmentation"
 description: "Augment observed panels with moving-block bootstrap or DTW barycenters."
 ---
 
-`SynAugment.mbb` and `SynAugment.dba` transform observed series directly. They
+`MovingBlockBootstrap` and `DBA` (also `SynAugment.mbb` and `SynAugment.dba`) transform observed series directly. They
 do not fit a parametric generator and deliberately bypass the mean, standard
-deviation, and lag-1 autocorrelation pinning used by `SynAugment.augment`.
+deviation, and lag-1 autocorrelation pinning used by `FitAndSimulate`.
 
 Use only training observations as input. Augmenting from validation or test
 values leaks future information into model training.
@@ -84,7 +84,7 @@ Both methods:
 - copy all non-target columns from the source/reference series unchanged;
 - generate collision-safe string IDs such as `store_1_mbb_0` or
   `store_1_dba_0`;
-- are deterministic for a fixed `SynAugment` seed; and
+- are deterministic for a fixed spec seed; and
 - run decomposition, block sampling, DTW, and barycenter updates in native Rust.
 
 `include_original=False` returns only synthetic rows. Always compare augmented

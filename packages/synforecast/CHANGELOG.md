@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap`, `DBA` and `analyze` in
+  `synforecast.augment`: augmentation strategies as frozen specs with
+  `apply()`. `source_col` records provenance; `augment` and `mixup` support
+  extra columns.
+
+### Fixed
+
+- `augment` is reproducible on polars input, `_aug_` ids no longer collide
+  with existing ids, and unknown `generator_override` keys warn.
+
+### Changed
+
+- Repeated `SynAugment` calls with the same seed return identical output;
+  specs are frozen.
+- Invalid strategy arguments raise pydantic `ValidationError` (a `ValueError`)
+  when the spec is built (for `SynAugment`, still at the method call). An
+  unknown generator name and bad `scaling`/`scale` values get pydantic's
+  message, augmentation warnings log from `synforecast.augment`, and the AR(1)
+  summary no longer starts with `SynAugment`.
+
+### Removed
+
+- `SynAugment.rng`.
+
 ## 0.2.0 - 2026-10-12
 
 ### Added
