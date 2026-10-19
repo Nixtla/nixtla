@@ -1,10 +1,13 @@
+import pickle
 import random
 import numpy as np
 
 import pytest
+from sklearn.base import clone
 from datasetsforecast.m4 import M4, M4Info
 
-from mlforecast.lag_transforms import SeasonalRollingMean
+from mlforecast import MLForecast
+from mlforecast.lag_transforms import RollingMean, SeasonalRollingMean
 from mlforecast.lgb_cv import LightGBMCV
 from mlforecast.target_transforms import Differences
 from mlforecast.utils import generate_daily_series, generate_prices_for_series
@@ -189,3 +192,104 @@ def test_lightgbmcv_num_threads_minus_one():
     assert lgb_cv_single.best_iteration_ is not None
     # With same seed, best_iteration should be the same
     assert lgb_cv_multi.best_iteration_ == lgb_cv_single.best_iteration_
+
+
+def _categories(bst, col):
+    return bst.dump_model()["feature_infos"][col]["values"]
+
+
+def test_lightgbmcv_categorical_feature(tmp_path):
+    series = generate_daily_series(
+        5,
+        min_length=50,
+        max_length=100,
+        equal_ends=True,
+        n_static_features=1,
+        static_as_categorical=True,
+    )
+    fit_kwargs = dict(n_windows=2, h=7, params={"verbosity": -1}, verbose_eval=False)
+
+    cv = LightGBMCV(freq="D", lags=[7], date_features=["dayofweek"])
+    cv.fit(series, **fit_kwargs)
+    for bst in cv.cv_models_.values():
+        assert _categories(bst, "dayofweek") == []
+        assert _categories(bst, "static_0") != []
+
+    # a list replaces the detection of pandas categoricals
+    cv.fit(series, **fit_kwargs, categorical_feature=["dayofweek"])
+    for bst in cv.cv_models_.values():
+        assert _categories(bst, "dayofweek") != []
+        assert _categories(bst, "static_0") == []
+    assert cv.predict(7).shape[0] == 5 * 7
+
+    fcst = MLForecast.from_cv(cv)
+    model = fcst.models["LGBMRegressor"]
+    assert "categorical_feature" not in model.get_params()
+    assert model.categorical_feature is not cv.categorical_feature
+    assert clone(model).categorical_feature == ["dayofweek"]
+    fcst.fit(series)
+    assert _categories(fcst.models_["LGBMRegressor"].booster_, "dayofweek") != []
+    assert fcst.models_["LGBMRegressor"].n_estimators == cv.best_iteration_
+    fcst = pickle.loads(pickle.dumps(fcst))
+    assert fcst.predict(7).shape[0] == 5 * 7
+    fcst.save(tmp_path)
+    fcst = MLForecast.load(tmp_path)
+    fcst.fit(series)
+    assert _categories(fcst.models_["LGBMRegressor"].booster_, "dayofweek") != []
+    fcst.fit(
+        series, models_fit_kwargs={"LGBMRegressor": {"categorical_feature": "auto"}}
+    )
+    assert _categories(fcst.models_["LGBMRegressor"].booster_, "dayofweek") == []
+
+    # CV objects pickled before categorical_feature existed
+    old_cv = pickle.loads(pickle.dumps(cv))
+    del old_cv.categorical_feature
+    old_model = MLForecast.from_cv(old_cv).models["LGBMRegressor"]
+    assert old_model.categorical_feature is None
+
+    with pytest.raises(TypeError, match="unknown name"):
+        cv.fit(series, **fit_kwargs, categorical_feature=["not_a_feature"])
+    for categorical_feature in ["auto", "dayofweek", [0]]:
+        with pytest.raises(TypeError, match="feature names"):
+            cv.fit(series, **fit_kwargs, categorical_feature=categorical_feature)
+    for alias in ["categorical_feature", "cat_feature"]:
+        params = {"verbosity": -1, alias: ["dayofweek"]}
+        with pytest.warns(UserWarning, match=alias):
+            cv.fit(series, **{**fit_kwargs, "params": params})
+        assert alias in params
+        assert alias not in cv.params
+        fcst = MLForecast.from_cv(cv).fit(series)
+        assert _categories(fcst.models_["LGBMRegressor"].booster_, "dayofweek") == []
+
+
+def test_lightgbmcv_trains_on_features_order():
+    series = generate_daily_series(
+        5,
+        min_length=50,
+        max_length=100,
+        equal_ends=True,
+        n_static_features=1,
+        static_as_categorical=True,
+    )
+    static_features = ["unique_id", "static_0"]
+    cv = LightGBMCV(
+        freq="D", lags=[7], lag_transforms={7: [RollingMean(7, groupby=["static_0"])]}
+    )
+    cv.fit(
+        series,
+        n_windows=2,
+        h=7,
+        params={"verbosity": -1},
+        verbose_eval=False,
+        static_features=static_features,
+        categorical_feature=["unique_id"],
+    )
+    assert cv.ts.features_order_[0] == "unique_id"
+    for bst in cv.cv_models_.values():
+        assert bst.feature_name() == cv.ts.features_order_
+        assert _categories(bst, "unique_id") != []
+    fcst = MLForecast.from_cv(cv)
+    fcst.fit(series, static_features=static_features)
+    booster = fcst.models_["LGBMRegressor"].booster_
+    assert booster.feature_name() == cv.ts.features_order_
+    assert _categories(booster, "unique_id") != []

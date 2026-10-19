@@ -2776,7 +2776,7 @@ requires-dist = [
     { name = "polars", extras = ["numpy"], marker = "extra == 'polars'" },
     { name = "pyspark", marker = "extra == 'spark'", specifier = ">=3.3" },
     { name = "ray", extras = ["data", "train"], marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=2.56" },
-    { name = "scikit-learn" },
+    { name = "scikit-learn", specifier = ">=1.3" },
     { name = "utilsforecast", specifier = ">=0.2.9" },
     { name = "xgboost", marker = "sys_platform != 'win32' and extra == 'ray'", specifier = ">=2.1.4" },
     { name = "xgboost", marker = "extra == 'dask'" },
