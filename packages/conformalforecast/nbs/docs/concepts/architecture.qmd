@@ -69,7 +69,7 @@ interval = fitted.interval(np.zeros((2, 1, 3)))   # (2, 1, 3, 2) — (lower, upp
 method-specific values.
 
 An object fitted this way has no forecaster, so `fitted.predict` raises
-`CalibrationError` telling you to use `interval` — see [Embedding](embedding).
+`CalibrationError` telling you to use `interval` — see [Embedding](embedding.html).
 
 ## Construction is keyword-only, and config is a schema
 
@@ -175,7 +175,7 @@ checked where the forecaster is bound — the first thing `calibrate` and
 that cannot produce quantiles raises `UnsupportedCapability` before any
 forecasting happens. Constructing it does not: with no forecaster in hand there
 is nothing to check. And `predict` never raises it — a fitted object is only
-ever built after the check passed. See [Adapters](../adapters/index) for the
+ever built after the check passed. See [Adapters](../adapters/index.html) for the
 matrix.
 :::
 
@@ -285,7 +285,7 @@ from conformalforecast import SplitConformal
 register_interval_method("conformal_method_split", SplitConformal)
 ```
 
-[Embedding](embedding) walks through this in full: the layout contract, the
+[Embedding](embedding.html) walks through this in full: the layout contract, the
 arguments the shim does not support (weighted and transfer conformal), and the
 two upstream changes needed for full method coverage.
 

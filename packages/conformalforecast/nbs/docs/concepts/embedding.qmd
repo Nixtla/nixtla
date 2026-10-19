@@ -73,15 +73,15 @@ wrong:
   pinning it.
 - **NaN-aware ragged handling.** Per-series effective counts, masked order
   statistics, and `InsufficientCalibrationSamples` naming the series that are too
-  short. See [ragged panels](../capabilities/ragged-panels).
+  short. See [ragged panels](../capabilities/ragged-panels.html).
 - **`float32` preservation.** No silent upcast of neural network output.
 - **Batched math.** Nothing loops over the `(n_series × horizon)` grid in
   Python. The per-cell quantile is one gather, and the online methods keep an
   incrementally-sorted history rather than re-quantiling from scratch each step.
   SPCI, which fits one regressor per cell, is the sanctioned exception.
-- **Six more methods.** Once the array contract is satisfied, [ACI](../methods/aci),
-  [AgACI](../methods/agaci), [NexCP](../methods/nexcp), [CQR](../methods/cqr),
-  [SPCI](../methods/spci) and [WeightedSplit](../methods/weighted_split) are the
+- **Six more methods.** Once the array contract is satisfied, [ACI](../methods/aci.html),
+  [AgACI](../methods/agaci.html), [NexCP](../methods/nexcp.html), [CQR](../methods/cqr.html),
+  [SPCI](../methods/spci.html) and [WeightedSplit](../methods/weighted_split.html) are the
   same three calls — `fit`, `interval`, and
   `update` for the online four. CQR's `fit` and `interval` take a quantile cube
   rather than point forecasts, with a trailing `(q_lo, q_hi)` axis.
@@ -151,7 +151,7 @@ intervals under the same name.
 
 ## Next
 
-- [Architecture](architecture) — the two surfaces and the shape conventions.
-- [Methods](../methods/index) — what each method does, with the papers.
-- [Adapters](../adapters/index) — the forecaster-surface route, if you want the
+- [Architecture](architecture.html) — the two surfaces and the shape conventions.
+- [Methods](../methods/index.html) — what each method does, with the papers.
+- [Adapters](../adapters/index.html) — the forecaster-surface route, if you want the
   orchestration after all.

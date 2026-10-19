@@ -77,8 +77,8 @@ v0.2.0. Pin a version if you depend on exact interval values.
 
 ## Next
 
-- [Quick start](quickstart) — calibrated intervals in one screen.
-- [Methods](../methods/index) — the seven methods, and how to choose one.
-- [Nixtlaverse](../adapters/index) — statsforecast, mlforecast, neuralforecast.
-- [Architecture](../concepts/architecture) — one class per method, its two
+- [Quick start](quickstart.html) — calibrated intervals in one screen.
+- [Methods](../methods/index.html) — the seven methods, and how to choose one.
+- [Nixtlaverse](../adapters/index.html) — statsforecast, mlforecast, neuralforecast.
+- [Architecture](../concepts/architecture.html) — one class per method, its two
   surfaces, and which one you want.
