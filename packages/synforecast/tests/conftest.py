@@ -31,7 +31,7 @@ def fail_on_unexpected_ar1_fallback(
     GARCH 'mean'). Tests that exercise the fallback on purpose opt out with
     ``@pytest.mark.allow_ar1_fallback``.
     """
-    logger = logging.getLogger("synforecast.dataset")
+    logger = logging.getLogger("synforecast")
     handler = _RecordingHandler()
     logger.addHandler(handler)
     yield handler

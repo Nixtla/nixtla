@@ -13,6 +13,14 @@ except ImportError as exc:
         "from source."
     ) from exc
 
+from synforecast.augment import (
+    DBA,
+    BaseAugmenter,
+    FitAndSimulate,
+    Mixup,
+    MovingBlockBootstrap,
+    analyze,
+)
 from synforecast.base import BaseGenerator
 from synforecast.dataset import SynAugment, SynSet
 from synforecast.evaluation import (
@@ -32,12 +40,18 @@ from synforecast.presets import (
 from synforecast.utils import generate_series
 
 __all__ = [
+    "DBA",
+    "BaseAugmenter",
     "BaseGenerator",
     "CoverageDiagnostics",
     "CoverageResult",
+    "FitAndSimulate",
+    "Mixup",
+    "MovingBlockBootstrap",
     "Multivariatizer",
     "SynAugment",
     "SynSet",
+    "analyze",
     "balanced_pool",
     "compare_feature_coverage",
     "compute_features",
