@@ -1781,6 +1781,7 @@ class TimeSeries:
             if X_row is None and X_df is not None:
                 X_row = self._current_step_rows(X_df)
             keys = self._key_values(self._bucket_cols(key), X_row)
+            assert state.bucket_uniques is not None
             state.set_series_bucket_id(lookup(keys, state.bucket_uniques))
         return X_row
 
@@ -2066,7 +2067,7 @@ class TimeSeries:
     def _has_ga_target_tfms(self):
         return any(
             isinstance(tfm, _BaseGroupedArrayTargetTransform)
-            for tfm in self.target_transforms
+            for tfm in self.target_transforms or ()
         )
 
     @contextmanager

@@ -66,9 +66,9 @@ ID, TIME, TARGET = "unique_id", "ds", "y"
 _D = pd.Timestamp("2020-01-01")
 #: the kernel classes that compute on the store
 _STORE_KERNELS = (
-    pooled_mod._RollingMixin,
-    pooled_mod._SeasonalMixin,
-    pooled_mod._ExpandingMixin,
+    pooled_mod._RollingKernel,
+    pooled_mod._SeasonalKernel,
+    pooled_mod._ExpandingKernel,
     pooled_mod.EwmK,
 )
 

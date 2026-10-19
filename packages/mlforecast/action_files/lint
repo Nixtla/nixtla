@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-ruff check mlforecast || exit -1
-mypy mlforecast || exit -1

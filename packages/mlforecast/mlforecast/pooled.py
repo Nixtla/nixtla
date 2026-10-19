@@ -28,7 +28,7 @@ cancels).  See ``_PooledKernel`` subclasses for the full table.
 
 __all__ = ["PooledState"]
 
-from typing import Any, Collection, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Collection, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -840,7 +840,10 @@ class _PooledKernel:
         return float(getattr(self.tfm, "window_size", 1))
 
     def combine(
-        self, res: Dict[str, np.ndarray], k: np.ndarray, shift: Optional[np.ndarray]
+        self,
+        res: Dict[str, np.ndarray],
+        k: Union[float, np.ndarray],
+        shift: Optional[np.ndarray],
     ) -> np.ndarray:
         """Feature values from the reduced channels ``res``.
 
@@ -876,7 +879,7 @@ class _PooledKernel:
             tfm.stats_ = _grow_rows(stats, remap, n_new, _expanding_fill(tfm, stats))
 
     @staticmethod
-    def _n_obs(res: Dict[str, np.ndarray], k: np.ndarray) -> np.ndarray:
+    def _n_obs(res: Dict[str, np.ndarray], k: Union[float, np.ndarray]) -> np.ndarray:
         """Total observations inside the window: ``k * mean(count)``.
 
         Rounded because the count only ever comes back as a *mean* over ``k``
@@ -962,7 +965,7 @@ class _MaxKernel(_PooledKernel):
         return np.where(ok, res["max"], np.nan)
 
 
-class _RollingMixin:
+class _RollingKernel(_PooledKernel):
     primes_state = False
 
     def window_cells(self, ordinals):
@@ -979,7 +982,7 @@ class _RollingMixin:
         return cls(lag=self.lag, window_size=self.tfm.window_size, min_samples=1, **kw)
 
 
-class _SeasonalMixin:
+class _SeasonalKernel(_PooledKernel):
     primes_state = False
 
     def window_cells(self, ordinals):
@@ -1004,9 +1007,12 @@ class _SeasonalMixin:
         )
 
 
-class _ExpandingMixin:
+class _ExpandingKernel(_PooledKernel):
     def window_cells(self, ordinals):
         return np.clip(ordinals - self.lag + 1, 0, None).astype(float)
+
+    def make_inner(self, lag: Optional[int] = None) -> Dict[str, Any]:
+        raise NotImplementedError
 
     def _inner(self, cls, lag=None, **kw):
         return cls(lag=self.lag if lag is None else lag, **kw)
@@ -1076,17 +1082,17 @@ class _ExpandingMixin:
         return values
 
 
-class RollingMeanK(_RollingMixin, _MeanKernel):
+class RollingMeanK(_RollingKernel, _MeanKernel):
     def make_inner(self):
         return {c: self._inner(core_tfms.RollingMean) for c in self.channels}
 
 
-class RollingStdK(_RollingMixin, _StdKernel):
+class RollingStdK(_RollingKernel, _StdKernel):
     def make_inner(self):
         return {c: self._inner(core_tfms.RollingMean) for c in self.channels}
 
 
-class RollingMinK(_RollingMixin, _MinKernel):
+class RollingMinK(_RollingKernel, _MinKernel):
     def make_inner(self):
         return {
             "min": self._inner(core_tfms.RollingMin),
@@ -1094,7 +1100,7 @@ class RollingMinK(_RollingMixin, _MinKernel):
         }
 
 
-class RollingMaxK(_RollingMixin, _MaxKernel):
+class RollingMaxK(_RollingKernel, _MaxKernel):
     def make_inner(self):
         return {
             "max": self._inner(core_tfms.RollingMax),
@@ -1102,17 +1108,17 @@ class RollingMaxK(_RollingMixin, _MaxKernel):
         }
 
 
-class SeasonalRollingMeanK(_SeasonalMixin, _MeanKernel):
+class SeasonalRollingMeanK(_SeasonalKernel, _MeanKernel):
     def make_inner(self):
         return {c: self._inner(core_tfms.SeasonalRollingMean) for c in self.channels}
 
 
-class SeasonalRollingStdK(_SeasonalMixin, _StdKernel):
+class SeasonalRollingStdK(_SeasonalKernel, _StdKernel):
     def make_inner(self):
         return {c: self._inner(core_tfms.SeasonalRollingMean) for c in self.channels}
 
 
-class SeasonalRollingMinK(_SeasonalMixin, _MinKernel):
+class SeasonalRollingMinK(_SeasonalKernel, _MinKernel):
     def make_inner(self):
         return {
             "min": self._inner(core_tfms.SeasonalRollingMin),
@@ -1120,7 +1126,7 @@ class SeasonalRollingMinK(_SeasonalMixin, _MinKernel):
         }
 
 
-class SeasonalRollingMaxK(_SeasonalMixin, _MaxKernel):
+class SeasonalRollingMaxK(_SeasonalKernel, _MaxKernel):
     def make_inner(self):
         return {
             "max": self._inner(core_tfms.SeasonalRollingMax),
@@ -1128,17 +1134,17 @@ class SeasonalRollingMaxK(_SeasonalMixin, _MaxKernel):
         }
 
 
-class ExpandingMeanK(_ExpandingMixin, _MeanKernel):
+class ExpandingMeanK(_ExpandingKernel, _MeanKernel):
     def make_inner(self, lag=None):
         return {c: self._inner(core_tfms.ExpandingMean, lag) for c in self.channels}
 
 
-class ExpandingStdK(_ExpandingMixin, _StdKernel):
+class ExpandingStdK(_ExpandingKernel, _StdKernel):
     def make_inner(self, lag=None):
         return {c: self._inner(core_tfms.ExpandingMean, lag) for c in self.channels}
 
 
-class ExpandingMinK(_ExpandingMixin, _MinKernel):
+class ExpandingMinK(_ExpandingKernel, _MinKernel):
     def make_inner(self, lag=None):
         return {
             "min": self._inner(core_tfms.ExpandingMin, lag),
@@ -1146,7 +1152,7 @@ class ExpandingMinK(_ExpandingMixin, _MinKernel):
         }
 
 
-class ExpandingMaxK(_ExpandingMixin, _MaxKernel):
+class ExpandingMaxK(_ExpandingKernel, _MaxKernel):
     def make_inner(self, lag=None):
         return {
             "max": self._inner(core_tfms.ExpandingMax, lag),
@@ -1340,14 +1346,14 @@ class _RowKernel(_PooledKernel):
         return self.values_at(self._view(state._rows), np.arange(n), targets)
 
 
-class _RollingRowMixin:
+class _RollingRowKernel(_RowKernel):
     def window_bounds(self, rows, bucket, ordinal):
         hi_ord = ordinal - self.lag
         lo_ord = hi_ord - self.tfm.window_size + 1
         return rows.search(bucket, lo_ord, "left"), rows.search(bucket, hi_ord, "right")
 
 
-class _ExpandingRowMixin:
+class _ExpandingRowKernel(_RowKernel):
     def window_bounds(self, rows, bucket, ordinal):
         return rows.indptr[bucket], rows.search(bucket, ordinal - self.lag, "right")
 
@@ -1355,12 +1361,12 @@ class _ExpandingRowMixin:
         return 1.0
 
 
-class RollingQuantileK(_RollingRowMixin, _RowKernel):
+class RollingQuantileK(_RollingRowKernel):
     def stat(self, mat):
         return np.quantile(mat, self.tfm.p, axis=1)
 
 
-class ExpandingQuantileK(_ExpandingRowMixin, _RowKernel):
+class ExpandingQuantileK(_ExpandingRowKernel):
     def stat(self, mat):
         return np.quantile(mat, self.tfm.p, axis=1)
 

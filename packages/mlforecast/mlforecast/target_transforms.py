@@ -14,7 +14,7 @@ __all__ = [
 
 import abc
 import copy
-from typing import Iterable, List, Optional, Sequence, TypeVar
+from typing import Callable, Iterable, List, Optional, Sequence, TypeVar
 
 import coreforecast.scalers as core_scalers
 import numpy as np
@@ -437,7 +437,7 @@ class AutoSeasonalityAndDifferences(AutoDifferences):
 
 
 class _BaseLocalScaler(_BaseGroupedArrayTargetTransform):
-    scaler_factory: type
+    scaler_factory: Callable[[], core_scalers._BaseLocalScaler]
 
     def update(self, ga: GroupedArray) -> GroupedArray:
         ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
@@ -487,7 +487,7 @@ class LocalRobustScaler(_BaseLocalScaler):
     """
 
     def __init__(self, scale: str):
-        self.scaler_factory = lambda: core_scalers.LocalRobustScaler(scale)  # type: ignore
+        self.scaler_factory = lambda: core_scalers.LocalRobustScaler(scale)
 
 
 class LocalBoxCox(_BaseLocalScaler):

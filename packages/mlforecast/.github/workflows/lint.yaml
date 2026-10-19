@@ -31,4 +31,4 @@ jobs:
         run: uv sync --group dev
 
       - name: Run pre-commit
-        run: uv run pre-commit run --files mlforecast/*
+        run: uv run pre-commit run --all-files

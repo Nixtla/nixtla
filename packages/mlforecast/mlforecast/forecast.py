@@ -1240,6 +1240,7 @@ class MLForecast:
             # Get the effective max horizon and internal horizons from preprocessing
             effective_max_horizon = self.ts.max_horizon
             internal_horizons = self.ts._horizons
+            assert internal_horizons is not None
 
             # Store original df for exog lookup in generator
             original_df = df
