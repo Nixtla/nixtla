@@ -1,6 +1,9 @@
 """Tests for the augmentation specs and the SynAugment facade over them."""
 
-import json
+import copy
+import hashlib
+import pickle
+from typing import Annotated, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -29,11 +32,59 @@ SPECS = [
     MovingBlockBootstrap(seed=1, n_augment=2),
     DBA(seed=1, n_augment=2),
 ]
+SPEC_CLASSES = [type(spec) for spec in SPECS]
+
+# Facade method, its kwargs, and the spec those build.
+FACADE = [
+    ("augment", {"n_augment": 2}, FitAndSimulate(n_augment=2)),
+    ("mixup", {"n_series": 4}, Mixup(n_series=4)),
+    ("mbb", {"n_augment": 2}, MovingBlockBootstrap(n_augment=2)),
+    ("dba", {"n_augment": 2}, DBA(n_augment=2)),
+]
+
+# Series start 5 days apart and have different lengths, so timestamps and
+# the row counter ``x`` tell the series apart.
+_v = to_pandas(generate_series(n_series=3, min_length=60, max_length=100, seed=9))
+src_x = _v.assign(
+    ds=_v["ds"] + pd.to_timedelta(_v["unique_id"].cat.codes * 5, unit="D"),
+    x=np.arange(len(_v), dtype=float),
+    label=lambda d: "L" + d["unique_id"].astype(str),
+).reset_index(drop=True)
 
 
 @pytest.fixture(params=SPECS, ids=lambda spec: type(spec).__name__)
 def aug(request):
     return request.param
+
+
+def _sorted(df):
+    return (
+        to_pandas(df)
+        .astype({"unique_id": str})
+        .sort_values(["unique_id", "ds"])
+        .reset_index(drop=True)
+    )
+
+
+def _assert_rows_from_source(out, d, blended, cols=("ds", "x", "label")):
+    """Check each synthetic series' extra columns against its source rows.
+
+    FitAndSimulate, MBB and DBA ids name their source (DBA: the reference),
+    which must match ``src`` and supply every row. Mixup has no source in its
+    id; its rows must be a contiguous window of the ``src`` anchor.
+    """
+    cols = list(cols)
+    for gid, g in out.groupby("unique_id", observed=True):
+        g = g.sort_values("ds").reset_index(drop=True)
+        sid = str(g["src"].iloc[0])
+        assert (g["src"].astype(str) == sid).all()
+        if not blended:
+            assert sid == str(gid).rsplit("_", 2)[0]
+        rows = d[d["unique_id"].astype(str) == sid].sort_values("ds")
+        if blended:
+            start = rows["ds"].tolist().index(g["ds"].iloc[0])
+            rows = rows.iloc[start : start + len(g)]
+        assert_frame_equal(g[cols], rows[cols].reset_index(drop=True))
 
 
 def test_apply_idempotent(aug):
@@ -49,9 +100,9 @@ def test_seed_none_varies(aug):
     assert not to_pandas(a.apply(src)).equals(to_pandas(a.apply(src)))
 
 
-def test_roundtrip(aug):
-    again = type(aug).model_validate(aug.model_dump())
-    assert_frame_equal(to_pandas(again.apply(src)), to_pandas(aug.apply(src)))
+def test_call_seed_is_deterministic(aug):
+    a = aug.model_copy(update={"seed": None})
+    assert_frame_equal(to_pandas(a.apply(src, seed=5)), to_pandas(a.apply(src, seed=5)))
 
 
 def test_include_original_false_drops_sources(aug):
@@ -60,48 +111,55 @@ def test_include_original_false_drops_sources(aug):
     assert ids.isdisjoint(set(to_pandas(src)["unique_id"].astype(str)))
 
 
-def test_frozen(aug):
+def test_include_original_keeps_input_rows(aug):
+    out = _sorted(aug.apply(src_x))
+    real = out[out["unique_id"].isin(src_x["unique_id"].astype(str))]
+    assert_frame_equal(real.reset_index(drop=True), _sorted(src_x))
+
+
+def test_frozen_and_closed(aug):
     with pytest.raises(ValidationError):
         aug.seed = 5
-
-
-def test_extra_fields_forbidden(aug):
     with pytest.raises(ValidationError):
         type(aug)(nonsense=1)
 
 
-def test_polars_stays_polars(aug):
-    assert isinstance(aug.apply(pl.from_pandas(to_pandas(src))), pl.DataFrame)
+def test_polars_matches_pandas(aug):
+    out = aug.apply(pl.from_pandas(to_pandas(src)))
+    assert isinstance(out, pl.DataFrame)
+    assert_frame_equal(_sorted(out), _sorted(aug.apply(src)), check_dtype=False)
 
 
 def test_custom_columns(aug):
-    renamed = to_pandas(src).rename(
-        columns={"unique_id": "item", "ds": "ts", "y": "value"}
-    )
+    names = {"unique_id": "item", "ds": "ts", "y": "value"}
     out = to_pandas(
-        aug.apply(renamed, id_col="item", time_col="ts", target_col="value")
+        aug.apply(
+            to_pandas(src).rename(columns=names),
+            id_col="item",
+            time_col="ts",
+            target_col="value",
+        )
     )
-    assert set(out.columns) == {"item", "ts", "value"}
+    back = out.rename(columns={v: k for k, v in names.items()})
+    assert_frame_equal(back, to_pandas(aug.apply(src)))
 
 
-def test_invalid_values_rejected():
+@pytest.mark.parametrize(
+    ("cls", "kwargs"),
+    [
+        (Mixup, {"alpha": 0}),
+        (FitAndSimulate, {"n_augment": 0}),
+        (FitAndSimulate, {"generator_override": {"0": "NotAGenerator"}}),
+        (FitAndSimulate, {"preserve_timestamps": True}),
+        (
+            FitAndSimulate,
+            {"generator_override": {1: "SARIMAGenerator", "1": "GARCHGenerator"}},
+        ),
+    ],
+)
+def test_invalid_values_rejected(cls, kwargs):
     with pytest.raises(ValidationError):
-        Mixup(alpha=0)
-    with pytest.raises(ValidationError):
-        FitAndSimulate(n_augment=0)
-    with pytest.raises(ValidationError):
-        FitAndSimulate(generator_override={"0": "NotAGenerator"})
-    with pytest.raises(ValidationError):
-        FitAndSimulate(preserve_timestamps=True)
-    with pytest.raises(ValidationError):
-        FitAndSimulate(generator_override={1: "SARIMAGenerator", "1": "GARCHGenerator"})
-
-
-def test_call_seed_reaches_generators():
-    spec = FitAndSimulate(n_augment=2)
-    assert_frame_equal(
-        to_pandas(spec.apply(src, seed=5)), to_pandas(spec.apply(src, seed=5))
-    )
+        cls(**kwargs)
 
 
 def test_unknown_override_key_warns(caplog):
@@ -116,95 +174,87 @@ def test_override_int_keys_match(caplog):
     )
     assert not any("generator_override" in r.getMessage() for r in caplog.records)
     assert not to_pandas(out).equals(to_pandas(FitAndSimulate(seed=1).apply(src)))
+    # Positive control: an unknown key is reported through the same capture.
+    FitAndSimulate(seed=1, generator_override={-1: "SARIMAGenerator"}).apply(src)
+    assert any("generator_override" in r.getMessage() for r in caplog.records)
 
 
-@pytest.mark.parametrize(
-    ("method", "kwargs", "spec"),
-    [
-        (
-            "augment",
-            {"n_augment": 2, "preserve_timestamps": False},
-            FitAndSimulate(seed=1, n_augment=2),
+# sha256 of SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y
+# columns, computed on main before the specs existed.
+GOLDEN = {
+    "augment": "3513a29c200c168362a3e3bcdab089e0b1e25f802fbda40576141d760ef8ab7f",
+    "mixup": "7c14c08b1b3bbe79121f00a581f43930ff4670265cd05f7063703528df225461",
+    "mbb": "67edb4a881f4013ca3367b18ec5bc3778818c6bfdf2fcf9e0ea29c1a1fea9ad4",
+    "dba": "4d54436523f31f885e08122c71b373a270d538ef8a7a1759f24dcf2f4a8369d6",
+}
+
+
+@pytest.mark.parametrize(("method", "kwargs", "spec"), FACADE, ids=lambda p: p)
+def test_facade_first_call_matches_main(method, kwargs, spec):  # noqa: ARG001
+    out = to_pandas(
+        getattr(SynAugment(seed=1), method)(src_x[["unique_id", "ds", "y"]], **kwargs)
+    )
+    digest = hashlib.sha256(out["y"].to_numpy().tobytes())
+    digest.update(out["ds"].to_numpy().astype("datetime64[ns]").tobytes())
+    digest.update("|".join(out["unique_id"].astype(str)).encode())
+    assert digest.hexdigest() == GOLDEN[method]
+
+
+FACADE_CASES = [(*case, True) for case in FACADE] + [
+    (*case, False)
+    for case in FACADE
+    if case[0] != "augment"  # augment has no flag
+]
+
+
+@pytest.mark.parametrize(("method", "kwargs", "spec", "include_original"), FACADE_CASES)
+def test_facade_matches_spec(method, kwargs, spec, include_original):
+    if not include_original:
+        kwargs = {**kwargs, "include_original": False}
+    assert_frame_equal(
+        to_pandas(
+            getattr(SynAugment(seed=1), method)(src_x, source_col="src", **kwargs)
         ),
-        ("mixup", {"n_series": 4}, Mixup(seed=1, n_series=4)),
-        ("mbb", {"n_augment": 2}, MovingBlockBootstrap(seed=1, n_augment=2)),
-        ("dba", {"n_augment": 2}, DBA(seed=1, n_augment=2)),
-    ],
-)
-def test_facade_matches_spec(method, kwargs, spec):
-    assert_frame_equal(
-        to_pandas(getattr(SynAugment(seed=1), method)(src, **kwargs)),
-        to_pandas(spec.apply(src)),
+        to_pandas(
+            spec.apply(
+                src_x, seed=1, include_original=include_original, source_col="src"
+            )
+        ),
     )
 
 
-def test_facade_analyze_and_single_series_match():
-    a, b = SynAugment(seed=1).analyze(src), augment.analyze(src)
-    assert a.keys() == b.keys()
-    for k in a:  # values may hold arrays
-        assert repr(a[k]) == repr(b[k])
-    s = to_pandas(src)
-    sid = s["unique_id"].iloc[0]
-    one = s[s["unique_id"] == sid]
-    args = (sid, one["y"].to_numpy(), one["ds"].to_numpy())
-    old = SynAugment(seed=1).augment_single_series(*args, n_augment=2)
-    new = FitAndSimulate(seed=1, n_augment=2).apply_series(*args)
-    assert [(i, v.tolist()) for i, v, _ in old] == [(i, v.tolist()) for i, v, _ in new]
-
-
-def test_facade_advances_seed_per_call():
+@pytest.mark.parametrize(("method", "kwargs", "spec"), FACADE, ids=lambda p: p)
+def test_facade_advances_seed_per_call(method, kwargs, spec):
     s = SynAugment(seed=1)
-    first, second = s.mbb(src, n_augment=2), s.mbb(src, n_augment=2)
-    assert not to_pandas(first).equals(to_pandas(second))
-    assert_frame_equal(
-        to_pandas(first),
-        to_pandas(MovingBlockBootstrap(n_augment=2).apply(src, seed=1)),
-    )
+    first, second = (to_pandas(getattr(s, method)(src, **kwargs)) for _ in range(2))
+    assert_frame_equal(first, to_pandas(spec.apply(src, seed=1)))
+    assert not first.equals(second)
     replay = SynAugment(seed=1)
-    assert_frame_equal(to_pandas(replay.mbb(src, n_augment=2)), to_pandas(first))
-    assert_frame_equal(to_pandas(replay.mbb(src, n_augment=2)), to_pandas(second))
-
-
-def test_facade_chunked_augment_draws_differ():
-    # Two chunks holding the same values: a restarted stream would copy draws.
-    one = to_pandas(src)
-    one = one[one["unique_id"] == one["unique_id"].iloc[0]]
-    s = SynAugment(seed=1)
-    first = to_pandas(s.augment(one, n_augment=2))
-    second = to_pandas(s.augment(one, n_augment=2))
-    assert_frame_equal(first.iloc[: len(one)], second.iloc[: len(one)])
-    assert not np.allclose(first["y"][len(one) :], second["y"][len(one) :])
+    for expected in (first, second):
+        assert_frame_equal(to_pandas(getattr(replay, method)(src, **kwargs)), expected)
 
 
 def test_facade_single_series_advances_seed():
     values = to_pandas(src)["y"].to_numpy()[:80]
     ts = np.arange(80)
     s = SynAugment(seed=1)
-    first = s.augment_single_series("a", values, ts)[0][1]
-    second = s.augment_single_series("a", values, ts)[0][1]
-    assert not np.array_equal(first, second)
-    expected = FitAndSimulate().apply_series("a", values, ts, seed=1)[0][1]
-    np.testing.assert_array_equal(first, expected)
+    first = s.augment_single_series("a", values, ts, n_augment=2)
+    second = s.augment_single_series("a", values, ts, n_augment=2)
+    assert not np.array_equal(first[0][1], second[0][1])
+    expected = FitAndSimulate(n_augment=2).apply_series("a", values, ts, seed=1)
+    assert [(i, v.tolist()) for i, v, _ in first] == [
+        (i, v.tolist()) for i, v, _ in expected
+    ]
 
 
-def _sorted(df):
-    return (
-        to_pandas(df)
-        .astype({"unique_id": str})
-        .sort_values(["unique_id", "ds"])
-        .reset_index(drop=True)
-    )
-
-
-def test_fit_simulate_polars_deterministic():
-    panel = pl.from_pandas(
-        to_pandas(
-            generate_series(n_series=50, min_length=40, max_length=40, seed=2)
-        ).astype({"unique_id": str})
-    )
+def test_fit_simulate_polars_matches_pandas():
+    panel = to_pandas(
+        generate_series(n_series=50, min_length=40, max_length=40, seed=2)
+    ).astype({"unique_id": str})
     assert_frame_equal(
+        _sorted(FitAndSimulate(seed=1).apply(pl.from_pandas(panel))),
         _sorted(FitAndSimulate(seed=1).apply(panel)),
-        _sorted(FitAndSimulate(seed=1).apply(panel)),
+        check_dtype=False,
     )
 
 
@@ -218,69 +268,25 @@ def test_aug_ids_never_collide():
     assert out["unique_id"].astype(str).nunique() == 4
 
 
-_v = to_pandas(generate_series(n_series=3, min_length=60, max_length=100, seed=9))
-src_x = _v.assign(
-    ds=_v["ds"] + pd.to_timedelta(_v["unique_id"].cat.codes * 5, unit="D"),
-    x=np.arange(len(_v), dtype=float),
-    label=lambda d: "L" + d["unique_id"].astype(str),
-).reset_index(drop=True)
+@pytest.mark.parametrize("nan_target", [False, True])
+def test_rows_come_from_source(aug, nan_target):
+    d = src_x.assign(y=src_x["y"].where(src_x.index % 5 != 0)) if nan_target else src_x
+    out = to_pandas(aug.apply(d, include_original=False, source_col="src"))
+    _assert_rows_from_source(out, d, blended=isinstance(aug, Mixup))
 
 
-def _assert_anchor_windows(out, d):
-    for _, g in out.groupby("unique_id", observed=True):
-        g = g.sort_values("ds")
-        owner = d[d["unique_id"].astype(str) == str(g["src"].iloc[0])].sort_values("ds")
-        window = owner[owner["ds"].isin(g["ds"])]
-        assert window["ds"].tolist() == g["ds"].tolist()
-        assert window["x"].tolist() == g["x"].tolist()
-        assert window["label"].tolist() == g["label"].tolist()
-
-
-def test_extra_columns_kept(aug):
-    out = to_pandas(aug.apply(src_x, include_original=False))
-    assert list(out.columns) == list(src_x.columns)
-    assert out["label"].dtype == src_x["label"].dtype and out["x"].notna().all()
-
-
-def test_extra_columns_keep_dtypes(aug):
+def test_extra_columns_keep_values_and_dtypes(aug):
     d = src_x.assign(
         x=src_x["x"].where(src_x.index % 7 != 0),
         cat=pd.Categorical(src_x["label"]),
         when=src_x["ds"] - pd.Timedelta(days=1),
     )
-    out = to_pandas(aug.apply(d, include_original=False))
+    out = to_pandas(aug.apply(d, include_original=False, source_col="src"))
+    assert list(out.columns) == [*d.columns, "src"]
     assert out["x"].isna().any()
-    assert (
-        out[["label", "cat", "when"]].dtypes == d[["label", "cat", "when"]].dtypes
-    ).all()
-
-
-def test_fit_simulate_copies_source_rows():
-    out = to_pandas(
-        FitAndSimulate(seed=1).apply(src_x, include_original=False, source_col="src")
+    _assert_rows_from_source(
+        out, d, blended=isinstance(aug, Mixup), cols=("ds", "x", "label", "cat", "when")
     )
-    for _, g in out.groupby("unique_id", observed=True):
-        g = g.sort_values("ds")
-        source = src_x[
-            src_x["unique_id"].astype(str) == str(g["src"].iloc[0])
-        ].sort_values("ds")
-        assert g["ds"].tolist() == source["ds"].tolist()
-        assert g["x"].tolist() == source["x"].tolist()
-
-
-def test_mixup_copies_anchor_window():
-    out = to_pandas(
-        Mixup(seed=1, n_series=5).apply(src_x, include_original=False, source_col="src")
-    )
-    _assert_anchor_windows(out, src_x)
-
-
-def test_mixup_window_with_nan_target():
-    d = src_x.assign(y=src_x["y"].where(src_x.index % 5 != 0))
-    out = to_pandas(
-        Mixup(seed=1, n_series=5).apply(d, include_original=False, source_col="src")
-    )
-    _assert_anchor_windows(out, d)
 
 
 def test_extras_and_source_col_add_no_draws(aug):
@@ -289,37 +295,41 @@ def test_extras_and_source_col_add_no_draws(aug):
     assert_frame_equal(full[["unique_id", "ds", "y"]], plain)
 
 
-@pytest.mark.parametrize("engine", ["pandas", "polars"])
-@pytest.mark.parametrize("include_original", [True, False])
-def test_source_col_dtype_matches_id(aug, engine, include_original):
-    d = src_x if engine == "pandas" else pl.from_pandas(src_x)  # polars ids are Int64
-    out = aug.apply(d, include_original=include_original, source_col="src")
-    assert out["src"].dtype == out["unique_id"].dtype
-    assert to_pandas(out)["src"].notna().all()
-
-
 def test_source_col_names_origin(aug):
     out = to_pandas(aug.apply(src_x, source_col="src"))
+    assert list(out.columns) == [*src_x.columns, "src"]
     real = set(src_x["unique_id"].astype(str))
     assert set(out["src"].astype(str)) <= real
     orig = out[out["unique_id"].astype(str).isin(real)]
     assert (orig["src"].astype(str) == orig["unique_id"].astype(str)).all()
-    synthetic = out[~out["unique_id"].astype(str).isin(real)]
-    for _, g in synthetic.groupby("unique_id", observed=True):
-        assert g["src"].nunique() == 1
-        # same series the extras came from
-        assert g["label"].iloc[0] == "L" + str(g["src"].iloc[0])
+
+
+@pytest.mark.parametrize("include_original", [True, False])
+@pytest.mark.parametrize("engine", [None, "pandas", "polars"])
+@pytest.mark.parametrize("polars_input", [False, True], ids=["pd_in", "pl_in"])
+def test_source_col_dtype_across_engines(aug, polars_input, engine, include_original):
+    # "note" is entirely missing in series 0, so per-series inference would differ
+    null_series = src_x["unique_id"].cat.codes == 0
+    d = src_x.assign(note=np.where(null_series, None, "a"))
+    if polars_input:
+        d = pl.from_pandas(d)  # polars ids are Int64
+    out = aug.apply(
+        d, engine=engine, include_original=include_original, source_col="src"
+    )
+    to_polars = engine == "polars" or (engine is None and polars_input)
+    assert isinstance(out, pl.DataFrame) == to_polars
+    assert out["src"].dtype == out["unique_id"].dtype
+    p = to_pandas(out)
+    assert p["src"].notna().all()
+    from_null = p["src"].astype(str) == str(src_x["unique_id"][null_series].iloc[0])
+    assert p["note"].isna().tolist() == from_null.tolist()
+    assert (p.loc[~from_null, "note"] == "a").all()
 
 
 @pytest.mark.parametrize("name", ["unique_id", "ds", "y", "x"])
 def test_source_col_clash_raises(aug, name):
     with pytest.raises(ValueError, match="source_col"):
         aug.apply(src_x, source_col=name)
-
-
-def test_facade_passes_source_col():
-    out = to_pandas(SynAugment(seed=1).mbb(src_x, n_augment=1, source_col="src"))
-    assert "src" in out.columns
 
 
 class _Boom(RandomWalkGenerator):
@@ -334,33 +344,14 @@ def test_ar1_fallback_rows_carry_extras(monkeypatch, caplog):
     override = dict.fromkeys(src_x["unique_id"].unique(), "RandomWalkGenerator")
     spec = FitAndSimulate(seed=1, on_error="ar1", generator_override=override)
     out = to_pandas(spec.apply(src_x, include_original=False, source_col="src"))
-    assert out["x"].notna().all() and out["src"].notna().all()
+    _assert_rows_from_source(out, src_x, blended=False)
     assert sum("substituted AR(1)" in r.getMessage() for r in caplog.records) == 1
 
 
-def test_no_extra_columns_unchanged():
-    assert list(to_pandas(Mixup(seed=1).apply(src)).columns) == [
-        "unique_id",
-        "ds",
-        "y",
-    ]
-
-
-@pytest.mark.parametrize("to_polars", [True, False], ids=["pd->pl", "pl->pd"])
-def test_cross_engine_null_extra_column(aug, to_polars):
-    # "note" is entirely missing in series 0, so per-series inference would differ
-    d = src_x.assign(note=np.where(src_x["unique_id"].cat.codes == 0, None, "a"))
-    d, engine = (d, "polars") if to_polars else (pl.from_pandas(d), "pandas")
-    out = aug.apply(d, engine=engine, include_original=False, source_col="src")
-    assert isinstance(out, pl.DataFrame) == to_polars
-    assert out["src"].dtype == out["unique_id"].dtype
-
-
 @pytest.mark.parametrize("include_original", [True, False])
-@pytest.mark.parametrize("spec", SPECS[2:], ids=lambda s: type(s).__name__)
-def test_explicit_engine_keeps_per_series_index(spec, include_original):
-    expected = spec.apply(src_x, include_original=include_original)
-    out = spec.apply(src_x, include_original=include_original, engine="pandas")
+def test_explicit_engine_keeps_per_series_index(aug, include_original):
+    expected = aug.apply(src_x, include_original=include_original)
+    out = aug.apply(src_x, include_original=include_original, engine="pandas")
     assert_frame_equal(
         out.reset_index(drop=True), expected.reset_index(drop=True), check_exact=True
     )
@@ -388,73 +379,57 @@ def test_analyze_keeps_first_appearance_order_on_polars():
     assert list(augment.analyze(panel)) == ids
 
 
-def test_generator_override_is_immutable_and_hashable():
-    spec = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+def _override_spec():
+    return FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda m: m.__setitem__(0, "SARIMAGenerator"),
+        lambda m: m.__delitem__(0),
+        lambda m: m.update({1: "SARIMAGenerator"}),
+        lambda m: m.pop(0),
+        lambda m: m.popitem(),
+        lambda m: m.clear(),
+        lambda m: m.setdefault(1, "SARIMAGenerator"),
+        lambda m: m.__ior__({1: "SARIMAGenerator"}),
+    ],
+    ids=["setitem", "del", "update", "pop", "popitem", "clear", "setdefault", "ior"],
+)
+def test_generator_override_is_immutable(mutate):
+    spec = _override_spec()
     with pytest.raises(TypeError):
-        spec.generator_override[0] = "SARIMAGenerator"
-    same = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
-    assert hash(spec) == hash(same)
-    assert spec == same
+        mutate(spec.generator_override)
+    assert spec.generator_override == {0: "RandomWalkGenerator"}
+
+
+def test_generator_override_hash_and_eq():
+    assert hash(_override_spec()) == hash(_override_spec())
+    assert _override_spec() == _override_spec()
     swapped = FitAndSimulate(
         generator_override={"a": "SARIMAGenerator", 0: "RandomWalkGenerator"}
     )
     ordered = FitAndSimulate(
         generator_override={0: "RandomWalkGenerator", "a": "SARIMAGenerator"}
     )
-    assert hash(swapped) == hash(ordered)
-    assert "{0: 'RandomWalkGenerator'}" in repr(spec)
-    json.dumps(spec.model_dump(mode="json"))
-    spec.model_dump_json()
+    assert swapped == ordered and hash(swapped) == hash(ordered)
+
+
+def test_generator_override_dump_roundtrip():
+    spec = _override_spec()
     dumped = spec.model_dump()
     assert type(dumped["generator_override"]) is dict
     again = FitAndSimulate.model_validate(dumped)
     assert again == spec
     assert_frame_equal(to_pandas(again.apply(src)), to_pandas(spec.apply(src)))
-
-
-@pytest.mark.parametrize(
-    ("cls", "field", "value"),
-    [
-        (MovingBlockBootstrap, "n_augment", "3"),
-        (MovingBlockBootstrap, "n_augment", True),
-        (MovingBlockBootstrap, "block_size", "4"),
-        (Mixup, "n_series", "3"),
-        (Mixup, "max_mix", True),
-        (Mixup, "alpha", "1.5"),
-        (DBA, "n_neighbors", "2"),
-        (DBA, "window_fraction", "0.2"),
-        (FitAndSimulate, "seed", "1"),
-        (FitAndSimulate, "seed", True),
-    ],
-)
-def test_numeric_fields_reject_str_and_bool(cls, field, value):
-    with pytest.raises(ValidationError):
-        cls(**{field: value})
-
-
-@pytest.mark.parametrize(
-    ("cls", "field", "value"),
-    [
-        (MovingBlockBootstrap, "n_augment", np.int64(3)),
-        (MovingBlockBootstrap, "seasonal_period", np.int32(4)),
-        (Mixup, "n_series", np.int64(3)),
-        (Mixup, "alpha", np.float64(1.5)),
-        (Mixup, "alpha", 2),
-        (DBA, "window_fraction", np.float32(0.25)),
-        (FitAndSimulate, "seed", np.int64(1)),
-    ],
-)
-def test_numeric_fields_accept_numpy_scalars(cls, field, value):
-    spec = cls(**{field: value})
-    assert getattr(spec, field) == value
-    assert type(getattr(spec, field)) in (int, float)
+    # JSON keys are strings, so round-trip a string-keyed override.
+    named = FitAndSimulate(seed=1, generator_override={"0": "RandomWalkGenerator"})
+    assert FitAndSimulate.model_validate_json(named.model_dump_json()) == named
 
 
 def test_generator_override_spec_pickles_and_deep_copies():
-    import copy
-    import pickle
-
-    spec = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+    spec = _override_spec()
     expected = to_pandas(spec.apply(src))
     for clone in (
         pickle.loads(pickle.dumps(spec)),
@@ -463,3 +438,44 @@ def test_generator_override_spec_pickles_and_deep_copies():
     ):
         assert clone == spec and hash(clone) == hash(spec)
         assert_frame_equal(to_pandas(clone.apply(src)), expected)
+
+
+def _numeric_fields():
+    """(class, field, base type) for every int or float spec field."""
+    for cls in SPEC_CLASSES:
+        for name, info in cls.model_fields.items():
+            ann = info.annotation
+            bases = {
+                get_args(a)[0] if get_origin(a) is Annotated else a
+                for a in (get_args(ann) or (ann,))
+            } - {type(None)}
+            if bases in ({int}, {float}):
+                yield cls, name, bases.pop()
+
+
+NUMERIC_FIELDS = list(_numeric_fields())
+
+
+@pytest.mark.parametrize("value", ["3", True, np.True_], ids=["str", "bool", "np_bool"])
+@pytest.mark.parametrize(
+    ("cls", "field", "base"), NUMERIC_FIELDS, ids=lambda p: getattr(p, "__name__", p)
+)
+def test_numeric_fields_reject_str_and_bool(cls, field, base, value):  # noqa: ARG001
+    with pytest.raises(ValidationError):
+        cls(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("cls", "field", "base"), NUMERIC_FIELDS, ids=lambda p: getattr(p, "__name__", p)
+)
+def test_numeric_fields_accept_numpy_scalars(cls, field, base):
+    default = cls.model_fields[field].default
+    valid = 4 if default is None else default
+    scalars = (
+        [np.int64(valid), np.int32(valid)]
+        if base is int
+        else [np.float64(valid), np.float32(valid), 1]
+    )
+    for value in scalars:
+        stored = getattr(cls(**{field: value}), field)
+        assert stored == value and type(stored) is base

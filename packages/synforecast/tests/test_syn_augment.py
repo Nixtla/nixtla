@@ -1596,7 +1596,7 @@ class TestOnErrorPolicy:
         assert all(np.all(np.isfinite(values)) for _, values, _ in result)
 
     def test_unknown_override_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="Input should be 'RandomWalkGenerator'"):
+        with pytest.raises(ValueError, match="NopeGenerator"):
             SynAugment(seed=0).augment(
                 self._panel(n_series=1),
                 n_augment=1,
