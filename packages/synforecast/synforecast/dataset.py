@@ -334,7 +334,11 @@ class SynAugment:
         self.on_error = on_error
 
     def _apply(
-        self, spec: BaseAugmenter, df: IntoFrameT, include_original: bool = True
+        self,
+        spec: BaseAugmenter,
+        df: IntoFrameT,
+        include_original: bool = True,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         return spec.apply(
             df,
@@ -344,6 +348,7 @@ class SynAugment:
             time_col=self.time_col,
             target_col=self.target_col,
             engine=self.engine,
+            source_col=source_col,
         )
 
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
@@ -370,6 +375,7 @@ class SynAugment:
         n_augment: int = 1,
         generator_override: dict[str, str] | None = None,
         preserve_timestamps: bool = True,  # noqa: ARG002
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Augment dataset with synthetic series.
 
@@ -385,6 +391,8 @@ class SynAugment:
                 Example: {"series_0": "SARIMAGenerator"}
             preserve_timestamps: Accepted for compatibility and ignored;
                 synthetic series always use the original's timestamps
+            source_col: Name of an added column holding each row's source
+                series id; None (default) adds no column.
 
         Returns:
             Combined DataFrame with original and synthetic series. Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
@@ -410,7 +418,7 @@ class SynAugment:
             generator_override=generator_override,
             on_error=self.on_error,
         )
-        return self._apply(spec, df)
+        return self._apply(spec, df, source_col=source_col)
 
     def mixup(
         self,
@@ -420,6 +428,7 @@ class SynAugment:
         alpha: float = 1.5,
         scaling: Literal["mean", "std", "none"] = "mean",
         include_original: bool = True,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Augment a dataset with TSMixup convex combinations of real series.
 
@@ -438,6 +447,8 @@ class SynAugment:
                 'none' (default: 'mean').
             include_original: Prepend the original series to the output
                 (default: True).
+            source_col: Name of an added column holding each row's source
+                series id; None (default) adds no column.
 
         Returns:
             DataFrame with the original series (optional) and synthetic mixup series. Mixup IDs follow the pattern ``"mixup_{i}"``.
@@ -451,7 +462,7 @@ class SynAugment:
             >>> mixed_df = augmenter.mixup(df, n_series=50)  # doctest: +SKIP
         """
         spec = Mixup(n_series=n_series, max_mix=max_mix, alpha=alpha, scaling=scaling)
-        return self._apply(spec, df, include_original)
+        return self._apply(spec, df, include_original, source_col)
 
     def mbb(
         self,
@@ -460,6 +471,7 @@ class SynAugment:
         seasonal_period: int | None = None,
         block_size: int | None = None,
         include_original: bool = True,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Bootstrap decomposition remainders with moving blocks.
 
@@ -473,6 +485,8 @@ class SynAugment:
             block_size: Block length >= 2, or None for the period/length-based
                 default, capped per source at ``max(2, len(series) // 3)``.
             include_original: Include unchanged original rows (default: True).
+            source_col: Name of an added column holding each row's source
+                series id; None (default) adds no column.
 
         Returns:
             Frame containing generated series and, optionally, original rows,
@@ -487,7 +501,7 @@ class SynAugment:
             seasonal_period=seasonal_period,
             block_size=block_size,
         )
-        return self._apply(spec, df, include_original)
+        return self._apply(spec, df, include_original, source_col)
 
     def dba(
         self,
@@ -498,6 +512,7 @@ class SynAugment:
         window_fraction: float = 0.1,
         scale: Literal["reference", "none"] = "reference",
         include_original: bool = True,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Augment a panel with randomized nearest-neighbor DTW barycenters.
 
@@ -513,6 +528,8 @@ class SynAugment:
             scale: "reference" to restore reference scale (default), or "none"
                 to average raw values.
             include_original: Include unchanged original rows (default: True).
+            source_col: Name of an added column holding each row's source
+                series id; None (default) adds no column.
 
         Returns:
             Frame containing generated series and, optionally, original rows,
@@ -530,7 +547,7 @@ class SynAugment:
             window_fraction=window_fraction,
             scale=scale,
         )
-        return self._apply(spec, df, include_original)
+        return self._apply(spec, df, include_original, source_col)
 
     def augment_single_series(
         self,

@@ -105,6 +105,7 @@ class BaseAugmenter(BaseModel, ABC):
         time_col: str = "ds",
         target_col: str = "y",
         engine: str | None = None,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Augment ``df`` with synthetic series.
 
@@ -117,6 +118,9 @@ class BaseAugmenter(BaseModel, ABC):
             target_col: Name of the value column (default: 'y').
             engine: Output dataframe library (e.g. 'pandas', 'polars').
                 None (default) matches the input DataFrame's library.
+            source_col: Name of an added column holding, for every row, the
+                id of the input series it came from (as a string, with the
+                id column's dtype). None (default) adds no column.
 
         Returns:
             Frame containing generated series and, optionally, original rows.
@@ -191,6 +195,7 @@ class FitAndSimulate(BaseAugmenter):
         time_col: str = "ds",
         target_col: str = "y",
         engine: str | None = None,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Augment dataset with synthetic series.
 
@@ -211,8 +216,9 @@ class FitAndSimulate(BaseAugmenter):
         eff = self.seed if seed is None else seed
         rng = np.random.default_rng(eff)
 
-        df_nw = nw.from_native(df)
-        _validate_columns(df_nw, id_col, time_col, target_col)
+        df_nw = _with_source(
+            nw.from_native(df), id_col, time_col, target_col, source_col
+        )
 
         # Synthetic frames must match the input's dataframe library, or the
         # final concat would mix backends. An explicit engine wins.
@@ -244,7 +250,7 @@ class FitAndSimulate(BaseAugmenter):
         for series_id in unique_ids:
             series_df = partitions[series_id]
             series_values = series_df.select(target_col).to_numpy().flatten()
-            timestamps = series_df.select(time_col).to_numpy().flatten()
+            output_sdf = _to_output_backend(series_df, engine)
 
             # Determine which generator to use
             if str(series_id) in overrides:
@@ -274,13 +280,15 @@ class FitAndSimulate(BaseAugmenter):
                     f"{series_id}_aug_{i}", reserved_ids
                 )
                 all_dfs.append(
-                    nw.DataFrame.from_dict(
-                        {
-                            id_col: [generated_id] * len(series_values),
-                            time_col: timestamps,
-                            target_col: synthetic_values,
-                        },
-                        backend=out_engine,
+                    nw.maybe_reset_index(
+                        _copy_reference_frames(
+                            output_sdf,
+                            [generated_id],
+                            [synthetic_values],
+                            out_engine,
+                            id_col,
+                            target_col,
+                        )
                     )
                 )
 
@@ -290,7 +298,12 @@ class FitAndSimulate(BaseAugmenter):
         # pandas datetimes commonly convert to Polars at microsecond precision
         # while NumPy timestamps retain nanosecond precision.
         return _concat_frames(
-            all_dfs, output_original.schema[time_col], id_col, time_col, target_col
+            all_dfs,
+            output_original.schema[time_col],
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         ).to_native()
 
     def apply_series(
@@ -548,6 +561,7 @@ class Mixup(BaseAugmenter):
         time_col: str = "ds",
         target_col: str = "y",
         engine: str | None = None,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Mix series of ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
 
@@ -561,8 +575,9 @@ class Mixup(BaseAugmenter):
         eff = self.seed if seed is None else seed
         rng = np.random.default_rng(eff)
 
-        df_nw = nw.from_native(df)
-        _validate_columns(df_nw, id_col, time_col, target_col)
+        df_nw = _with_source(
+            nw.from_native(df), id_col, time_col, target_col, source_col
+        )
 
         # Typed as Any to match FitAndSimulate: from_dict's backend accepts
         # both a library name and an Implementation.
@@ -573,19 +588,18 @@ class Mixup(BaseAugmenter):
         # guarantee an order from unique().
         unique_ids = sorted(df_nw[id_col].unique().to_list())
 
-        # Cache each series' values and timestamps, sorted by time.
-        series: dict[Any, tuple[np.ndarray, np.ndarray]] = {}
+        # Cache each series' values, sorted by time.
+        series: dict[Any, np.ndarray] = {}
         skipped: list[Any] = []
         partitions = _partition_series(df_nw, id_col, time_col)
         for series_id in unique_ids:
             sdf = partitions[series_id]
             values = sdf.select(target_col).to_numpy().flatten().astype(float)
-            timestamps = sdf.select(time_col).to_numpy().flatten()
             if (
                 len(values) >= 1
                 and (values := _interpolate_missing(values)) is not None
             ):
-                series[series_id] = (values, timestamps)
+                series[series_id] = values
             else:
                 skipped.append(series_id)
 
@@ -615,35 +629,45 @@ class Mixup(BaseAugmenter):
             chosen = rng.choice(n_available, size=k, replace=False)
             chosen_ids = [usable_ids[c] for c in chosen]
 
-            length = int(min(len(series[c][0]) for c in chosen_ids))
+            length = int(min(len(series[c]) for c in chosen_ids))
             weights = rng.dirichlet(np.full(k, self.alpha))
 
             mixed = np.zeros(length)
-            anchor_timestamps = None
+            anchor = None
             for w, series_id in zip(weights, chosen_ids, strict=True):
-                values, timestamps = series[series_id]
+                values = series[series_id]
                 start = int(rng.integers(0, len(values) - length + 1))
                 window = values[start : start + length]
-                if anchor_timestamps is None:
-                    anchor_timestamps = timestamps[start : start + length]
+                if anchor is None:
+                    # Timestamps and extra columns come from the first
+                    # chosen series' window.
+                    anchor = partitions[series_id][start : start + length]
                 mixed += w * _scale_window(window, self.scaling)
 
-            mix_df = nw.DataFrame.from_dict(
-                {
-                    id_col: [mixup_id] * length,
-                    time_col: anchor_timestamps,
-                    target_col: mixed,
-                },
-                backend=out_engine,
+            synthetic_dfs.append(
+                nw.maybe_reset_index(
+                    _copy_reference_frames(
+                        _to_output_backend(anchor, engine),
+                        [mixup_id],
+                        [mixed],
+                        out_engine,
+                        id_col,
+                        target_col,
+                    )
+                )
             )
-            synthetic_dfs.append(mix_df)
 
         frames = [output_original] if include_original else []
         frames.extend(synthetic_dfs)
         # Normalize id (mixup ids are strings) and target (mixed is float) so
         # the frames concatenate across the original and synthetic batches.
         return _concat_frames(
-            frames, output_original.schema[time_col], id_col, time_col, target_col
+            frames,
+            output_original.schema[time_col],
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         ).to_native()
 
 
@@ -732,6 +756,7 @@ class MovingBlockBootstrap(BaseAugmenter):
         time_col: str = "ds",
         target_col: str = "y",
         engine: str | None = None,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Bootstrap series of ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
 
@@ -748,8 +773,9 @@ class MovingBlockBootstrap(BaseAugmenter):
         n_augment = self.n_augment
         seasonal_period = self.seasonal_period
 
-        df_nw = nw.from_native(df)
-        _validate_columns(df_nw, id_col, time_col, target_col)
+        df_nw = _with_source(
+            nw.from_native(df), id_col, time_col, target_col, source_col
+        )
         out_engine: Any = engine if engine is not None else df_nw.implementation
         output_original = _to_output_backend(df_nw, engine)
         unique_ids = sorted(df_nw[id_col].unique().to_list())
@@ -818,7 +844,12 @@ class MovingBlockBootstrap(BaseAugmenter):
         frames = [output_original] if include_original else []
         frames.extend(synthetic_dfs)
         return _concat_frames(
-            frames, output_original.schema[time_col], id_col, time_col, target_col
+            frames,
+            output_original.schema[time_col],
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         ).to_native()
 
 
@@ -925,6 +956,7 @@ class DBA(BaseAugmenter):
         time_col: str = "ds",
         target_col: str = "y",
         engine: str | None = None,
+        source_col: str | None = None,
     ) -> IntoFrameT:
         """Average neighbors in ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
 
@@ -943,8 +975,9 @@ class DBA(BaseAugmenter):
         scale = self.scale
         window_fraction = self.window_fraction
 
-        df_nw = nw.from_native(df)
-        _validate_columns(df_nw, id_col, time_col, target_col)
+        df_nw = _with_source(
+            nw.from_native(df), id_col, time_col, target_col, source_col
+        )
         out_engine: Any = engine if engine is not None else df_nw.implementation
         output_original = _to_output_backend(df_nw, engine)
         unique_ids = sorted(df_nw[id_col].unique().to_list())
@@ -1056,7 +1089,12 @@ class DBA(BaseAugmenter):
         frames = [output_original] if include_original else []
         frames.extend(synthetic_dfs)
         return _concat_frames(
-            frames, output_original.schema[time_col], id_col, time_col, target_col
+            frames,
+            output_original.schema[time_col],
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         ).to_native()
 
 
@@ -1139,6 +1177,29 @@ def _validate_columns(
         )
 
 
+def _with_source(
+    df: nw.DataFrame,
+    id_col: str,
+    time_col: str,
+    target_col: str,
+    source_col: str | None,
+) -> nw.DataFrame:
+    """Validate the columns and append ``source_col`` holding each row's id.
+
+    Synthetic frames are copied from input rows, so they inherit the column
+    and every input column with it.
+    """
+    _validate_columns(df, id_col, time_col, target_col)
+    if source_col is None:
+        return df
+    if source_col in df.columns:
+        raise ValueError(
+            f"source_col {source_col!r} must not equal id_col, time_col, "
+            "target_col or an existing input column"
+        )
+    return df.with_columns(nw.col(id_col).cast(nw.String()).alias(source_col))
+
+
 def _to_output_backend(frame: nw.DataFrame, engine: Any) -> nw.DataFrame:
     """Convert an input frame when an explicit output engine was requested."""
     if engine is None:
@@ -1169,8 +1230,13 @@ def _concat_frames(
     id_col: str,
     time_col: str,
     target_col: str,
+    source_col: str | None = None,
 ) -> nw.DataFrame:
-    """Cast the shared columns to one schema, concatenate, and categorize ids."""
+    """Cast the shared columns to one schema, concatenate, and categorize ids.
+
+    With ``source_col``, the stacked id and source values are categorized
+    once and both columns get that dtype.
+    """
     frames = [
         frame.with_columns(
             nw.col(id_col).cast(nw.String()),
@@ -1179,7 +1245,21 @@ def _concat_frames(
         )
         for frame in frames
     ]
-    return _categorize_ids(nw.concat(frames), id_col)
+    out = nw.concat(frames)
+    if source_col is None:
+        return _categorize_ids(out, id_col)
+    stacked = _categorize_ids(
+        nw.concat([out.select(id_col), out.select(nw.col(source_col).alias(id_col))]),
+        id_col,
+    )
+    if out.implementation.is_pandas_like():
+        # narwhals dtypes drop pandas categories, so cast with the native one.
+        dtype = stacked[id_col].to_native().dtype
+        return nw.from_native(
+            out.to_native().astype({id_col: dtype, source_col: dtype}),
+            eager_only=True,
+        )
+    return out.with_columns(nw.col(id_col, source_col).cast(stacked.schema[id_col]))
 
 
 def _warn_skipped(method: str, skipped: list[Any]) -> None:

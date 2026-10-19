@@ -1,5 +1,6 @@
 """Tests for the augmentation specs and the SynAugment facade over them."""
 
+import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
@@ -13,8 +14,10 @@ from synforecast import (
     MovingBlockBootstrap,
     SynAugment,
     analyze,
+    augment,
     generate_series,
 )
+from synforecast.generators import RandomWalkGenerator
 from tests.helpers import to_pandas
 
 src = generate_series(n_series=3, min_length=80, max_length=80, seed=9)
@@ -185,3 +188,131 @@ def test_aug_ids_never_collide():
     out = to_pandas(FitAndSimulate(seed=1).apply(d))
     assert not out.duplicated(["unique_id", "ds"]).any()
     assert out["unique_id"].astype(str).nunique() == 4
+
+
+_v = to_pandas(generate_series(n_series=3, min_length=60, max_length=100, seed=9))
+src_x = _v.assign(
+    ds=_v["ds"] + pd.to_timedelta(_v["unique_id"].cat.codes * 5, unit="D"),
+    x=np.arange(len(_v), dtype=float),
+    label=lambda d: "L" + d["unique_id"].astype(str),
+).reset_index(drop=True)
+
+
+def _assert_anchor_windows(out, d):
+    for _, g in out.groupby("unique_id", observed=True):
+        g = g.sort_values("ds")
+        owner = d[d["unique_id"].astype(str) == str(g["src"].iloc[0])].sort_values("ds")
+        window = owner[owner["ds"].isin(g["ds"])]
+        assert window["ds"].tolist() == g["ds"].tolist()
+        assert window["x"].tolist() == g["x"].tolist()
+        assert window["label"].tolist() == g["label"].tolist()
+
+
+def test_extra_columns_kept(aug):
+    out = to_pandas(aug.apply(src_x, include_original=False))
+    assert list(out.columns) == list(src_x.columns)
+    assert out["label"].dtype == src_x["label"].dtype and out["x"].notna().all()
+
+
+def test_extra_columns_keep_dtypes(aug):
+    d = src_x.assign(
+        x=src_x["x"].where(src_x.index % 7 != 0),
+        cat=pd.Categorical(src_x["label"]),
+        when=src_x["ds"] - pd.Timedelta(days=1),
+    )
+    out = to_pandas(aug.apply(d, include_original=False))
+    assert out["x"].isna().any()
+    assert (
+        out[["label", "cat", "when"]].dtypes == d[["label", "cat", "when"]].dtypes
+    ).all()
+
+
+def test_fit_simulate_copies_source_rows():
+    out = to_pandas(
+        FitAndSimulate(seed=1).apply(src_x, include_original=False, source_col="src")
+    )
+    for _, g in out.groupby("unique_id", observed=True):
+        g = g.sort_values("ds")
+        source = src_x[
+            src_x["unique_id"].astype(str) == str(g["src"].iloc[0])
+        ].sort_values("ds")
+        assert g["ds"].tolist() == source["ds"].tolist()
+        assert g["x"].tolist() == source["x"].tolist()
+
+
+def test_mixup_copies_anchor_window():
+    out = to_pandas(
+        Mixup(seed=1, n_series=5).apply(src_x, include_original=False, source_col="src")
+    )
+    _assert_anchor_windows(out, src_x)
+
+
+def test_mixup_window_with_nan_target():
+    d = src_x.assign(y=src_x["y"].where(src_x.index % 5 != 0))
+    out = to_pandas(
+        Mixup(seed=1, n_series=5).apply(d, include_original=False, source_col="src")
+    )
+    _assert_anchor_windows(out, d)
+
+
+def test_extras_and_source_col_add_no_draws(aug):
+    full = to_pandas(aug.apply(src_x, source_col="src"))
+    plain = to_pandas(aug.apply(src_x[["unique_id", "ds", "y"]]))
+    assert_frame_equal(full[["unique_id", "ds", "y"]], plain)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("include_original", [True, False])
+def test_source_col_dtype_matches_id(aug, engine, include_original):
+    d = src_x if engine == "pandas" else pl.from_pandas(src_x)  # polars ids are Int64
+    out = aug.apply(d, include_original=include_original, source_col="src")
+    assert out["src"].dtype == out["unique_id"].dtype
+    assert to_pandas(out)["src"].notna().all()
+
+
+def test_source_col_names_origin(aug):
+    out = to_pandas(aug.apply(src_x, source_col="src"))
+    real = set(src_x["unique_id"].astype(str))
+    assert set(out["src"].astype(str)) <= real
+    orig = out[out["unique_id"].astype(str).isin(real)]
+    assert (orig["src"].astype(str) == orig["unique_id"].astype(str)).all()
+    synthetic = out[~out["unique_id"].astype(str).isin(real)]
+    for _, g in synthetic.groupby("unique_id", observed=True):
+        assert g["src"].nunique() == 1
+        # same series the extras came from
+        assert g["label"].iloc[0] == "L" + str(g["src"].iloc[0])
+
+
+@pytest.mark.parametrize("name", ["unique_id", "ds", "y", "x"])
+def test_source_col_clash_raises(aug, name):
+    with pytest.raises(ValueError, match="source_col"):
+        aug.apply(src_x, source_col=name)
+
+
+def test_facade_passes_source_col():
+    out = to_pandas(SynAugment(seed=1).mbb(src_x, n_augment=1, source_col="src"))
+    assert "src" in out.columns
+
+
+class _Boom(RandomWalkGenerator):
+    def generate_single_series(self, length):  # noqa: ARG002
+        raise RuntimeError("boom")
+
+
+@pytest.mark.allow_ar1_fallback
+def test_ar1_fallback_rows_carry_extras(monkeypatch, caplog):
+    monkeypatch.setitem(augment._generator_map(), "RandomWalkGenerator", _Boom)
+    # integer ids
+    override = dict.fromkeys(src_x["unique_id"].unique(), "RandomWalkGenerator")
+    spec = FitAndSimulate(seed=1, on_error="ar1", generator_override=override)
+    out = to_pandas(spec.apply(src_x, include_original=False, source_col="src"))
+    assert out["x"].notna().all() and out["src"].notna().all()
+    assert sum("substituted AR(1)" in r.getMessage() for r in caplog.records) == 1
+
+
+def test_no_extra_columns_unchanged():
+    assert list(to_pandas(Mixup(seed=1).apply(src)).columns) == [
+        "unique_id",
+        "ds",
+        "y",
+    ]
