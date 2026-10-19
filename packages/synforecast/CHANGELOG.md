@@ -2,20 +2,34 @@
 
 ## Unreleased
 
-- Added `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: frozen
-  augmentation specs whose `apply()` returns identical output for the same
-  spec, data and seed, plus `analyze` in `synforecast.augment`. `source_col`
-  records provenance (`Mixup`: anchor, `DBA`: reference; other blended series
-  still contribute values); `augment` and `mixup` keep extra columns.
-- Changed: the `SynAugment` facade advances its seed per call (a fresh
-  instance replays the sequence). Invalid arguments raise pydantic
-  `ValidationError` (a `ValueError`, with pydantic's messages, including
-  bounds and unknown generator names) when a spec is built; numeric fields
-  reject bools and strings. Warnings log from `synforecast.augment`, and the
-  AR(1) summary no longer starts with `SynAugment`.
-- Fixed: `augment` is reproducible on polars input, `_aug_` ids no longer
-  collide with existing ids, and unknown `generator_override` keys warn.
-- Removed `SynAugment.rng`.
+### Added
+
+- `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: frozen
+  augmentation specs run with `apply()`, plus `analyze` in
+  `synforecast.augment`. `source_col` records provenance (`Mixup`: anchor,
+  `DBA`: reference; other blended series still contribute values); `augment`
+  and `mixup` keep extra columns.
+
+### Changed
+
+- A spec's `apply` returns identical output for the same spec, data and seed;
+  the `SynAugment` facade still advances its seed per call (a fresh instance
+  replays the sequence).
+- Invalid arguments raise pydantic `ValidationError` (a `ValueError`, with
+  pydantic's messages, including bounds and unknown generator names) when a
+  spec is built; numeric fields reject bools and strings. Warnings log from
+  `synforecast.augment`, and the AR(1) summary no longer starts with
+  `SynAugment`.
+
+### Fixed
+
+- `augment` is reproducible on polars input, `_aug_` ids no longer collide
+  with existing ids, unknown `generator_override` keys warn, and
+  `mixup(alpha=nan)` is rejected instead of producing NaN series.
+
+### Removed
+
+- `SynAugment.rng`.
 
 ## 0.2.0 - 2026-10-12
 
