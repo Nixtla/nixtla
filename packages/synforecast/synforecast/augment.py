@@ -91,6 +91,7 @@ class BaseAugmenter(BaseModel, ABC):
 
     seed: int | None = Field(
         default=None,
+        ge=0,
         description="Default random seed for apply; None draws fresh entropy",
     )
 
@@ -234,7 +235,7 @@ class FitAndSimulate(BaseAugmenter):
         out_partitions = (
             partitions
             if engine is None
-            else _partition_series(output_original, id_col, time_col)
+            else _partition_series(output_original, id_col, time_col, reset=True)
         )
         unique_ids = df_nw[id_col].unique(maintain_order=True).to_list()
         reserved_ids = {str(series_id) for series_id in unique_ids}
@@ -356,7 +357,7 @@ class FitAndSimulate(BaseAugmenter):
         _warn_fallbacks(fallbacks, self.n_augment)
 
         return [
-            (f"{series_id}_aug_{i}", synthetic_values, timestamps)
+            (f"{series_id}_aug_{i}", synthetic_values, np.asarray(timestamps).copy())
             for i, synthetic_values in enumerate(synthetic)
         ]
 
@@ -600,7 +601,7 @@ class Mixup(BaseAugmenter):
         out_partitions = (
             partitions
             if engine is None
-            else _partition_series(output_original, id_col, time_col)
+            else _partition_series(output_original, id_col, time_col, reset=True)
         )
         for series_id in unique_ids:
             sdf = partitions[series_id]
@@ -801,7 +802,7 @@ class MovingBlockBootstrap(BaseAugmenter):
         out_partitions = (
             partitions
             if engine is None
-            else _partition_series(output_original, id_col, time_col)
+            else _partition_series(output_original, id_col, time_col, reset=True)
         )
         for series_id in unique_ids:
             sdf = partitions[series_id]
@@ -1008,7 +1009,7 @@ class DBA(BaseAugmenter):
         out_partitions = (
             partitions
             if engine is None
-            else _partition_series(output_original, id_col, time_col)
+            else _partition_series(output_original, id_col, time_col, reset=True)
         )
         for series_id in unique_ids:
             sdf = partitions[series_id]
@@ -1233,14 +1234,18 @@ def _to_output_backend(frame: nw.DataFrame, engine: Any) -> nw.DataFrame:
 
 
 def _partition_series(
-    frame: nw.DataFrame, id_col: str, time_col: str
+    frame: nw.DataFrame, id_col: str, time_col: str, reset: bool = False
 ) -> dict[Any, nw.DataFrame]:
-    """Sort once, then take contiguous slices without per-ID panel scans."""
+    """Sort once, then take contiguous slices without per-ID panel scans.
+
+    ``reset`` numbers each slice's pandas index from 0.
+    """
     ordered = frame.sort([id_col, time_col])
     ids = ordered[id_col].to_numpy()
     boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
+    take = nw.maybe_reset_index if reset else (lambda part: part)
     return {
-        ids[start]: ordered[int(start) : int(stop)]
+        ids[start]: take(ordered[int(start) : int(stop)])
         for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True)
         if start < stop
     }

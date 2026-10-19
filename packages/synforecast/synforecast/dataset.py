@@ -253,8 +253,9 @@ class SynAugment:
     which are the primary API: :class:`~synforecast.FitAndSimulate`,
     :class:`~synforecast.Mixup`, :class:`~synforecast.MovingBlockBootstrap`
     and :class:`~synforecast.DBA`. Each method builds the matching spec and
-    calls its ``apply`` with this instance's seed, columns and engine, so
-    repeated calls with the same arguments return the same output.
+    calls its ``apply`` with this instance's seed, columns and engine, so when
+    ``seed`` is set, repeated calls with the same arguments return the same
+    output.
 
     - :meth:`augment` fits a parametric generator per series and simulates
       from it (IDs ``"{original_id}_aug_{i}"``).
@@ -326,6 +327,8 @@ class SynAugment:
         """
         if on_error not in ("raise", "ar1"):
             raise ValueError("on_error must be 'raise' or 'ar1'")
+        if seed is not None and seed < 0:
+            raise ValueError("seed must be >= 0")
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col
@@ -373,7 +376,7 @@ class SynAugment:
         self,
         df: IntoFrameT,
         n_augment: int = 1,
-        generator_override: dict[str, str] | None = None,
+        generator_override: dict[str | int, str] | None = None,
         preserve_timestamps: bool = True,  # noqa: ARG002
         source_col: str | None = None,
     ) -> IntoFrameT:

@@ -326,3 +326,23 @@ def test_cross_engine_null_extra_column(aug, to_polars):
     out = aug.apply(d, engine=engine, include_original=False, source_col="src")
     assert isinstance(out, pl.DataFrame) == to_polars
     assert out["src"].dtype == out["unique_id"].dtype
+
+
+@pytest.mark.parametrize("include_original", [True, False])
+@pytest.mark.parametrize("spec", SPECS[2:], ids=lambda s: type(s).__name__)
+def test_explicit_engine_keeps_per_series_index(spec, include_original):
+    expected = spec.apply(src_x, include_original=include_original)
+    out = spec.apply(src_x, include_original=include_original, engine="pandas")
+    assert_frame_equal(
+        out.reset_index(drop=True), expected.reset_index(drop=True), check_exact=True
+    )
+    synthetic = out[~out["unique_id"].isin(src_x["unique_id"].astype(str))]
+    per_series = synthetic.groupby("unique_id", observed=True).cumcount()
+    assert synthetic.index.tolist() == per_series.tolist()  # each copy from 0
+
+
+def test_negative_seed_rejected_at_construction():
+    with pytest.raises(ValidationError):
+        Mixup(seed=-1)
+    with pytest.raises(ValueError, match="seed"):
+        SynAugment(seed=-1)
