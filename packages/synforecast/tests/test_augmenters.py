@@ -148,6 +148,7 @@ def test_custom_columns(aug):
     ("cls", "kwargs"),
     [
         (Mixup, {"alpha": 0}),
+        (Mixup, {"alpha": float("nan")}),
         (FitAndSimulate, {"n_augment": 0}),
         (FitAndSimulate, {"generator_override": {"0": "NotAGenerator"}}),
         (FitAndSimulate, {"preserve_timestamps": True}),
@@ -179,13 +180,55 @@ def test_override_int_keys_match(caplog):
     assert any("generator_override" in r.getMessage() for r in caplog.records)
 
 
-# sha256 of SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y
-# columns, computed on main before the specs existed.
+# SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y columns,
+# computed on main before the specs existed: sha256 of the ds bytes and
+# joined ids (exact), and the last three, two middle and the sum of ``y``
+# (compared with a tolerance, since float bits can differ across platforms).
 GOLDEN = {
-    "augment": "3513a29c200c168362a3e3bcdab089e0b1e25f802fbda40576141d760ef8ab7f",
-    "mixup": "7c14c08b1b3bbe79121f00a581f43930ff4670265cd05f7063703528df225461",
-    "mbb": "67edb4a881f4013ca3367b18ec5bc3778818c6bfdf2fcf9e0ea29c1a1fea9ad4",
-    "dba": "4d54436523f31f885e08122c71b373a270d538ef8a7a1759f24dcf2f4a8369d6",
+    "augment": (
+        "32f716db47e980ee8ee9b963f9048fc3a29977455f81f28161dec632b7119032",
+        [
+            0.7316991640261288,
+            0.6489450921251431,
+            0.5909513686043033,
+            0.2616735681940462,
+            -1.4837095328096754,
+            20293.766092168662,
+        ],
+    ),
+    "mixup": (
+        "36114171336795b5a7ca5770e06e1b2f073dd44c3ea30387426b798cd7fd0bdb",
+        [
+            0.03649951424267811,
+            0.6031654081144386,
+            1.6422259137383846,
+            0.15554131702575183,
+            -0.2876706932408688,
+            6940.133699545716,
+        ],
+    ),
+    "mbb": (
+        "4cd4cae104a5346161dc7a3815c6ae28344ffa622deef7b78bbec74edaa0f614",
+        [
+            4.0223959826921245,
+            4.665257515536804,
+            4.0026787513784505,
+            0.05149224748015857,
+            0.4947421515213011,
+            20301.912827493394,
+        ],
+    ),
+    "dba": (
+        "717d4ebc3a6dfc8a224121ab365c411d8b61d99c968085ab029d17eecaa27a74",
+        [
+            3.689748618081804,
+            3.3427286175012396,
+            1.7436521724794394,
+            0.8817238039316795,
+            0.20803186360411352,
+            20303.342518382724,
+        ],
+    ),
 }
 
 
@@ -194,10 +237,15 @@ def test_facade_first_call_matches_main(method, kwargs, spec):  # noqa: ARG001
     out = to_pandas(
         getattr(SynAugment(seed=1), method)(src_x[["unique_id", "ds", "y"]], **kwargs)
     )
-    digest = hashlib.sha256(out["y"].to_numpy().tobytes())
-    digest.update(out["ds"].to_numpy().astype("datetime64[ns]").tobytes())
+    digest = hashlib.sha256(out["ds"].to_numpy().astype("datetime64[ns]").tobytes())
     digest.update("|".join(out["unique_id"].astype(str)).encode())
-    assert digest.hexdigest() == GOLDEN[method]
+    expected_digest, expected_y = GOLDEN[method]
+    assert digest.hexdigest() == expected_digest
+    y = out["y"].to_numpy()
+    mid = len(y) // 2
+    np.testing.assert_allclose(
+        [*y[-3:], *y[mid : mid + 2], y.sum()], expected_y, rtol=1e-9
+    )
 
 
 FACADE_CASES = [(*case, True) for case in FACADE] + [
@@ -423,6 +471,11 @@ def test_generator_override_dump_roundtrip():
     again = FitAndSimulate.model_validate(dumped)
     assert again == spec
     assert_frame_equal(to_pandas(again.apply(src)), to_pandas(spec.apply(src)))
+    # JSON object keys are strings: an int key comes back as "0", which still
+    # matches the series on str(id), so the output is unchanged.
+    from_json = FitAndSimulate.model_validate_json(spec.model_dump_json())
+    assert from_json.generator_override == {"0": "RandomWalkGenerator"}
+    assert_frame_equal(to_pandas(from_json.apply(src)), to_pandas(spec.apply(src)))
     # JSON keys are strings, so round-trip a string-keyed override.
     named = FitAndSimulate(seed=1, generator_override={"0": "RandomWalkGenerator"})
     assert FitAndSimulate.model_validate_json(named.model_dump_json()) == named
