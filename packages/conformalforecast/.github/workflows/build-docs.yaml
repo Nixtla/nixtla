@@ -69,6 +69,13 @@ jobs:
       - name: Check navigation
         run: uv run --no-sync python scripts/check_docs_nav.py
 
+      # Strict Mintlify build: fails on MDX parse errors and docs.json pages that
+      # don't exist. broken-links is skipped on purpose: cross-repo links only
+      # resolve in the merged Nixtla/docs site.
+      - name: Validate docs
+        working-directory: docs/mintlify
+        run: npx -y mint@4.2.1020 validate
+
       - name: Upload docs site
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

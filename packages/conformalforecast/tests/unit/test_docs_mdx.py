@@ -34,6 +34,7 @@ to_mdx = _load_module()
 fence_indented_blocks = to_mdx.fence_indented_blocks
 escape_mdx_hazards = to_mdx.escape_mdx_hazards
 readme_to_index = to_mdx.readme_to_index
+parser_errors = to_mdx.parser_errors
 
 
 class TestFenceIndentedBlocks:
@@ -112,3 +113,15 @@ class TestReadmeToIndex:
         result = readme_to_index("> [!WARNING]\n> Unstable API.\n")
         assert "> **Warning**" in result
         assert "[!WARNING]" not in result
+
+
+def test_parser_errors_are_extracted():
+    text = (
+        "ok\n<!-- Error generating docs for pkg.Missing: not found -->\n"
+        "<!-- Error processing block: bad -->\n<!-- unrelated comment -->"
+    )
+    assert parser_errors(text) == [
+        "Error generating docs for pkg.Missing: not found",
+        "Error processing block: bad",
+    ]
+    assert parser_errors("<!-- unrelated comment -->") == []
