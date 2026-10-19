@@ -1,5 +1,7 @@
 """Tests for the augmentation specs and the SynAugment facade over them."""
 
+import json
+
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -393,6 +395,16 @@ def test_generator_override_is_immutable_and_hashable():
     same = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
     assert hash(spec) == hash(same)
     assert spec == same
+    swapped = FitAndSimulate(
+        generator_override={"a": "SARIMAGenerator", 0: "RandomWalkGenerator"}
+    )
+    ordered = FitAndSimulate(
+        generator_override={0: "RandomWalkGenerator", "a": "SARIMAGenerator"}
+    )
+    assert hash(swapped) == hash(ordered)
+    assert "{0: 'RandomWalkGenerator'}" in repr(spec)
+    json.dumps(spec.model_dump(mode="json"))
+    spec.model_dump_json()
     dumped = spec.model_dump()
     assert type(dumped["generator_override"]) is dict
     again = FitAndSimulate.model_validate(dumped)
@@ -436,3 +448,18 @@ def test_numeric_fields_accept_numpy_scalars(cls, field, value):
     spec = cls(**{field: value})
     assert getattr(spec, field) == value
     assert type(getattr(spec, field)) in (int, float)
+
+
+def test_generator_override_spec_pickles_and_deep_copies():
+    import copy
+    import pickle
+
+    spec = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+    expected = to_pandas(spec.apply(src))
+    for clone in (
+        pickle.loads(pickle.dumps(spec)),
+        copy.deepcopy(spec),
+        spec.model_copy(deep=True),
+    ):
+        assert clone == spec and hash(clone) == hash(spec)
+        assert_frame_equal(to_pandas(clone.apply(src)), expected)

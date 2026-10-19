@@ -10,7 +10,6 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
 import narwhals.stable.v2 as nw
@@ -22,7 +21,6 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    field_serializer,
     field_validator,
 )
 
@@ -90,6 +88,22 @@ def _reject_bool_and_str(value: Any) -> Any:
     return value
 
 
+class _FrozenDict(dict):
+    """A read-only, hashable dict that still pickles and dumps as a dict."""
+
+    def _readonly(self, *_args: Any, **_kwargs: Any) -> None:
+        raise TypeError(f"{type(self).__name__} is read-only")
+
+    __setitem__ = __delitem__ = __ior__ = _readonly
+    update = pop = popitem = clear = setdefault = _readonly
+
+    def __hash__(self) -> int:  # type: ignore[override]
+        return hash(frozenset(self.items()))
+
+    def __reduce__(self) -> tuple:
+        return (type(self), (dict(self),))
+
+
 # Python and numpy numbers pass; bools and strings are rejected.
 Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
 Float = Annotated[float, BeforeValidator(_reject_bool_and_str)]
@@ -114,6 +128,10 @@ class BaseAugmenter(BaseModel, ABC):
         ge=0,
         description="Default random seed for apply; None draws fresh entropy",
     )
+
+    def _seed(self, seed: int | None) -> int | None:
+        """Seed for one call: ``seed`` when given, else the spec's."""
+        return self.seed if seed is None else seed
 
     @abstractmethod
     def apply(
@@ -208,7 +226,7 @@ class FitAndSimulate(BaseAugmenter):
     @classmethod
     def validate_generator_override(
         cls, v: dict[str | int, str] | None
-    ) -> MappingProxyType | None:
+    ) -> _FrozenDict | None:
         """Reject keys that collide as strings and freeze the mapping."""
         if v is None:
             return None
@@ -217,25 +235,7 @@ class FitAndSimulate(BaseAugmenter):
                 "generator_override has keys that are equal as strings: "
                 f"{sorted(map(repr, v))}"
             )
-        return MappingProxyType(dict(v))
-
-    @field_serializer("generator_override")
-    def _dump_generator_override(
-        self, v: MappingProxyType | None
-    ) -> dict[str | int, str] | None:
-        return None if v is None else dict(v)
-
-    def __hash__(self) -> int:
-        """Hash like a frozen model, with the override as a frozenset."""
-        return hash(
-            (
-                type(self),
-                *(
-                    frozenset(v.items()) if isinstance(v, MappingProxyType) else v
-                    for v in self.__dict__.values()
-                ),
-            )
-        )
+        return _FrozenDict(v)
 
     def apply(
         self,
@@ -267,7 +267,7 @@ class FitAndSimulate(BaseAugmenter):
         """
         run = _Run.start(
             df,
-            self.seed if seed is None else seed,
+            self._seed(seed),
             engine,
             id_col,
             time_col,
@@ -365,7 +365,7 @@ class FitAndSimulate(BaseAugmenter):
         Returns:
             List of tuples: (new_id, synthetic_values, timestamps)
         """
-        eff = self.seed if seed is None else seed
+        eff = self._seed(seed)
         rng = np.random.default_rng(eff)
 
         classification = classify_series(values)
@@ -618,7 +618,7 @@ class Mixup(BaseAugmenter):
         """
         run = _Run.start(
             df,
-            self.seed if seed is None else seed,
+            self._seed(seed),
             engine,
             id_col,
             time_col,
@@ -804,7 +804,7 @@ class MovingBlockBootstrap(BaseAugmenter):
         """
         run = _Run.start(
             df,
-            self.seed if seed is None else seed,
+            self._seed(seed),
             engine,
             id_col,
             time_col,
@@ -1002,7 +1002,7 @@ class DBA(BaseAugmenter):
         """
         run = _Run.start(
             df,
-            self.seed if seed is None else seed,
+            self._seed(seed),
             engine,
             id_col,
             time_col,
