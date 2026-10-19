@@ -10,13 +10,12 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, get_args
 
 import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoFrameT
 from pydantic import (
-    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -48,37 +47,9 @@ FittableGenerator = Literal[
 @functools.cache
 def _generator_map() -> dict[str, type]:
     """Map fittable generator names to classes, imported lazily."""
-    from synforecast.generators import (
-        FractionalBrownianMotionGenerator,
-        GARCHGenerator,
-        GeometricBrownianMotionGenerator,
-        IntermittentDemandGenerator,
-        OrnsteinUhlenbeckGenerator,
-        RandomWalkGenerator,
-        RegimeSwitchingGenerator,
-        SARIMAGenerator,
-        SeasonalGenerator,
-    )
+    from synforecast import generators
 
-    return {
-        "RandomWalkGenerator": RandomWalkGenerator,
-        "SeasonalGenerator": SeasonalGenerator,
-        "SARIMAGenerator": SARIMAGenerator,
-        "GARCHGenerator": GARCHGenerator,
-        "OrnsteinUhlenbeckGenerator": OrnsteinUhlenbeckGenerator,
-        "FractionalBrownianMotionGenerator": FractionalBrownianMotionGenerator,
-        "RegimeSwitchingGenerator": RegimeSwitchingGenerator,
-        "IntermittentDemandGenerator": IntermittentDemandGenerator,
-        "GeometricBrownianMotionGenerator": GeometricBrownianMotionGenerator,
-    }
-
-
-def _check_n_augment(n_augment: int) -> int:
-    if n_augment < 1:
-        raise ValueError("n_augment must be >= 1")
-    if n_augment > 1000:
-        raise ValueError("n_augment must be <= 1000 to prevent resource exhaustion")
-    return n_augment
+    return {name: getattr(generators, name) for name in get_args(FittableGenerator)}
 
 
 def _reject_bool_and_str(value: Any) -> Any:
@@ -107,7 +78,6 @@ class _FrozenDict(dict):
 # Python and numpy numbers pass; bools and strings are rejected.
 Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
 Float = Annotated[float, BeforeValidator(_reject_bool_and_str)]
-NAugment = Annotated[Int, AfterValidator(_check_n_augment)]
 
 
 class BaseAugmenter(BaseModel, ABC):
@@ -210,8 +180,11 @@ class FitAndSimulate(BaseAugmenter):
         ... )  # doctest: +SKIP
     """
 
-    n_augment: NAugment = Field(
-        default=1, description="Synthetic series per source series, 1 to 1000"
+    n_augment: Int = Field(
+        default=1,
+        ge=1,
+        le=1000,
+        description="Synthetic series per source series, 1 to 1000",
     )
     generator_override: dict[str | int, FittableGenerator] | None = Field(
         default=None,
@@ -282,7 +255,7 @@ class FitAndSimulate(BaseAugmenter):
 
         unique_ids = run.df[id_col].unique(maintain_order=True).to_list()
         reserved_ids = {str(series_id) for series_id in unique_ids}
-        unknown = sorted(set(overrides) - {str(series_id) for series_id in unique_ids})
+        unknown = sorted(set(overrides) - reserved_ids)
         if unknown:
             logger.warning(
                 "generator_override keys match no series and are ignored: %s",
@@ -407,21 +380,8 @@ class FitAndSimulate(BaseAugmenter):
 
         Generates synthetic series from scratch using fitted generators,
         then applies post-processing to match the original's autocorrelation
-        structure for realistic output.
-
-        Args:
-            series_id: Original series ID
-            series_values: Original series values
-            generator_name: Name of generator to use
-            fitted_params: Fitted parameters for the generator
-            rng: Stream the per-copy generator seeds are drawn from
-            seeded: Whether generators get seeds from ``rng`` (else None)
-            fallbacks: Collector for AR(1) substitutions made under
-                on_error='ar1'; the caller reports them once at the end
-            columns: ID, time and target column names for the generators
-
-        Returns:
-            One array of synthetic values per augmented series
+        structure for realistic output. AR(1) substitutions made under
+        on_error='ar1' are appended to ``fallbacks`` for the caller to report.
 
         Raises:
             ValueError: If generator_name is not a supported generator
@@ -525,10 +485,9 @@ class Mixup(BaseAugmenter):
     rows and their missing values are retained unchanged.
 
     Sources are indexed by sorted id, so seeded output does not depend on
-    the input row order. With ``source_col``, each mixup series names its
-    anchor, the first chosen source, whose window supplies the timestamps
-    and extra columns. The other blended sources also contribute values, so
-    grouping CV folds by ``source_col`` does not prevent leakage.
+    the input row order. The anchor, the first chosen source, supplies the
+    timestamps, extra columns and ``source_col`` (see
+    :meth:`BaseAugmenter.apply`).
 
     Mixup IDs follow the pattern ``"mixup_{i}"``.
 
@@ -554,46 +513,22 @@ class Mixup(BaseAugmenter):
 
     n_series: Int | None = Field(
         default=None,
+        ge=1,
+        le=1_000_000,
         description=(
             "Total synthetic series (TSMixup), not per source; "
             "None uses the number of usable input series"
         ),
     )
     max_mix: Int = Field(
-        default=3, description="Maximum number of source series mixed per series"
+        default=3, ge=1, description="Maximum number of source series mixed per series"
     )
     alpha: Float = Field(
-        default=1.5, description="Concentration of the Dirichlet mixing weights"
+        default=1.5, gt=0, description="Concentration of the Dirichlet mixing weights"
     )
     scaling: Literal["mean", "std", "none"] = Field(
         default="mean", description="Per-window scaling before mixing"
     )
-
-    @field_validator("n_series")
-    @classmethod
-    def validate_n_series(cls, v: int | None) -> int | None:
-        """Bound n_series when given."""
-        if v is not None and v < 1:
-            raise ValueError("n_series must be >= 1")
-        if v is not None and v > 1_000_000:
-            raise ValueError("n_series must be <= 1_000_000 to prevent exhaustion")
-        return v
-
-    @field_validator("max_mix")
-    @classmethod
-    def validate_max_mix(cls, v: int) -> int:
-        """Require at least one source per synthetic series."""
-        if v < 1:
-            raise ValueError("max_mix must be >= 1")
-        return v
-
-    @field_validator("alpha")
-    @classmethod
-    def validate_alpha(cls, v: float) -> float:
-        """Require a positive Dirichlet concentration."""
-        if v <= 0:
-            raise ValueError("alpha must be > 0")
-        return v
 
     def apply(
         self,
@@ -753,32 +688,20 @@ class MovingBlockBootstrap(BaseAugmenter):
         seed (int | None): Default random seed for ``apply`` (default: None)
     """
 
-    n_augment: NAugment = Field(
-        default=1, description="Copies per usable source series, 1 to 1000"
+    n_augment: Int = Field(
+        default=1,
+        ge=1,
+        le=1000,
+        description="Copies per usable source series, 1 to 1000",
     )
     seasonal_period: Int | None = Field(
-        default=None, description="Period >= 2, or None to detect it per source"
+        default=None, ge=2, description="Period >= 2, or None to detect it per source"
     )
     block_size: Int | None = Field(
         default=None,
+        ge=2,
         description="Block length >= 2, or None for the period/length default",
     )
-
-    @field_validator("seasonal_period")
-    @classmethod
-    def validate_seasonal_period(cls, v: int | None) -> int | None:
-        """Require a period of at least two when given."""
-        if v is not None and v < 2:
-            raise ValueError("seasonal_period must be >= 2 when provided")
-        return v
-
-    @field_validator("block_size")
-    @classmethod
-    def validate_block_size(cls, v: int | None) -> int | None:
-        """Require a block of at least two when given."""
-        if v is not None and v < 2:
-            raise ValueError("block_size must be >= 2 when provided")
-        return v
 
     def apply(
         self,
@@ -920,9 +843,8 @@ class DBA(BaseAugmenter):
     in a warning because their copies may add little or no variation.
 
     References are processed in sorted id order, so seeded output does not
-    depend on the input row order. With ``source_col``, each copy names its
-    reference series; its neighbors also contribute values, so grouping CV
-    folds by ``source_col`` does not prevent leakage.
+    depend on the input row order. ``source_col`` names the reference (see
+    :meth:`BaseAugmenter.apply`).
 
     IDs follow the pattern ``"{original_id}_dba_{i}"``.
 
@@ -938,44 +860,25 @@ class DBA(BaseAugmenter):
         seed (int | None): Default random seed for ``apply`` (default: None)
     """
 
-    n_augment: NAugment = Field(
-        default=1, description="Copies per usable reference series, 1 to 1000"
+    n_augment: Int = Field(
+        default=1,
+        ge=1,
+        le=1000,
+        description="Copies per usable reference series, 1 to 1000",
     )
     n_neighbors: Int = Field(
-        default=3, description="Maximum neighbor count, capped at usable sources"
+        default=3, ge=1, description="Maximum neighbor count, capped at usable sources"
     )
-    n_iterations: Int = Field(default=5, description="Barycenter updates, 1 to 1000")
+    n_iterations: Int = Field(
+        default=5, ge=1, le=1000, description="Barycenter updates, 1 to 1000"
+    )
     window_fraction: Float = Field(
-        default=0.1, description="DTW band fraction in (0, 1]"
+        default=0.1, gt=0, le=1, description="DTW band fraction in (0, 1]"
     )
     scale: Literal["reference", "none"] = Field(
         default="reference",
         description="'reference' restores reference scale; 'none' averages raw values",
     )
-
-    @field_validator("n_neighbors")
-    @classmethod
-    def validate_n_neighbors(cls, v: int) -> int:
-        """Require at least one neighbor."""
-        if v < 1:
-            raise ValueError("n_neighbors must be >= 1")
-        return v
-
-    @field_validator("n_iterations")
-    @classmethod
-    def validate_n_iterations(cls, v: int) -> int:
-        """Bound the barycenter updates."""
-        if not 1 <= v <= 1000:
-            raise ValueError("n_iterations must be in [1, 1000]")
-        return v
-
-    @field_validator("window_fraction")
-    @classmethod
-    def validate_window_fraction(cls, v: float) -> float:
-        """Require a band fraction in (0, 1]."""
-        if not 0 < v <= 1:
-            raise ValueError("window_fraction must satisfy 0 < value <= 1")
-        return v
 
     def apply(
         self,
@@ -1201,29 +1104,6 @@ def _validate_columns(
         )
 
 
-def _with_source(
-    df: nw.DataFrame,
-    id_col: str,
-    time_col: str,
-    target_col: str,
-    source_col: str | None,
-) -> nw.DataFrame:
-    """Validate the columns and append ``source_col`` holding each row's id.
-
-    Synthetic frames are copied from input rows, so they inherit the column
-    and every input column with it.
-    """
-    _validate_columns(df, id_col, time_col, target_col)
-    if source_col is None:
-        return df
-    if source_col in df.columns:
-        raise ValueError(
-            f"source_col {source_col!r} must not equal id_col, time_col, "
-            "target_col or an existing input column"
-        )
-    return df.with_columns(nw.col(id_col).cast(nw.String()).alias(source_col))
-
-
 @dataclass(frozen=True)
 class _Run:
     """Per-call state shared by every strategy's ``apply``."""
@@ -1249,12 +1129,26 @@ class _Run:
         source_col: str | None,
     ) -> "_Run":
         """Seed the stream, validate ``df``, and partition it per series."""
-        df_nw = _with_source(
-            nw.from_native(df), id_col, time_col, target_col, source_col
-        )
+        df_nw = nw.from_native(df)
+        _validate_columns(df_nw, id_col, time_col, target_col)
+        if source_col is not None:
+            if source_col in df_nw.columns:
+                raise ValueError(
+                    f"source_col {source_col!r} must not equal id_col, time_col, "
+                    "target_col or an existing input column"
+                )
+            # Synthetic frames are copied from input rows, so they inherit
+            # this column along with every other input column.
+            df_nw = df_nw.with_columns(
+                nw.col(id_col).cast(nw.String()).alias(source_col)
+            )
         # Synthetic frames must match the input's dataframe library, or the
         # final concat would mix backends. An explicit engine wins.
-        original = _to_output_backend(df_nw, engine)
+        original = (
+            df_nw
+            if engine is None
+            else nw.DataFrame.from_dict(df_nw.to_dict(as_series=False), backend=engine)
+        )
         partitions = _partition_series(df_nw, id_col, time_col)
         return cls(
             seed=seed,
@@ -1290,16 +1184,6 @@ class _Run:
             target_col,
             source_col,
         ).to_native()
-
-
-def _to_output_backend(frame: nw.DataFrame, engine: Any) -> nw.DataFrame:
-    """Convert an input frame when an explicit output engine was requested."""
-    if engine is None:
-        return frame
-    return nw.DataFrame.from_dict(
-        frame.to_dict(as_series=False),
-        backend=engine,
-    )
 
 
 def _partition_series(

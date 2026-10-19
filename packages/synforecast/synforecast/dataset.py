@@ -463,9 +463,8 @@ class SynAugment:
             include_original: Prepend the original series to the output
                 (default: True).
             source_col: Name of an added column holding each row's source
-                series id; None (default) adds no column. Mixup rows name the
-                anchor series only, though other blended series contribute
-                values, so grouping CV folds by it does not prevent leakage.
+                series id (the anchor; see :meth:`~synforecast.BaseAugmenter.apply`);
+                None (default) adds no column.
 
         Returns:
             DataFrame with the original series (optional) and synthetic mixup series. Mixup IDs follow the pattern ``"mixup_{i}"``.
@@ -546,9 +545,9 @@ class SynAugment:
                 to average raw values.
             include_original: Include unchanged original rows (default: True).
             source_col: Name of an added column holding each row's source
-                series id; None (default) adds no column. DBA rows name the
-                reference series only, though its neighbors contribute
-                values, so grouping CV folds by it does not prevent leakage.
+                series id (the reference; see
+                :meth:`~synforecast.BaseAugmenter.apply`); None (default) adds
+                no column.
 
         Returns:
             Frame containing generated series and, optionally, original rows,

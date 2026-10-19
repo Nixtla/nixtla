@@ -557,7 +557,9 @@ class TestSynAugment:
 
         augmenter = SynAugment(seed=42)
 
-        with pytest.raises(ValueError, match="n_augment must be >= 1"):
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be greater than or equal to 1"
+        ):
             augmenter.augment(df, n_augment=0)
 
     def test_custom_column_names(self) -> None:
@@ -899,7 +901,9 @@ class TestSynAugmentValidation:
 
         augmenter = SynAugment(seed=42)
 
-        with pytest.raises(ValueError, match="n_augment must be <= 1000"):
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be less than or equal to 1000"
+        ):
             augmenter.augment(df, n_augment=1001)
 
 
