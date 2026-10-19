@@ -21,7 +21,8 @@
   still advances its seed on every call, so a fresh instance with the same
   seed reproduces the same sequence of outputs.
 - Invalid strategy arguments raise pydantic `ValidationError` (a `ValueError`)
-  when the spec is built (for `SynAugment`, still at the method call). An
+  when the spec is built (for `SynAugment`, still at the method call);
+  numeric fields reject bools and strings such as `"3"`. An
   unknown generator name and bad `scaling`/`scale` values get pydantic's
   message, augmentation warnings log from `synforecast.augment`, and the AR(1)
   summary no longer starts with `SynAugment`.

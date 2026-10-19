@@ -373,3 +373,67 @@ def test_negative_seed_rejected_at_construction():
         Mixup(seed=-1)
     with pytest.raises(ValueError, match="seed"):
         SynAugment(seed=-1)
+
+
+def test_analyze_keeps_first_appearance_order_on_polars():
+    ids = [f"s{i}" for i in range(200, 0, -1)]
+    panel = pl.DataFrame(
+        {
+            "unique_id": np.repeat(ids, 10),
+            "ds": np.tile(np.arange(10), len(ids)),
+            "y": np.random.default_rng(0).normal(size=10 * len(ids)),
+        }
+    )
+    assert list(augment.analyze(panel)) == ids
+
+
+def test_generator_override_is_immutable_and_hashable():
+    spec = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+    with pytest.raises(TypeError):
+        spec.generator_override[0] = "SARIMAGenerator"
+    same = FitAndSimulate(seed=1, generator_override={0: "RandomWalkGenerator"})
+    assert hash(spec) == hash(same)
+    assert spec == same
+    dumped = spec.model_dump()
+    assert type(dumped["generator_override"]) is dict
+    again = FitAndSimulate.model_validate(dumped)
+    assert again == spec
+    assert_frame_equal(to_pandas(again.apply(src)), to_pandas(spec.apply(src)))
+
+
+@pytest.mark.parametrize(
+    ("cls", "field", "value"),
+    [
+        (MovingBlockBootstrap, "n_augment", "3"),
+        (MovingBlockBootstrap, "n_augment", True),
+        (MovingBlockBootstrap, "block_size", "4"),
+        (Mixup, "n_series", "3"),
+        (Mixup, "max_mix", True),
+        (Mixup, "alpha", "1.5"),
+        (DBA, "n_neighbors", "2"),
+        (DBA, "window_fraction", "0.2"),
+        (FitAndSimulate, "seed", "1"),
+        (FitAndSimulate, "seed", True),
+    ],
+)
+def test_numeric_fields_reject_str_and_bool(cls, field, value):
+    with pytest.raises(ValidationError):
+        cls(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("cls", "field", "value"),
+    [
+        (MovingBlockBootstrap, "n_augment", np.int64(3)),
+        (MovingBlockBootstrap, "seasonal_period", np.int32(4)),
+        (Mixup, "n_series", np.int64(3)),
+        (Mixup, "alpha", np.float64(1.5)),
+        (Mixup, "alpha", 2),
+        (DBA, "window_fraction", np.float32(0.25)),
+        (FitAndSimulate, "seed", np.int64(1)),
+    ],
+)
+def test_numeric_fields_accept_numpy_scalars(cls, field, value):
+    spec = cls(**{field: value})
+    assert getattr(spec, field) == value
+    assert type(getattr(spec, field)) in (int, float)

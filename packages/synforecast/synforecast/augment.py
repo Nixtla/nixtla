@@ -10,12 +10,21 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Annotated, Any, Literal
 
 import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoFrameT
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+)
 
 from synforecast._analysis import classify_series, detect_seasonality
 from synforecast._dtw import nearest_dtw_neighbors
@@ -74,7 +83,17 @@ def _check_n_augment(n_augment: int) -> int:
     return n_augment
 
 
-NAugment = Annotated[int, AfterValidator(_check_n_augment)]
+def _reject_bool_and_str(value: Any) -> Any:
+    """Stop pydantic's lax mode from coercing ``True`` or ``"3"`` to numbers."""
+    if isinstance(value, bool | np.bool_ | str | bytes):
+        raise ValueError(f"expected a number, got {type(value).__name__}")
+    return value
+
+
+# Python and numpy numbers pass; bools and strings are rejected.
+Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
+Float = Annotated[float, BeforeValidator(_reject_bool_and_str)]
+NAugment = Annotated[Int, AfterValidator(_check_n_augment)]
 
 
 class BaseAugmenter(BaseModel, ABC):
@@ -90,7 +109,7 @@ class BaseAugmenter(BaseModel, ABC):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    seed: int | None = Field(
+    seed: Int | None = Field(
         default=None,
         ge=0,
         description="Default random seed for apply; None draws fresh entropy",
@@ -146,7 +165,8 @@ class FitAndSimulate(BaseAugmenter):
             series, from 1 to 1000 (default: 1)
         generator_override (dict | None): Optional dict mapping unique_id to
             generator name. Overrides automatic generator selection for
-            specified series; keys match on ``str(unique_id)``.
+            specified series; keys match on ``str(unique_id)``. Stored as a
+            read-only mapping; ``model_dump`` returns a plain dict.
             Example: {"series_0": "SARIMAGenerator"}
         on_error (str): What to do when a fitted generator fails for a series.
             'raise' (default) propagates the error; 'ar1' substitutes an
@@ -178,14 +198,34 @@ class FitAndSimulate(BaseAugmenter):
     @classmethod
     def validate_generator_override(
         cls, v: dict[str | int, str] | None
-    ) -> dict[str | int, str] | None:
-        """Reject keys that collide once converted to strings."""
-        if v is not None and len({str(key) for key in v}) != len(v):
+    ) -> MappingProxyType | None:
+        """Reject keys that collide as strings and freeze the mapping."""
+        if v is None:
+            return None
+        if len({str(key) for key in v}) != len(v):
             raise ValueError(
                 "generator_override has keys that are equal as strings: "
                 f"{sorted(map(repr, v))}"
             )
-        return v
+        return MappingProxyType(dict(v))
+
+    @field_serializer("generator_override")
+    def _dump_generator_override(
+        self, v: MappingProxyType | None
+    ) -> dict[str | int, str] | None:
+        return None if v is None else dict(v)
+
+    def __hash__(self) -> int:
+        """Hash like a frozen model, with the override as a frozenset."""
+        return hash(
+            (
+                type(self),
+                *(
+                    frozenset(v.items()) if isinstance(v, MappingProxyType) else v
+                    for v in self.__dict__.values()
+                ),
+            )
+        )
 
     def apply(
         self,
@@ -496,17 +536,17 @@ class Mixup(BaseAugmenter):
         >>> mixed_df = Mixup(n_series=50, seed=42).apply(df)  # doctest: +SKIP
     """
 
-    n_series: int | None = Field(
+    n_series: Int | None = Field(
         default=None,
         description=(
             "Total synthetic series (TSMixup), not per source; "
             "None uses the number of usable input series"
         ),
     )
-    max_mix: int = Field(
+    max_mix: Int = Field(
         default=3, description="Maximum number of source series mixed per series"
     )
-    alpha: float = Field(
+    alpha: Float = Field(
         default=1.5, description="Concentration of the Dirichlet mixing weights"
     )
     scaling: Literal["mean", "std", "none"] = Field(
@@ -697,10 +737,10 @@ class MovingBlockBootstrap(BaseAugmenter):
     n_augment: NAugment = Field(
         default=1, description="Copies per usable source series, 1 to 1000"
     )
-    seasonal_period: int | None = Field(
+    seasonal_period: Int | None = Field(
         default=None, description="Period >= 2, or None to detect it per source"
     )
-    block_size: int | None = Field(
+    block_size: Int | None = Field(
         default=None,
         description="Block length >= 2, or None for the period/length default",
     )
@@ -877,11 +917,11 @@ class DBA(BaseAugmenter):
     n_augment: NAugment = Field(
         default=1, description="Copies per usable reference series, 1 to 1000"
     )
-    n_neighbors: int = Field(
+    n_neighbors: Int = Field(
         default=3, description="Maximum neighbor count, capped at usable sources"
     )
-    n_iterations: int = Field(default=5, description="Barycenter updates, 1 to 1000")
-    window_fraction: float = Field(
+    n_iterations: Int = Field(default=5, description="Barycenter updates, 1 to 1000")
+    window_fraction: Float = Field(
         default=0.1, description="DTW band fraction in (0, 1]"
     )
     scale: Literal["reference", "none"] = Field(
@@ -1087,7 +1127,7 @@ def analyze(
 
     return _analyze_partitions(
         _partition_series(df_nw, id_col, time_col),
-        df_nw[id_col].unique().to_list(),
+        df_nw[id_col].unique(maintain_order=True).to_list(),
         target_col,
     )
 
