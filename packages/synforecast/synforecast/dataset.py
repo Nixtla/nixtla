@@ -408,8 +408,7 @@ class SynAugment:
 
         Raises:
             ValueError: If DataFrame is missing required columns, n_augment < 1,
-                generator_override names an unsupported generator, or no
-                generator_override key matches a series
+                or generator_override names an unsupported generator
             RuntimeError: If a fitted generator fails for a series and the
                 instance was created with on_error='raise' (the default)
 

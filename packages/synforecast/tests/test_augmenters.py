@@ -165,16 +165,8 @@ def test_invalid_values_rejected(cls, kwargs):
 
 
 def test_unknown_override_key_warns(caplog):
-    first = to_pandas(src)["unique_id"].iloc[0]
-    override = {first: "SARIMAGenerator", "nope": "SARIMAGenerator"}
-    FitAndSimulate(seed=1, generator_override=override).apply(src)
+    FitAndSimulate(seed=1, generator_override={"nope": "SARIMAGenerator"}).apply(src)
     assert sum("nope" in r.getMessage() for r in caplog.records) == 1
-
-
-def test_all_unknown_override_keys_raise():
-    spec = FitAndSimulate(seed=1, generator_override={"nope": "SARIMAGenerator"})
-    with pytest.raises(ValueError, match="match no series"):
-        spec.apply(src)
 
 
 def test_override_int_keys_match(caplog):
@@ -185,8 +177,7 @@ def test_override_int_keys_match(caplog):
     assert not any("generator_override" in r.getMessage() for r in caplog.records)
     assert not to_pandas(out).equals(to_pandas(FitAndSimulate(seed=1).apply(src)))
     # Positive control: an unknown key is reported through the same capture.
-    override = {first: "SARIMAGenerator", -1: "SARIMAGenerator"}
-    FitAndSimulate(seed=1, generator_override=override).apply(src)
+    FitAndSimulate(seed=1, generator_override={-1: "SARIMAGenerator"}).apply(src)
     assert any("generator_override" in r.getMessage() for r in caplog.records)
 
 

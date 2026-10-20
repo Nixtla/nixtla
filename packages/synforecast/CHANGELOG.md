@@ -24,8 +24,7 @@
 ### Fixed
 
 - `augment` is reproducible on polars input, `_aug_` ids no longer collide
-  with existing ids, a `generator_override` matching no series raises
-  ValueError, and partly unmatched overrides warn.
+  with existing ids, and unknown `generator_override` keys warn.
 - `mixup(alpha=nan or inf)` is rejected.
 
 ## 0.2.0 - 2026-10-12

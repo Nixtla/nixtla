@@ -167,8 +167,7 @@ class BaseAugmenter(BaseModel, ABC):
         Raises:
             ValidationError: If ``seed`` is not a non-negative integer.
             ValueError: If ``df`` is missing required columns, ``source_col``
-                clashes with an input column, no series is usable, or no
-                ``generator_override`` key matches a series (FitAndSimulate).
+                clashes with an input column, or no series is usable.
             RuntimeError: If a FitAndSimulate generator fails and
                 ``on_error='raise'`` (the default).
         """
@@ -237,8 +236,7 @@ class FitAndSimulate(BaseAugmenter):
             ``str(key)``; a series matches when ``str(id)`` equals a key, so
             ``1`` and ``"1"`` are the same key. Stored as a read-only mapping;
             ``model_dump`` returns a plain dict. Keys matching no series are
-            warned about; ``apply`` raises ValueError if no key matches any
-            series.
+            warned about and ignored, so one spec can be reused on subsets.
             Example: {"series_0": "SARIMAGenerator"}
         on_error (str): What to do when a fitted generator fails for a series.
             'raise' (default) propagates the error; 'ar1' substitutes an
@@ -303,11 +301,6 @@ class FitAndSimulate(BaseAugmenter):
             if str(series_id) in overrides
         }
         unknown = [key for key in overrides if key not in reserved_ids]
-        if unknown and len(unknown) == len(overrides):
-            raise ValueError(
-                f"generator_override keys match no series: {unknown}; "
-                f"first series ids: {unique_ids[:5]}"
-            )
         if unknown:
             logger.warning(
                 "generator_override keys match no series and are ignored: %s",
