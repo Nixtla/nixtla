@@ -10,6 +10,7 @@ import functools
 import logging
 import math
 from abc import ABC, abstractmethod
+from collections import Counter
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, get_args
 
@@ -172,38 +173,15 @@ class BaseAugmenter(BaseModel, ABC):
                 ``on_error='raise'`` (the default).
         """
         seed = self._seed(seed)
-        return self._apply_with_rng(
+        run = _Run.start(
             df,
             np.random.default_rng(seed),
-            seeded=seed is not None,
-            include_original=include_original,
-            id_col=id_col,
-            time_col=time_col,
-            target_col=target_col,
-            engine=engine,
-            source_col=source_col,
-        )
-
-    def _apply_with_rng(
-        self,
-        df: IntoFrameT,
-        rng: np.random.Generator,
-        *,
-        seeded: bool,
-        include_original: bool = True,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        engine: str | None = None,
-        source_col: str | None = None,
-    ) -> IntoFrameT:
-        """Run ``apply`` drawing from ``rng``, which the caller owns.
-
-        ``seeded`` tells :class:`FitAndSimulate` whether to seed its
-        generators. ``SynAugment`` passes its persistent stream here.
-        """
-        run = _Run.start(
-            df, rng, seeded, engine, id_col, time_col, target_col, source_col
+            seed is not None,
+            engine,
+            id_col,
+            time_col,
+            target_col,
+            source_col,
         )
         return run.finish(self._synthesize(run), include_original)
 
@@ -288,7 +266,7 @@ class FitAndSimulate(BaseAugmenter):
         return None if v is None else _FrozenDict(v)
 
     def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
-        id_col, time_col, target_col, _ = run.columns
+        id_col, _, target_col, _ = run.columns
         partitions = run.partitions
 
         unique_ids = run.df[id_col].unique(maintain_order=True).to_list()
@@ -340,7 +318,6 @@ class FitAndSimulate(BaseAugmenter):
                 rng=run.rng,
                 seeded=run.seeded,
                 fallbacks=fallbacks,
-                columns=(id_col, time_col, target_col),
             )
             for i, synthetic_values in enumerate(synthetic):
                 generated_id = _reserve_generated_id(
@@ -437,7 +414,6 @@ class FitAndSimulate(BaseAugmenter):
         rng: np.random.Generator,
         seeded: bool,
         fallbacks: list[tuple[str, str, str]],
-        columns: tuple[str, str, str] = ("unique_id", "ds", "y"),
     ) -> list[np.ndarray]:
         """Generate ``n_augment`` synthetic value arrays for one series.
 
@@ -451,7 +427,6 @@ class FitAndSimulate(BaseAugmenter):
             RuntimeError: If the generator fails and on_error='raise'
         """
         length = len(series_values)
-        id_col, time_col, target_col = columns
         synthetic = []
 
         # Compute target autocorrelation from original series
@@ -475,9 +450,6 @@ class FitAndSimulate(BaseAugmenter):
                 "max_length": length,
                 "freq": "h",  # Placeholder, timestamps are overridden
                 "seed": aug_seed,
-                "id_col": id_col,
-                "time_col": time_col,
-                "target_col": target_col,
             }
 
             # Merge fitted parameters
@@ -598,10 +570,7 @@ class Mixup(BaseAugmenter):
         for series_id in unique_ids:
             sdf = run.partitions[series_id]
             values = sdf.select(target_col).to_numpy().flatten().astype(float)
-            if (
-                len(values) >= 1
-                and (values := _interpolate_missing(values)) is not None
-            ):
+            if (values := _interpolate_missing(values)) is not None:
                 series[series_id] = values
             else:
                 skipped.append(series_id)
@@ -735,8 +704,6 @@ class MovingBlockBootstrap(BaseAugmenter):
         seasonal_period = self.seasonal_period
 
         unique_ids = sorted(run.df[id_col].unique().to_list())
-        if not unique_ids:
-            raise ValueError("mbb requires at least 1 series")
         reserved_ids = {str(series_id) for series_id in unique_ids}
         synthetic_dfs: list[nw.DataFrame] = []
         skipped: list[Any] = []
@@ -887,7 +854,6 @@ class DBA(BaseAugmenter):
 
         unique_ids = sorted(run.df[id_col].unique().to_list())
         reserved_ids = {str(series_id) for series_id in unique_ids}
-        series: dict[Any, tuple[np.ndarray, nw.DataFrame]] = {}
         aligned: dict[Any, np.ndarray] = {}
         moments: dict[Any, tuple[float, float]] = {}
         skipped: list[Any] = []
@@ -899,18 +865,16 @@ class DBA(BaseAugmenter):
             if values is None:
                 skipped.append(series_id)
                 continue
-            output_sdf = run.out_partitions[series_id]
             mean = float(values.mean())
             std = float(values.std())
             if scale == "reference" and std < 1e-8:
                 near_constant.append(series_id)
             divisor = std if std >= 1e-8 else 1.0
-            series[series_id] = (values, output_sdf)
             moments[series_id] = (mean, std)
             aligned[series_id] = (
                 (values - mean) / divisor if scale == "reference" else values
             )
-        usable_ids = list(series)
+        usable_ids = list(aligned)
         _warn_skipped("dba", skipped)
         if near_constant:
             logger.warning(
@@ -981,7 +945,7 @@ class DBA(BaseAugmenter):
                 copies = [barycenter * std + mean for barycenter in copies]
             synthetic_dfs.append(
                 _copy_reference_frames(
-                    series[reference_id][1],
+                    run.out_partitions[reference_id],
                     generated_ids,
                     copies,
                     run.out_engine,
@@ -1228,9 +1192,7 @@ def _warn_fallbacks(fallbacks: list[tuple[str, str, str]], total: int) -> None:
     if not fallbacks:
         return
 
-    by_generator: dict[str, int] = {}
-    for _, gen_name, _ in fallbacks:
-        by_generator[gen_name] = by_generator.get(gen_name, 0) + 1
+    by_generator = Counter(gen_name for _, gen_name, _ in fallbacks)
     counts = ", ".join(f"{g}: {c}" for g, c in sorted(by_generator.items()))
     first_id, first_gen, first_err = fallbacks[0]
     logger.warning(

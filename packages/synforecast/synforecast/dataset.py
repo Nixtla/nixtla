@@ -15,6 +15,7 @@ from synforecast.augment import (
     FitAndSimulate,
     Mixup,
     MovingBlockBootstrap,
+    _Run,
     analyze,
 )
 from synforecast.base import (
@@ -348,17 +349,17 @@ class SynAugment:
         include_original: bool = True,
         source_col: str | None = None,
     ) -> IntoFrameT:
-        return spec._apply_with_rng(
+        run = _Run.start(
             df,
             self.rng,
-            seeded=self.seed is not None,
-            include_original=include_original,
-            id_col=self.id_col,
-            time_col=self.time_col,
-            target_col=self.target_col,
-            engine=self.engine,
-            source_col=source_col,
+            self.seed is not None,
+            self.engine,
+            self.id_col,
+            self.time_col,
+            self.target_col,
+            source_col,
         )
+        return run.finish(spec._synthesize(run), include_original)
 
     def analyze(self, df: IntoFrameT) -> dict[str, dict]:
         """Analyze all series in DataFrame and return properties.
