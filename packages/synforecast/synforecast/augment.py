@@ -87,13 +87,14 @@ class _FrozenDict(dict):
         return (type(self), (dict(self),))
 
 
+_STRICT = BeforeValidator(_reject_bool_and_str)
+
 # Python and numpy numbers pass; bools and strings are rejected, and so are
-# non-finite floats.
-Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
-Float = Annotated[
-    float, BeforeValidator(_reject_bool_and_str), AfterValidator(_require_finite)
-]
-Seed = Annotated[Int, Field(ge=0)]
+# non-finite floats. Bounds go before ``_STRICT`` (or in the field's ``Field``)
+# so the JSON schema shows standard ``minimum``/``maximum`` keywords.
+Int = Annotated[int, _STRICT]
+Float = Annotated[float, _STRICT, AfterValidator(_require_finite)]
+Seed = Annotated[int, Field(ge=0), _STRICT]
 _SEED = TypeAdapter(Seed | None, config=ConfigDict(title="seed"))
 
 
@@ -574,10 +575,8 @@ class Mixup(BaseAugmenter):
         >>> mixed_df = Mixup(n_series=50, seed=42).apply(df)  # doctest: +SKIP
     """
 
-    n_series: Int | None = Field(
+    n_series: Annotated[int, Field(ge=1, le=1_000_000), _STRICT] | None = Field(
         default=None,
-        ge=1,
-        le=1_000_000,
         description=(
             "Total synthetic series (TSMixup), not per source; "
             "None uses the number of usable input series"
@@ -729,12 +728,11 @@ class MovingBlockBootstrap(BaseAugmenter):
         le=1000,
         description="Copies per usable source series, 1 to 1000",
     )
-    seasonal_period: Int | None = Field(
-        default=None, ge=2, description="Period >= 2, or None to detect it per source"
+    seasonal_period: Annotated[int, Field(ge=2), _STRICT] | None = Field(
+        default=None, description="Period >= 2, or None to detect it per source"
     )
-    block_size: Int | None = Field(
+    block_size: Annotated[int, Field(ge=2), _STRICT] | None = Field(
         default=None,
-        ge=2,
         description="Block length >= 2, or None for the period/length default",
     )
 

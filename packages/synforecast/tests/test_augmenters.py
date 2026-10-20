@@ -666,3 +666,24 @@ def test_call_seed_accepts_numpy_int(aug):
     assert_frame_equal(
         to_pandas(aug.apply(src, seed=np.int64(3))), to_pandas(aug.apply(src, seed=3))
     )
+
+
+def _schema(cls, field):
+    prop = cls.model_json_schema()["properties"][field]
+    return next((s for s in prop.get("anyOf", []) if s["type"] != "null"), prop)
+
+
+@pytest.mark.parametrize(
+    ("cls", "field", "expected"),
+    [
+        (DBA, "seed", {"minimum": 0}),
+        (DBA, "n_augment", {"minimum": 1, "maximum": 1000}),
+        (Mixup, "alpha", {"exclusiveMinimum": 0}),
+        (Mixup, "n_series", {"minimum": 1, "maximum": 1_000_000}),
+        (MovingBlockBootstrap, "block_size", {"minimum": 2}),
+    ],
+)
+def test_json_schema_uses_standard_bounds(cls, field, expected):
+    schema = _schema(cls, field)
+    assert {k: schema.get(k) for k in expected} == expected
+    assert not {"ge", "le", "gt", "lt"} & schema.keys()
