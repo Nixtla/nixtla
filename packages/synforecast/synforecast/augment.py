@@ -454,14 +454,7 @@ class FitAndSimulate(BaseAugmenter):
         synthetic = []
 
         # Compute target autocorrelation from original series
-        valid_values = series_values[~np.isnan(series_values)]
-        if len(valid_values) > 1:
-            target_ac1 = np.corrcoef(valid_values[:-1], valid_values[1:])[0, 1]
-            if np.isnan(target_ac1):
-                target_ac1 = 0.9
-            target_ac1 = np.clip(target_ac1, 0.0, 0.99)
-        else:
-            target_ac1 = 0.9
+        target_ac1 = np.clip(_lag1_corr(series_values, default=0.9), 0.0, 0.99)
 
         # Get the generator class
         generator_class = _generator_map().get(generator_name)
@@ -1339,6 +1332,18 @@ def _generate_ar1_series(
     return series
 
 
+def _lag1_corr(values: np.ndarray, default: float) -> float:
+    """Lag-1 correlation of the non-NaN ``values``, or ``default`` if undefined.
+
+    Checks length and spread first so numpy's ``corrcoef`` never warns.
+    """
+    valid = values[~np.isnan(values)]
+    if len(valid) < 2 or not (valid[:-1].std() > 0 and valid[1:].std() > 0):
+        return default
+    ac1 = np.corrcoef(valid[:-1], valid[1:])[0, 1]
+    return default if np.isnan(ac1) else ac1
+
+
 def _match_autocorrelation(
     synthetic: np.ndarray,
     target_ac1: float,
@@ -1363,13 +1368,7 @@ def _match_autocorrelation(
     n = len(synthetic)
 
     # Compute current autocorrelation
-    valid_syn = synthetic[~np.isnan(synthetic)]
-    if len(valid_syn) > 1:
-        current_ac1 = np.corrcoef(valid_syn[:-1], valid_syn[1:])[0, 1]
-        if np.isnan(current_ac1):
-            current_ac1 = 0.0
-    else:
-        current_ac1 = 0.0
+    current_ac1 = _lag1_corr(synthetic, default=0.0)
 
     # If autocorrelation is already close enough, just rescale
     if abs(current_ac1 - target_ac1) < 0.1:

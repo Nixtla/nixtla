@@ -287,11 +287,11 @@ def detect_volatility_clustering(series: np.ndarray) -> dict:
     ac2_sq = _autocorrelation(squared_returns, 2) if len(squared_returns) > 2 else 0.0
     ac5_sq = _autocorrelation(squared_returns, 5) if len(squared_returns) > 5 else 0.0
 
-    # Average autocorrelation of squared returns
-    avg_ac_sq = np.mean([ac for ac in [ac1_sq, ac2_sq, ac5_sq] if not np.isnan(ac)])
-
-    if np.isnan(avg_ac_sq):
+    # Average autocorrelation of squared returns (all NaN when they are constant)
+    acs = [ac for ac in [ac1_sq, ac2_sq, ac5_sq] if not np.isnan(ac)]
+    if not acs:
         return {"has_clustering": False, "strength": 0.0}
+    avg_ac_sq = np.mean(acs)
 
     # ARCH effects present if squared returns are autocorrelated
     has_clustering = avg_ac_sq > 0.1

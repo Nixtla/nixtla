@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import pickle
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -702,3 +703,23 @@ def test_subclass_restating_field_with_int_keeps_validation():
     for bad in (True, "3", 0):
         with pytest.raises(ValidationError):
             MyFit(n_augment=bad)
+
+
+@pytest.mark.parametrize(
+    "y",
+    [
+        np.array([1.0, 2.0]),
+        np.array([1.0, 3.0, 2.0]),
+        np.array([1.0, 3.0, 2.0, 5.0, 4.0]),
+        np.ones(5),
+        np.arange(20.0),
+    ],
+    ids=["len2", "len3", "len5", "const5", "linear20"],
+)
+def test_short_series_emit_no_runtime_warning(y):
+    df = pd.DataFrame(
+        {"unique_id": "a", "ds": pd.date_range("2020", periods=len(y)), "y": y}
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        FitAndSimulate(seed=0, on_error="ar1").apply(df)
