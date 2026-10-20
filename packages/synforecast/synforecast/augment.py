@@ -836,6 +836,8 @@ class DBA(BaseAugmenter):
     Reference scaling preserves zero scale for constant sources, producing
     constant copies. Sources with standard deviation below 1e-8 are listed
     in a warning because their copies may add little or no variation.
+    DBA needs at least 2 usable series; ``apply`` raises ValueError
+    otherwise.
 
     References are processed in sorted id order, so seeded output does not
     depend on the input row order. ``source_col`` names the reference (see
