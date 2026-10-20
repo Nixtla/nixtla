@@ -8,6 +8,16 @@ MINTLIFY_DIR = DOCS_DIR / "mintlify"
 
 
 _LIST_ITEM = re.compile(r"^\s*([-*+]|\d+\.)\s")
+_PARSER_ERROR = re.compile(r"<!-- (Error (?:generating docs|processing block).*?) -->", re.DOTALL)
+
+
+def parser_errors(text: str) -> list[str]:
+    """Return the errors mkdocstrings-parser left in its output.
+
+    The parser never raises: a ``:::`` reference it cannot resolve becomes an
+    HTML comment, which renders as nothing, so the section silently vanishes.
+    """
+    return _PARSER_ERROR.findall(text)
 
 
 def fence_indented_blocks(text: str) -> str:
@@ -141,14 +151,19 @@ def process_api_docs():
         ) from error
 
     parser = MkDocstringsParser()
+    errors = []
 
     for md_file in sorted(DOCS_DIR.glob("*.html.md")):
         print(f"Processing {md_file.name}...")
         output_file = MINTLIFY_DIR / md_file.name.replace(".html.md", ".html.mdx")
-        parser.process_file(str(md_file), str(output_file))
+        content = parser.process_file(str(md_file), str(output_file))
+        errors += [f"{md_file.name}: {error}" for error in parser_errors(content)]
         # Fence first: escaping must see indented equation blocks as real code.
         output_file.write_text(escape_mdx_hazards(fence_indented_blocks(output_file.read_text())))
         print(f"  -> {output_file.name}")
+
+    if errors:
+        raise SystemExit("Docstring parsing failed:\n" + "\n".join(errors))
 
 
 _ALERT = re.compile(r"^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$")
