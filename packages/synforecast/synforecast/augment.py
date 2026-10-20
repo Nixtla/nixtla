@@ -87,12 +87,15 @@ class _FrozenDict(dict):
 
 _STRICT = BeforeValidator(_reject_bool_and_str)
 
-# Python and numpy numbers pass; bools and strings are rejected, and so are
-# non-finite floats. Bounds go before ``_STRICT`` (or in the field's ``Field``)
-# so the JSON schema shows standard ``minimum``/``maximum`` keywords.
+# Strict number types for spec fields. Python and numpy numbers pass; bools and
+# strings are rejected. Bounds go before ``_STRICT`` (or in the field's
+# ``Field``) so the JSON schema shows standard ``minimum``/``maximum`` keywords.
 Int = Annotated[int, _STRICT]
+"""An ``int`` field that rejects bools and strings."""
 Float = Annotated[float, _STRICT, AfterValidator(_require_finite)]
+"""A finite ``float`` field that rejects bools and strings."""
 Seed = Annotated[int, Field(ge=0), _STRICT]
+"""A non-negative ``int`` seed that rejects bools and strings."""
 _SEED = TypeAdapter(Seed | None, config=ConfigDict(title="seed"))
 
 
@@ -101,6 +104,10 @@ class BaseAugmenter(BaseModel, ABC):
 
     A spec declares a strategy's settings and default ``seed``; ``apply``
     executes it on a frame without mutating the spec.
+
+    Subclasses restating a field (e.g. to change its default) should annotate
+    it with ``synforecast.augment.Int``, ``Float`` or ``Seed``, with the same
+    ``Field`` bounds, to keep rejecting bools and strings.
 
     Args:
         seed (int | None): Default random seed for ``apply`` (default: None,
@@ -154,6 +161,8 @@ class BaseAugmenter(BaseModel, ABC):
 
         Returns:
             Frame containing generated series and, optionally, original rows.
+            The id column is categorical (as before); cast it before
+            concatenating the output with the input.
 
         Raises:
             ValidationError: If ``seed`` is not a non-negative integer.

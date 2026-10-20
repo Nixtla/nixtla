@@ -9,7 +9,7 @@ import pandas as pd
 import polars as pl
 import pytest
 from pandas.testing import assert_frame_equal
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from synforecast import (
     DBA,
@@ -692,3 +692,13 @@ def test_json_schema_uses_standard_bounds(cls, field, expected):
     schema = _schema(cls, field)
     assert {k: schema.get(k) for k in expected} == expected
     assert not {"ge", "le", "gt", "lt"} & schema.keys()
+
+
+def test_subclass_restating_field_with_int_keeps_validation():
+    class MyFit(FitAndSimulate):
+        n_augment: augment.Int = Field(default=3, ge=1, le=1000)
+
+    assert MyFit().n_augment == 3
+    for bad in (True, "3", 0):
+        with pytest.raises(ValidationError):
+            MyFit(n_augment=bad)
