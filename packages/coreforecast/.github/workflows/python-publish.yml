@@ -13,12 +13,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [310, 311, 312, 313, 314]
+        python-version: [311, 312, 313, 314, 315]
         os-platform:
           [
             [ubuntu-latest, manylinux_x86_64],
             [ubuntu-24.04-arm, manylinux_aarch64],
             [windows-latest, win_amd64],
+            [windows-11-arm, win_arm64],
             [macos-15-intel, macosx_x86_64],
             [macos-latest, macosx_arm64],
           ]
@@ -53,7 +54,7 @@ jobs:
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Build sdist
         run: |
