@@ -10,7 +10,6 @@ import functools
 import logging
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, get_args
 
@@ -24,7 +23,6 @@ from pydantic import (
     ConfigDict,
     Field,
     TypeAdapter,
-    field_serializer,
     field_validator,
 )
 
@@ -225,9 +223,10 @@ class FitAndSimulate(BaseAugmenter):
             series, from 1 to 1000 (default: 1)
         generator_override (dict | None): Optional dict mapping unique_id to
             generator name. Overrides automatic generator selection for
-            specified series; an id matches a key equal to it, else a key
-            with the same ``str``. Keys may be any hashable. Stored as a
-            read-only mapping; ``model_dump`` returns a plain dict.
+            specified series. Keys may be any hashable and are stored as
+            ``str(key)``; a series matches when ``str(id)`` equals a key, so
+            ``1`` and ``"1"`` are the same key. Stored as a read-only mapping;
+            ``model_dump`` returns a plain dict.
             Example: {"series_0": "SARIMAGenerator"}
         on_error (str): What to do when a fitted generator fails for a series.
             'raise' (default) propagates the error; 'ar1' substitutes an
@@ -249,36 +248,34 @@ class FitAndSimulate(BaseAugmenter):
         le=1000,
         description="Synthetic series per source series, 1 to 1000",
     )
-    generator_override: dict[Hashable, FittableGenerator] | None = Field(
+    generator_override: dict[str, FittableGenerator] | None = Field(
         default=None,
-        description="Generator name per series ID, matched exactly, then on str(id)",
+        description="Generator name per series ID, stored and matched as str(id)",
     )
     on_error: Literal["raise", "ar1"] = Field(
         default="raise",
         description="'raise' propagates generator failures; 'ar1' substitutes AR(1)",
     )
 
-    @field_validator("generator_override")
+    @field_validator("generator_override", mode="before")
     @classmethod
-    def validate_generator_override(
-        cls, v: dict[Hashable, str] | None
-    ) -> _FrozenDict | None:
-        """Reject keys that collide as strings and freeze the mapping."""
-        if v is None:
-            return None
-        if len({str(key) for key in v}) != len(v):
+    def _str_override_keys(cls, v: Any) -> Any:
+        """Store keys as ``str(key)``, rejecting keys that collide as strings."""
+        if not isinstance(v, dict):
+            return v
+        keys = {str(key): key for key in v}
+        if len(keys) != len(v):
             raise ValueError(
                 "generator_override has keys that are equal as strings: "
                 f"{sorted(map(repr, v))}"
             )
-        return _FrozenDict(v)
+        return dict(zip(keys, v.values(), strict=True))
 
-    @field_serializer("generator_override", when_used="json")
-    def _serialize_override_keys(
-        self, v: dict[Hashable, str] | None
-    ) -> dict[str, str] | None:
-        """Write keys as ``str(key)``, the form ids fall back to matching."""
-        return None if v is None else {str(key): name for key, name in v.items()}
+    @field_validator("generator_override")
+    @classmethod
+    def _freeze_override(cls, v: dict[str, str] | None) -> _FrozenDict | None:
+        """Freeze the mapping so the spec stays immutable and hashable."""
+        return None if v is None else _FrozenDict(v)
 
     def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
         id_col, time_col, target_col, _ = run.columns
@@ -287,21 +284,13 @@ class FitAndSimulate(BaseAugmenter):
         unique_ids = run.df[id_col].unique(maintain_order=True).to_list()
         reserved_ids = {str(series_id) for series_id in unique_ids}
 
-        # Match each id exactly first, then on str(id).
         overrides = self.generator_override or {}
-        by_str = {str(key): key for key in overrides}
-        chosen: dict[Any, str] = {}
-        matched = set()
-        for series_id in unique_ids:
-            if series_id in overrides:
-                key = series_id
-            elif str(series_id) in by_str:
-                key = by_str[str(series_id)]
-            else:
-                continue
-            chosen[series_id] = overrides[key]
-            matched.add(key)
-        unknown = [key for key in overrides if key not in matched]
+        chosen = {
+            series_id: overrides[str(series_id)]
+            for series_id in unique_ids
+            if str(series_id) in overrides
+        }
+        unknown = [key for key in overrides if key not in reserved_ids]
         if unknown:
             logger.warning(
                 "generator_override keys match no series and are ignored: %s",

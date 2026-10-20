@@ -198,32 +198,44 @@ def test_override_str_key_matches_int_ids(caplog):
 @pytest.mark.parametrize(
     "key", [1.0, ("a", 1), pd.Timestamp("2020-01-01")], ids=["float", "tuple", "ts"]
 )
-def test_override_keeps_hashable_keys(key):
+def test_override_stores_str_keys(key):
     spec = FitAndSimulate(generator_override={key: "SARIMAGenerator"})
-    assert list(spec.generator_override) == [key]
-    assert type(next(iter(spec.model_dump()["generator_override"]))) is type(key)
+    assert list(spec.generator_override) == [str(key)]
+    assert list(spec.model_dump()["generator_override"]) == [str(key)]
     assert hash(spec) == hash(pickle.loads(pickle.dumps(spec)))
 
 
-def _json_roundtrip_keeps_override(d, key, caplog):
+def _roundtrips_equal(d, key, caplog):
     spec = FitAndSimulate(seed=1, generator_override={key: "SARIMAGenerator"})
-    assert next(iter(spec.model_dump()["generator_override"])) is key
-    again = FitAndSimulate.model_validate_json(spec.model_dump_json())
-    out = to_pandas(again.apply(d))
+    expected = to_pandas(spec.apply(d))
+    for again in (
+        FitAndSimulate.model_validate_json(spec.model_dump_json()),
+        FitAndSimulate.model_validate(spec.model_dump()),
+    ):
+        assert again == spec and hash(again) == hash(spec)
+        assert_frame_equal(to_pandas(again.apply(d)), expected)
     assert not any("generator_override" in r.getMessage() for r in caplog.records)
-    assert_frame_equal(out, to_pandas(spec.apply(d)))
+    assert not expected.equals(to_pandas(FitAndSimulate(seed=1).apply(d)))
 
 
-def test_override_numpy_int_key_json_roundtrip(caplog):
-    key = np.int64(to_pandas(src)["unique_id"].iloc[0])
-    _json_roundtrip_keeps_override(src, key, caplog)
+def test_override_int_key_roundtrips_equal(caplog):
+    _roundtrips_equal(src, int(to_pandas(src)["unique_id"].iloc[0]), caplog)
 
 
-def test_override_timestamp_key_json_roundtrip(caplog):
+def test_override_numpy_int_key_roundtrips_equal(caplog):
+    _roundtrips_equal(src, np.int64(to_pandas(src)["unique_id"].iloc[0]), caplog)
+
+
+def test_override_float_key_roundtrips_equal(caplog):
+    d = to_pandas(src).astype({"unique_id": int}).astype({"unique_id": float})
+    _roundtrips_equal(d, d["unique_id"].iloc[0], caplog)
+
+
+def test_override_timestamp_key_roundtrips_equal(caplog):
     d = to_pandas(src)
     stamps = pd.date_range("2020-01-01", periods=d["unique_id"].nunique())
     d = d.assign(unique_id=stamps[d["unique_id"].cat.codes])
-    _json_roundtrip_keeps_override(d, stamps[0], caplog)
+    _roundtrips_equal(d, stamps[0], caplog)
 
 
 # SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y columns,
@@ -582,7 +594,7 @@ def test_generator_override_is_immutable(mutate):
     spec = _override_spec()
     with pytest.raises(TypeError):
         mutate(spec.generator_override)
-    assert spec.generator_override == {0: "RandomWalkGenerator"}
+    assert spec.generator_override == {"0": "RandomWalkGenerator"}
 
 
 def test_generator_override_hash_and_eq():
@@ -600,18 +612,10 @@ def test_generator_override_hash_and_eq():
 def test_generator_override_dump_roundtrip():
     spec = _override_spec()
     dumped = spec.model_dump()
+    assert dumped["generator_override"] == {"0": "RandomWalkGenerator"}
     assert type(dumped["generator_override"]) is dict
-    again = FitAndSimulate.model_validate(dumped)
-    assert again == spec
-    assert_frame_equal(to_pandas(again.apply(src)), to_pandas(spec.apply(src)))
-    # JSON object keys are strings: an int key comes back as "0", which still
-    # matches the series on str(id), so the output is unchanged.
-    from_json = FitAndSimulate.model_validate_json(spec.model_dump_json())
-    assert from_json.generator_override == {"0": "RandomWalkGenerator"}
-    assert_frame_equal(to_pandas(from_json.apply(src)), to_pandas(spec.apply(src)))
-    # JSON keys are strings, so round-trip a string-keyed override.
-    named = FitAndSimulate(seed=1, generator_override={"0": "RandomWalkGenerator"})
-    assert FitAndSimulate.model_validate_json(named.model_dump_json()) == named
+    assert FitAndSimulate.model_validate(dumped) == spec
+    assert FitAndSimulate.model_validate_json(spec.model_dump_json()) == spec
 
 
 def test_generator_override_spec_pickles_and_deep_copies():
@@ -678,6 +682,7 @@ def _schema(cls, field):
     [
         (DBA, "seed", {"minimum": 0}),
         (DBA, "n_augment", {"minimum": 1, "maximum": 1000}),
+        (FitAndSimulate, "n_augment", {"minimum": 1, "maximum": 1000}),
         (Mixup, "alpha", {"exclusiveMinimum": 0}),
         (Mixup, "n_series", {"minimum": 1, "maximum": 1_000_000}),
         (MovingBlockBootstrap, "block_size", {"minimum": 2}),

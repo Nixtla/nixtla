@@ -18,6 +18,8 @@
   spec is built; numeric fields reject bools and strings. Warnings log from
   `synforecast.augment`, and the AR(1) summary no longer starts with
   `SynAugment`.
+- `generator_override` keys are stored and matched as `str(key)`, so a spec
+  round-trips through `model_dump`/JSON to an equal spec.
 
 ### Fixed
 
