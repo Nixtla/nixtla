@@ -23,6 +23,7 @@ from pydantic import (
     ConfigDict,
     Field,
     TypeAdapter,
+    field_serializer,
     field_validator,
 )
 
@@ -83,7 +84,7 @@ class _FrozenDict(dict):
 Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
 Float = Annotated[float, BeforeValidator(_reject_bool_and_str), AllowInfNan(False)]
 Seed = Annotated[Int, Field(ge=0)]
-_SEED = TypeAdapter(Seed | None)
+_SEED = TypeAdapter(Seed | None, config=ConfigDict(title="seed"))
 
 
 class BaseAugmenter(BaseModel, ABC):
@@ -144,6 +145,13 @@ class BaseAugmenter(BaseModel, ABC):
 
         Returns:
             Frame containing generated series and, optionally, original rows.
+
+        Raises:
+            ValidationError: If ``seed`` is not a non-negative integer.
+            ValueError: If ``df`` is missing required columns, ``source_col``
+                clashes with an input column, or no series is usable.
+            RuntimeError: If a FitAndSimulate generator fails and
+                ``on_error='raise'`` (the default).
         """
         seed = self._seed(seed)
         return self._apply_with_rng(
@@ -253,6 +261,13 @@ class FitAndSimulate(BaseAugmenter):
                 f"{sorted(map(repr, v))}"
             )
         return _FrozenDict(v)
+
+    @field_serializer("generator_override", when_used="json")
+    def _serialize_override_keys(
+        self, v: dict[Hashable, str] | None
+    ) -> dict[str, str] | None:
+        """Write keys as ``str(key)``, the form ids fall back to matching."""
+        return None if v is None else {str(key): name for key, name in v.items()}
 
     def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
         id_col, time_col, target_col, _ = run.columns

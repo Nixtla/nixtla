@@ -205,6 +205,27 @@ def test_override_keeps_hashable_keys(key):
     assert hash(spec) == hash(pickle.loads(pickle.dumps(spec)))
 
 
+def _json_roundtrip_keeps_override(d, key, caplog):
+    spec = FitAndSimulate(seed=1, generator_override={key: "SARIMAGenerator"})
+    assert next(iter(spec.model_dump()["generator_override"])) is key
+    again = FitAndSimulate.model_validate_json(spec.model_dump_json())
+    out = to_pandas(again.apply(d))
+    assert not any("generator_override" in r.getMessage() for r in caplog.records)
+    assert_frame_equal(out, to_pandas(spec.apply(d)))
+
+
+def test_override_numpy_int_key_json_roundtrip(caplog):
+    key = np.int64(to_pandas(src)["unique_id"].iloc[0])
+    _json_roundtrip_keeps_override(src, key, caplog)
+
+
+def test_override_timestamp_key_json_roundtrip(caplog):
+    d = to_pandas(src)
+    stamps = pd.date_range("2020-01-01", periods=d["unique_id"].nunique())
+    d = d.assign(unique_id=stamps[d["unique_id"].cat.codes])
+    _json_roundtrip_keeps_override(d, stamps[0], caplog)
+
+
 # SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y columns,
 # computed on main before the specs existed: sha256 of the ds bytes and
 # joined ids (exact), and the last three, two middle and the sum of ``y``
