@@ -12,9 +12,7 @@
 
 ### Changed
 
-- A spec's `apply` returns identical output for the same spec, data and seed;
-  the `SynAugment` facade still advances its seed per call (a fresh instance
-  replays the sequence).
+- A spec's `apply` returns identical output for the same spec, data and seed.
 - Invalid arguments raise pydantic `ValidationError` (a `ValueError`, with
   pydantic's messages, including bounds and unknown generator names) when a
   spec is built; numeric fields reject bools and strings. Warnings log from
@@ -24,12 +22,8 @@
 ### Fixed
 
 - `augment` is reproducible on polars input, `_aug_` ids no longer collide
-  with existing ids, unknown `generator_override` keys warn, and
-  `mixup(alpha=nan)` is rejected instead of producing NaN series.
-
-### Removed
-
-- `SynAugment.rng`.
+  with existing ids, and unknown `generator_override` keys warn.
+- `mixup(alpha=nan or inf)` is rejected.
 
 ## 0.2.0 - 2026-10-12
 

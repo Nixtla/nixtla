@@ -93,7 +93,7 @@ returns identical output for the same spec, data and seed, and carries extra
 columns through. `apply(df, source_col="source")` names each row's input
 series; for `Mixup` (the anchor) and `DBA` (the reference) other series also
 contribute values, so grouping CV folds by it does not prevent leakage. The
-`SynAugment` facade below advances its seed on every call instead.
+`SynAugment` facade below keeps one random stream across calls, as before.
 
 For non-parametric augmentation, bootstrap local remainder blocks or construct
 panel-aware DTW barycenters:
