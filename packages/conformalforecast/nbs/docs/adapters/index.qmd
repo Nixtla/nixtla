@@ -12,10 +12,10 @@ Four adapters ship with the package:
 
 | Adapter | Wraps | Extra | Worked example |
 |---|---|---|---|
-| `CallableAdapter` | any function | none | [Exogenous features](../capabilities/exogenous) |
-| `StatsForecastAdapter` | statsforecast | `nixtla` | [StatsForecast](statsforecast) |
-| `MLForecastAdapter` | mlforecast | `nixtla` | [MLForecast](mlforecast) |
-| `NeuralForecastAdapter` | neuralforecast | `nixtla` | [NeuralForecast](neuralforecast) |
+| `CallableAdapter` | any function | none | [Exogenous features](../capabilities/exogenous.html) |
+| `StatsForecastAdapter` | statsforecast | `nixtla` | [StatsForecast](statsforecast.html) |
+| `MLForecastAdapter` | mlforecast | `nixtla` | [MLForecast](mlforecast.html) |
+| `NeuralForecastAdapter` | neuralforecast | `nixtla` | [NeuralForecast](neuralforecast.html) |
 
 ## Capabilities
 
@@ -85,15 +85,15 @@ Inherit `ForecasterAdapter` plus the capability mixins you implement, and
 implement every abstract method including the keyword-only `X=None` on
 `predict`/`predict_batch`/`cross_validate` and the `aligned` CV mode. Read
 `adapters/callable.py` first, it is the smallest complete example, and
-[Exogenous features](../capabilities/exogenous) shows it wrapping a real model.
+[Exogenous features](../capabilities/exogenous.html) shows it wrapping a real model.
 
 ## Next
 
-- [StatsForecast](statsforecast) — the most capable adapter; all seven methods work
+- [StatsForecast](statsforecast.html) — the most capable adapter; all seven methods work
   behind it.
-- [MLForecast](mlforecast) — a global gradient-boosted model, and the one
+- [MLForecast](mlforecast.html) — a global gradient-boosted model, and the one
   capability gap.
-- [NeuralForecast](neuralforecast) — horizon from the model, quantiles from the
+- [NeuralForecast](neuralforecast.html) — horizon from the model, quantiles from the
   loss.
-- [Embedding](../concepts/embedding) — skipping adapters entirely and using a
+- [Embedding](../concepts/embedding.html) — skipping adapters entirely and using a
   method's array surface inside your own library.
