@@ -232,19 +232,98 @@ GOLDEN = {
 }
 
 
-@pytest.mark.parametrize(("method", "kwargs", "spec"), FACADE, ids=lambda p: p)
-def test_facade_first_call_matches_main(method, kwargs, spec):  # noqa: ARG001
-    out = to_pandas(
-        getattr(SynAugment(seed=1), method)(src_x[["unique_id", "ds", "y"]], **kwargs)
-    )
+def _assert_golden(out, expected):
+    out = to_pandas(out)
     digest = hashlib.sha256(out["ds"].to_numpy().astype("datetime64[ns]").tobytes())
     digest.update("|".join(out["unique_id"].astype(str)).encode())
-    expected_digest, expected_y = GOLDEN[method]
+    expected_digest, expected_y = expected
     assert digest.hexdigest() == expected_digest
     y = out["y"].to_numpy()
     mid = len(y) // 2
     np.testing.assert_allclose(
         [*y[-3:], *y[mid : mid + 2], y.sum()], expected_y, rtol=1e-9
+    )
+
+
+@pytest.mark.parametrize(("method", "kwargs", "spec"), FACADE, ids=lambda p: p)
+def test_facade_first_call_matches_main(method, kwargs, spec):  # noqa: ARG001
+    out = getattr(SynAugment(seed=1), method)(src_x[["unique_id", "ds", "y"]], **kwargs)
+    _assert_golden(out, GOLDEN[method])
+
+
+# The second call on one SynAugment(seed=1), after a call to ``first``,
+# computed on main the same way as GOLDEN.
+SECOND_GOLDEN = {
+    ("augment", "augment"): (
+        "32f716db47e980ee8ee9b963f9048fc3a29977455f81f28161dec632b7119032",
+        [
+            5.767406915832556,
+            5.876895983776149,
+            5.923765931033473,
+            0.8492348825561358,
+            1.5498051651511353,
+            20293.820081232734,
+        ],
+    ),
+    ("augment", "mixup"): (
+        "6d2330665aa1c8290982f8aa00f054c6ec016995b6b79f06fd127eb7c51fe479",
+        [
+            2.5174187405135093,
+            1.9351502323383796,
+            1.017568841763396,
+            -0.2419904885305778,
+            0.8299666871389947,
+            6987.491982008804,
+        ],
+    ),
+    ("mixup", "mbb"): (
+        "4cd4cae104a5346161dc7a3815c6ae28344ffa622deef7b78bbec74edaa0f614",
+        [
+            4.225864092613832,
+            3.380735763822192,
+            4.039192022184966,
+            -0.8955966790033115,
+            0.7959898457586755,
+            20290.495049633355,
+        ],
+    ),
+    ("mbb", "dba"): (
+        "717d4ebc3a6dfc8a224121ab365c411d8b61d99c968085ab029d17eecaa27a74",
+        [
+            3.6653079858075333,
+            3.279016579035148,
+            1.7111209769003994,
+            0.6331002295050598,
+            0.2313345892217783,
+            20305.09297130868,
+        ],
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("first", "method"), SECOND_GOLDEN, ids=[f"{a}-then-{b}" for a, b in SECOND_GOLDEN]
+)
+def test_facade_second_call_matches_main(first, method):
+    kwargs = {name: kw for name, kw, _ in FACADE}
+    d = src_x[["unique_id", "ds", "y"]]
+    s = SynAugment(seed=1)
+    getattr(s, first)(d, **kwargs[first])
+    _assert_golden(
+        getattr(s, method)(d, **kwargs[method]), SECOND_GOLDEN[first, method]
+    )
+
+
+def test_facade_single_series_second_call_matches_main():
+    values = src_x["y"].to_numpy()[:80]
+    ts = np.arange(80)
+    s = SynAugment(seed=1)
+    s.augment_single_series("a", values, ts, n_augment=2)
+    second = s.augment_single_series("a", values, ts, n_augment=2)
+    np.testing.assert_allclose(
+        second[1][1][:3],
+        [-0.196758716939728, 0.37593534132528766, -0.8555001954691858],
+        rtol=1e-9,
     )
 
 
@@ -272,7 +351,7 @@ def test_facade_matches_spec(method, kwargs, spec, include_original):
 
 
 @pytest.mark.parametrize(("method", "kwargs", "spec"), FACADE, ids=lambda p: p)
-def test_facade_advances_seed_per_call(method, kwargs, spec):
+def test_facade_keeps_one_stream_across_calls(method, kwargs, spec):
     s = SynAugment(seed=1)
     first, second = (to_pandas(getattr(s, method)(src, **kwargs)) for _ in range(2))
     assert_frame_equal(first, to_pandas(spec.apply(src, seed=1)))
@@ -282,7 +361,7 @@ def test_facade_advances_seed_per_call(method, kwargs, spec):
         assert_frame_equal(to_pandas(getattr(replay, method)(src, **kwargs)), expected)
 
 
-def test_facade_single_series_advances_seed():
+def test_facade_single_series_keeps_one_stream():
     values = to_pandas(src)["y"].to_numpy()[:80]
     ts = np.arange(80)
     s = SynAugment(seed=1)
@@ -293,6 +372,14 @@ def test_facade_single_series_advances_seed():
     assert [(i, v.tolist()) for i, v, _ in first] == [
         (i, v.tolist()) for i, v, _ in expected
     ]
+    replay = SynAugment(seed=1)
+    replay.augment_single_series("a", values, ts, n_augment=2)
+    again = replay.augment_single_series("a", values, ts, n_augment=2)
+    assert [v.tolist() for _, v, _ in again] == [v.tolist() for _, v, _ in second]
+
+
+def test_facade_exposes_rng():
+    assert isinstance(SynAugment(seed=1).rng, np.random.Generator)
 
 
 def test_fit_simulate_polars_matches_pandas():

@@ -253,11 +253,12 @@ class SynAugment:
     which are the primary API: :class:`~synforecast.FitAndSimulate`,
     :class:`~synforecast.Mixup`, :class:`~synforecast.MovingBlockBootstrap`
     and :class:`~synforecast.DBA`. Each method builds the matching spec and
-    calls its ``apply`` with this instance's columns, engine and a seed. The
-    first drawing call uses ``seed`` itself; each later call uses a distinct
-    seed derived from it, so repeated calls give fresh draws while a new
-    instance with the same ``seed`` replays the same sequence of outputs.
-    Call a spec's ``apply`` directly for output that is identical per call.
+    runs it with this instance's columns and engine. As in 0.2.0, the
+    instance keeps one random stream (``rng``, seeded by ``seed``) across
+    calls: repeated calls give fresh draws, and a new instance with the same
+    ``seed`` replays the same sequence of outputs. The first call matches the
+    spec's ``apply(df, seed=seed)``; call ``apply`` directly for output that
+    is identical per call.
 
     - :meth:`augment` fits a parametric generator per series and simulates
       from it (IDs ``"{original_id}_aug_{i}"``).
@@ -337,16 +338,7 @@ class SynAugment:
         self.seed = seed
         self.engine = engine
         self.on_error = on_error
-        self._seeds = None if seed is None else np.random.SeedSequence(seed)
-
-    def _next_seed(self) -> int | None:
-        """Seed for the next drawing call: ``seed`` first, then derived ones."""
-        if self._seeds is None:
-            return None
-        child = self._seeds.spawn(1)[0]
-        if self._seeds.n_children_spawned == 1:
-            return self.seed
-        return int(child.generate_state(1)[0])
+        self.rng = np.random.default_rng(seed)
 
     def _apply(
         self,
@@ -355,9 +347,10 @@ class SynAugment:
         include_original: bool = True,
         source_col: str | None = None,
     ) -> IntoFrameT:
-        return spec.apply(
+        return spec._apply_with_rng(
             df,
-            seed=self._next_seed(),
+            self.rng,
+            seeded=self.seed is not None,
             include_original=include_original,
             id_col=self.id_col,
             time_col=self.time_col,
@@ -590,10 +583,11 @@ class SynAugment:
             List of tuples: (new_id, synthetic_values, timestamps)
         """
         spec = FitAndSimulate(n_augment=n_augment, on_error=self.on_error)
-        return spec.apply_series(
+        return spec._apply_series_with_rng(
             series_id,
             values,
             timestamps,
+            self.rng,
+            seeded=self.seed is not None,
             generator_name=generator_name,
-            seed=self._next_seed(),
         )

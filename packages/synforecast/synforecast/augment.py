@@ -103,7 +103,6 @@ class BaseAugmenter(BaseModel, ABC):
         """Seed for one call: ``seed`` when given, else the spec's."""
         return self.seed if seed is None else seed
 
-    @abstractmethod
     def apply(
         self,
         df: IntoFrameT,
@@ -141,6 +140,45 @@ class BaseAugmenter(BaseModel, ABC):
         Returns:
             Frame containing generated series and, optionally, original rows.
         """
+        seed = self._seed(seed)
+        return self._apply_with_rng(
+            df,
+            np.random.default_rng(seed),
+            seeded=seed is not None,
+            include_original=include_original,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            engine=engine,
+            source_col=source_col,
+        )
+
+    def _apply_with_rng(
+        self,
+        df: IntoFrameT,
+        rng: np.random.Generator,
+        *,
+        seeded: bool,
+        include_original: bool = True,
+        id_col: str = "unique_id",
+        time_col: str = "ds",
+        target_col: str = "y",
+        engine: str | None = None,
+        source_col: str | None = None,
+    ) -> IntoFrameT:
+        """Run ``apply`` drawing from ``rng``, which the caller owns.
+
+        ``seeded`` tells :class:`FitAndSimulate` whether to seed its
+        generators. ``SynAugment`` passes its persistent stream here.
+        """
+        run = _Run.start(
+            df, rng, seeded, engine, id_col, time_col, target_col, source_col
+        )
+        return run.finish(self._synthesize(run), include_original)
+
+    @abstractmethod
+    def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
+        """Build the synthetic frames for one call."""
 
 
 class FitAndSimulate(BaseAugmenter):
@@ -210,43 +248,8 @@ class FitAndSimulate(BaseAugmenter):
             )
         return _FrozenDict(v)
 
-    def apply(
-        self,
-        df: IntoFrameT,
-        *,
-        seed: int | None = None,
-        include_original: bool = True,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        engine: str | None = None,
-        source_col: str | None = None,
-    ) -> IntoFrameT:
-        """Augment dataset with synthetic series.
-
-        For each series in the input DataFrame, generates n_augment synthetic
-        series that are statistically similar to the original. Arguments are
-        described on :meth:`BaseAugmenter.apply`.
-
-        Returns:
-            DataFrame with the original series (optional) and synthetic
-            series. Synthetic series IDs follow the pattern
-            `"{original_id}_aug_{i}"`
-
-        Raises:
-            ValueError: If DataFrame is missing required columns
-            RuntimeError: If a fitted generator fails for a series and
-                on_error='raise' (the default)
-        """
-        run = _Run.start(
-            df,
-            self._seed(seed),
-            engine,
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        )
+    def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
+        id_col, time_col, target_col, _ = run.columns
         partitions = run.partitions
 
         overrides = {
@@ -293,7 +296,7 @@ class FitAndSimulate(BaseAugmenter):
                 generator_name=generator_name,
                 fitted_params=fitted_params,
                 rng=run.rng,
-                seeded=run.seed is not None,
+                seeded=run.seeded,
                 fallbacks=fallbacks,
                 columns=(id_col, time_col, target_col),
             )
@@ -315,7 +318,7 @@ class FitAndSimulate(BaseAugmenter):
                 )
 
         _warn_fallbacks(fallbacks, len(unique_ids) * self.n_augment)
-        return run.finish(synthetic_dfs, include_original)
+        return synthetic_dfs
 
     def apply_series(
         self,
@@ -338,9 +341,27 @@ class FitAndSimulate(BaseAugmenter):
         Returns:
             List of tuples: (new_id, synthetic_values, timestamps)
         """
-        eff = self._seed(seed)
-        rng = np.random.default_rng(eff)
+        seed = self._seed(seed)
+        return self._apply_series_with_rng(
+            series_id,
+            values,
+            timestamps,
+            np.random.default_rng(seed),
+            seeded=seed is not None,
+            generator_name=generator_name,
+        )
 
+    def _apply_series_with_rng(
+        self,
+        series_id: str,
+        values: np.ndarray,
+        timestamps: np.ndarray,
+        rng: np.random.Generator,
+        *,
+        seeded: bool,
+        generator_name: FittableGenerator | None = None,
+    ) -> list[tuple[str, np.ndarray, np.ndarray]]:
+        """Run ``apply_series`` drawing from ``rng``, which the caller owns."""
         classification = classify_series(values)
         if generator_name is None:
             generator_name = classification["recommended_generator"]
@@ -355,7 +376,7 @@ class FitAndSimulate(BaseAugmenter):
             generator_name=generator_name,
             fitted_params=fitted_params,
             rng=rng,
-            seeded=eff is not None,
+            seeded=seeded,
             fallbacks=fallbacks,
         )
         _warn_fallbacks(fallbacks, self.n_augment)
@@ -530,36 +551,8 @@ class Mixup(BaseAugmenter):
         default="mean", description="Per-window scaling before mixing"
     )
 
-    def apply(
-        self,
-        df: IntoFrameT,
-        *,
-        seed: int | None = None,
-        include_original: bool = True,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        engine: str | None = None,
-        source_col: str | None = None,
-    ) -> IntoFrameT:
-        """Mix series of ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
-
-        Returns:
-            DataFrame with the original series (optional) and synthetic mixup series. Mixup IDs follow the pattern ``"mixup_{i}"``.
-
-        Raises:
-            ValueError: If the DataFrame is missing required columns, or if
-                it holds no usable series.
-        """
-        run = _Run.start(
-            df,
-            self._seed(seed),
-            engine,
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        )
+    def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
+        id_col, time_col, target_col, _ = run.columns
         rng = run.rng
 
         # Sort ids so series selection is reproducible: some backends do not
@@ -634,7 +627,7 @@ class Mixup(BaseAugmenter):
                 )
             )
 
-        return run.finish(synthetic_dfs, include_original)
+        return synthetic_dfs
 
 
 class MovingBlockBootstrap(BaseAugmenter):
@@ -703,37 +696,8 @@ class MovingBlockBootstrap(BaseAugmenter):
         description="Block length >= 2, or None for the period/length default",
     )
 
-    def apply(
-        self,
-        df: IntoFrameT,
-        *,
-        seed: int | None = None,
-        include_original: bool = True,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        engine: str | None = None,
-        source_col: str | None = None,
-    ) -> IntoFrameT:
-        """Bootstrap series of ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
-
-        Returns:
-            Frame containing generated series and, optionally, original rows,
-            using the requested output engine or the input engine.
-
-        Raises:
-            ValueError: For missing required columns, infinite target values,
-                or no usable source series.
-        """
-        run = _Run.start(
-            df,
-            self._seed(seed),
-            engine,
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        )
+    def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
+        id_col, time_col, target_col, _ = run.columns
         rng = run.rng
         n_augment = self.n_augment
         seasonal_period = self.seasonal_period
@@ -799,7 +763,7 @@ class MovingBlockBootstrap(BaseAugmenter):
             raise ValueError(
                 "mbb requires at least 1 usable series (finite values, >= 4 rows)"
             )
-        return run.finish(synthetic_dfs, include_original)
+        return synthetic_dfs
 
 
 class DBA(BaseAugmenter):
@@ -880,38 +844,8 @@ class DBA(BaseAugmenter):
         description="'reference' restores reference scale; 'none' averages raw values",
     )
 
-    def apply(
-        self,
-        df: IntoFrameT,
-        *,
-        seed: int | None = None,
-        include_original: bool = True,
-        id_col: str = "unique_id",
-        time_col: str = "ds",
-        target_col: str = "y",
-        engine: str | None = None,
-        source_col: str | None = None,
-    ) -> IntoFrameT:
-        """Average neighbors in ``df``; arguments are described on :meth:`BaseAugmenter.apply`.
-
-        Returns:
-            Frame containing generated series and, optionally, original rows,
-            using the requested output engine or the input engine.
-
-        Raises:
-            ValueError: For missing required columns, infinite target values,
-                excessive alignment/output storage, or fewer than two usable
-                source series.
-        """
-        run = _Run.start(
-            df,
-            self._seed(seed),
-            engine,
-            id_col,
-            time_col,
-            target_col,
-            source_col,
-        )
+    def _synthesize(self, run: "_Run") -> list[nw.DataFrame]:
+        id_col, time_col, target_col, _ = run.columns
         rng = run.rng
         n_augment = self.n_augment
         scale = self.scale
@@ -1022,7 +956,7 @@ class DBA(BaseAugmenter):
                 )
             )
 
-        return run.finish(synthetic_dfs, include_original)
+        return synthetic_dfs
 
 
 def analyze(
@@ -1108,8 +1042,8 @@ def _validate_columns(
 class _Run:
     """Per-call state shared by every strategy's ``apply``."""
 
-    seed: int | None
     rng: np.random.Generator
+    seeded: bool
     df: nw.DataFrame
     out_engine: Any
     original: nw.DataFrame
@@ -1121,14 +1055,15 @@ class _Run:
     def start(
         cls,
         df: IntoFrameT,
-        seed: int | None,
+        rng: np.random.Generator,
+        seeded: bool,
         engine: str | None,
         id_col: str,
         time_col: str,
         target_col: str,
         source_col: str | None,
     ) -> "_Run":
-        """Seed the stream, validate ``df``, and partition it per series."""
+        """Validate ``df`` and partition it per series."""
         df_nw = nw.from_native(df)
         _validate_columns(df_nw, id_col, time_col, target_col)
         if source_col is not None:
@@ -1151,8 +1086,8 @@ class _Run:
         )
         partitions = _partition_series(df_nw, id_col, time_col)
         return cls(
-            seed=seed,
-            rng=np.random.default_rng(seed),
+            rng=rng,
+            seeded=seeded,
             df=df_nw,
             out_engine=engine if engine is not None else df_nw.implementation,
             original=original,
