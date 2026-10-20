@@ -180,6 +180,31 @@ def test_override_int_keys_match(caplog):
     assert any("generator_override" in r.getMessage() for r in caplog.records)
 
 
+def _override_changes_output(key, d, caplog):
+    out = FitAndSimulate(seed=1, generator_override={key: "SARIMAGenerator"}).apply(d)
+    assert not any("generator_override" in r.getMessage() for r in caplog.records)
+    assert not to_pandas(out).equals(to_pandas(FitAndSimulate(seed=1).apply(d)))
+
+
+def test_override_float_key_matches_float_ids(caplog):
+    d = to_pandas(src).astype({"unique_id": int}).astype({"unique_id": float})
+    _override_changes_output(d["unique_id"].iloc[0], d, caplog)
+
+
+def test_override_str_key_matches_int_ids(caplog):
+    _override_changes_output(str(to_pandas(src)["unique_id"].iloc[0]), src, caplog)
+
+
+@pytest.mark.parametrize(
+    "key", [1.0, ("a", 1), pd.Timestamp("2020-01-01")], ids=["float", "tuple", "ts"]
+)
+def test_override_keeps_hashable_keys(key):
+    spec = FitAndSimulate(generator_override={key: "SARIMAGenerator"})
+    assert list(spec.generator_override) == [key]
+    assert type(next(iter(spec.model_dump()["generator_override"]))) is type(key)
+    assert hash(spec) == hash(pickle.loads(pickle.dumps(spec)))
+
+
 # SynAugment(seed=1)'s first call on ``src_x``'s id, ds and y columns,
 # computed on main before the specs existed: sha256 of the ds bytes and
 # joined ids (exact), and the last three, two middle and the sum of ``y``

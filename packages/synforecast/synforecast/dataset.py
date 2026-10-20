@@ -1,6 +1,7 @@
 """Dataset class for generating synthetic time series from multiple generators."""
 
 import logging
+from collections.abc import Hashable
 from typing import Literal
 
 import narwhals.stable.v2 as nw
@@ -381,7 +382,7 @@ class SynAugment:
         self,
         df: IntoFrameT,
         n_augment: int = 1,
-        generator_override: dict[str | int, str] | None = None,
+        generator_override: dict[Hashable, str] | None = None,
         preserve_timestamps: bool = True,  # noqa: ARG002
         source_col: str | None = None,
     ) -> IntoFrameT:
