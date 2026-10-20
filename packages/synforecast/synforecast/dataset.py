@@ -10,6 +10,7 @@ from narwhals.stable.v2.typing import IntoFrameT
 
 from synforecast._lib import batch as _rs_batch
 from synforecast.augment import (
+    _SEED,
     DBA,
     BaseAugmenter,
     FitAndSimulate,
@@ -332,8 +333,7 @@ class SynAugment:
         """
         if on_error not in ("raise", "ar1"):
             raise ValueError("on_error must be 'raise' or 'ar1'")
-        if seed is not None and seed < 0:
-            raise ValueError("seed must be >= 0")
+        _SEED.validate_python(seed)
         self.id_col = id_col
         self.time_col = time_col
         self.target_col = target_col

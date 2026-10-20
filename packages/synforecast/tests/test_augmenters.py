@@ -532,6 +532,11 @@ def test_negative_seed_rejected_at_construction():
         SynAugment(seed=-1)
 
 
+def test_syn_augment_rejects_bool_seed():
+    with pytest.raises(ValidationError):
+        SynAugment(seed=True)
+
+
 def test_analyze_keeps_first_appearance_order_on_polars():
     ids = [f"s{i}" for i in range(200, 0, -1)]
     panel = pl.DataFrame(
