@@ -3,7 +3,6 @@
 import copy
 import hashlib
 import pickle
-from typing import Annotated, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -149,6 +148,7 @@ def test_custom_columns(aug):
     [
         (Mixup, {"alpha": 0}),
         (Mixup, {"alpha": float("nan")}),
+        (Mixup, {"alpha": float("inf")}),
         (FitAndSimulate, {"n_augment": 0}),
         (FitAndSimulate, {"generator_override": {"0": "NotAGenerator"}}),
         (FitAndSimulate, {"preserve_timestamps": True}),
@@ -605,42 +605,43 @@ def test_generator_override_spec_pickles_and_deep_copies():
         assert_frame_equal(to_pandas(clone.apply(src)), expected)
 
 
-def _numeric_fields():
-    """(class, field, base type) for every int or float spec field."""
-    for cls in SPEC_CLASSES:
-        for name, info in cls.model_fields.items():
-            ann = info.annotation
-            bases = {
-                get_args(a)[0] if get_origin(a) is Annotated else a
-                for a in (get_args(ann) or (ann,))
-            } - {type(None)}
-            if bases in ({int}, {float}):
-                yield cls, name, bases.pop()
-
-
-NUMERIC_FIELDS = list(_numeric_fields())
+# One int and one float field per spec (FitAndSimulate has no float field).
+NUMERIC_FIELDS = [
+    (FitAndSimulate, "n_augment", int),
+    (Mixup, "max_mix", int),
+    (Mixup, "alpha", float),
+    (MovingBlockBootstrap, "block_size", int),
+    (DBA, "n_neighbors", int),
+    (DBA, "window_fraction", float),
+]
 
 
 @pytest.mark.parametrize("value", ["3", True, np.True_], ids=["str", "bool", "np_bool"])
-@pytest.mark.parametrize(
-    ("cls", "field", "base"), NUMERIC_FIELDS, ids=lambda p: getattr(p, "__name__", p)
-)
+@pytest.mark.parametrize(("cls", "field", "base"), NUMERIC_FIELDS)
 def test_numeric_fields_reject_str_and_bool(cls, field, base, value):  # noqa: ARG001
     with pytest.raises(ValidationError):
         cls(**{field: value})
 
 
-@pytest.mark.parametrize(
-    ("cls", "field", "base"), NUMERIC_FIELDS, ids=lambda p: getattr(p, "__name__", p)
-)
+@pytest.mark.parametrize(("cls", "field", "base"), NUMERIC_FIELDS)
 def test_numeric_fields_accept_numpy_scalars(cls, field, base):
-    default = cls.model_fields[field].default
-    valid = 4 if default is None else default
     scalars = (
-        [np.int64(valid), np.int32(valid)]
+        [np.int64(4), np.int32(4)]
         if base is int
-        else [np.float64(valid), np.float32(valid), 1]
+        else [np.float64(0.5), np.float32(0.5), 1]
     )
     for value in scalars:
         stored = getattr(cls(**{field: value}), field)
         assert stored == value and type(stored) is base
+
+
+@pytest.mark.parametrize("seed", [True, np.True_, "3", -1, 1.5])
+def test_call_seed_validated(aug, seed):
+    with pytest.raises(ValidationError):
+        aug.apply(src, seed=seed)
+
+
+def test_call_seed_accepts_numpy_int(aug):
+    assert_frame_equal(
+        to_pandas(aug.apply(src, seed=np.int64(3))), to_pandas(aug.apply(src, seed=3))
+    )

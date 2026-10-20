@@ -17,10 +17,12 @@ import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoFrameT
 from pydantic import (
+    AllowInfNan,
     BaseModel,
     BeforeValidator,
     ConfigDict,
     Field,
+    TypeAdapter,
     field_validator,
 )
 
@@ -76,9 +78,12 @@ class _FrozenDict(dict):
         return (type(self), (dict(self),))
 
 
-# Python and numpy numbers pass; bools and strings are rejected.
+# Python and numpy numbers pass; bools and strings are rejected, and so are
+# non-finite floats.
 Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
-Float = Annotated[float, BeforeValidator(_reject_bool_and_str)]
+Float = Annotated[float, BeforeValidator(_reject_bool_and_str), AllowInfNan(False)]
+Seed = Annotated[Int, Field(ge=0)]
+_SEED = TypeAdapter(Seed | None)
 
 
 class BaseAugmenter(BaseModel, ABC):
@@ -94,15 +99,14 @@ class BaseAugmenter(BaseModel, ABC):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    seed: Int | None = Field(
+    seed: Seed | None = Field(
         default=None,
-        ge=0,
         description="Default random seed for apply; None draws fresh entropy",
     )
 
     def _seed(self, seed: int | None) -> int | None:
-        """Seed for one call: ``seed`` when given, else the spec's."""
-        return self.seed if seed is None else seed
+        """Seed for one call: ``seed`` when given (validated), else the spec's."""
+        return self.seed if seed is None else _SEED.validate_python(seed)
 
     def apply(
         self,
