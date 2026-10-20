@@ -1,8 +1,11 @@
 """SynForecast: Synthetic Time Series Generation."""
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__: str = version(distribution_name="synforecast")
+try:
+    __version__: str = version(distribution_name="synforecast")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 try:
     from synforecast import _lib as _lib
