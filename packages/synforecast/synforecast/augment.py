@@ -8,6 +8,7 @@ output.
 
 import functools
 import logging
+import math
 from abc import ABC, abstractmethod
 from collections.abc import Hashable
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ import narwhals.stable.v2 as nw
 import numpy as np
 from narwhals.stable.v2.typing import IntoFrameT
 from pydantic import (
-    AllowInfNan,
+    AfterValidator,
     BaseModel,
     BeforeValidator,
     ConfigDict,
@@ -63,6 +64,13 @@ def _reject_bool_and_str(value: Any) -> Any:
     return value
 
 
+def _require_finite(value: float) -> float:
+    """Reject inf/nan (``AllowInfNan`` can't follow a before-validator on pydantic 2.0)."""
+    if not math.isfinite(value):
+        raise ValueError("must be finite")
+    return value
+
+
 class _FrozenDict(dict):
     """A read-only, hashable dict that still pickles and dumps as a dict."""
 
@@ -82,7 +90,9 @@ class _FrozenDict(dict):
 # Python and numpy numbers pass; bools and strings are rejected, and so are
 # non-finite floats.
 Int = Annotated[int, BeforeValidator(_reject_bool_and_str)]
-Float = Annotated[float, BeforeValidator(_reject_bool_and_str), AllowInfNan(False)]
+Float = Annotated[
+    float, BeforeValidator(_reject_bool_and_str), AfterValidator(_require_finite)
+]
 Seed = Annotated[Int, Field(ge=0)]
 _SEED = TypeAdapter(Seed | None, config=ConfigDict(title="seed"))
 
