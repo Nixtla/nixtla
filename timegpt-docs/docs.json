@@ -59,7 +59,6 @@
         "group": "FORECASTING",
         "pages": [
           "/forecasting/timegpt_quickstart",
-          "/forecasting/timegpt_2_family",
           "/forecasting/improve_accuracy",
           {
             "group": "Exogenous variables",
@@ -261,6 +260,10 @@
     },
     {
       "source": "/getting-started-timegpt_quickstart",
+      "destination": "/forecasting/timegpt_quickstart"
+    },
+    {
+      "source": "/forecasting/timegpt_2_family",
       "destination": "/forecasting/timegpt_quickstart"
     },
     {
