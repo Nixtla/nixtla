@@ -39,19 +39,57 @@ def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
     return out
 
 
+def _validate_bound_pl(
+    bound: Union[str, int, date, datetime],
+    name: str,
+    times: pl_Series,
+) -> None:
+    if isinstance(bound, str) and bound in ("per_serie", "global"):
+        return
+    if times.dtype.is_temporal():
+        expected = "a string, date or datetime"
+        valid = isinstance(bound, (str, date))
+    else:
+        expected = "an integer"
+        valid = isinstance(bound, (int, np.integer))
+    if not valid:
+        raise ValueError(
+            f"Time column has type {times.dtype} but `{name}` is {bound!r}. "
+            f"When using polars dataframes `{name}` must be 'per_serie', 'global' "
+            f"or {expected}."
+        )
+
+
 def _determine_bound_pl(
     bound: Union[str, int, date, datetime],
     times_by_id: pl_DataFrame,
     agg: str,
 ) -> pl_Series:
+    target_dtype = times_by_id[agg].dtype
     if bound == "per_serie":
         out = times_by_id[agg]
     else:
         if bound == "global":
             val = getattr(times_by_id[agg], agg)()
+            val_s = pl_Series([val], dtype=target_dtype)
         else:
-            val = bound
-        out = repeat(pl_Series([val]), times_by_id.shape[0])
+            val_s = pl_Series([bound])
+            if isinstance(bound, str):
+                val_s = val_s.str.to_datetime()
+            target_tz = getattr(target_dtype, "time_zone", None)
+            bound_tz = getattr(val_s.dtype, "time_zone", None)
+            if bound_tz is not None and target_tz is None:
+                raise ValueError(
+                    f"Bound {bound!r} is timezone-aware but the time column "
+                    f"has type {target_dtype}, which has no timezone."
+                )
+            if target_tz is not None and bound_tz is None:
+                # naive bounds are wall times in the column's timezone
+                if val_s.dtype == pl.Date:
+                    val_s = val_s.cast(pl.Datetime(target_dtype.time_unit))
+                val_s = val_s.dt.replace_time_zone(target_tz)
+            val_s = val_s.cast(target_dtype)
+        out = repeat(val_s, times_by_id.shape[0])
     return out
 
 
@@ -85,6 +123,8 @@ def id_time_grid(
         pandas or polars DataFrame: Dataframe with expected ids and times.
     """
     if isinstance(df, pl_DataFrame):
+        _validate_bound_pl(start, "start", df[time_col])
+        _validate_bound_pl(end, "end", df[time_col])
         times_by_id = (
             group_by(df, id_col)
             .agg(
