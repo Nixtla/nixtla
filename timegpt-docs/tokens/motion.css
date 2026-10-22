@@ -1,0 +1,21 @@
+/* ==============================  DURATIONS  =============================== */
+
+:root {
+  --duration-quick: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+}
+
+/* ================================  EASING  ================================ */
+
+:root {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-quick: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+}

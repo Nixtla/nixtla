@@ -1,0 +1,104 @@
+/* ===============================  SEMANTIC  =============================== */
+
+:root {
+  --font-sans:
+    "Inter", "Inter Local", "Inter Fallback", system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono:
+    "JetBrains Mono", "JetBrains Mono Fallback", ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-code: var(--font-mono);
+
+  --background: var(--nixtla-neutral-100);
+  --foreground: var(--nixtla-neutral-800);
+  --card: var(--nixtla-neutral-50);
+  --card-foreground: var(--foreground);
+  --popover: var(--nixtla-neutral-100);
+  --popover-foreground: var(--foreground);
+  --popover-accent: var(--nixtla-neutral-200);
+  --primary: var(--nixtla-neutral-800);
+  --primary-foreground: var(--nixtla-neutral-100);
+  --secondary: var(--nixtla-neutral-200);
+  --secondary-foreground: var(--foreground);
+  --muted-foreground: color-mix(in oklch, var(--foreground) 70%, transparent);
+  --accent: var(--nixtla-neutral-200);
+  --highlight-foreground: var(--foreground);
+
+  --border: color-mix(
+    in oklch,
+    var(--nixtla-neutral-800) 10%,
+    transparent
+  );
+  --ring: var(--nixtla-neutral-800);
+  --input-background-focus: var(--nixtla-neutral-50);
+
+  --table-bg: var(--nixtla-neutral-50);
+  --table-header-bg: var(--secondary);
+  --table-ring: var(--ring);
+
+  --blog-code-bg: var(--nixtla-neutral-950);
+  --blog-code-header-bg: var(--nixtla-neutral-900);
+  --blog-code-border: color-mix(
+    in oklch,
+    var(--nixtla-neutral-100) 22%,
+    transparent
+  );
+  --blog-code-text: var(--nixtla-neutral-100);
+  --blog-code-muted: color-mix(
+    in oklch,
+    var(--nixtla-neutral-100) 62%,
+    transparent
+  );
+
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-accent: var(--accent);
+
+  --radius: 0rem;
+  --rule: color-mix(in oklch, var(--foreground) 20%, transparent);
+}
+
+.dark {
+  --background: var(--nixtla-neutral-950);
+  --foreground: var(--nixtla-neutral-100);
+  --card: var(--nixtla-neutral-950);
+  --popover: var(--nixtla-neutral-800);
+  --popover-accent: var(--nixtla-neutral-700);
+  --primary: var(--nixtla-neutral-100);
+  --primary-foreground: var(--nixtla-neutral-800);
+  --secondary: var(--nixtla-neutral-700);
+  --accent: var(--nixtla-neutral-800);
+
+  --border: color-mix(
+    in oklch,
+    var(--nixtla-neutral-50) 10%,
+    transparent
+  );
+  --ring: color-mix(in oklch, var(--nixtla-neutral-100) 72%, transparent);
+  --input-background-focus: var(--nixtla-neutral-950);
+
+  --table-bg: var(--nixtla-neutral-900);
+  --table-header-bg: var(--background);
+  --table-ring: var(--nixtla-neutral-100);
+
+  --card-foreground: var(--foreground);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --muted-foreground: color-mix(in oklch, var(--foreground) 70%, transparent);
+  --highlight-foreground: var(--nixtla-neutral-800);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-accent: var(--accent);
+  --rule: color-mix(in oklch, var(--foreground) 16%, transparent);
+}
+
+/* ===============================  SPACING  ================================ */
+
+:root {
+  --spacing-space-md: var(--space-20);
+  --spacing-space-xl: var(--space-32);
+  --spacing-space-2xl: var(--space-40);
+}
