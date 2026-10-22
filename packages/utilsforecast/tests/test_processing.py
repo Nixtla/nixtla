@@ -1686,3 +1686,101 @@ def test_add_insample_levels_agreement():
         with_levels.drop(columns="unique_id"),
         with_levels_pl.to_pandas().drop(columns="unique_id"),
     )
+
+
+def _grouped_rows(block_order):
+    return [(i, t) for i in block_order for t in range(3)]
+
+
+_SORT_LAYOUTS = {
+    "sorted": (_grouped_rows(sorted(range(12), key=str)), True),
+    "numbered": (_grouped_rows(range(12)), True),
+    "random_blocks": (_grouped_rows(np.random.default_rng(0).permutation(12)), True),
+    "shuffled": (
+        [_grouped_rows(range(12))[i] for i in np.random.default_rng(0).permutation(36)],
+        False,
+    ),
+    "interleaved": ([(i, t) for t in range(3) for i in range(12)], False),
+    "split_run": ([(1, 0), (1, 1), (0, 0), (1, 2), (2, 0)], False),
+    "duplicated": ([(1, 0), (1, 1), (1, 1), (0, 0), (0, 1)], False),
+    "descending": ([(1, 1), (1, 0), (0, 0), (0, 1)], False),
+    "single_row": ([(3, 0)], False),
+    "empty": ([], False),
+}
+
+
+@pytest.mark.skipif(not POLARS_INSTALLED, reason="polars not installed")
+@pytest.mark.parametrize("layout", _SORT_LAYOUTS)
+@pytest.mark.parametrize("id_dtype", ["str", "cat", "enum", "int"])
+@pytest.mark.parametrize("time_dtype", ["int", "datetime"])
+def test_maybe_compute_sort_indices_polars(layout, id_dtype, time_dtype):
+    rows, grouped = _SORT_LAYOUTS[layout]
+    if id_dtype == "int":
+        ids = pl.Series([i for i, _ in rows], dtype=pl.Int64)
+    else:
+        str_ids = [f"id_{i}" for i, _ in rows]
+        dtype = {
+            "str": pl.String,
+            "cat": pl.Categorical,
+            "enum": pl.Enum([f"id_{i}" for i in range(12)][::-1]),
+        }[id_dtype]
+        ids = pl.Series(str_ids, dtype=dtype)
+    df = pl.DataFrame(
+        {"unique_id": ids, "ds": pl.Series([t for _, t in rows], dtype=pl.Int64)}
+    ).with_columns(y=pl.col("ds").cast(pl.Float64))
+    if time_dtype == "datetime":
+        df = df.with_columns(ds=pl.datetime(2000, 1, 1) + pl.duration(days="ds"))
+
+    res = ufp.maybe_compute_sort_indices(df, "unique_id", "ds")
+    if ufp._is_sorted(df, "unique_id", "ds"):
+        assert res is None
+        return
+    fast = ufp._polars_run_sort_indices(df["unique_id"], df["ds"])
+    assert (fast is not None) == grouped
+    expected = df.select(pl.arg_sort_by(["unique_id", "ds"])).to_series().to_numpy()
+    assert res.dtype == expected.dtype
+    np.testing.assert_array_equal(res, expected)
+    if grouped:
+        processed = process_df(df, "unique_id", "ds", "y")
+        expected_processed = process_df(df[res], "unique_id", "ds", "y")
+        assert expected_processed.sort_idxs is None
+        pl.testing.assert_series_equal(processed.uids, expected_processed.uids)
+        for got, exp in zip(processed[1:-1], expected_processed[1:-1]):
+            np.testing.assert_array_equal(got, exp)
+
+
+@pytest.mark.parametrize("layout", _SORT_LAYOUTS)
+@pytest.mark.parametrize("id_dtype", ["str", "pyarrow_str", "cat", "int"])
+@pytest.mark.parametrize("time_dtype", ["int", "datetime", "pyarrow_date"])
+def test_maybe_compute_sort_indices_pandas(monkeypatch, layout, id_dtype, time_dtype):
+    rows, grouped = _SORT_LAYOUTS[layout]
+    if id_dtype == "int":
+        ids = pd.Series([i for i, _ in rows], dtype="int64")
+    else:
+        str_ids = [f"id_{i}" for i, _ in rows]
+        dtype = {
+            "str": object,
+            "pyarrow_str": "string[pyarrow]",
+            "cat": pd.CategoricalDtype([f"id_{i}" for i in range(12)][::-1]),
+        }[id_dtype]
+        ids = pd.Series(str_ids, dtype=dtype)
+    times = pd.Series([t for _, t in rows], dtype="int64")
+    if time_dtype != "int":
+        times = pd.Timestamp("2000-01-01") + pd.to_timedelta(times, unit="D")
+    if time_dtype == "pyarrow_date":
+        times = times.astype("date32[pyarrow]")
+    df = pd.DataFrame(
+        {"unique_id": ids, "ds": times, "y": np.arange(len(rows), dtype=float)}
+    )
+
+    res = ufp.maybe_compute_sort_indices(df, "unique_id", "ds")
+    if ufp._is_sorted(df, "unique_id", "ds"):
+        assert res is None
+        return
+    np_ids = df["unique_id"].cat.codes if id_dtype == "cat" else df["unique_id"]
+    fast = ufp._pandas_run_sort_indices(np_ids.to_numpy(), df["ds"].to_numpy())
+    assert (fast is not None) == grouped
+    monkeypatch.setattr(ufp, "_pandas_run_sort_indices", lambda *_: None)
+    expected = ufp.maybe_compute_sort_indices(df, "unique_id", "ds")
+    assert res.dtype == expected.dtype
+    np.testing.assert_array_equal(res, expected)
