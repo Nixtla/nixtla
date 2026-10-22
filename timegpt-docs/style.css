@@ -774,9 +774,11 @@ body .code-group {
   :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   position: relative;
   margin: 0 !important;
-  padding: var(--space-32) !important;
-  background-color: var(--secondary);
+  padding: var(--space-14) var(--space-20) !important;
+  background-color: var(--callout-bg);
   border: none !important;
+  border-left: var(--border-width-callout) solid
+    var(--callout-accent, var(--callout-note)) !important;
   color: var(--foreground) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
@@ -802,7 +804,7 @@ body .code-group {
 .prose
   :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
   :where(p) {
-  line-height: 1.6 !important;
+  line-height: var(--lh-lg) !important;
 }
 
 .prose
@@ -915,6 +917,132 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
   margin-block: 0 !important;
 }
 
+/* Mintlify's <Note>/<Info>/<Tip>/<Check>/<Warning>/<Danger>/<Callout> all
+   render one element tagged with data-callout-type. Each variant sets an
+   accent (left rule + mono caps label) and a label; only Warning keeps its
+   icon, so it reads as a caution before it is read. */
+[data-callout-type] {
+  --callout-accent: var(--callout-note);
+  --callout-label: none;
+  position: relative;
+  gap: 0 !important;
+  padding: var(--space-14) var(--space-20) !important;
+  border-radius: var(--radius) !important;
+  background-color: var(--callout-bg) !important;
+  border: none !important;
+  border-left: var(--border-width-callout) solid var(--callout-accent) !important;
+}
+
+[data-callout-type="note"] {
+  --callout-label: "Note";
+}
+
+[data-callout-type="info"],
+[data-blockquote-variant="info"] {
+  --callout-accent: var(--callout-info);
+  --callout-label: "Info";
+}
+
+[data-callout-type="tip"],
+[data-blockquote-variant="tip"] {
+  --callout-accent: var(--callout-tip);
+  --callout-label: "Tip";
+}
+
+[data-callout-type="check"] {
+  --callout-accent: var(--callout-check);
+  --callout-label: "Success";
+}
+
+[data-callout-type="warning"],
+[data-blockquote-variant="warning"] {
+  --callout-accent: var(--callout-warning);
+  --callout-label: "Warning";
+}
+
+[data-callout-type="danger"],
+[data-blockquote-variant="danger"] {
+  --callout-accent: var(--callout-danger);
+  --callout-label: "Danger";
+}
+
+[data-callout-type] [data-component-part="callout-icon"] {
+  display: none !important;
+}
+
+[data-callout-type="warning"] [data-component-part="callout-icon"] {
+  display: flex !important;
+  position: absolute;
+  top: var(--space-14);
+  left: var(--space-20);
+  width: var(--space-12) !important;
+  height: var(--space-16);
+  margin: 0 !important;
+  align-items: center;
+}
+
+[data-callout-type="warning"] [data-component-part="callout-icon"] svg {
+  width: var(--space-12) !important;
+  height: var(--space-12) !important;
+  color: var(--callout-accent) !important;
+}
+
+[data-callout-type] [data-component-part="callout-content"] {
+  color: var(--foreground) !important;
+  font-size: var(--fs-base) !important;
+  line-height: var(--lh-lg) !important;
+}
+
+[data-callout-type] [data-component-part="callout-content"]::before {
+  content: var(--callout-label);
+  display: block;
+  margin-bottom: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-nano);
+  line-height: var(--space-16);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--callout-accent);
+}
+
+[data-callout-type="warning"] [data-component-part="callout-content"]::before {
+  padding-left: calc(var(--space-12) + var(--space-8));
+}
+
+/* nbdev/Quarto callouts arrive as `> **Warning**` blockquotes; see
+   blockquote-callouts.js, which tags the variant and the title paragraph. */
+.prose blockquote [data-blockquote-label] {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-6) !important;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-nano) !important;
+  line-height: var(--space-16) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--callout-accent, var(--callout-note)) !important;
+}
+
+.prose blockquote [data-blockquote-label] strong {
+  font-weight: var(--font-weight-regular) !important;
+  color: inherit !important;
+}
+
+.prose blockquote [data-blockquote-label] + * {
+  margin-top: 0 !important;
+}
+
+[data-blockquote-variant="warning"] [data-blockquote-label]::before {
+  content: "" !important;
+  flex: none;
+  width: var(--space-12);
+  height: var(--space-12);
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
 .accordion-group {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
@@ -948,6 +1076,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 
 #header p {
   max-width: var(--header-description-max-width);
+  color: var(--muted-foreground);
 }
 
 @media (min-width: 640px) {

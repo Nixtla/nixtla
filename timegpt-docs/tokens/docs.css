@@ -36,6 +36,7 @@ html:root {
   --border-width: 1px;
   --border-width-rail: 1.5px;
   --border-width-indicator: 2px;
+  --border-width-callout: 2px;
 }
 
 /* ================================  LAYOUT  ================================ */
@@ -81,6 +82,23 @@ html:root {
   --chat-shadow:
     0 1px 6px 0 color-mix(in oklch, var(--nixtla-neutral-950) 6%, transparent),
     0 2px 32px 0 color-mix(in oklch, var(--nixtla-neutral-950) 16%, transparent);
+
+  --callout-bg: var(--nixtla-neutral-50);
+  --callout-note: var(--foreground);
+  --callout-info: var(--nixtla-water-600);
+  --callout-tip: var(--nixtla-teal-600);
+  --callout-check: var(--nixtla-teal-600);
+  --callout-warning: var(--nixtla-orange-600);
+  --callout-danger: var(--nixtla-red-600);
+}
+
+.dark {
+  --callout-bg: var(--nixtla-neutral-900);
+  --callout-info: var(--nixtla-water-300);
+  --callout-tip: var(--nixtla-teal-300);
+  --callout-check: var(--nixtla-teal-300);
+  --callout-warning: var(--nixtla-orange-300);
+  --callout-danger: var(--nixtla-red-300);
 }
 
 /* ================================  MOTION  ================================ */
