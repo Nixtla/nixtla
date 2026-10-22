@@ -2,7 +2,9 @@
 
 @font-face {
   font-family: "Inter Local";
-  src: url("/docs/fonts/Inter-400-Latin.woff2") format("woff2");
+  src:
+    url("/docs/fonts/Inter-400-Latin.woff2") format("woff2"),
+    url("/fonts/Inter-400-Latin.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -14,7 +16,9 @@
 
 @font-face {
   font-family: "Inter Local";
-  src: url("/docs/fonts/Inter-400-Italic-Latin.woff2") format("woff2");
+  src:
+    url("/docs/fonts/Inter-400-Italic-Latin.woff2") format("woff2"),
+    url("/fonts/Inter-400-Italic-Latin.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -26,7 +30,9 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("/docs/fonts/JetBrainsMono-400-Latin.woff2") format("woff2");
+  src:
+    url("/docs/fonts/JetBrainsMono-400-Latin.woff2") format("woff2"),
+    url("/fonts/JetBrainsMono-400-Latin.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -38,7 +44,9 @@
 
 @font-face {
   font-family: "JetBrains Mono";
-  src: url("/docs/fonts/JetBrainsMono-400-Italic-Latin.woff2") format("woff2");
+  src:
+    url("/docs/fonts/JetBrainsMono-400-Italic-Latin.woff2") format("woff2"),
+    url("/fonts/JetBrainsMono-400-Italic-Latin.woff2") format("woff2");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
