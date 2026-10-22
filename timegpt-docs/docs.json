@@ -5,15 +5,21 @@
     "dismissible": true,
     "color": {
       "light": "#bfd1ff",
-      "dark": "#9187e8"
+      "dark": "#918bc6"
     }
   },
   "theme": "mint",
   "name": "TimeGPT Foundational model for time series forecasting and anomaly detection",
   "colors": {
-    "primary": "#161616",
-    "light": "#FFF",
-    "dark": "#161616"
+    "primary": "#222121",
+    "light": "#f6f4f0",
+    "dark": "#222121"
+  },
+  "background": {
+    "color": {
+      "light": "#f6f4f0",
+      "dark": "#171614"
+    }
   },
   "seo": {
     "metatags": {
@@ -24,7 +30,7 @@
     "library": "lucide"
   },
   "favicon": "/favicon.ico",
-  "ignore": ["utils/**", "depracted-docs/**", "pending_content/**"],
+  "ignore": ["utils/**", "depracted-docs/**", "pending_content/**", "tokens/*.md"],
   "navigation": {
     "groups": [
       {
