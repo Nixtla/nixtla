@@ -1788,8 +1788,10 @@ html.dark .bg-background-dark,
 }
 
 #search-bar-entry {
+  background-color: var(--search-bg) !important;
   border: var(--border-width) solid var(--border) !important;
   box-shadow: none !important;
+  filter: none !important;
 }
 
 #theme-preference-menu-trigger {

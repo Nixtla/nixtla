@@ -83,6 +83,7 @@ html:root {
     0 1px 6px 0 color-mix(in oklch, var(--nixtla-neutral-950) 6%, transparent),
     0 2px 32px 0 color-mix(in oklch, var(--nixtla-neutral-950) 16%, transparent);
 
+  --search-bg: var(--nixtla-neutral-50);
   --callout-bg: var(--nixtla-neutral-50);
   --callout-note: var(--foreground);
   --callout-info: var(--nixtla-water-600);
@@ -93,6 +94,7 @@ html:root {
 }
 
 .dark {
+  --search-bg: var(--nixtla-neutral-900);
   --callout-bg: var(--nixtla-neutral-900);
   --callout-info: var(--nixtla-water-300);
   --callout-tip: var(--nixtla-teal-300);
