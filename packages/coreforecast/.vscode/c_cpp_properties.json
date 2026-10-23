@@ -1,0 +1,11 @@
+{
+    "configurations": [
+        {
+            "name": "CMake deps",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ]
+        }
+    ],
+    "version": 4
+}

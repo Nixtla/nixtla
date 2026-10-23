@@ -1,0 +1,70 @@
+[project]
+name = "coreforecast"
+version = "0.0.19"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.20.0"]
+license = { text = "Apache-2.0" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+]
+description = "Fast implementations of common forecasting routines"
+authors = [{ name = "Jose Morales", email = "jmoralz92@gmail.com" }]
+readme = "README.md"
+keywords = ["forecasting", "time-series"]
+
+[dependency-groups]
+dev = [
+    "pandas",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "pip-licenses",
+    "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git",
+    "pytest-codspeed",
+    # for configuring the C++ tests (COREFORECAST_BUILD_TESTS) outside a wheel build
+    "pybind11",
+]
+
+[project.urls]
+homepage = "https://nixtla.github.io/coreforecast"
+documentation = "https://nixtlaverse.nixtla.io/coreforecast"
+repository = "https://github.com/Nixtla/coreforecast"
+
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+build-dir = "build"
+build.verbose = true
+logging.level = "INFO"
+# doctest only serves tests/cpp, which is excluded too
+sdist.exclude = ["docs", "tests", "*.yml", "external_libs/doctest"]
+sdist.reproducible = true
+wheel.exclude = ["Release"]
+wheel.expand-macos-universal-tags = true
+wheel.install-dir = "coreforecast"
+wheel.packages = ["python/coreforecast"]
+
+[tool.cibuildwheel]
+archs = "all"
+build-verbosity = 3
+build-frontend = "build[uv]"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[tool.ruff.lint]
+select = [
+    "F", # pyflakes
+    "I", # isort
+]

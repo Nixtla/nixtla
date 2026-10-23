@@ -1,0 +1,255 @@
+name: pytest
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  all-tests:
+    name: Run tests for ${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+    runs-on: ${{ matrix.os-platform[0] }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [311, 312, 313, 314, 315]
+        os-platform:
+          [
+            [ubuntu-latest, manylinux_x86_64],
+            [ubuntu-24.04-arm, manylinux_aarch64],
+            [windows-latest, win_amd64],
+            [windows-11-arm, win_arm64],
+            [macos-15-intel, macosx_x86_64],
+            [macos-latest, macosx_arm64],
+          ]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Build wheels and run tests
+        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299 # v4.3.1
+        with:
+          extras: "uv"
+        env:
+          CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
+          CIBW_BEFORE_TEST: uv sync --group dev --active
+          CIBW_TEST_COMMAND: uv run pytest {project}/tests -k "not efficiency"
+
+  warnings:
+    name: Build with -Werror on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # gcc here, AppleClang on macOS; -Werror is off by default so that a new
+      # compiler warning fails this job instead of everyone's source install
+      - name: Build with warnings as errors
+        run: uv build --wheel -Ccmake.define.COREFORECAST_WERROR=ON
+
+  sanitizers:
+    name: Run tests under ASan and UBSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # --no-install-project so uv never builds an uninstrumented coreforecast:
+      # it caches that wheel and restores it over the sanitizer build below
+      - name: Install dependencies
+        run: uv sync --group dev --no-install-project
+
+      # not editable: the scikit-build redirecting finder would otherwise import
+      # whatever _lib the sync left behind instead of the instrumented one.
+      # No linker flags: cmake puts CMAKE_CXX_FLAGS on the link line too, so the
+      # module already comes out with libasan and libubsan as DT_NEEDED. The
+      # SHARED ones wouldn't apply either, pybind11_add_module builds a MODULE
+      - name: Build with the sanitizers
+        run: |
+          uv pip install . \
+            -Ccmake.build-type=Debug \
+            -Ccmake.define.CMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS"
+
+      # --no-sync so it can't reinstall the project over the instrumented build.
+      # The runtimes still have to be preloaded even though the module links
+      # them: python isn't instrumented, so pulling them in with the module
+      # leaves ASan initializing too late to be usable ("runtime does not come
+      # first in initial library list"). Both of them, since with libasan alone
+      # the process dies with no report the first time a kernel throws.
+      # detect_leaks=0 because CPython leaks by design; halt_on_error makes a
+      # UBSan report fail the job instead of only printing
+      - name: Run tests
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)" \
+            uv run --no-sync pytest tests -k "not efficiency"
+
+  cpp_tests:
+    name: Run the C++ kernel tests under ${{ matrix.sanitizer }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      # gcc + libstdc++ on Ubuntu, AppleClang + libc++ on macOS: the two
+      # differ on what they constant-fold, so a narrowing that gcc accepts
+      # in a braced initializer is an error under clang.
+      # TSan is its own build because it can't be combined with ASan, and this
+      # is the only job that runs the scheduler in parallel.h under it: the
+      # Python suite covers it under ASan but never TSan. AppleClang supports
+      # it on arm64, so both OSes get both.
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        sanitizer: ["address,undefined", "thread"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      # only for pybind11's cmake config: find_package is unconditional even
+      # though the tests link nothing Python-side
+      - name: Install dependencies
+        run: uv sync --group dev --no-install-project
+
+      # Debug with the assertions on is the point: a kernel indexing past a
+      # span fails here, before any wheel is built. -Werror too, since this is
+      # the only place the test sources are compiled. _GLIBCXX_ASSERTIONS is
+      # libstdc++'s switch and _LIBCPP_HARDENING_MODE libc++'s; each ignores
+      # the other's. --no-sync so uv doesn't build and install the wheel just
+      # to print a path.
+      - name: Configure and build
+        run: |
+          cmake -S . -B build/cpp \
+            -DCOREFORECAST_BUILD_TESTS=ON \
+            -DCOREFORECAST_WERROR=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=${{ matrix.sanitizer }} -fno-omit-frame-pointer -D_GLIBCXX_ASSERTIONS -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG" \
+            -Dpybind11_DIR="$(uv run --no-sync python -m pybind11 --cmakedir)"
+          cmake --build build/cpp --target kernel_tests --parallel
+
+      - name: Run
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build/cpp --output-on-failure
+
+  # CodSpeed counts instructions, so the benchmarks below say nothing about what
+  # threads do. This is the job that notices a kernel that stopped scaling: it
+  # fails when a two-thread speedup drops under the floor in the script. Two and
+  # not four because the runner's four vCPUs are two cores plus their
+  # hyperthreads; the script says more about it.
+  thread_scaling:
+    name: Check that the kernels still scale with the thread count
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run
+        run: uv run python scripts/bench_threads.py --check
+
+  run_benchmarks:
+    # disabled until we have a CodSpeed token
+    if: false
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@821a40cd6c80e3cfe387caf55668287addd808da # v5.5.0
+        with:
+          mode: simulation
+          token: ${{ secrets.CODESPEED_TOKEN }}
+          run: uv run pytest tests/test_efficiency.py --codspeed
