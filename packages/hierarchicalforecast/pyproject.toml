@@ -1,0 +1,113 @@
+[project]
+name = "hierarchicalforecast"
+version = "1.5.3"
+description = "Hierarchical Methods Time Series Forecasting"
+readme = { file = "README.md", content-type = "text/markdown" }
+license = { text = "Apache Software License 2.0" }
+authors = [
+    { name = "Nixtla", email = "business@nixtla.io" }
+]
+keywords = ["time-series", "forecasting", "datasets", "hierarchical"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+requires-python = ">=3.10,<4.0"
+dependencies = [
+    "numpy",
+    "pandas>=2.1.0",
+    "scikit-learn>=1.2",
+    "matplotlib",
+    "narwhals>=2.0",
+    "qpsolvers[clarabel]",
+    "utilsforecast>=0.2.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/hierarchicalforecast/"
+Repository = "https://github.com/Nixtla/hierarchicalforecast/"
+Documentation = "https://nixtlaverse.nixtla.io/hierarchicalforecast/"
+
+[project.optional-dependencies]
+polars = [
+    "polars[numpy]<=1.32.0"
+]
+
+[dependency-groups]
+dev = [
+    "datasetsforecast",
+    "fire",
+    "ipython<=8.32.0",
+    "ipykernel<7.0.0",
+    "statsforecast>=1.0.0",
+    "requests",
+    "scipy",
+    "polars[numpy]<=1.32.0",
+    "pre-commit",
+    "ruff",
+    "pytest",
+    "pytest-benchmark",
+    "pytest-cov",
+    "pip-licenses",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
+]
+
+[build-system]
+requires = ["setuptools>=45", "pybind11>=2.10", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["hierarchicalforecast"]
+
+[tool.cibuildwheel]
+archs = "all"
+build-verbosity = 1
+
+[tool.ruff]
+fix = true
+indent-width = 4
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E", # pycodestyle errors
+    "W", # pycodestyle warnings
+    "F", # Pyflakes
+    "I", # isort
+    "B", # flake8-bugbear
+    "UP", # pyupgrade
+    "YTT", # flake8-2020
+]
+
+# TODO: address, then remove the below ignore clauses` eventually:
+ignore = [
+    "E402", # module level import not at top of file
+    "E501", # line too long
+    'B028',
+]
+
+[tool.ruff.lint.per-file-ignores]
+"hierarchicalforecast/utils.py" = ["B904", "E741"]
+"hierarchicalforecast/methods.py" = ["B007", "B904"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=hierarchicalforecast",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=70", #TODO: Update tests to increase coverage to 80
+]

@@ -1,0 +1,103 @@
+version: 2.1
+jobs:
+  pytest:
+    resource_class: xlarge
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - checkout
+      - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: Install dependencies & run tests
+          command: |
+            pip install uv && uv sync --group dev
+            uv run pytest
+  test-model-performance:
+    parameters:
+      hierarchy:
+        type: string
+        default: "strict"
+      forecast_type:
+        type: string
+        default: "point"
+      engine:
+        type: string
+        default: "pandas"
+    resource_class: large
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - checkout
+      - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: Install dependencies
+          command: |
+            pip install uv
+            uv venv --python 3.10
+      - run:
+          name: Run model performance tests
+          command: |
+            source .venv/bin/activate
+            uv sync --group dev
+            cd ./action_files/test_models/
+            uv pip install -r requirements.txt
+            python -m src.models << parameters.hierarchy >> << parameters.forecast_type >> << parameters.engine >>
+            python -m src.evaluation << parameters.forecast_type >>
+            cd ../../
+      - store_artifacts:
+          path: ./action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+  test-model-performance-temporal:
+    resource_class: large
+    docker:
+      - image: python:3.10-slim
+    steps:
+      - checkout
+      - run:
+          name: Install Git
+          command: |
+            apt-get update && apt-get install -y git g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: Install dependencies
+          command: |
+            pip install uv
+            uv venv --python 3.10
+      - run:
+          name: Run model performance tests
+          command: |
+            source .venv/bin/activate
+            uv sync --group dev
+            cd ./action_files/test_models/
+            uv pip install -r requirements.txt
+            python -m src.models_temporal
+            python -m src.evaluation_temporal
+            cd ../../
+      - store_artifacts:
+          path: ./action_files/test_models/data/evaluation.csv
+          destination: evaluation.csv
+workflows:
+  sample:
+    jobs:
+      - pytest
+      - test-model-performance:
+          matrix:
+            parameters:
+              hierarchy: ["strict", "non-strict"]
+              forecast_type: ["point", "probabilistic"]
+              engine: ["pandas"]
+      - test-model-performance-temporal
