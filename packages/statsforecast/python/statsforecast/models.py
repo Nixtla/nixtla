@@ -1,0 +1,7229 @@
+__all__ = [
+    "AutoARIMA",
+    "AutoETS",
+    "AutoCES",
+    "AutoTheta",
+    "AutoMFLES",
+    "AutoTBATS",
+    "ARIMA",
+    "AutoRegressive",
+    "SimpleExponentialSmoothing",
+    "SimpleExponentialSmoothingOptimized",
+    "SeasonalExponentialSmoothing",
+    "SeasonalExponentialSmoothingOptimized",
+    "Holt",
+    "HoltWinters",
+    "HistoricAverage",
+    "Naive",
+    "RandomWalkWithDrift",
+    "SeasonalNaive",
+    "ConformalSeasonalPool",
+    "WindowAverage",
+    "SeasonalWindowAverage",
+    "ADIDA",
+    "CrostonClassic",
+    "CrostonOptimized",
+    "CrostonSBA",
+    "IMAPA",
+    "TSB",
+    "MSTL",
+    "MFLES",
+    "TBATS",
+    "Theta",
+    "OptimizedTheta",
+    "DynamicTheta",
+    "DynamicOptimizedTheta",
+    "GARCH",
+    "ARCH",
+    "SklearnModel",
+    "ConstantModel",
+    "ZeroModel",
+    "NaNModel",
+    "UCM"
+]
+
+
+import warnings
+from math import trunc
+
+
+def _warn_distribution_mismatch(error_distribution, fitted_dist):
+    warnings.warn(
+        f"Simulating with error_distribution={error_distribution!r} but the model "
+        f"was fitted with distribution={fitted_dist!r}; sigma2 was optimised under "
+        f"the fitted distribution.",
+        UserWarning,
+        stacklevel=3,
+    )
+
+
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
+from scipy.special import inv_boxcox
+
+from statsforecast.arima import (
+    Arima,
+    _check_blambda,
+    _check_ssinit,
+    _inv_boxcox as _arima_inv_boxcox,
+    _transformed_fitted_arima,
+    auto_arima_f,
+    fitted_arima,
+    forecast_arima,
+    forward_arima,
+    is_constant,
+)
+from statsforecast.ets import (
+    _PHI_LOWER,
+    _PHI_UPPER,
+    ets_f,
+    forecast_ets,
+    forward_ets,
+)
+from statsforecast._lib import ses as _ses_lib
+from statsforecast.utils import (
+    ConformalIntervals,
+    _VALID_DISTRIBUTIONS,
+    _calculate_intervals,
+    _calculate_sigma,
+    _conformal_quantile,
+    _ensure_float,
+    _naive,
+    _quantiles,
+    _repeat_val,
+    _repeat_val_seas,
+    _seasonal_naive,
+)
+
+from .ces import auto_ces, forecast_ces, forward_ces
+from .garch import garch_forecast, garch_model
+from .mfles import MFLES as _MFLES
+from .mstl import mstl
+from .tbats import _compute_sigmah, tbats_forecast, tbats_selection
+from .theta import auto_theta, forecast_theta, forward_theta
+from .ucm import UCM, LocalLevel, LocalLinearTrend, SmoothTrend  # noqa: F401
+
+
+def _add_fitted_pi(res, se, level):
+    level = sorted(level)
+    level = np.asarray(level)
+    quantiles = _quantiles(level=level)
+    lo = res["fitted"].reshape(-1, 1) - quantiles * se.reshape(-1, 1)
+    hi = res["fitted"].reshape(-1, 1) + quantiles * se.reshape(-1, 1)
+    lo = lo[:, ::-1]
+    lo = {f"fitted-lo-{l}": lo[:, i] for i, l in enumerate(reversed(level))}
+    hi = {f"fitted-hi-{l}": hi[:, i] for i, l in enumerate(level)}
+    res = {**res, **lo, **hi}
+    return res
+
+
+def _add_arima_fitted_pi(res, model, level):
+    r"""
+    Adds in-sample intervals for ARIMA models to the `res` dict.
+    When the model was fitted with a Box-Cox transformation the intervals are
+    computed on the transformed scale and then back transformed, since that's
+    the scale `sigma2` refers to.
+
+    Args:
+        res (dict): Dictionary with an entry `fitted` for the in-sample
+            predictions, on the original scale.
+        model (dict): The fitted ARIMA model.
+        level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+    Returns:
+        dict: `res` with the `fitted-lo-{level}` and `fitted-hi-{level}` entries
+            added.
+    """
+    se = np.sqrt(model["sigma2"])
+    trans_fitted = _transformed_fitted_arima(model)
+    if trans_fitted is None:
+        return _add_fitted_pi(res=res, se=se, level=level)
+    pi = _add_fitted_pi(res={"fitted": trans_fitted}, se=se, level=level)
+    return {
+        **res,
+        **{
+            k: _arima_inv_boxcox(v, model["lambda"])
+            for k, v in pi.items()
+            if k != "fitted"
+        },
+    }
+
+
+def _add_conformal_distribution_intervals(
+    fcst: Dict,
+    cs: np.ndarray,
+    level: List[Union[int, float]],
+) -> Dict:
+    r"""
+    Adds conformal intervals to the `fcst` dict based on conformal scores `cs`.
+    `level` should be already sorted. This strategy creates forecasts paths
+    based on errors and calculate quantiles using those paths.
+    """
+    alphas = [100 - lv for lv in level]
+    cuts = [alpha / 200 for alpha in reversed(alphas)]
+    cuts.extend(1 - alpha / 200 for alpha in alphas)
+    mean = fcst["mean"].reshape(1, -1)
+    scores = np.vstack([mean - cs, mean + cs])
+    # lower cuts come first, then upper ones, as in `out_cols` below
+    upper = [False] * len(level) + [True] * len(level)
+    quantiles = _conformal_quantile(scores, cuts, upper, axis=0)
+    quantiles = quantiles.reshape(len(cuts), -1)
+    lo_cols = [f"lo-{lv}" for lv in reversed(level)]
+    hi_cols = [f"hi-{lv}" for lv in level]
+    out_cols = lo_cols + hi_cols
+    for i, col in enumerate(out_cols):
+        fcst[col] = quantiles[i]
+    return fcst
+
+
+def _add_conformal_error_intervals(
+    fcst: Dict,
+    cs: np.ndarray,
+    level: List[Union[int, float]],
+) -> Dict:
+    r"""
+    Adds conformal intervals to the `fcst` dict based on conformal scores `cs`.
+    `level` should be already sorted. Uses the finite-sample conformal quantile
+    of the absolute conformity scores (see `_conformal_quantile`) as the error
+    margin around `fcst["mean"]`.
+    Returns the modified `fcst` dict.
+    """
+    # the margin on absolute scores is an upper bound at every level, even below 50
+    quantiles = {
+        lv: _conformal_quantile(cs, lv / 100, upper=True, axis=0) for lv in level
+    }
+    for lv in reversed(level):
+        fcst[f"lo-{lv}"] = fcst["mean"] - quantiles[lv]
+    for lv in level:
+        fcst[f"hi-{lv}"] = fcst["mean"] + quantiles[lv]
+    return fcst
+
+
+def _get_conformal_method(method: str):
+    available_methods = {
+        "conformal_distribution": _add_conformal_distribution_intervals,
+        "conformal_error": _add_conformal_error_intervals,
+    }
+    if method not in available_methods:
+        raise ValueError(
+            f"prediction intervals method {method} not supported "
+            f"please choose one of {', '.join(available_methods)}"
+        )
+    return available_methods[method]
+
+
+class _TS:
+    uses_exog = False
+
+    def new(self):
+        b = type(self).__new__(type(self))
+        b.__dict__.update(self.__dict__)
+        return b
+
+    def __repr__(self):
+        return self.alias
+
+    def _conformity_scores(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ) -> np.ndarray:
+        y = _ensure_float(y)
+        n_windows = self.prediction_intervals.n_windows  # type: ignore[attr-defined]
+        h = self.prediction_intervals.h  # type: ignore[attr-defined]
+        n_samples = y.size
+        # use as many windows as possible for short series
+        # subtract 1 for the training set
+        n_windows = min(n_windows, (n_samples - 1) // h)
+        if n_windows < 2:
+            raise ValueError(
+                f"Prediction intervals settings require at least {2 * h + 1:,} samples, serie has {n_samples:,}."
+            )
+        test_size = n_windows * h
+        cs = np.empty((n_windows, h), dtype=y.dtype)
+        for i_window in range(n_windows):
+            train_end = n_samples - test_size + i_window * h
+            y_train = y[:train_end]
+            y_test = y[train_end : train_end + h]
+            if X is not None:
+                X_train = X[:train_end]
+                X_test = X[train_end : train_end + h]
+            else:
+                X_train = None
+                X_test = None
+            fcst_window = self.forecast(h=h, y=y_train, X=X_train, X_future=X_test)  # type: ignore[attr-defined]
+            cs[i_window] = np.abs(fcst_window["mean"] - y_test)
+        return cs
+
+    @property
+    def _conformal_method(self):
+        return _get_conformal_method(self.prediction_intervals.method)
+
+    def _store_cs(self, y, X):
+        if self.prediction_intervals is not None:
+            self._cs = self._conformity_scores(y, X)
+
+    def _add_conformal_intervals(self, fcst, y, X, level):
+        if self.prediction_intervals is not None and level is not None:
+            cs = self._conformity_scores(y, X) if y is not None else self._cs
+            res = self._conformal_method(fcst=fcst, cs=cs, level=level)
+            return res
+        return fcst
+
+    def _add_predict_conformal_intervals(self, fcst, level):
+        return self._add_conformal_intervals(fcst=fcst, y=None, X=None, level=level)
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        raise NotImplementedError
+
+
+class AutoARIMA(_TS):
+    r"""AutoARIMA model.
+
+    Automatically selects the best ARIMA (AutoRegressive Integrated Moving Average)
+    model using an information criterion. Default is Akaike Information Criterion (AICc).
+
+    Args:
+        d (Optional[int], optional): Order of first-differencing.
+        D (Optional[int], optional): Order of seasonal-differencing.
+        max_p (int, default=5): Max autorregresives p.
+        max_q (int, default=5): Max moving averages q.
+        max_P (int, default=2): Max seasonal autorregresives P.
+        max_Q (int, default=2): Max seasonal moving averages Q.
+        max_order (int, default=5): Max p+q+P+Q value if not stepwise selection.
+        max_d (int, default=2): Max non-seasonal differences.
+        max_D (int, default=1): Max seasonal differences.
+        start_p (int, default=2): Starting value of p in stepwise procedure.
+        start_q (int, default=2): Starting value of q in stepwise procedure.
+        start_P (int, default=1): Starting value of P in stepwise procedure.
+        start_Q (int, default=1): Starting value of Q in stepwise procedure.
+        stationary (bool, default=False): If True, restricts search to stationary models.
+        seasonal (bool, default=True): If False, restricts search to non-seasonal models.
+        ic (str, default="aicc"): Information criterion to be used in model selection.
+        stepwise (bool, default=True): If True, will do stepwise selection (faster).
+        nmodels (int, default=94): Number of models considered in stepwise search.
+        trace (bool, default=False): If True, the searched ARIMA models is reported.
+        approximation (Optional[bool], default=False): If True, conditional sums-of-squares estimation, final MLE.
+        method (Optional[str], optional): Fitting method between maximum likelihood or sums-of-squares.
+        truncate (Optional[bool], optional): Observations truncated series used in model selection.
+        test (str, default="kpss"): Unit root test to use. See `ndiffs` for details.
+        test_kwargs (Optional[str], optional): Unit root test additional arguments.
+        seasonal_test (str, default="seas"): Selection method for seasonal differences.
+        seasonal_test_kwargs (Optional[dict], optional): Seasonal unit root test arguments.
+        allowdrift (bool, default=True): If True, drift models terms considered.
+        allowmean (bool, default=True): If True, non-zero mean models considered.
+        blambda (Optional[Union[float, str]], default=None): Box-Cox transformation parameter. If 'auto', it is selected with Guerrero's method over [-0.9, 2]. No transformation is applied if None.
+        biasadj (bool, default=False): Use adjusted back-transformed mean Box-Cox.
+        season_length (int, default=1): Number of observations per unit of time. Ex: 24 Hourly data.
+        SSinit (str, default="Gardner1980"): Method used to compute the initial state covariance, either "Gardner1980" or "Rossignol2011". Gardner1980 automatically switches to Rossignol2011 for large state spaces, e.g. long seasonal periods, where it would be too slow or memory intensive.
+        alias (str, default="AutoARIMA"): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals.
+
+    Notes:
+        This implementation is a mirror of Hyndman's [forecast::auto.arima](https://github.com/robjhyndman/forecast).
+
+    References:
+        [Rob J. Hyndman, Yeasmin Khandakar (2008). "Automatic Time Series Forecasting: The forecast package for R"](https://www.jstatsoft.org/article/view/v027i03).
+    """
+
+    uses_exog = True
+    # objects pickled before SSinit existed lack the instance attribute
+    SSinit = "Gardner1980"
+
+    def __init__(
+        self,
+        d: Optional[int] = None,
+        D: Optional[int] = None,
+        max_p: int = 5,
+        max_q: int = 5,
+        max_P: int = 2,
+        max_Q: int = 2,
+        max_order: int = 5,
+        max_d: int = 2,
+        max_D: int = 1,
+        start_p: int = 2,
+        start_q: int = 2,
+        start_P: int = 1,
+        start_Q: int = 1,
+        stationary: bool = False,
+        seasonal: bool = True,
+        ic: str = "aicc",
+        stepwise: bool = True,
+        nmodels: int = 94,
+        trace: bool = False,
+        approximation: Optional[bool] = False,
+        method: Optional[str] = None,
+        truncate: Optional[bool] = None,
+        test: str = "kpss",
+        test_kwargs: Optional[str] = None,
+        seasonal_test: str = "seas",
+        seasonal_test_kwargs: Optional[Dict] = None,
+        allowdrift: bool = True,
+        allowmean: bool = True,
+        blambda: Optional[Union[float, str]] = None,
+        biasadj: bool = False,
+        season_length: int = 1,
+        distribution: str = "normal",
+        SSinit: str = "Gardner1980",
+        alias: str = "AutoARIMA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.d = d
+        self.D = D
+        self.max_p = max_p
+        self.max_q = max_q
+        self.max_P = max_P
+        self.max_Q = max_Q
+        self.max_order = max_order
+        self.max_d = max_d
+        self.max_D = max_D
+        self.start_p = start_p
+        self.start_q = start_q
+        self.start_P = start_P
+        self.start_Q = start_Q
+        self.stationary = stationary
+        self.seasonal = seasonal
+        self.ic = ic
+        self.stepwise = stepwise
+        self.nmodels = nmodels
+        self.trace = trace
+        self.approximation = approximation
+        self.method = method
+        self.truncate = truncate
+        self.test = test
+        self.test_kwargs = test_kwargs
+        self.seasonal_test = seasonal_test
+        self.seasonal_test_kwargs = seasonal_test_kwargs
+        self.allowdrift = allowdrift
+        self.allowmean = allowmean
+        _check_blambda(blambda)
+        self.blambda = blambda
+        self.biasadj = biasadj
+        self.season_length = season_length
+        self.distribution = distribution
+        _check_ssinit(SSinit)
+        self.SSinit = SSinit
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the AutoARIMA model.
+
+        Fit an AutoARIMA to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            AutoARIMA: AutoARIMA fitted model.
+        """
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            self.model_ = auto_arima_f(
+                x=y,
+                d=self.d,
+                D=self.D,
+                max_p=self.max_p,
+                max_q=self.max_q,
+                max_P=self.max_P,
+                max_Q=self.max_Q,
+                max_order=self.max_order,
+                max_d=self.max_d,
+                max_D=self.max_D,
+                start_p=self.start_p,
+                start_q=self.start_q,
+                start_P=self.start_P,
+                start_Q=self.start_Q,
+                stationary=self.stationary,
+                seasonal=self.seasonal,
+                ic=self.ic,
+                stepwise=self.stepwise,
+                nmodels=self.nmodels,
+                trace=self.trace,
+                approximation=self.approximation,
+                method=self.method,
+                truncate=self.truncate,
+                xreg=X,
+                test=self.test,
+                test_kwargs=self.test_kwargs,
+                seasonal_test=self.seasonal_test,
+                seasonal_test_kwargs=self.seasonal_test_kwargs,
+                allowdrift=self.allowdrift,
+                allowmean=self.allowmean,
+                blambda=self.blambda,
+                biasadj=self.biasadj,
+                period=self.season_length,
+                SSinit=self.SSinit,
+                distribution=self.distribution,
+            )
+
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted AutoArima.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = forecast_arima(self.model_, h=h, xreg=X, level=level)
+        mean = fcst["mean"]
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            res = {
+                "mean": mean,
+                **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+            }
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted AutoArima insample predictions.
+
+        Args:
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = fitted_arima(self.model_)
+        res = {"fitted": mean}
+        if level is not None:
+            res = _add_arima_fitted_pi(res=res, model=self.model_, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient AutoARIMA predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenpus of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x) optional exogenous.
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            mod = auto_arima_f(
+                x=y,
+                d=self.d,
+                D=self.D,
+                max_p=self.max_p,
+                max_q=self.max_q,
+                max_P=self.max_P,
+                max_Q=self.max_Q,
+                max_order=self.max_order,
+                max_d=self.max_d,
+                max_D=self.max_D,
+                start_p=self.start_p,
+                start_q=self.start_q,
+                start_P=self.start_P,
+                start_Q=self.start_Q,
+                stationary=self.stationary,
+                seasonal=self.seasonal,
+                ic=self.ic,
+                stepwise=self.stepwise,
+                nmodels=self.nmodels,
+                trace=self.trace,
+                approximation=self.approximation,
+                method=self.method,
+                truncate=self.truncate,
+                xreg=X,
+                test=self.test,
+                test_kwargs=self.test_kwargs,
+                seasonal_test=self.seasonal_test,
+                seasonal_test_kwargs=self.seasonal_test_kwargs,
+                allowdrift=self.allowdrift,
+                allowmean=self.allowmean,
+                blambda=self.blambda,
+                biasadj=self.biasadj,
+                period=self.season_length,
+                SSinit=self.SSinit,
+            )
+        fcst = forecast_arima(mod, h, xreg=X_future, level=level)
+        res = {"mean": fcst["mean"]}
+        if fitted:
+            res["fitted"] = fitted_arima(mod)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                res = _add_arima_fitted_pi(res=res, model=mod, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted ARIMA model to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels for prediction intervals.
+            fitted (bool, default=False): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            mod = forward_arima(self.model_, y=y, xreg=X, method=self.method)
+        fcst = forecast_arima(mod, h, xreg=X_future, level=level)
+        res = {"mean": fcst["mean"]}
+        if fitted:
+            res["fitted"] = fitted_arima(mod)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                res = _add_arima_fitted_pi(res=res, model=mod, level=level)
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted or newly estimated AutoARIMA model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors for fitting.
+        X_future : np.ndarray, optional
+            Future exogenous regressors of shape (h, n_x).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+            'laplace', 'skew-normal', 'ged'.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        if y is not None:
+            y = _ensure_float(y)
+            with np.errstate(invalid="ignore"):
+                mod = auto_arima_f(
+                    x=y,
+                    d=self.d,
+                    D=self.D,
+                    max_p=self.max_p,
+                    max_q=self.max_q,
+                    max_P=self.max_P,
+                    max_Q=self.max_Q,
+                    max_order=self.max_order,
+                    max_d=self.max_d,
+                    max_D=self.max_D,
+                    start_p=self.start_p,
+                    start_q=self.start_q,
+                    start_P=self.start_P,
+                    start_Q=self.start_Q,
+                    stationary=self.stationary,
+                    seasonal=self.seasonal,
+                    ic=self.ic,
+                    stepwise=self.stepwise,
+                    nmodels=self.nmodels,
+                    trace=self.trace,
+                    approximation=self.approximation,
+                    method=self.method,
+                    truncate=self.truncate,
+                    xreg=X,
+                    test=self.test,
+                    test_kwargs=self.test_kwargs,
+                    seasonal_test=self.seasonal_test,
+                    seasonal_test_kwargs=self.seasonal_test_kwargs,
+                    allowdrift=self.allowdrift,
+                    allowmean=self.allowmean,
+                    blambda=self.blambda,
+                    biasadj=self.biasadj,
+                    period=self.season_length,
+                    SSinit=self.SSinit,
+                )
+        else:
+            if not hasattr(self, "model_"):
+                raise Exception("You have to use the `fit` method first")
+            mod = self.model_
+
+        from statsforecast.arima import simulate_arima
+
+        return simulate_arima(
+            model=mod,
+            h=h,
+            n_paths=n_paths,
+            xreg=X_future,
+            seed=seed,
+            error_distribution=error_distribution,
+            error_params=error_params,
+        )
+
+
+class AutoETS(_TS):
+    r"""Automatic Error, Trend, Seasonal Model.
+
+    Automatically selects the best ETS (Error, Trend, Seasonality)
+    model using an information criterion. Default is Akaike Information Criterion (AICc), while particular models are estimated using maximum likelihood.
+    The state-space equations can be determined based on their $M$ multiplicative, $A$ additive,
+    $Z$ optimized or $N$ ommited components. The `model` string parameter defines the ETS equations:
+    E in [$M, A, Z$], T in [$N, A, M, Z$], and S in [$N, A, M, Z$].
+
+    For example when model='ANN' (additive error, no trend, and no seasonality), ETS will
+    explore only a simple exponential smoothing.
+
+    If the component is selected as 'Z', it operates as a placeholder to ask the AutoETS model
+    to figure out the best parameter.
+
+    Args:
+        season_length (int, default=1): Number of observations per unit of time. Ex: 24 Hourly data.
+        model (str, default="ZZZ"): Controlling state-space-equations.
+        damped (bool, optional): A parameter that 'dampens' the trend.
+        phi (float, optional): Smoothing parameter for trend damping. Only used when `damped=True`.
+        alias (str, default="AutoETS"): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals.
+
+    Notes:
+        This implementation is a mirror of Hyndman's [forecast::ets](https://github.com/robjhyndman/forecast).
+
+    References:
+        - [Rob J. Hyndman, Yeasmin Khandakar (2008). "Automatic Time Series Forecasting: The forecast package for R"](https://www.jstatsoft.org/article/view/v027i03).
+        - [Hyndman, Rob, et al (2008). "Forecasting with exponential smoothing: the state space approach"](https://robjhyndman.com/expsmooth/).
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        model: str = "ZZZ",
+        damped: Optional[bool] = None,
+        phi: Optional[float] = None,
+        alias: str = "AutoETS",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        distribution: str = "normal",
+    ):
+        self.season_length = season_length
+        self.model = model
+        self.damped = damped
+        if phi is not None:
+            if not isinstance(phi, float):
+                raise ValueError("phi must be `None` or float.")
+            if not _PHI_LOWER <= phi <= _PHI_UPPER:
+                raise ValueError(f"Valid range for phi is [{_PHI_LOWER}, {_PHI_UPPER}]")
+            if damped is False:
+                warnings.warn(
+                    "The user-defined `phi` will be ignored because `damped=False`.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            elif isinstance(model, str) and model[1:2] == "N":
+                warnings.warn(
+                    "The user-defined `phi` will be ignored because the model has no trend.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        self.phi = phi
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.distribution = distribution
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the Exponential Smoothing model.
+
+        Fit an Exponential Smoothing model to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            AutoETS: Exponential Smoothing fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = ets_f(
+            y,
+            m=self.season_length,
+            model=self.model,
+            damped=self.damped,
+            phi=self.phi,
+            distribution=self.distribution,
+        )
+        self.model_["actual_residuals"] = y - self.model_["fitted"]
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self, h: int, X: Optional[np.ndarray] = None, level: Optional[List[int]] = None
+    ):
+        r"""Predict with fitted Exponential Smoothing.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional exogenpus of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = forecast_ets(self.model_, h=h, level=level)
+        res = {"mean": fcst["mean"]}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            res = {
+                **res,
+                **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+            }
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted Exponential Smoothing insample predictions.
+
+        Args:
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            residuals = self.model_["actual_residuals"]
+            se = _calculate_sigma(residuals, len(residuals) - self.model_["n_params"])
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient Exponential Smoothing predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenpus of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        mod = ets_f(
+            y,
+            m=self.season_length,
+            model=self.model,
+            damped=self.damped,
+            phi=self.phi,
+            distribution=self.distribution,
+        )
+        fcst = forecast_ets(mod, h=h, level=level)
+        keys = ["mean"]
+        if fitted:
+            keys.append("fitted")
+        res = {key: fcst[key] for key in keys}
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                se = _calculate_sigma(y - mod["fitted"], len(y) - mod["n_params"])
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted Exponential Smoothing model to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenpus of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels for prediction intervals.
+            fitted (bool, default=False): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        mod = forward_ets(self.model_, y=y)
+        fcst = forecast_ets(mod, h=h, level=level)
+        keys = ["mean"]
+        if fitted:
+            keys.append("fitted")
+        res = {key: fcst[key] for key in keys}
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                se = _calculate_sigma(y - mod["fitted"], len(y) - mod["n_params"])
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: Optional[str] = None,
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted or newly estimated AutoETS model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, optional
+            Distribution for error terms. Defaults to the fitted model's distribution.
+            Options: 'normal', 't', 'bootstrap', 'laplace', 'skew-normal', 'ged'.
+            A UserWarning is emitted if this differs from the fitted distribution.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        if y is not None:
+            y = _ensure_float(y)
+            mod = ets_f(
+                y,
+                m=self.season_length,
+                model=self.model,
+                damped=self.damped,
+                phi=self.phi,
+            )
+        else:
+            if not hasattr(self, "model_"):
+                raise Exception("You have to use the `fit` method first")
+            mod = self.model_
+
+        fitted_dist = mod.get("distribution", "normal")
+        if error_distribution is None:
+            error_distribution = fitted_dist
+        elif error_distribution != fitted_dist:
+            _warn_distribution_mismatch(error_distribution, fitted_dist)
+
+        from statsforecast.ets import simulate_ets
+
+        return simulate_ets(
+            model=mod,
+            h=h,
+            n_paths=n_paths,
+            seed=seed,
+            error_distribution=error_distribution,
+            error_params=error_params,
+        )
+
+
+class AutoCES(_TS):
+    r"""Complex Exponential Smoothing model.
+
+    Automatically selects the best Complex Exponential Smoothing
+    model using an information criterion. Default is Akaike Information Criterion (AICc), while particular
+    models are estimated using maximum likelihood.
+    The state-space equations can be determined based on their $S$ simple, $P$ parial,
+    $Z$ optimized or $N$ ommited components. The `model` string parameter defines the
+    kind of CES model: $N$ for simple CES (withous seasonality), $S$ for simple seasonality (lagged CES),
+    $P$ for partial seasonality (without complex part), $F$ for full seasonality (lagged CES
+    with real and complex seasonal parts).
+
+    If the component is selected as 'Z', it operates as a placeholder to ask the AutoCES model
+    to figure out the best parameter.
+
+    Args:
+        season_length (int, default=1): Number of observations per unit of time. Ex: 24 Hourly data.
+        model (str, default="Z"): Controlling state-space-equations.
+        alias (str, default="CES"): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals.
+
+    References:
+        - [Svetunkov, Ivan & Kourentzes, Nikolaos. (2015). "Complex Exponential Smoothing".](https://onlinelibrary.wiley.com/doi/full/10.1002/nav.22074).
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        model: str = "Z",
+        alias: str = "CES",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        distribution: str = "normal",
+    ):
+        self.season_length = season_length
+        self.model = model
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        if distribution not in _VALID_DISTRIBUTIONS:
+            raise ValueError(
+                f"distribution must be one of {tuple(d.value for d in _VALID_DISTRIBUTIONS)}, got {distribution!r}"
+            )
+        self.distribution = distribution
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the Complex Exponential Smoothing model.
+
+        Fit the Complex Exponential Smoothing model to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            AutoCES: Complex Exponential Smoothing fitted model.
+        """
+        y = _ensure_float(y)
+        if is_constant(y):
+            model = Naive(
+                alias=self.alias, prediction_intervals=self.prediction_intervals
+            )
+            model.fit(y=y, X=X)
+            return model
+        self.model_ = auto_ces(y, m=self.season_length, model=self.model,
+                               distribution=self.distribution)
+        self.model_["actual_residuals"] = y - self.model_["fitted"]
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self, h: int, X: Optional[np.ndarray] = None, level: Optional[List[int]] = None
+    ):
+        r"""Predict with fitted Exponential Smoothing.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = forecast_ces(self.model_, h=h, level=level)
+        res = {"mean": fcst["mean"]}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            res = {
+                **res,
+                **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+            }
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted Exponential Smoothing insample predictions.
+
+        Args:
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            residuals = self.model_["actual_residuals"]
+            se = _calculate_sigma(residuals, self.model_["n"])
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient Complex Exponential Smoothing predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenpus of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        if is_constant(y):
+            model = Naive(
+                alias=self.alias, prediction_intervals=self.prediction_intervals
+            )
+            return model.forecast(
+                y=y, h=h, X=X, X_future=X_future, level=level, fitted=fitted
+            )
+        mod = auto_ces(y, m=self.season_length, model=self.model,
+                       distribution=self.distribution)
+        fcst = forecast_ces(mod, h, level=level)
+        keys = ["mean"]
+        if fitted:
+            keys.append("fitted")
+        res = {key: fcst[key] for key in keys}
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                se = _calculate_sigma(y - mod["fitted"], len(y))
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted Complex Exponential Smoothing to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenpus of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        mod = forward_ces(self.model_, y=y)
+        fcst = forecast_ces(mod, h, level=level)
+        keys = ["mean"]
+        if fitted:
+            keys.append("fitted")
+        res = {key: fcst[key] for key in keys}
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst[f"lo-{l}"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst[f"hi-{l}"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                se = _calculate_sigma(y - mod["fitted"], len(y))
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: Optional[str] = None,
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted or newly estimated AutoCES model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, optional
+            Distribution for error terms. Defaults to the fitted model's distribution.
+            Options: 'normal', 't', 'bootstrap', 'laplace', 'skew-normal', 'ged'.
+            A UserWarning is emitted if this differs from the fitted distribution.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        if y is not None:
+            y = _ensure_float(y)
+            if is_constant(y):
+                return Naive(alias=self.alias).simulate(
+                    h=h,
+                    n_paths=n_paths,
+                    y=y,
+                    X=X,
+                    seed=seed,
+                    error_distribution=error_distribution or "normal",
+                    error_params=error_params,
+                )
+            mod = auto_ces(y, m=self.season_length, model=self.model,
+                           distribution=self.distribution)
+        else:
+            if not hasattr(self, "model_"):
+                raise Exception("You have to use the `fit` method first")
+            mod = self.model_
+
+        fitted_dist = mod.get("distribution", "normal")
+        if error_distribution is None:
+            error_distribution = fitted_dist
+        elif error_distribution != fitted_dist:
+            _warn_distribution_mismatch(error_distribution, fitted_dist)
+
+        from statsforecast.ces import simulate_ces
+
+        return simulate_ces(
+            model=mod,
+            h=h,
+            n_paths=n_paths,
+            seed=seed,
+            error_distribution=error_distribution,
+            error_params=error_params,
+        )
+
+
+class AutoTheta(_TS):
+    r"""AutoTheta model.
+
+    Automatically selects the best Theta (Standard Theta Model ('STM'),
+    Optimized Theta Model ('OTM'), Dynamic Standard Theta Model ('DSTM'),
+    Dynamic Optimized Theta Model ('DOTM')) model using mse.
+
+    Args:
+        season_length (int, default=1): Number of observations per unit of time. Ex: 24 Hourly data.
+        decomposition_type (str, default="multiplicative"): Sesonal decomposition type, 'multiplicative' (default) or 'additive'.
+        model (Optional[str], optional): Controlling Theta Model. By default searchs the best model.
+        alias (str, default="AutoTheta"): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals.
+        theta (Optional[float], optional): Fixed theta parameter for optimized Theta models.
+            By default, theta is estimated from the data.
+
+    References:
+        - [Jose A. Fiorucci, Tiago R. Pellegrini, Francisco Louzada, Fotios Petropoulos, Anne B. Koehler (2016). "Models for optimising the theta method and their relationship to state space models". International Journal of Forecasting](https://www.sciencedirect.com/science/article/pii/S0169207016300243)
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        decomposition_type: str = "multiplicative",
+        model: Optional[str] = None,
+        alias: str = "AutoTheta",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        distribution: str = "normal",
+        theta: Optional[float] = None,
+    ):
+        if distribution not in _VALID_DISTRIBUTIONS:
+            raise ValueError(
+                f"distribution must be one of {tuple(d.value for d in _VALID_DISTRIBUTIONS)}, got {distribution!r}"
+            )
+        if theta is not None and (
+            not np.isfinite(theta) or theta < 1.0 or theta > 1e10
+        ):
+            raise ValueError("theta must be finite and between 1 and 1e10")
+        self.season_length = season_length
+        self.decomposition_type = decomposition_type
+        self.model = model
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.distribution = distribution
+        self.theta = theta
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the AutoTheta model.
+
+        Fit an AutoTheta model to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            AutoTheta: AutoTheta fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = auto_theta(
+            y=y,
+            m=self.season_length,
+            model=self.model,
+            decomposition_type=self.decomposition_type,
+            distribution=self.distribution,
+            theta=self.theta,
+        )
+        self.model_["fitted"] = y - self.model_["residuals"]
+        self._store_cs(y, X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted AutoTheta.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = forecast_theta(self.model_, h=h, level=level)
+        if self.prediction_intervals is not None and level is not None:
+            fcst = self._add_predict_conformal_intervals(fcst, level)
+        return fcst
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted AutoTheta insample predictions.
+
+        Args:
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            se = np.std(self.model_["residuals"][3:], ddof=1)
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: Optional[str] = None,
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted or newly estimated AutoTheta model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, optional
+            Distribution for error terms. Defaults to the fitted model's distribution.
+            Options: 'normal', 't', 'bootstrap', 'laplace', 'skew-normal', 'ged'.
+            A UserWarning is emitted if this differs from the fitted distribution.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        if y is not None:
+            y = _ensure_float(y)
+            if is_constant(y):
+                return Naive(alias=self.alias).simulate(
+                    h=h,
+                    n_paths=n_paths,
+                    y=y,
+                    X=X,
+                    seed=seed,
+                    error_distribution=error_distribution or "normal",
+                    error_params=error_params,
+                )
+            mod = auto_theta(
+                y=y,
+                m=self.season_length,
+                model=self.model,
+                decomposition_type=self.decomposition_type,
+                distribution=self.distribution,
+                theta=self.theta,
+            )
+        else:
+            if not hasattr(self, "model_"):
+                raise Exception("You have to use the `fit` method first")
+            mod = self.model_
+
+        fitted_dist = mod.get("distribution", "normal")
+        if error_distribution is None:
+            error_distribution = fitted_dist
+        elif error_distribution != fitted_dist:
+            _warn_distribution_mismatch(error_distribution, fitted_dist)
+
+        from statsforecast.theta import simulate_theta
+
+        return simulate_theta(
+            model=mod,
+            h=h,
+            n_paths=n_paths,
+            seed=seed,
+            error_distribution=error_distribution,
+            error_params=error_params,
+        )
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient AutoTheta predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        mod = auto_theta(
+            y=y,
+            m=self.season_length,
+            model=self.model,
+            decomposition_type=self.decomposition_type,
+            theta=self.theta,
+        )
+        res = forecast_theta(mod, h, level=level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        if fitted:
+            res["fitted"] = y - mod["residuals"]
+        if level is not None and fitted:
+            # add prediction intervals for fitted values
+            se = np.std(mod["residuals"][3:], ddof=1)
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted AutoTheta to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Optional exogenous of shape (h, n_x).
+            level (List[float], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        mod = forward_theta(self.model_, y=y)
+        res = forecast_theta(mod, h, level=level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        if fitted:
+            res["fitted"] = y - mod["residuals"]
+        if level is not None and fitted:
+            # add prediction intervals for fitted values
+            se = np.std(mod["residuals"][3:], ddof=1)
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+
+class AutoMFLES(_TS):
+    r"""AutoMFLES
+
+    Args:
+        test_size (int): Forecast horizon used during cross validation.
+        season_length (int or list of int, optional, default=None): Number of observations per unit of time. Ex: 24 Hourly data.
+        n_windows (int, default=2): Number of windows used for cross validation.
+        config (dict, optional, default=None): Mapping from parameter name (from the init arguments of MFLES) to a list of values to try.
+            If `None`, will use defaults.
+        step_size (int, optional, default=None): Step size between each cross validation window. If `None` will be set to test_size.
+        metric (str, default='smape'): Metric used to select the best model. Possible options are: 'smape', 'mape', 'mse' and 'mae'.
+        verbose (bool, default=False): Print debugging information.
+        prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+            This is required for generating future prediction intervals.
+        alias (str, default='AutoMFLES'): Custom name of the model.
+    """
+
+    def __init__(
+        self,
+        test_size: int,
+        season_length: Optional[Union[int, List[int]]] = None,
+        n_windows: int = 2,
+        config: Optional[Dict[str, Any]] = None,
+        step_size: Optional[int] = None,
+        metric: str = "smape",
+        verbose: bool = False,
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        alias: str = "AutoMFLES",
+    ):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            raise ImportError("MFLES requires scikit-learn.") from None
+        self.season_length = season_length
+        self.n_windows = n_windows
+        self.test_size = test_size
+        self.config = config
+        self.step_size = step_size if step_size is not None else test_size
+        self.metric = metric
+        self.verbose = verbose
+        self.prediction_intervals = prediction_intervals
+        self.alias = alias
+
+    def _fit(self, y: np.ndarray, X: Optional[np.ndarray] = None) -> Dict[str, Any]:
+        model = _MFLES(verbose=self.verbose)
+        optim_params = model.optimize(
+            y=y,
+            X=X,
+            test_size=self.test_size,
+            n_steps=self.n_windows,
+            step_size=self.step_size,
+            seasonal_period=self.season_length,
+            metric=self.metric,
+            params=self.config,
+        )
+        # the seasonal_period may've been found during the optimization
+        seasonal_period = optim_params.pop("seasonal_period", self.season_length)
+        fitted = model.fit(
+            y=y,
+            X=X,
+            seasonal_period=seasonal_period,
+            **optim_params,
+        )
+        return {"model": model, "fitted": fitted}
+
+    def fit(self, y: np.ndarray, X: Optional[np.ndarray] = None) -> "AutoMFLES":
+        r"""Fit the model
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional, default=None): Exogenous of shape (t, n_x).
+
+        Returns:
+            AutoMFLES: Fitted AutoMFLES object.
+        """
+        y = _ensure_float(y)
+        self.model_ = self._fit(y=y, X=X)
+        self._store_cs(y=y, X=X)
+        residuals = y - self.model_["fitted"]
+        self.model_["sigma"] = _calculate_sigma(residuals, y.size)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        r"""Predict with fitted AutoMFLES.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional, default=None): Exogenous of shape (h, n_x).
+            level (List[int], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"mean": self.model_["model"].predict(forecast_horizon=h, X=X)}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None) -> Dict[str, Any]:
+        r"""Access fitted AutoMFLES insample predictions.
+
+        Args:
+            level (List[int], optional): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            level = sorted(level)
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ) -> Dict[str, Any]:
+        r"""Memory Efficient AutoMFLES predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            h (int): Forecast horizon.
+            X (array-like, optional): Insample exogenous of shape (t, n_x).
+            X_future (array-like, optional): Exogenous of shape (h, n_x).
+            level (List[int], optional): Confidence levels (0-100) for prediction intervals.
+            fitted (bool, default=False): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        model = self._fit(y=y, X=X)
+        res = {"mean": model["model"].predict(forecast_horizon=h, X=X_future)}
+        if fitted:
+            res["fitted"] = model["fitted"]
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                raise Exception("You must pass `prediction_intervals` to compute them.")
+            if fitted:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(residuals, y.size)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+class AutoTBATS(_TS):
+    r"""AutoTBATS model.
+
+    Automatically selects the best TBATS model from all feasible combinations of the parameters use_boxcox, use_trend, use_damped_trend, and use_arma_errors.
+    Selection is made using the AIC.
+    Default value for use_arma_errors is True since this enables the evaluation of models with and without ARMA errors.
+
+    References:
+        - [De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with complex seasonal patterns using exponential smoothing. Journal of the American statistical association, 106(496), 1513-1527.](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=f3de25596ab60ef0e886366826bf58a02b35a44f)
+        - [De Livera, Alysha M (2017). Modeling time series with complex seasonal patterns using exponential smoothing. Monash University. Thesis.](https://doi.org/10.4225/03/589299681de3d)
+
+    Args:
+        seasonal_periods (int or list of int): Number of observations per unit of time. Ex: 24 Hourly data.
+        use_boxcox (bool, default=None): Whether or not to use a Box-Cox transformation. By default tries both.
+        bc_lower_bound (float, default=0.0): Lower bound for the Box-Cox transformation.
+        bc_upper_bound (float, default=1.0): Upper bound for the Box-Cox transformation.
+        use_trend (bool, default=None): Whether or not to use a trend component. By default tries both.
+        use_damped_trend (bool, default=None): Whether or not to dampen the trend component. By default tries both.
+        use_arma_errors (bool, default=True): Whether or not to use a ARMA errors. Default is True and this evaluates both models.
+        alias (str): Custom name of the model.
+    """
+
+    def __init__(
+        self,
+        season_length: Union[int, List[int]],
+        use_boxcox: Optional[bool] = None,
+        bc_lower_bound: float = 0.0,
+        bc_upper_bound: float = 1.0,
+        use_trend: Optional[bool] = None,
+        use_damped_trend: Optional[bool] = None,
+        use_arma_errors: bool = True,
+        alias: str = "AutoTBATS",
+    ):
+        if isinstance(season_length, int):
+            season_length = [season_length]
+        self.season_length = list(season_length)
+        self.use_boxcox = use_boxcox
+        self.bc_lower_bound = bc_lower_bound
+        self.bc_upper_bound = bc_upper_bound
+        self.use_trend = use_trend
+        self.use_damped_trend = use_damped_trend
+        self.use_arma_errors = use_arma_errors
+        self.alias = alias
+
+    def fit(self, y: np.ndarray, X: Optional[np.ndarray] = None):
+        r"""Fit TBATS model.
+
+        Fit TBATS model to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (numpy.array, optional, default=None): Ignored
+
+        Returns:
+            self: TBATS model.
+        """
+        y = _ensure_float(y)
+        self.model_ = tbats_selection(
+            y=y,
+            seasonal_periods=self.season_length,
+            use_boxcox=self.use_boxcox,
+            bc_lower_bound=self.bc_lower_bound,
+            bc_upper_bound=self.bc_upper_bound,
+            use_trend=self.use_trend,
+            use_damped_trend=self.use_damped_trend,
+            use_arma_errors=self.use_arma_errors,
+        )
+        return self
+
+    def predict(
+        self, h: int, X: Optional[np.ndarray] = None, level: Optional[List[int]] = None
+    ):
+        r"""Predict with fitted TBATS model.
+
+        Args:
+            h (int): Forecast horizon.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = tbats_forecast(self.model_, h)
+        res = {"mean": fcst["mean"]}
+        if level is not None:
+            level = sorted(level)
+            sigmah = _compute_sigmah(self.model_, h)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        if self.model_["BoxCox_lambda"] is not None:
+            res_trans = {
+                k: inv_boxcox(v, self.model_["BoxCox_lambda"]) for k, v in res.items()
+            }
+            for k, v in res_trans.items():
+                res_trans[k] = np.where(np.isnan(v), res[k], v)
+        else:
+            res_trans = res
+        return res_trans
+
+    def predict_in_sample(self, level: Optional[Tuple[int]] = None):
+        r"""Access fitted TBATS model predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"].ravel()}
+        if level is not None:
+            se = _calculate_sigma(self.model_["errors"], self.model_["errors"].shape[1])
+            fitted_pred_int = _add_fitted_pi(res, se, level)
+            res = {**res, **fitted_pred_int}
+        if self.model_["BoxCox_lambda"] is not None:
+            res_trans = {
+                k: inv_boxcox(v, self.model_["BoxCox_lambda"]) for k, v in res.items()
+            }
+            for k, v in res_trans.items():
+                res_trans[k] = np.where(np.isnan(v), res[k], v)
+        else:
+            res_trans = res
+        return res_trans
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient TBATS model.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        mod = tbats_selection(
+            y=y,
+            seasonal_periods=self.season_length,
+            use_boxcox=self.use_boxcox,
+            bc_lower_bound=self.bc_lower_bound,
+            bc_upper_bound=self.bc_upper_bound,
+            use_trend=self.use_trend,
+            use_damped_trend=self.use_damped_trend,
+            use_arma_errors=self.use_arma_errors,
+        )
+        fcst = tbats_forecast(mod, h)
+        res = {"mean": fcst["mean"]}
+        if fitted:
+            res["fitted"] = mod["fitted"].ravel()
+        if level is not None:
+            level = sorted(level)
+            sigmah = _compute_sigmah(mod, h)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+            if fitted:
+                se = _calculate_sigma(mod["errors"], mod["errors"].shape[1])
+                fitted_pred_int = _add_fitted_pi(res, se, level)
+                res = {**res, **fitted_pred_int}
+        if mod["BoxCox_lambda"] is not None:
+            res_trans = {k: inv_boxcox(v, mod["BoxCox_lambda"]) for k, v in res.items()}
+            for k, v in res_trans.items():
+                res_trans[k] = np.where(np.isnan(v), res[k], v)
+        else:
+            res_trans = res
+        return res_trans
+
+
+class ARIMA(_TS):
+    r"""ARIMA model.
+
+    AutoRegressive Integrated Moving Average model.
+
+    References:
+        - [Rob J. Hyndman, Yeasmin Khandakar (2008). "Automatic Time Series Forecasting: The forecast package for R"](https://www.jstatsoft.org/article/view/v027i03).
+
+    Args:
+        order (tuple, default=(0, 0, 0)): A specification of the non-seasonal part of the ARIMA model: the three components (p, d, q) are the AR order, the degree of differencing, and the MA order.
+        season_length (int, default=1): Number of observations per unit of time. Ex: 24 Hourly data.
+        seasonal_order (tuple, default=(0, 0, 0)): A specification of the seasonal part of the ARIMA model. (P, D, Q) for the  AR order, the degree of differencing, the MA order.
+        include_mean (bool, default=True): Should the ARIMA model include a mean term? The default is True for undifferenced series, False for differenced ones (where a mean would not affect the fit nor predictions).
+        include_drift (bool, default=False): Should the ARIMA model include a linear drift term? (i.e., a linear regression with ARIMA errors is fitted.)
+        include_constant (bool, optional, default=None): If True, then includ_mean is set to be True for undifferenced series and include_drift is set to be True for differenced series. Note that if there is more than one difference taken, no constant is included regardless of the value of this argument. This is deliberate as otherwise quadratic and higher order polynomial trends would be induced.
+        blambda (Optional[Union[float, str]], default=None): Box-Cox transformation parameter. If 'auto', it is selected with Guerrero's method over [-0.9, 2]. No transformation is applied if None.
+        biasadj (bool, default=False): Use adjusted back-transformed mean Box-Cox.
+        method (str, default='CSS-ML'): Fitting method: maximum likelihood or minimize conditional sum-of-squares. The default (unless there are missing values) is to use conditional-sum-of-squares to find starting values, then maximum likelihood.
+        fixed (dict, optional, default=None): Dictionary containing fixed coefficients for the arima model. Example: `{'ar1': 0.5, 'ma2': 0.75}`. For autoregressive terms use the `ar{i}` keys. For its seasonal version use `sar{i}`. For moving average terms use the `ma{i}` keys. For its seasonal version use `sma{i}`. For intercept and drift use the `intercept` and `drift` keys. For exogenous variables use the `ex_{i}` keys.
+        SSinit (str, default="Gardner1980"): Method used to compute the initial state covariance, either "Gardner1980" or "Rossignol2011". Gardner1980 automatically switches to Rossignol2011 for large state spaces, e.g. long seasonal periods, where it would be too slow or memory intensive.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals. By default, the model will compute the native prediction intervals.
+    """
+
+    uses_exog = True
+    # objects pickled before SSinit existed lack the instance attribute
+    SSinit = "Gardner1980"
+
+    def __init__(
+        self,
+        order: Tuple[int, int, int] = (0, 0, 0),
+        season_length: int = 1,
+        seasonal_order: Tuple[int, int, int] = (0, 0, 0),
+        include_mean: bool = True,
+        include_drift: bool = False,
+        include_constant: Optional[bool] = None,
+        blambda: Optional[Union[float, str]] = None,
+        biasadj: bool = False,
+        method: str = "CSS-ML",
+        fixed: Optional[dict] = None,
+        distribution: str = "normal",
+        SSinit: str = "Gardner1980",
+        alias: str = "ARIMA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.order = order
+        self.season_length = season_length
+        self.seasonal_order = seasonal_order
+        self.include_mean = include_mean
+        self.include_drift = include_drift
+        self.include_constant = include_constant
+        _check_blambda(blambda)
+        self.blambda = blambda
+        self.biasadj = biasadj
+        self.method = method
+        self.fixed = fixed
+        self.distribution = distribution
+        _check_ssinit(SSinit)
+        self.SSinit = SSinit
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""
+        Fit the model to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: Fitted model.
+        """
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            self.model_ = Arima(
+                x=y,
+                order=self.order,
+                seasonal={"order": self.seasonal_order, "period": self.season_length},
+                xreg=X,
+                include_mean=self.include_mean,
+                include_constant=self.include_constant,
+                include_drift=self.include_drift,
+                blambda=self.blambda,
+                biasadj=self.biasadj,
+                method=self.method,
+                fixed=self.fixed,
+                SSinit=self.SSinit,
+                distribution=self.distribution,
+            )
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted model.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = forecast_arima(self.model_, h=h, xreg=X, level=level)
+        mean = fcst["mean"]
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            res = {
+                "mean": mean,
+                **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+            }
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = fitted_arima(self.model_)
+        res = {"fitted": mean}
+        if level is not None:
+            res = _add_arima_fitted_pi(res=res, model=self.model_, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory efficient predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x) optional exogenous.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            mod = Arima(
+                x=y,
+                order=self.order,
+                seasonal={"order": self.seasonal_order, "period": self.season_length},
+                xreg=X,
+                include_mean=self.include_mean,
+                include_constant=self.include_constant,
+                include_drift=self.include_drift,
+                blambda=self.blambda,
+                biasadj=self.biasadj,
+                method=self.method,
+                fixed=self.fixed,
+                SSinit=self.SSinit,
+            )
+        fcst = forecast_arima(mod, h, xreg=X_future, level=level)
+        res = {"mean": fcst["mean"]}
+        if fitted:
+            res["fitted"] = fitted_arima(mod)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                res = _add_arima_fitted_pi(res=res, model=mod, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted model to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        with np.errstate(invalid="ignore"):
+            mod = forward_arima(self.model_, y=y, xreg=X, method=self.method)
+        fcst = forecast_arima(mod, h, xreg=X_future, level=level)
+        res = {"mean": fcst["mean"]}
+        if fitted:
+            res["fitted"] = fitted_arima(mod)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                res = {
+                    **res,
+                    **{f"lo-{l}": fcst["lower"][f"{l}%"] for l in reversed(level)},
+                    **{f"hi-{l}": fcst["upper"][f"{l}%"] for l in level},
+                }
+            if fitted:
+                # add prediction intervals for fitted values
+                res = _add_arima_fitted_pi(res=res, model=mod, level=level)
+        return res
+
+
+class AutoRegressive(ARIMA):
+    r"""Simple Autoregressive model.
+
+    Args:
+        lags (int or list): Number of lags to include in the model. If an int is passed then all lags up to `lags` are considered. If a list, only the elements of the list are considered as lags.
+        include_mean (bool, default=True): Should the AutoRegressive model include a mean term? The default is True for undifferenced series, False for differenced ones (where a mean would not affect the fit nor predictions).
+        include_drift (bool, default=False): Should the AutoRegressive model include a linear drift term? (i.e., a linear regression with AutoRegressive errors is fitted.)
+        blambda (Optional[Union[float, str]], default=None): Box-Cox transformation parameter. If 'auto', it is selected with Guerrero's method over [-0.9, 2]. No transformation is applied if None.
+        biasadj (bool, default=False): Use adjusted back-transformed mean Box-Cox.
+        method (str, default='CSS-ML'): Fitting method: maximum likelihood or minimize conditional sum-of-squares. The default (unless there are missing values) is to use conditional-sum-of-squares to find starting values, then maximum likelihood.
+        fixed (dict, optional, default=None): Dictionary containing fixed coefficients for the AutoRegressive model. Example: `{'ar1': 0.5, 'ar5': 0.75}`. For autoregressive terms use the `ar{i}` keys.
+        SSinit (str, default="Gardner1980"): Method used to compute the initial state covariance, either "Gardner1980" or "Rossignol2011". Gardner1980 automatically switches to Rossignol2011 for large state spaces, e.g. long seasonal periods, where it would be too slow or memory intensive.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals. By default, the model will compute the native prediction intervals.
+    """
+
+    uses_exog = True
+
+    def __init__(
+        self,
+        lags: Tuple[int, List],
+        include_mean: bool = True,
+        include_drift: bool = False,
+        blambda: Optional[Union[float, str]] = None,
+        biasadj: bool = False,
+        method: str = "CSS-ML",
+        fixed: Optional[dict] = None,
+        SSinit: str = "Gardner1980",
+        alias: str = "AutoRegressive",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        if isinstance(lags, int):
+            order = (lags, 0, 0)
+        elif isinstance(lags, list):
+            order = (max(lags), 0, 0)
+            fixed_lags = {
+                f"ar{i + 1}": np.nan if (i + 1) in lags else 0 for i in range(max(lags))
+            }
+            if fixed is not None:
+                fixed_lags.update(fixed)
+            fixed = fixed_lags
+        else:
+            raise ValueError(
+                "Please provide an int or a list specifying the lags to use."
+            )
+        super().__init__(
+            order=order,
+            include_mean=include_mean,
+            include_drift=include_drift,
+            blambda=blambda,
+            biasadj=biasadj,
+            method=method,
+            alias=alias,
+            fixed=fixed,
+            SSinit=SSinit,
+            prediction_intervals=prediction_intervals,
+        )
+
+
+def _ses_forecast(x: np.ndarray, alpha: float) -> Tuple[float, np.ndarray]:
+    r"""Compute the one-step ahead forecast for a simple exponential smoothing fit.
+
+    Args:
+        x (numpy.array): Clean time series of shape (n, ).
+        alpha (float): Smoothing parameter.
+
+    Returns:
+        tuple of (float, numpy.array): One-step ahead forecast and in-sample fitted values.
+    """
+    return _ses_lib.ses_forecast(x, alpha)
+
+
+def _demand(x: np.ndarray) -> np.ndarray:
+    r"""Extract the positive elements of a vector."""
+    return x[x > 0]
+
+
+def _intervals(x: np.ndarray) -> np.ndarray:
+    r"""Compute the intervals between non zero elements of a vector."""
+    nonzero_idxs = np.where(x != 0)[0]
+    return np.diff(nonzero_idxs + 1, prepend=0).astype(x.dtype)
+
+
+def _probability(x: np.ndarray) -> np.ndarray:
+    r"""Compute the element probabilities of being non zero."""
+    return (x != 0).astype(x.dtype)
+
+
+def _optimized_ses_forecast(
+    x: np.ndarray, bounds: Tuple[float, float] = (0.1, 0.3)
+) -> Tuple[float, np.ndarray, float]:
+    r"""Compute the one-step ahead forecast for an optimal simple exponential smoothing fit.
+
+    Args:
+        x (numpy.array): Clean time series of shape (n, ).
+        bounds (tuple of (float, float), default=(0.1, 0.3)): Lower and upper optimisation bounds for alpha.
+
+    Returns:
+        tuple of (float, numpy.array): One-step ahead forecast and in-sample fitted values.
+    """
+    alpha = _ses_lib.golden_section_ses(x, bounds[0], bounds[1])
+    forecast, fitted = _ses_forecast(x, alpha)
+    return forecast, fitted, alpha
+
+
+def _chunk_sums(array: np.ndarray, chunk_size: int) -> np.ndarray:
+    r"""Splits an array into chunks and returns the sum of each chunk.
+
+    Incomplete chunks are discarded"""
+    n_chunks = array.size // chunk_size
+    n_elems = n_chunks * chunk_size
+    return array[:n_elems].reshape(n_chunks, chunk_size).sum(axis=1)
+
+
+def _ses(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+    alpha: float,  # smoothing parameter
+) -> Dict[str, np.ndarray]:
+    fcst, fitted_vals = _ses_forecast(y, alpha)
+    out = {"mean": _repeat_val(val=fcst, h=h), "alpha": alpha}
+    if fitted:
+        out["fitted"] = fitted_vals
+    return out
+
+
+class SimpleExponentialSmoothing(_TS):
+    r"""SimpleExponentialSmoothing model.
+
+    Uses a weighted average of all past observations where the weights decrease exponentially into the past.
+    Suitable for data with no clear trend or seasonality.
+    Assuming there are $t$ observations, the one-step forecast is given by: $\hat{y}_{t+1} = \alpha y_t + (1-\alpha) \hat{y}_{t-1}$
+
+    The rate $0 \leq \alpha \leq 1$ at which the weights decrease is called the smoothing parameter. When $\alpha = 1$, SES is equal to the naive method.
+
+    References:
+        - [Charles C Holt (1957). “Forecasting seasonals and trends by exponentially weighted moving averages”](https://doi.org/10.1016/j.ijforecast).
+
+    Args:
+        alpha (float): Smoothing parameter.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        alpha: float,
+        alias: str = "SES",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.alpha = alpha
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = False
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SimpleExponentialSmoothing model.
+
+        Fit an SimpleExponentialSmoothing to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: SimpleExponentialSmoothing fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _ses(y=y, alpha=self.alpha, h=1, fitted=True)
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(residuals) - 1)
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted SimpleExponentialSmoothing.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            # SES Pi: sigma * sqrt(1 + alpha^2 * (h-1))
+            alpha = self.model_["alpha"]
+            sigma = self.model_["sigma"]
+            steps = np.arange(1, h + 1)
+            sigmah = sigma * np.sqrt(1 + (steps - 1) * alpha**2)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted SimpleExponentialSmoothing model.
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        alpha = self.model_["alpha"]
+        sigma = self.model_["sigma"]
+        last_level = self.model_["mean"][0]
+        residuals = self.model_.get("residuals", None)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+
+        paths = np.empty((n_paths, h))
+        levels = np.empty(n_paths)
+        levels[:] = last_level
+
+        for i in range(h):
+            paths[:, i] = levels + errors[:, i]
+            levels = alpha * paths[:, i] + (1 - alpha) * levels
+
+        return paths
+
+    def predict_in_sample(self):
+        r"""Access fitted SimpleExponentialSmoothing insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient SimpleExponentialSmoothing predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _ses(
+            y=y,
+            h=h,
+            fitted=fitted or (level is not None and self.prediction_intervals is None),
+            alpha=self.alpha,
+        )
+        res = dict(res)
+        # Remove alpha from output (internal parameter, not user-facing)
+        res.pop("alpha", None)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                steps = np.arange(1, h + 1)
+                sigmah = sigma * np.sqrt(
+                    1 + (steps - 1) * self.alpha**2
+                )
+                pred_int = _calculate_intervals(res, level, h, sigmah)
+                res.update(pred_int)
+        if not fitted:
+            res.pop("fitted", None)
+        return res
+
+
+def _ses_optimized(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+):
+    fcst_, fitted_vals, alpha = _optimized_ses_forecast(y, (0.01, 0.99))
+    mean = _repeat_val(val=fcst_, h=h)
+    fcst = {"mean": mean, "alpha": alpha}
+    if fitted:
+        fcst["fitted"] = fitted_vals
+    return fcst
+
+
+class SimpleExponentialSmoothingOptimized(_TS):
+    r"""SimpleExponentialSmoothing model.
+
+    Uses a weighted average of all past observations where the weights decrease exponentially into the past.
+    Suitable for data with no clear trend or seasonality.
+    Assuming there are $t$ observations, the one-step forecast is given by: $\hat{y}_{t+1} = \alpha y_t + (1-\alpha) \hat{y}_{t-1}$
+
+    The smoothing parameter $\alpha^*$ is optimized by square error minimization.
+
+    References:
+        - [Charles C Holt (1957). “Forecasting seasonals and trends by exponentially weighted moving averages”](https://doi.org/10.1016/j.ijforecast).
+
+    Args:
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            This is required for generating future prediction intervals.
+    """
+
+    def __init__(
+        self,
+        alias: str = "SESOpt",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = False
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SimpleExponentialSmoothingOptimized model.
+
+        Fit an SimpleExponentialSmoothingOptimized to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            SimpleExponentialSmoothingOptimized: SimpleExponentialSmoothingOptimized fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _ses_optimized(y=y, h=1, fitted=True)
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(residuals) - 1)
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted SimpleExponentialSmoothingOptimized.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            # SES Pi: sigma * sqrt(1 + alpha^2 * (h-1))
+            alpha = self.model_["alpha"]
+            sigma = self.model_["sigma"]
+            steps = np.arange(1, h + 1)
+            sigmah = sigma * np.sqrt(1 + (steps - 1) * alpha**2)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted SimpleExponentialSmoothingOptimized model.
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        alpha = self.model_["alpha"]
+        sigma = self.model_["sigma"]
+        last_level = self.model_["mean"][0]
+        residuals = self.model_.get("residuals", None)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+
+        paths = np.empty((n_paths, h))
+        levels = np.empty(n_paths)
+        levels[:] = last_level
+
+        for i in range(h):
+            paths[:, i] = levels + errors[:, i]
+            levels = alpha * paths[:, i] + (1 - alpha) * levels
+
+        return paths
+
+    def predict_in_sample(self):
+        r"""Access fitted SimpleExponentialSmoothingOptimized insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient SimpleExponentialSmoothingOptimized predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _ses_optimized(
+            y=y,
+            h=h,
+            fitted=fitted
+            or (level is not None and self.prediction_intervals is None),
+        )
+        res = dict(res)
+        # Remove alpha from output (internal parameter, not user-facing)
+        alpha = res.pop("alpha", None)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                steps = np.arange(1, h + 1)
+                sigmah = sigma * np.sqrt(1 + (steps - 1) * alpha**2)
+                pred_int = _calculate_intervals(res, level, h, sigmah)
+                res.update(pred_int)
+        if not fitted:
+            res.pop("fitted", None)
+        return res
+
+
+def _seasonal_exponential_smoothing(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+    season_length: int,  # length of season
+    alpha: float,  # smoothing parameter
+) -> Dict[str, np.ndarray]:
+    n = y.size
+    if n < season_length:
+        return {"mean": np.full(h, np.nan, dtype=y.dtype)}
+    season_vals = np.empty(season_length, dtype=y.dtype)
+    fitted_vals = np.full_like(y, np.nan)
+    alphas = np.empty(season_length, dtype=y.dtype)
+    for i in range(season_length):
+        init_idx = i + n % season_length
+        season_vals[i], fitted_vals[init_idx::season_length] = _ses_forecast(
+            y[init_idx::season_length], alpha
+        )
+        alphas[i] = alpha
+    out = _repeat_val_seas(season_vals=season_vals, h=h)
+    fcst = {"mean": out, "alpha": alphas}
+    if fitted:
+        fcst["fitted"] = fitted_vals
+    return fcst
+
+
+class SeasonalExponentialSmoothing(_TS):
+    r"""SeasonalExponentialSmoothing model.
+
+    Uses a weighted average of all past observations where the weights decrease exponentially into the past.
+    Suitable for data with no clear trend or seasonality.
+    Assuming there are $t$ observations and season $s$, the one-step forecast is given by:
+    $\hat{y}_{t+1,s} = \alpha y_t + (1-\alpha) \hat{y}_{t-1,s}$
+
+    Notes:
+        This method is an extremely simplified of Holt-Winter's method where the trend and level are set to zero.
+        And a single seasonal smoothing parameter $\alpha$ is shared across seasons.
+
+    References:
+        - [Charles. C. Holt (1957). "Forecasting seasonals and trends by exponentially weighted moving averages", ONR Research Memorandum, Carnegie Institute of Technology 52.](https://www.sciencedirect.com/science/article/abs/pii/S0169207003001134).
+        - [Peter R. Winters (1960). "Forecasting sales by exponentially weighted moving averages". Management Science](https://pubsonline.informs.org/doi/abs/10.1287/mnsc.6.3.324).
+
+    Args:
+        alpha (float): Smoothing parameter.
+        season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            This is required for generating future prediction intervals.
+    """
+
+    def __init__(
+        self,
+        season_length: int,
+        alpha: float,
+        alias: str = "SeasonalES",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.season_length = season_length
+        self.alpha = alpha
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = False
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SeasonalExponentialSmoothing model.
+
+        Fit an SeasonalExponentialSmoothing to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            SeasonalExponentialSmoothing: SeasonalExponentialSmoothing fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _seasonal_exponential_smoothing(
+            y=y,
+            season_length=self.season_length,
+            alpha=self.alpha,
+            fitted=True,
+            h=self.season_length,
+        )
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(y) - self.season_length)
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted SeasonalExponentialSmoothing.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val_seas(self.model_["mean"], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            # Seasonal SES Pi: sigma * sqrt(1 + alpha^2 * (k-1)) where k = floor((h-1)/m) + 1
+            alpha = self.model_["alpha"]
+            sigma = self.model_["sigma"]
+            m = self.season_length
+            steps = np.arange(1, h + 1)
+            k = ((steps - 1) // m) + 1
+            sigmah = sigma * np.sqrt(1 + (k - 1) * alpha**2)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted SeasonalExponentialSmoothing model.
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        alpha = self.model_["alpha"]
+        sigma = self.model_["sigma"]
+        m = self.season_length
+        last_cycle = self.model_["mean"]
+        residuals = self.model_.get("residuals", None)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+
+        paths = np.empty((n_paths, h))
+        # levels for each seasonal component
+        levels = np.tile(last_cycle, (n_paths, 1))
+
+        for i in range(h):
+            s_idx = i % m
+            paths[:, i] = levels[:, s_idx] + errors[:, i]
+            levels[:, s_idx] = alpha * paths[:, i] + (1 - alpha) * levels[:, s_idx]
+
+        return paths
+
+    def predict_in_sample(self):
+        r"""Access fitted SeasonalExponentialSmoothing insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient SeasonalExponentialSmoothing predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _seasonal_exponential_smoothing(
+            y=y,
+            h=h,
+            fitted=fitted
+            or (level is not None and self.prediction_intervals is None),
+            alpha=self.alpha,
+            season_length=self.season_length,
+        )
+        res = dict(res)
+        # Remove alpha from output (internal parameter, not user-facing)
+        res.pop("alpha", None)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(
+                    residuals, len(y) - self.season_length
+                )
+                m = self.season_length
+                steps = np.arange(1, h + 1)
+                k = ((steps - 1) // m) + 1
+                sigmah = sigma * np.sqrt(1 + (k - 1) * self.alpha**2)
+                pred_int = _calculate_intervals(res, level, h, sigmah)
+                res.update(pred_int)
+        if not fitted:
+            res.pop("fitted", None)
+        return res
+
+
+def _seasonal_ses_optimized(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+    season_length: int,  # season length
+):
+    n = y.size
+    if n < season_length:
+        return {"mean": np.full(h, np.nan, dtype=y.dtype)}
+    season_vals = np.empty(season_length, dtype=y.dtype)
+    fitted_vals = np.full_like(y, np.nan)
+    alphas = np.empty(season_length, dtype=y.dtype)
+    for i in range(season_length):
+        init_idx = i + n % season_length
+        season_vals[i], fitted_vals[init_idx::season_length], alpha_ = _optimized_ses_forecast(
+            y[init_idx::season_length], (0.01, 0.99)
+        )
+        alphas[i] = alpha_
+    out = _repeat_val_seas(season_vals=season_vals, h=h)
+    fcst = {"mean": out, "alpha": alphas}
+    if fitted:
+        fcst["fitted"] = fitted_vals
+    return fcst
+
+
+class SeasonalExponentialSmoothingOptimized(_TS):
+    def __init__(
+        self,
+        season_length: int,
+        alias: str = "SeasESOpt",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""SeasonalExponentialSmoothingOptimized model.
+
+        Uses a weighted average of all past observations where the weights decrease exponentially into the past.
+        Suitable for data with no clear trend or seasonality.
+        Assuming there are $t$ observations and season $s$, the one-step forecast is given by:
+        $\hat{y}_{t+1,s} = \alpha y_t + (1-\alpha) \hat{y}_{t-1,s}$
+
+        The smoothing parameter $\alpha^*$ is optimized by square error minimization.
+
+        Args:
+            season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                This is required for generating future prediction intervals.
+
+        References:
+            - [Charles. C. Holt (1957). "Forecasting seasonals and trends by exponentially weighted moving averages", ONR Research Memorandum, Carnegie Institute of Technology 52.](https://www.sciencedirect.com/science/article/abs/pii/S0169207003001134).
+            - [Peter R. Winters (1960). "Forecasting sales by exponentially weighted moving averages". Management Science](https://pubsonline.informs.org/doi/abs/10.1287/mnsc.6.3.324).
+
+        Notes:
+            - This method is an extremely simplified of Holt-Winter's method where the trend and level are set to zero.
+            - And a single seasonal smoothing parameter $\alpha$ is shared across seasons.
+        """
+        self.season_length = season_length
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = False
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SeasonalExponentialSmoothingOptimized model.
+
+        Fit an SeasonalExponentialSmoothingOptimized to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            SeasonalExponentialSmoothingOptimized: SeasonalExponentialSmoothingOptimized fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _seasonal_ses_optimized(
+            y=y,
+            season_length=self.season_length,
+            fitted=True,
+            h=self.season_length,
+        )
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(y) - self.season_length)
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted SeasonalExponentialSmoothingOptimized.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val_seas(self.model_["mean"], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            # Seasonal SES Pi: sigma * sqrt(1 + alpha^2 * (k-1)) where k = floor((h-1)/m) + 1
+            alpha = self.model_["alpha"]
+            sigma = self.model_["sigma"]
+            m = self.season_length
+            steps = np.arange(1, h + 1)
+            k = ((steps - 1) // m) + 1
+            sigmah = sigma * np.sqrt(1 + (k - 1) * alpha**2)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted SeasonalExponentialSmoothingOptimized model.
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        alpha = self.model_["alpha"]
+        sigma = self.model_["sigma"]
+        m = self.season_length
+        last_cycle = self.model_["mean"]
+        residuals = self.model_.get("residuals", None)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+
+        paths = np.empty((n_paths, h))
+        # levels for each seasonal component
+        levels = np.tile(last_cycle, (n_paths, 1))
+
+        for i in range(h):
+            s_idx = i % m
+            paths[:, i] = levels[:, s_idx] + errors[:, i]
+            levels[:, s_idx] = alpha * paths[:, i] + (1 - alpha) * levels[:, s_idx]
+
+        return paths
+
+    def predict_in_sample(self):
+        r"""Access fitted SeasonalExponentialSmoothingOptimized insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient SeasonalExponentialSmoothingOptimized predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _seasonal_ses_optimized(
+            y=y,
+            h=h,
+            fitted=fitted
+            or (level is not None and self.prediction_intervals is None),
+            season_length=self.season_length,
+        )
+        res = dict(res)
+        # Remove alpha from output (internal parameter, not user-facing)
+        alpha = res.pop("alpha", None)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(
+                    residuals, len(y) - self.season_length
+                )
+                m = self.season_length
+                steps = np.arange(1, h + 1)
+                k = ((steps - 1) // m) + 1
+                sigmah = sigma * np.sqrt(1 + (k - 1) * alpha**2)
+                pred_int = _calculate_intervals(res, level, h, sigmah)
+                res.update(pred_int)
+        if not fitted:
+            res.pop("fitted", None)
+        return res
+
+
+class Holt(AutoETS):
+    r"""Holt's method.
+
+    Also known as double exponential smoothing, Holt's method is an extension of exponential smoothing for series with a trend.
+    This implementation returns the corresponding `ETS` model with additive (A) or multiplicative (M) errors (so either 'AAN' or 'MAN').
+
+    References:
+        - [Rob J. Hyndman and George Athanasopoulos (2018). "Forecasting principles and practice, Methods with trend"](https://otexts.com/fpp3/holt.html).
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 12 Monthly data.
+        error_type (str): The type of error of the ETS model. Can be additive (A) or multiplicative (M).
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        error_type: str = "A",
+        alias: str = "Holt",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.season_length = season_length
+        self.error_type = error_type
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        model = error_type + "AN"
+        super().__init__(
+            season_length, model, alias=alias, prediction_intervals=prediction_intervals
+        )
+
+
+class HoltWinters(AutoETS):
+    r"""Holt-Winters' method.
+
+    Also known as triple exponential smoothing, Holt-Winters' method is an extension of exponential smoothing for series that contain both trend and seasonality.
+    This implementation returns the corresponding `ETS` model with additive (A) or multiplicative (M) errors (so either 'AAA' or 'MAM').
+
+    References:
+        - [Rob J. Hyndman and George Athanasopoulos (2018). "Forecasting principles and practice, Methods with seasonality"](https://otexts.com/fpp3/holt-winters.html).
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 12 Monthly data.
+        error_type (str): The type of error of the ETS model. Can be additive (A) or multiplicative (M).
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,  # season length
+        error_type: str = "A",  # error type
+        alias: str = "HoltWinters",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.season_length = season_length
+        self.error_type = error_type
+        self.alias = alias
+        model = error_type + "A" + error_type
+        super().__init__(
+            season_length, model, alias=alias, prediction_intervals=prediction_intervals
+        )
+
+
+def _historic_average(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+) -> Dict[str, np.ndarray]:
+    fcst = {"mean": _repeat_val(val=y.mean(), h=h)}
+    if fitted:
+        fitted_vals = _repeat_val(val=y.mean(), h=len(y))
+        fcst["fitted"] = fitted_vals
+    return fcst
+
+
+class HistoricAverage(_TS):
+    def __init__(
+        self,
+        alias: str = "HistoricAverage",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""HistoricAverage model.
+
+        Also known as mean method. Uses a simple average of all past observations.
+        Assuming there are $t$ observations, the one-step forecast is given by:
+
+        ``` math
+        \hat{y}_{t+1} = \frac{1}{t} \sum_{j=1}^t y_j
+        ```
+
+        References:
+            - [Rob J. Hyndman and George Athanasopoulos (2018). "Forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html).
+
+        Args:
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction
+                intervals.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the HistoricAverage model.
+
+        Fit an HistoricAverage to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: HistoricAverage fitted model.
+        r"""
+        y = _ensure_float(y)
+        mod = _historic_average(y, h=1, fitted=True)
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(residuals) - 1)
+        mod["residuals"] = residuals
+        mod["n"] = len(y)
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted HistoricAverage.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            sigma = self.model_["sigma"]
+            sigmah = sigma * np.sqrt(1 + (1 / self.model_["n"]))
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted HistoricAverage model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+            'laplace', 'skew-normal', 'ged'.
+        error_params : dict, optional
+            Distribution-specific parameters.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        sigma = self.model_["sigma"]
+        n = self.model_["n"]
+        mean = self.model_["mean"][0]
+        residuals = self.model_.get("residuals", None)
+
+        # For HistoricAverage, the prediction variance is sigma^2 * (1 + 1/n)
+        adj_sigma = sigma * np.sqrt(1 + 1 / n)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=adj_sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+        return mean + errors
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted HistoricAverage insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            sigma = self.model_["sigma"]
+            sigmah = sigma * np.sqrt(1 + (1 / self.model_["n"]))
+            res = _add_fitted_pi(res, se=sigmah, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient HistoricAverage predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not to return insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        out = _historic_average(y=y, h=h, fitted=fitted or (level is not None))
+        res = {"mean": out["mean"]}
+
+        if fitted:
+            res["fitted"] = out["fitted"]
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                sigmah = sigma * np.sqrt(1 + (1 / len(y)))
+                pred_int = _calculate_intervals(out, level, h, sigmah)
+                res = {**res, **pred_int}
+            if fitted:
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                sigmah = sigma * np.sqrt(1 + (1 / len(y)))
+                res = _add_fitted_pi(res=res, se=sigmah, level=level)
+
+        return res
+
+
+class Naive(_TS):
+    def __init__(
+        self,
+        alias: str = "Naive",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""Naive model.
+
+        All forecasts have the value of the last observation:
+        $\hat{y}_{t+1} = y_t$ for all $t$
+
+        References:
+            [Rob J. Hyndman and George Athanasopoulos (2018). "forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html).
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "Naive".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the Naive model.
+
+        Fit an Naive to a time series (numpy.array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: Naive fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _naive(y, h=1, fitted=True)
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        sigma = _calculate_sigma(residuals, len(residuals) - 1)
+        mod["sigma"] = sigma
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted Naive model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+            'laplace', 'skew-normal', 'ged'.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+        if seed is not None:
+            np.random.seed(seed)
+
+        # Naive: y_t = y_{t-1} + e_t
+        # Simulation: y_{T+h} = y_T + sum_{i=1}^h e_{T+i}
+        sigma = self.model_["sigma"]
+        last_value = self.model_["mean"][0]
+        residuals = self.model_.get("residuals", None)
+
+        drifts = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+        return last_value + np.cumsum(drifts, axis=1)
+
+    def predict(
+        self,
+        h: int,  # forecasting horizon
+        X: Optional[np.ndarray] = None,  # exogenous regressors
+        level: Optional[List[int]] = None,  # confidence level
+    ):
+        r"""Predict with fitted Naive.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            steps = np.arange(1, h + 1)
+            sigma = self.model_["sigma"]
+            sigmah = sigma * np.sqrt(steps)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted Naive insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient Naive predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        out = _naive(y=y, h=h, fitted=fitted or (level is not None))
+        res = {"mean": out["mean"]}
+        if fitted:
+            res["fitted"] = out["fitted"]
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                steps = np.arange(1, h + 1)
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                sigmah = sigma * np.sqrt(steps)
+                pred_int = _calculate_intervals(out, level, h, sigmah)
+                res = {**res, **pred_int}
+            if fitted:
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 1)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted model to an new/updated series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = self.forecast(
+            y=y, h=h, X=X, X_future=X_future, level=level, fitted=fitted
+        )
+        return res
+
+
+def _random_walk_with_drift(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+) -> Dict[str, np.ndarray]:
+    slope = (y[-1] - y[0]) / (y.size - 1)
+    mean = slope * (1 + np.arange(h, dtype=y.dtype)) + y[-1]
+    fcst = {
+        "mean": mean,
+        "slope": np.array([slope], dtype=y.dtype),
+        "last_y": np.array([y[-1]], dtype=y.dtype),
+    }
+    if fitted:
+        fitted_vals = np.full_like(y, np.nan)
+        fitted_vals[1:] = slope + y[:-1]
+        fcst["fitted"] = fitted_vals
+    return fcst
+
+
+class RandomWalkWithDrift(_TS):
+    def __init__(
+        self,
+        alias: str = "RWD",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""RandomWalkWithDrift model.
+
+        A variation of the naive method allows the forecasts to change over time.
+        The amout of change, called drift, is the average change seen in the historical data.
+
+        ``` math
+        \hat{y}_{t+1} = y_t+\frac{1}{t-1}\sum_{j=1}^t (y_j-y_{j-1}) = y_t+ \frac{y_t-y_1}{t-1}
+        ```
+
+        From the previous equation, we can see that this is equivalent to extrapolating a line between
+        the first and the last observation.
+
+        References:
+            - [Rob J. Hyndman and George Athanasopoulos (2018). "forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html).
+
+        Args:
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction
+                intervals.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the RandomWalkWithDrift model.
+
+        Fit an RandomWalkWithDrift to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+
+        Returns:
+            self: RandomWalkWithDrift fitted model.
+        r"""
+        y = _ensure_float(y)
+        mod = _random_walk_with_drift(y, h=1, fitted=True)
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        # n - 1 residuals and one estimated parameter (the drift)
+        sigma = _calculate_sigma(residuals, len(residuals) - 2)
+        mod["sigma"] = sigma
+        mod["residuals"] = residuals
+        mod["n"] = len(y)
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self, h: int, X: Optional[np.ndarray] = None, level: Optional[List[int]] = None
+    ):
+        r"""Predict with fitted RandomWalkWithDrift.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        hrange = np.arange(h, dtype=self.model_["last_y"].dtype)
+        mean = self.model_["slope"] * (1 + hrange) + self.model_["last_y"]
+        res = {"mean": mean}
+
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            steps = np.arange(1, h + 1)
+            sigma = self.model_["sigma"]
+            sigmah = sigma * np.sqrt(steps * (1 + steps / (self.model_["n"] - 1)))
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted RandomWalkWithDrift model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+            'laplace', 'skew-normal', 'ged'.
+        error_params : dict, optional
+            Distribution-specific parameters.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+
+        sigma = self.model_["sigma"]
+        n = self.model_["n"]
+        last_y = self.model_["last_y"]
+        slope = self.model_["slope"]
+        residuals = self.model_.get("residuals", None)
+
+        # Simulation: y_{T+h} = y_T + h*drift + sum_{i=1}^h e_i
+        # Where Var(e_i) = sigma^2 * (1 + 1/(n-1))
+        adj_sigma = sigma * np.sqrt(1 + 1 / (n - 1))
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=adj_sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+        # Cumulative sum of errors + trend
+        hrange = np.arange(1, h + 1)
+        trend = last_y + slope * hrange
+        return trend + np.cumsum(errors, axis=1)
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted RandomWalkWithDrift insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient RandomWalkWithDrift predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        out = _random_walk_with_drift(y=y, h=h, fitted=fitted or (level is not None))
+        res = {"mean": out["mean"]}
+
+        if fitted:
+            res["fitted"] = out["fitted"]
+
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                steps = np.arange(1, h + 1)
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 2)
+                sigmah = sigma * np.sqrt(steps * (1 + steps / (len(y) - 1)))
+                pred_int = _calculate_intervals(out, level, h, sigmah)
+                res = {**res, **pred_int}
+            if fitted:
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(residuals) - 2)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+class SeasonalNaive(_TS):
+    def __init__(
+        self,
+        season_length: int,
+        alias: str = "SeasonalNaive",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""Seasonal naive model.
+
+        A method similar to the naive, but uses the last known observation of the same period (e.g. the same month of the previous year) in order to capture seasonal variations.
+
+        References:
+            - [Rob J. Hyndman and George Athanasopoulos (2018). "forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html#seasonal-na%C3%AFve-method).
+
+        Args:
+            season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction
+                intervals.
+        """
+        self.season_length = season_length
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SeasonalNaive model.
+
+        Fit an SeasonalNaive to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: SeasonalNaive fitted model.
+        r"""
+        y = _ensure_float(y)
+        mod = _seasonal_naive(
+            y=y,
+            season_length=self.season_length,
+            h=self.season_length,
+            fitted=True,
+        )
+        mod = dict(mod)
+        residuals = y - mod["fitted"]
+        mod["sigma"] = _calculate_sigma(residuals, len(y) - self.season_length)
+        mod["residuals"] = residuals
+        self.model_ = mod
+        self._store_cs(y=y, X=X)
+        return self
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """
+        Simulate future paths from a fitted SeasonalNaive model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of simulation paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Exogenous regressors (unused, for API consistency).
+        X_future : np.ndarray, optional
+            Future exogenous regressors (unused, for API consistency).
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+            'laplace', 'skew-normal', 'ged'.
+        error_params : dict, optional
+            Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+        Returns
+        -------
+        np.ndarray
+            Simulated paths of shape (n_paths, h).
+        """
+        from statsforecast.simulation import sample_errors
+
+        if y is not None:
+            self.fit(y=y, X=X)
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+
+        rng = np.random.default_rng(seed)
+        if seed is not None:
+            np.random.seed(seed)
+
+        m = self.season_length
+        sigma = self.model_["sigma"]
+        last_cycle = self.model_["mean"]
+        residuals = self.model_.get("residuals", None)
+
+        errors = sample_errors(
+            size=(n_paths, h),
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+        paths = np.zeros((n_paths, h))
+        for i in range(h):
+            if i < m:
+                prev_vals = last_cycle[i]
+            else:
+                prev_vals = paths[:, i - m]
+            paths[:, i] = prev_vals + errors[:, i]
+        return paths
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted Naive.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val_seas(season_vals=self.model_["mean"], h=h)
+        res = {"mean": mean}
+
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            k = np.floor(np.arange(h) / self.season_length)
+            sigma = self.model_["sigma"]
+            sigmah = sigma * np.sqrt(k + 1)
+            pred_int = _calculate_intervals(res, level, h, sigmah)
+            res = {**res, **pred_int}
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted SeasonalNaive insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        r"""
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            level = sorted(level)
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient SeasonalNaive predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        out = _seasonal_naive(
+            y=y,
+            h=h,
+            fitted=fitted or (level is not None),
+            season_length=self.season_length,
+        )
+        res = {"mean": out["mean"]}
+        if fitted:
+            res["fitted"] = out["fitted"]
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                k = np.floor(np.arange(h) / self.season_length)
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(y) - self.season_length)
+                sigmah = sigma * np.sqrt(k + 1)
+                pred_int = _calculate_intervals(out, level, h, sigmah)
+                res = {**res, **pred_int}
+            if fitted:
+                residuals = y - out["fitted"]
+                sigma = _calculate_sigma(residuals, len(y) - self.season_length)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted model to an new/updated series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = self.forecast(
+            y=y, h=h, X=X, X_future=X_future, level=level, fitted=fitted
+        )
+        return res
+
+
+def _csp_sample_paths(
+    y: np.ndarray,
+    h: int,
+    m: int,
+    n_samples: int,
+    variant: str,
+    calib_frac: float,
+    decay: float,
+    rng,
+    mu: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    n = y.size
+
+    # Calibration pool: most recent floor(calib_frac * n) signed residuals
+    t_cal = int(np.floor(calib_frac * n))
+    calib_start = max(m, n - t_cal)
+    R = y[calib_start:] - y[calib_start - m : max(0, n - m)]
+
+    # NaN fallback for phases with no history (n < season_length): use latest observation
+    if np.any(np.isnan(mu)):
+        for i in np.where(np.isnan(mu))[0]:
+            mu[i] = y[-1]
+
+    # Per-horizon seasonal pool construction and mixture sampling
+    indices = np.arange(n)
+    samples = np.empty((n_samples, h), dtype=y.dtype)
+    for j in range(h):
+        phase_j = (n + j) % m
+        pool_idx = indices[indices % m == phase_j]
+        pool_vals = y[pool_idx]
+        k = pool_vals.size
+
+        if k == 0 and R.size == 0:
+            samples[:, j] = mu[j]
+            continue
+
+        # Per-horizon mixture weight (Algorithm 1)
+        if m <= 1 and variant == "adaptive":
+            w = 0.0
+        elif variant == "adaptive" and k < 3:
+            w = 0.3
+        else:
+            w = 0.5
+        # Clamp when one draw source is absent
+        if k == 0:
+            w = 0.0
+        elif R.size == 0:
+            w = 1.0
+
+        if k > 0:
+            ages = (n - 1) - pool_idx
+            raw_w = np.exp(-decay * ages)
+            pool_weights = raw_w / raw_w.sum()
+            pool_draws = rng.choice(pool_vals, size=n_samples, p=pool_weights)
+        else:
+            pool_draws = np.empty(n_samples, dtype=samples.dtype)  # w=0, never selected
+
+        resid_draws = rng.choice(R, size=n_samples) + mu[j] if R.size > 0 else pool_draws
+
+        use_pool = rng.random(n_samples) < w
+        samples[:, j] = np.where(use_pool, pool_draws, resid_draws)
+
+    return mu, samples
+
+
+class ConformalSeasonalPool(_TS):
+    def __init__(
+        self,
+        season_length: int,
+        n_samples: int = 100,
+        variant: str = "adaptive",
+        calib_frac: float = 0.5,
+        decay: float = 0.01,
+        alias: Optional[str] = None,
+    ):
+        r"""Conformal Seasonal Pool (CSP) model.
+
+        Sample-based probabilistic forecasting method that generates prediction
+        intervals by mixing draws from two pools:
+
+        1. A signed-residual calibration pool built from the recent training history.
+        2. An exponentially-weighted seasonal pool of historical observations at the
+           same seasonal phase as the forecast target.
+
+        Implements both CSP-Fixed (mixture weight w fixed at 0.5) and CSP-Adaptive
+        (w adjusts based on seasonality detection and history depth) via the
+        ``variant`` parameter.
+
+        References:
+            - [Conformal Seasonal Pool (arxiv 2605.03789)](https://arxiv.org/pdf/2605.03789)
+
+        Args:
+            season_length (int): Number of observations per unit of time. Ex: 12 for monthly data.
+            n_samples (int, default=100): Number of mixture samples used to estimate prediction intervals.
+                For a level-L interval, at least ``ceil(2/(1 - L/100)) - 1`` samples are needed before
+                the orientation-corrected lower bound is non-degenerate (e.g., ≥40 for a 95% interval).
+            variant (str, default="adaptive"): ``"adaptive"`` adjusts the mixture weight based on
+                seasonality and history depth; ``"fixed"`` always uses w=0.5.
+            calib_frac (float, default=0.5): Fraction of training history used for calibration
+                (most recent observations). The calibration pool contains the most recent
+                ``floor(calib_frac * n)`` signed seasonal residuals, starting from index
+                ``max(season_length, n - floor(calib_frac * n))``.
+            decay (float, default=0.01): Exponential recency rate λ for seasonal pool weights.
+                Weights are proportional to ``exp(-λ * age)`` where ``age = (n-1) - t`` for
+                observation at time index ``t``, so newer same-phase observations receive
+                higher sampling probability and the differentiation grows with history length.
+            alias (str, optional): Custom name of the model. Defaults to ``"CSP-Adaptive"`` or
+                ``"CSP-Fixed"`` based on ``variant``.
+        """
+        if variant not in ("adaptive", "fixed"):
+            raise ValueError("variant must be 'adaptive' or 'fixed'")
+        self.season_length = season_length
+        self.n_samples = n_samples
+        self.variant = variant
+        self.calib_frac = calib_frac
+        self.decay = decay
+        if alias is None:
+            alias = "CSP-Adaptive" if variant == "adaptive" else "CSP-Fixed"
+        self.alias = alias
+
+    def _intervals_from_samples(
+        self, samples: np.ndarray, level: Sequence[Union[int, float]]
+    ) -> Dict[str, np.ndarray]:
+        cuts = [(1 - lv / 100) / 2 for lv in reversed(level)]
+        cuts += [1 - (1 - lv / 100) / 2 for lv in level]
+        upper = [False] * len(level) + [True] * len(level)
+        quantiles = _conformal_quantile(samples, cuts, upper, axis=0)
+        lo_cols = [f"lo-{lv}" for lv in reversed(level)]
+        hi_cols = [f"hi-{lv}" for lv in level]
+        return {col: quantiles[i] for i, col in enumerate(lo_cols + hi_cols)}
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the ConformalSeasonalPool model.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Ignored. Present for API compatibility.
+
+        Returns:
+            self: ConformalSeasonalPool fitted model.
+        """
+        y = _ensure_float(y)
+        n = y.size
+        m = self.season_length
+        t_cal = int(np.floor(self.calib_frac * n))
+        calib_start = max(m, n - t_cal)
+        R = y[calib_start:] - y[calib_start - m : max(0, n - m)]
+        mod = _seasonal_naive(y=y, h=m, fitted=True, season_length=m)
+        self.model_ = {
+            "y": y,
+            "calib_residuals": R,
+            "mean": mod["mean"],
+            "fitted": mod["fitted"],
+        }
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted ConformalSeasonalPool.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Ignored. Present for API compatibility.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with ``mean`` for point predictions and ``lo-{level}``/
+            ``hi-{level}`` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise ValueError("Call fit() before predict().")
+        mu = _repeat_val_seas(self.model_["mean"], h=h)
+        rng = np.random.default_rng()
+        _, samples = _csp_sample_paths(
+            y=self.model_["y"],
+            h=h,
+            m=self.season_length,
+            n_samples=self.n_samples,
+            variant=self.variant,
+            calib_frac=self.calib_frac,
+            decay=self.decay,
+            rng=rng,
+            mu=mu,
+        )
+        # Point forecast is seasonal naive. Using sample median instead would let the
+        # mixture draws shift the point estimate, but that diverges from the paper original goal: probabilistic forecasting.
+        res = {"mean": mu}
+        if level is not None:
+            level = sorted(level)
+            res.update(self._intervals_from_samples(samples, level))
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted ConformalSeasonalPool in-sample predictions.
+
+        Point forecasts are seasonal naive fitted values. Prediction intervals
+        are constant-width bands derived from the empirical quantiles of the
+        calibration residuals R, centred on the fitted values.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with ``fitted`` for point predictions and
+            ``fitted-lo-{level}``/``fitted-hi-{level}`` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise ValueError("Call fit() before predict_in_sample().")
+        fitted = self.model_["fitted"]
+        res = {"fitted": fitted}
+        if level is not None:
+            level = sorted(level)
+            R = self.model_["calib_residuals"]
+            for lv in level:
+                lo_q = (1 - lv / 100) / 2
+                hi_q = 1 - lo_q
+                if R.size > 0:
+                    lo_offset = float(_conformal_quantile(R, lo_q, upper=False))
+                    hi_offset = float(_conformal_quantile(R, hi_q, upper=True))
+                else:
+                    lo_offset = hi_offset = np.nan
+                res[f"fitted-lo-{lv}"] = fitted + lo_offset
+                res[f"fitted-hi-{lv}"] = fitted + hi_offset
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory efficient ConformalSeasonalPool predictions.
+
+        This method avoids memory overhead from object storage.
+        It is analogous to ``fit_predict`` without storing state.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Ignored. Present for API compatibility.
+            X_future (array-like): Ignored. Present for API compatibility.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether to also return in-sample fitted values.
+
+        Returns:
+            dict: Dictionary with ``mean`` for point predictions and ``lo-{level}``/
+            ``hi-{level}`` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        m = self.season_length
+        mod = _seasonal_naive(y=y, h=m, fitted=fitted, season_length=m)
+        mu = _repeat_val_seas(mod["mean"], h=h)
+        rng = np.random.default_rng()
+        _, samples = _csp_sample_paths(
+            y=y,
+            h=h,
+            m=m,
+            n_samples=self.n_samples,
+            variant=self.variant,
+            calib_frac=self.calib_frac,
+            decay=self.decay,
+            rng=rng,
+            mu=mu,
+        )
+        res = {"mean": mu}
+        if level is not None:
+            level = sorted(level)
+            res.update(self._intervals_from_samples(samples, level))
+        if fitted:
+            res["fitted"] = mod["fitted"]
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted model to a new/updated series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Ignored. Present for API compatibility.
+            X_future (array-like): Ignored. Present for API compatibility.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether to also return in-sample fitted values.
+
+        Returns:
+            dict: Dictionary with ``mean`` for point predictions and ``lo-{level}``/
+            ``hi-{level}`` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        return self.forecast(
+            y=y, h=h, X=X, X_future=X_future, level=level, fitted=fitted
+        )
+
+    def simulate(
+        self,
+        h: int,
+        n_paths: int,
+        y: Optional[np.ndarray] = None,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        seed: Optional[int] = None,
+        error_distribution: str = "normal",
+        error_params: Optional[Dict] = None,
+    ):
+        """Simulate future sample paths from a ConformalSeasonalPool model.
+
+        Parameters
+        ----------
+        h : int
+            Forecast horizon.
+        n_paths : int
+            Number of sample paths to generate.
+        y : np.ndarray, optional
+            Time series data. If provided, fits a new model; otherwise uses fitted model.
+        X : np.ndarray, optional
+            Ignored. Present for API compatibility.
+        X_future : np.ndarray, optional
+            Ignored. Present for API compatibility.
+        seed : int, optional
+            Random seed for reproducibility.
+        error_distribution : str, default='normal'
+            Ignored by CSP. A warning is emitted if a non-default value is passed.
+        error_params : dict, optional
+            Ignored by CSP. A warning is emitted if a non-None value is passed.
+
+        Returns
+        -------
+        np.ndarray
+            Sample paths of shape (n_paths, h).
+        """
+        if error_distribution != "normal" or error_params is not None:
+            import warnings as _warnings
+            _warnings.warn(
+                "ConformalSeasonalPool ignores error_distribution and error_params — "
+                "the predictive distribution is defined entirely by the CSP mixture sampling.",
+                UserWarning,
+                stacklevel=2,
+            )
+        if y is not None:
+            self.fit(y)
+        if not hasattr(self, "model_"):
+            raise ValueError("Call fit() or provide y to simulate().")
+        mu = _repeat_val_seas(self.model_["mean"], h=h)
+        rng = np.random.default_rng(seed)
+        _, samples = _csp_sample_paths(
+            y=self.model_["y"],
+            h=h,
+            m=self.season_length,
+            n_samples=n_paths,
+            variant=self.variant,
+            calib_frac=self.calib_frac,
+            decay=self.decay,
+            rng=rng,
+            mu=mu,
+        )
+        return samples
+
+
+def _window_average(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+    window_size: int,  # window size
+) -> Dict[str, np.ndarray]:
+    if fitted:
+        raise NotImplementedError("return fitted")
+    if y.size < window_size:
+        return {"mean": np.full(h, np.nan, dtype=y.dtype)}
+    wavg = y[-window_size:].mean()
+    mean = _repeat_val(val=wavg, h=h)
+    return {"mean": mean}
+
+
+class WindowAverage(_TS):
+    def __init__(
+        self,
+        window_size: int,
+        alias: str = "WindowAverage",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""WindowAverage model.
+
+        Uses the average of the last $k$ observations, with $k$ the length of the window.
+        Wider windows will capture global trends, while narrow windows will reveal local trends.
+        The length of the window selected should take into account the importance of past
+        observations and how fast the series changes.
+
+        References:
+            - [Rob J. Hyndman and George Athanasopoulos (2018). "forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html).
+
+        Args:
+            window_size (int): Size of truncated series on which average is estimated.
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                This is required for generating future prediction intervals.
+        r"""
+        self.window_size = window_size
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the WindowAverage model.
+
+        Fit an WindowAverage to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: WindowAverage fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _window_average(y=y, h=1, window_size=self.window_size, fitted=False)
+        self.model_ = dict(mod)
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted WindowAverage.
+
+        Args:
+            h (int): Forecast horizon.
+            X (numpy.array): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self):
+        r"""Access fitted WindowAverage insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        raise NotImplementedError
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient WindowAverage predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray]): Optional insample exogenous of shape (t, n_x).
+            X_future (Optional[np.ndarray]): Optional exogenous of shape (h, n_x).
+            level (Optional[List[int]]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _window_average(y=y, h=h, fitted=fitted, window_size=self.window_size)
+        res = dict(res)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+
+def _seasonal_window_average(
+    y: np.ndarray,
+    h: int,
+    fitted: bool,
+    season_length: int,
+    window_size: int,
+) -> Dict[str, np.ndarray]:
+    if fitted:
+        raise NotImplementedError("return fitted")
+    min_samples = season_length * window_size
+    if y.size < min_samples:
+        return {"mean": np.full(h, np.nan, dtype=y.dtype)}
+    season_avgs = y[-min_samples:].reshape(window_size, season_length).mean(axis=0)
+    out = _repeat_val_seas(season_vals=season_avgs, h=h)
+    return {"mean": out}
+
+
+class SeasonalWindowAverage(_TS):
+    def __init__(
+        self,
+        season_length: int,
+        window_size: int,
+        alias: str = "SeasWA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""SeasonalWindowAverage model.
+
+        An average of the last $k$ observations of the same period, with $k$ the length of the window.
+
+        References:
+            - [Rob J. Hyndman and George Athanasopoulos (2018). "forecasting principles and practice, Simple Methods"](https://otexts.com/fpp3/simple-methods.html).
+
+        Args:
+            season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+            window_size (int): Size of truncated series on which average is estimated.
+            alias (str): Custom name of the model.
+            prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+                This is required for generating future prediction intervals.
+        r"""
+        self.season_length = season_length
+        self.window_size = window_size
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the SeasonalWindowAverage model.
+
+        Fit an SeasonalWindowAverage to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray]): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            SeasonalWindowAverage: SeasonalWindowAverage fitted model.
+        """
+        y = _ensure_float(y)
+        mod = _seasonal_window_average(
+            y=y,
+            h=self.season_length,
+            fitted=False,
+            season_length=self.season_length,
+            window_size=self.window_size,
+        )
+        self.model_ = dict(mod)
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted SeasonalWindowAverage.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray]): Optional insample exogenous of shape (t, n_x).
+            level (Optional[List[int]]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val_seas(season_vals=self.model_["mean"], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self):
+        r"""Access fitted SeasonalWindowAverage insample predictions.
+
+        Args:
+            level (Optional[List[int]]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        raise NotImplementedError
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient SeasonalWindowAverage predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not to return insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _seasonal_window_average(
+            y=y,
+            h=h,
+            fitted=fitted,
+            season_length=self.season_length,
+            window_size=self.window_size,
+        )
+        res = dict(res)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+
+def _chunk_forecast(y, aggregation_level):
+    return _ses_lib.chunk_forecast(y, aggregation_level)
+
+
+def _expand_fitted_demand(fitted: np.ndarray, y: np.ndarray) -> np.ndarray:
+    return _ses_lib.expand_fitted_demand(fitted, y)
+
+
+def _expand_fitted_intervals(fitted: np.ndarray, y: np.ndarray) -> np.ndarray:
+    return _ses_lib.expand_fitted_intervals(fitted, y)
+
+
+def _adida(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+):
+    if (y == 0).all():
+        res = {"mean": np.zeros(h, dtype=y.dtype)}
+        if fitted:
+            res["fitted"] = np.zeros_like(y)
+            res["fitted"][0] = np.nan
+        return res
+    y = _ensure_float(y)
+    y_intervals = _intervals(y)
+    mean_interval = y_intervals.mean()
+    aggregation_level = round(mean_interval)
+    sums_forecast = _chunk_forecast(y, aggregation_level)
+    forecast = sums_forecast / aggregation_level
+    res = {"mean": _repeat_val(val=forecast, h=h)}
+    if fitted:
+        fitted_aggregation_levels = np.round(
+            y_intervals.cumsum() / np.arange(1, y_intervals.size + 1)
+        )
+        fitted_aggregation_levels = _expand_fitted_intervals(
+            np.append(np.nan, fitted_aggregation_levels), y
+        )[1:].astype(np.int32)
+
+        sums_fitted = _ses_lib.adida_fitted_vals(y, fitted_aggregation_levels)
+
+        res["fitted"] = np.append(np.nan, sums_fitted / fitted_aggregation_levels)
+    return res
+
+
+class ADIDA(_TS):
+    def __init__(
+        self,
+        alias: str = "ADIDA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        """ADIDA model.
+
+        Aggregate-Dissagregate Intermittent Demand Approach: Uses temporal aggregation to reduce the
+        number of zero observations. Once the data has been agregated, it uses the optimized SES to
+        generate the forecasts at the new level. It then breaks down the forecast to the original
+        level using equal weights.
+
+        ADIDA specializes on sparse or intermittent series are series with very few non-zero observations.
+        They are notoriously hard to forecast, and so, different methods have been developed
+        especifically for them.
+
+        References:
+            - [Nikolopoulos, K., Syntetos, A. A., Boylan, J. E., Petropoulos, F., & Assimakopoulos, V. (2011). An aggregate–disaggregate intermittent demand approach (ADIDA) to forecasting: an empirical proposition and analysis. Journal of the Operational Research Society, 62(3), 544-554.](https://researchportal.bath.ac.uk/en/publications/an-aggregate-disaggregate-intermittent-demand-approach-adida-to-f).
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "ADIDA".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the ADIDA model.
+
+        Fit an ADIDA to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            ADIDA: ADIDA fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _adida(y=y, h=1, fitted=False)
+        self._y = y
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted ADIDA.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals`"
+                "to calculate them"
+            )
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        """Access fitted ADIDA insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fitted = _adida(y=self._y, h=1, fitted=True)["fitted"]
+        res = {"fitted": fitted}
+        if level is not None:
+            sigma = _calculate_sigma(self._y - fitted, self._y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient ADIDA predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not to return insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _adida(y=y, h=h, fitted=fitted)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals`"
+                "to calculate them"
+            )
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _croston_classic(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+):
+    y = _ensure_float(y)
+    # demand
+    yd = _demand(y)
+    if not yd.size:  # no demand
+        return _naive(y=y, h=h, fitted=fitted)
+    ydp, ydf = _ses_forecast(yd, 0.1)
+
+    # intervals
+    yi = _intervals(y)
+    yip, yif = _ses_forecast(yi, 0.1)
+
+    if yip != 0.0:
+        mean = ydp / yip
+    else:
+        mean = ydp
+    out = {"mean": _repeat_val(val=mean, h=h)}
+    if fitted:
+        ydf = _expand_fitted_demand(np.append(ydf, ydp), y)
+        yif = _expand_fitted_intervals(np.append(yif, yip), y)
+        out["fitted"] = ydf / yif
+    return out
+
+
+class CrostonClassic(_TS):
+    def __init__(
+        self,
+        alias: str = "CrostonClassic",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""CrostonClassic model.
+
+        A method to forecast time series that exhibit intermittent demand.
+        It decomposes the original time series into a non-zero demand size $z_t$ and
+        inter-demand intervals $p_t$. Then the forecast is given by:
+
+        ``` math
+        \hat{y}_t = \frac{\hat{z}_t}{\hat{p}_t}
+        ```
+
+        where $\hat{z}_t$ and $\hat{p}_t$ are forecasted using SES. The smoothing parameter
+        of both components is set equal to 0.1
+
+        References:
+            - [Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Journal of the Operational Research Society, 23(3), 289-303.](https://link.springer.com/article/10.1057/jors.1972.50)
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "CrostonClassic".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the CrostonClassic model.
+
+        Fit an CrostonClassic to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            CrostonClassic: CrostonClassic fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _croston_classic(y=y, h=1, fitted=True)
+        self.model_["sigma"] = _calculate_sigma(y - self.model_["fitted"], y.size)
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted CrostonClassic.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals` to calculate them"
+            )
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        """Access fitted CrostonClassic insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient CrostonClassic predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not returns insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _croston_classic(y=y, h=h, fitted=fitted)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=dict(res), y=y, X=X, level=level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals` to calculate them"
+            )
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _croston_optimized(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+):
+    y = _ensure_float(y)
+    # demand
+    yd = _demand(y)
+    if not yd.size:
+        return _naive(y=y, h=h, fitted=fitted)
+    ydp, _, _ = _optimized_ses_forecast(yd)
+
+    # intervals
+    yi = _intervals(y)
+    yip, _, _ = _optimized_ses_forecast(yi)
+
+    if yip != 0.0:
+        mean = ydp / yip
+    else:
+        mean = ydp
+    out = {"mean": _repeat_val(val=mean, h=h)}
+    if fitted:
+        warnings.warn("Computing fitted values for CrostonOptimized is very expensive")
+        ydf = np.empty(yd.size + 1, dtype=y.dtype)
+        ydf[0] = np.nan
+        for i in range(yd.size):
+            ydf[i + 1] = _optimized_ses_forecast(yd[: i + 1])[0]
+
+        yif = np.empty(yi.size + 1, dtype=y.dtype)
+        yif[0] = np.nan
+        for i in range(yi.size):
+            yiff = _optimized_ses_forecast(yi[: i + 1])[0]
+            if yiff == 0:
+                yiff = 1.0
+            yif[i + 1] = yiff
+
+        ydf = _expand_fitted_demand(ydf, y)
+        yif = _expand_fitted_intervals(yif, y)
+        out["fitted"] = ydf / yif
+    return out
+
+
+class CrostonOptimized(_TS):
+    def __init__(
+        self,
+        alias: str = "CrostonOptimized",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""CrostonOptimized model.
+
+        A method to forecast time series that exhibit intermittent demand.
+        It decomposes the original time series into a non-zero demand size $z_t$ and
+        inter-demand intervals $p_t$. Then the forecast is given by:
+
+        ``` math
+        \hat{y}_t = \frac{\hat{z}_t}{\hat{p}_t}
+        ```
+
+        A variation of the classic Croston's method where the smooting paramater is optimally
+        selected from the range $[0.1,0.3]$. Both the non-zero demand $z_t$ and the inter-demand
+        intervals $p_t$ are smoothed separately, so their smoothing parameters can be different.
+
+        References:
+            - [Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Journal of the Operational Research Society, 23(3), 289-303.](https://link.springer.com/article/10.1057/jors.1972.50).
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "CrostonOptimized".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                This is required for generating future prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the CrostonOptimized model.
+
+        Fit an CrostonOptimized to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            CrostonOptimized: CrostonOptimized fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _croston_optimized(y=y, h=1, fitted=False)
+        self._y = y
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted CrostonOptimized.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        """Access fitted CrostonOptimized insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fitted = _croston_optimized(y=self._y, h=1, fitted=True)["fitted"]
+        res = {"fitted": fitted}
+        if level is not None:
+            sigma = _calculate_sigma(self._y - fitted, self._y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient CrostonOptimized predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not returns insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _croston_optimized(y=y, h=h, fitted=fitted)
+        res = dict(res)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _croston_sba(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+) -> Dict[str, np.ndarray]:
+    out = _croston_classic(y=y, h=h, fitted=fitted)
+    out["mean"] *= 0.95
+    if fitted:
+        out["fitted"] *= 0.95
+    return out
+
+
+class CrostonSBA(_TS):
+    def __init__(
+        self,
+        alias: str = "CrostonSBA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""CrostonSBA model.
+
+        A method to forecast time series that exhibit intermittent demand.
+        It decomposes the original time series into a non-zero demand size $z_t$ and
+        inter-demand intervals $p_t$. Then the forecast is given by:
+
+        ``` math
+        \hat{y}_t = \frac{\hat{z}_t}{\hat{p}_t}
+        ```
+
+        A variation of the classic Croston's method that uses a debiasing factor, so that the
+        forecast is given by:
+
+        ``` math
+        \hat{y}_t = 0.95  \frac{\hat{z}_t}{\hat{p}_t}
+        ```
+
+        References:
+            - [Croston, J. D. (1972). Forecasting and stock control for intermittent demands. Journal of the Operational Research Society, 23(3), 289-303.](https://link.springer.com/article/10.1057/jors.1972.50).
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "CrostonSBA".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the CrostonSBA model.
+
+        Fit an CrostonSBA to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            CrostonSBA: CrostonSBA fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _croston_sba(y=y, h=1, fitted=True)
+        self.model_["sigma"] = _calculate_sigma(y - self.model_["fitted"], y.size)
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted CrostonSBA.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals` to calculate them"
+            )
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        """Access fitted CrostonSBA insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient CrostonSBA predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not to return insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _croston_sba(y=y, h=h, fitted=fitted)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=dict(res), y=y, X=X, level=level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals`"
+                "to calculate them"
+            )
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _imapa(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: bool,  # fitted values
+):
+    if (y == 0).all():
+        res = {"mean": np.zeros(h, dtype=y.dtype)}
+        if fitted:
+            res["fitted"] = np.zeros_like(y)
+            res["fitted"][0] = np.nan
+        return res
+    y = _ensure_float(y)
+    y_intervals = _intervals(y)
+    mean_interval = y_intervals.mean().item()
+    max_aggregation_level = round(mean_interval)
+    forecasts = np.empty(max_aggregation_level, dtype=y.dtype)
+    for aggregation_level in range(1, max_aggregation_level + 1):
+        lost_remainder_data = len(y) % aggregation_level
+        y_cut = y[lost_remainder_data:]
+        aggregation_sums = _chunk_sums(y_cut, aggregation_level)
+        forecast, _, _ = _optimized_ses_forecast(aggregation_sums)
+        forecasts[aggregation_level - 1] = forecast / aggregation_level
+    forecast = forecasts.mean()
+    res = {"mean": _repeat_val(val=forecast, h=h)}
+    if fitted:
+        res["fitted"] = _ses_lib.imapa_fitted_vals(y)
+    return res
+
+
+class IMAPA(_TS):
+    def __init__(
+        self,
+        alias: str = "IMAPA",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        """IMAPA model.
+
+        Intermittent Multiple Aggregation Prediction Algorithm: Similar to ADIDA, but instead of
+        using a single aggregation level, it considers multiple in order to capture different
+        dynamics of the data. Uses the optimized SES to generate the forecasts at the new levels
+        and then combines them using a simple average.
+
+        References:
+            - [Syntetos, A. A., & Boylan, J. E. (2021). Intermittent demand forecasting: Context, methods and applications. John Wiley & Sons.](https://www.ifors.org/intermittent-demand-forecasting-context-methods-and-applications/).
+
+        Args:
+            alias (str, optional): Custom name of the model. Defaults to "IMAPA".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                By default, the model will compute the native prediction intervals. Defaults to None.
+        """
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the IMAPA model.
+
+        Fit an IMAPA to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            IMAPA: IMAPA fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _imapa(y=y, h=1, fitted=False)
+        self._y = y
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted IMAPA.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(val=self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals`"
+                "to calculate them"
+            )
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        """Access fitted IMAPA insample predictions.
+
+        Args:
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fitted = _imapa(y=self._y, h=1, fitted=True)["fitted"]
+        res = {"fitted": fitted}
+        if level is not None:
+            sigma = _calculate_sigma(self._y - fitted, self._y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        """Memory Efficient IMAPA predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional insample exogenous of shape (t, n_x). Defaults to None.
+            X_future (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+            fitted (bool, optional): Whether or not to return insample predictions. Defaults to False.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _imapa(y=y, h=h, fitted=fitted)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception(
+                "You have to instantiate the class with `prediction_intervals`"
+                "to calculate them"
+            )
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _tsb(
+    y: np.ndarray,  # time series
+    h: int,  # forecasting horizon
+    fitted: int,  # fitted values
+    alpha_d: float,
+    alpha_p: float,
+) -> Dict[str, np.ndarray]:
+    if (y == 0).all():
+        res = {"mean": np.zeros(h, dtype=y.dtype)}
+        if fitted:
+            res["fitted"] = np.zeros_like(y)
+            res["fitted"][0] = np.nan
+        return res
+    y = _ensure_float(y)
+    yd = _demand(y)
+    yp = _probability(y)
+    ypf, ypft = _ses_forecast(yp, alpha_p)
+    ydf, ydft = _ses_forecast(yd, alpha_d)
+    res = {"mean": _repeat_val(val=ypf * ydf, h=h)}
+    if fitted:
+        ydft = _expand_fitted_demand(np.append(ydft, ydf), y)
+        res["fitted"] = ypft * ydft
+    return res
+
+
+class TSB(_TS):
+    def __init__(
+        self,
+        alpha_d: float,
+        alpha_p: float,
+        alias: str = "TSB",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        r"""TSB model.
+
+        Teunter-Syntetos-Babai: A modification of Croston's method that replaces the inter-demand
+        intervals with the demand probability $d_t$, which is defined as follows.
+
+        ``` math
+        d_t = \begin{cases}
+            1  & \text{if demand occurs at time t} \\
+            0  & \text{otherwise.}
+        \end{cases}
+        ```
+
+        Hence, the forecast is given by
+
+        ``` math
+        \hat{y}_t= \hat{d}_t\hat{z_t}
+        ```
+
+        Both $d_t$ and $z_t$ are forecasted using SES. The smooting paramaters of each may differ,
+        like in the optimized Croston's method.
+
+        References:
+            - [Teunter, R. H., Syntetos, A. A., & Babai, M. Z. (2011). Intermittent demand: Linking forecasting to inventory obsolescence. European Journal of Operational Research, 214(3), 606-615.](https://www.sciencedirect.com/science/article/abs/pii/S0377221711004437)
+
+        Args:
+            alpha_d (float): Smoothing parameter for demand.
+            alpha_p (float): Smoothing parameter for probability.
+            alias (str, optional): Custom name of the model. Defaults to "TSB".
+            prediction_intervals (Optional[ConformalIntervals], optional): Information to compute conformal prediction intervals.
+                This is required for generating future prediction intervals. Defaults to None.
+        """
+        self.alpha_d = alpha_d
+        self.alpha_p = alpha_p
+        self.alias = alias
+        self.prediction_intervals = prediction_intervals
+        self.only_conformal_intervals = True
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        """Fit the TSB model.
+
+        Fit an TSB to a time series (numpy array) `y`.
+
+        Args:
+            y (np.ndarray): Clean time series of shape (t, ).
+            X (Optional[np.ndarray], optional): Optional exogenous variables. Defaults to None.
+
+        Returns:
+            TSB: TSB fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = _tsb(
+            y=y, h=1, fitted=True, alpha_d=self.alpha_d, alpha_p=self.alpha_p
+        )
+        self.model_["sigma"] = _calculate_sigma(y - self.model_["fitted"], y.size)
+        self._store_cs(y=y, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        """Predict with fitted TSB.
+
+        Args:
+            h (int): Forecast horizon.
+            X (Optional[np.ndarray], optional): Optional exogenous of shape (h, n_x). Defaults to None.
+            level (Optional[List[int]], optional): Confidence levels (0-100) for prediction intervals. Defaults to None.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = _repeat_val(self.model_["mean"][0], h=h)
+        res = {"mean": mean}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted TSB insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient TSB predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        res = _tsb(y=y, h=h, fitted=fitted, alpha_d=self.alpha_d, alpha_p=self.alpha_p)
+        res = dict(res)
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        if fitted:
+            sigma = _calculate_sigma(y - res["fitted"], y.size)
+            res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+def _predict_mstl_components(mstl_ob, h, season_length):
+    seasoncolumns = mstl_ob.filter(regex="seasonal*").columns
+    nseasons = len(seasoncolumns)
+    seascomp = np.full((h, nseasons), np.nan)
+    seasonal_periods = (
+        [season_length] if isinstance(season_length, int) else season_length
+    )
+    for i in range(nseasons):
+        mp = seasonal_periods[i]
+        colname = seasoncolumns[i]
+        seascomp[:, i] = np.tile(
+            mstl_ob[colname].values[-mp:], trunc(1 + (h - 1) / mp)
+        )[:h]
+    return seascomp
+
+
+def _predict_mstl_seas(mstl_ob, h, season_length):
+    seascomp = _predict_mstl_components(mstl_ob, h, season_length)
+    return seascomp.sum(axis=1)
+
+
+class MSTL(_TS):
+    r"""MSTL model.
+
+    The MSTL (Multiple Seasonal-Trend decomposition using LOESS) decomposes the time series
+    in multiple seasonalities using LOESS. Then forecasts the trend using
+    a custom non-seaonal model and each seasonality using a SeasonalNaive model.
+
+    References:
+        - [Bandara, Kasun & Hyndman, Rob & Bergmeir, Christoph. (2021). "MSTL: A Seasonal-Trend Decomposition Algorithm for Time Series with Multiple Seasonal Patterns".](https://arxiv.org/abs/2107.13462).
+
+    Args:
+        season_length (Union[int, List[int]]): Number of observations per unit of time. For multiple seasonalities use a list.
+        trend_forecaster (model, default=AutoETS(model='ZZN')): StatsForecast model used to forecast the trend component.
+        stl_kwargs (dict): Extra arguments to pass to [`statsmodels.tsa.seasonal.STL`](https://www.statsmodels.org/dev/generated/statsmodels.tsa.seasonal.STL.html#statsmodels.tsa.seasonal.STL).
+            The `period` and `seasonal` arguments are reserved.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals.
+    """
+
+    def __init__(
+        self,
+        season_length: Union[int, List[int]],
+        trend_forecaster=AutoETS(model="ZZN"),
+        stl_kwargs: Optional[Dict] = None,
+        alias: str = "MSTL",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        # check ETS model doesnt have seasonality
+        if repr(trend_forecaster) == "AutoETS":
+            if trend_forecaster.model[2] != "N":
+                raise Exception("Trend forecaster should not adjust seasonal models.")
+        if hasattr(trend_forecaster, "season_length"):
+            if trend_forecaster.season_length != 1:
+                raise Exception(
+                    "Trend forecaster should not adjust "
+                    "seasonal models. Please pass `season_length=1` "
+                    "to your trend forecaster"
+                )
+        if isinstance(season_length, int):
+            season_length = [season_length]
+        else:
+            season_length = sorted(season_length)
+        self.season_length = season_length
+        self.trend_forecaster = trend_forecaster
+        self.prediction_intervals = prediction_intervals
+        self.alias = alias
+
+        if self.trend_forecaster.prediction_intervals is None and (
+            self.prediction_intervals is not None
+        ):
+            self.trend_forecaster.prediction_intervals = prediction_intervals
+        self.stl_kwargs = dict() if stl_kwargs is None else stl_kwargs
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the MSTL model.
+
+        Fit MSTL to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            self: MSTL fitted model.
+        """
+        y = _ensure_float(y)
+        self.model_ = mstl(
+            x=y,
+            period=self.season_length,
+            stl_kwargs=self.stl_kwargs,
+        )
+        x_sa = self.model_[["trend", "remainder"]].sum(axis=1).values
+        self.trend_forecaster = self.trend_forecaster.new().fit(y=x_sa, X=X)
+        self._store_cs(y=x_sa, X=X)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ):
+        r"""Predict with fitted MSTL.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        kwargs: Dict[str, Any] = {"h": h, "X": X}
+        if self.trend_forecaster.prediction_intervals is None:
+            kwargs["level"] = level
+        res = self.trend_forecaster.predict(**kwargs)
+        seas = _predict_mstl_seas(self.model_, h=h, season_length=self.season_length)
+        res = {key: val + seas for key, val in res.items()}
+        if level is None or self.trend_forecaster.prediction_intervals is None:
+            return res
+        level = sorted(level)
+        if self.trend_forecaster.prediction_intervals is not None:
+            res = self.trend_forecaster._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception(
+                "You have to instantiate either the trend forecaster class or MSTL class with `prediction_intervals` to calculate them"
+            )
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted MSTL insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = self.trend_forecaster.predict_in_sample(level=level)
+        seas = self.model_.filter(regex="seasonal*").sum(axis=1).values
+        res = {key: val + seas for key, val in res.items()}
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient MSTL predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        model_ = mstl(
+            x=y,
+            period=self.season_length,
+            stl_kwargs=self.stl_kwargs,
+        )
+        x_sa = model_[["trend", "remainder"]].sum(axis=1).values
+        kwargs = {"y": x_sa, "h": h, "X": X, "X_future": X_future, "fitted": fitted}
+        if fitted or self.trend_forecaster.prediction_intervals is None:
+            kwargs["level"] = level
+        res = self.trend_forecaster.forecast(**kwargs)
+        if level is not None:
+            level = sorted(level)
+            if self.trend_forecaster.prediction_intervals is not None:
+                res = self.trend_forecaster._add_conformal_intervals(
+                    fcst=res, y=x_sa, X=X, level=level
+                )
+            elif f"lo-{level[0]}" not in res:
+                raise Exception(
+                    "You have to instantiate either the trend forecaster class or MSTL class with `prediction_intervals` to calculate them"
+                )
+        # reseasonalize results
+        seas_h = _predict_mstl_seas(model_, h=h, season_length=self.season_length)
+        seas_insample = model_.filter(regex="seasonal*").sum(axis=1).values
+        res = {
+            key: val + (seas_insample if "fitted" in key else seas_h)
+            for key, val in res.items()
+        }
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted MSTL model to a new time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self.trend_forecaster, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        y = _ensure_float(y)
+        model_ = mstl(
+            x=y,
+            period=self.season_length,
+            stl_kwargs=self.stl_kwargs,
+        )
+        x_sa = model_[["trend", "remainder"]].sum(axis=1).values
+        kwargs = {"y": x_sa, "h": h, "X": X, "X_future": X_future, "fitted": fitted}
+        if fitted or self.trend_forecaster.prediction_intervals is None:
+            kwargs["level"] = level
+        res = self.trend_forecaster.forward(**kwargs)
+        if level is not None:
+            level = sorted(level)
+            if self.trend_forecaster.prediction_intervals is not None:
+                res = self.trend_forecaster._add_conformal_intervals(
+                    fcst=res, y=x_sa, X=X, level=level
+                )
+        # reseasonalize results
+        seas_h = _predict_mstl_seas(model_, h=h, season_length=self.season_length)
+        seas_insample = model_.filter(regex="seasonal*").sum(axis=1).values
+        res = {
+            key: val + (seas_insample if "fitted" in key else seas_h)
+            for key, val in res.items()
+        }
+        return res
+
+
+class MFLES(_TS):
+    r"""MFLES model.
+
+    A method to forecast time series based on Gradient Boosted Time Series Decomposition
+    which treats traditional decomposition as the base estimator in the boosting
+    process. Unlike normal gradient boosting, slight learning rates are applied at the
+    component level (trend/seasonality/exogenous).
+
+    The method derives its name from some of the underlying estimators that can
+    enter into the boosting procedure, specifically: a simple Median, Fourier
+    functions for seasonality, a simple/piecewise Linear trend, and Exponential
+    Smoothing.
+
+    Args:
+        season_length (int or list of int, optional): Number of observations per unit of time. Ex: 24 Hourly data. Default None.
+        fourier_order (int, optional): How many fourier sin/cos pairs to create, the larger the number the more complex of a seasonal pattern can be fitted.
+            A lower number leads to smoother results.
+            This is auto-set based on seasonal_period. Default None.
+        max_rounds (int): The max number of boosting rounds. The boosting will auto-stop but depending on other parameters such as rs_lr you may want more rounds.
+            Generally more rounds means a smoother fit. Default 50.
+        ma (int, optional): The moving average order to use, this is auto-set based on internal logic.
+            Passing 4 would fit a 4 period moving average on the residual component. Default None.
+        alpha (float): The alpha which is used in fitting the underlying LASSO when using piecewise functions. Default 1.0.
+        decay (float): Effects the slopes of the piecewise-linear basis function. Default -1.0.
+        changepoints (boolean): Whether to fit for changepoints if all other logic allows for it. If False, MFLES will not ever fit a piecewise trend. Default True.
+        n_changepoints (int or float): Number (if int) or proportion (if float) of changepoint knots to place. The default of 0.25 will place 0.25 * (series length) number of knots. Default 0.25.
+        seasonal_lr (float): A shrinkage parameter (0 < seasonal_lr <= 1) which penalizes the seasonal fit.
+            A value of 0.9 will flatly multiply the seasonal fit by 0.9 each boosting round, this can be used to allow more signal to the exogenous component. Default 0.9.
+        trend_lr (float): A shrinkage parameter (0 < trend_lr <= 1) which penalizes the linear trend fit
+            A value of 0.9 will flatly multiply the linear fit by 0.9 each boosting round, this can be used to allow more signal to the seasonality or exogenous components. Default 0.9.
+        exogenous_lr (float): The shrinkage parameter (0 < exogenous_lr <= 1) which controls how much of the exogenous signal is carried to the next round. Default 1.0.
+        residuals_lr (float): A shrinkage parameter (0 < residuals_lr <= 1) which penalizes the residual smoothing.
+            A value of 0.9 will flatly multiply the residual fit by 0.9 each boosting round, this can be used to allow more signal to the seasonality or linear components. Default 1.0.
+        cov_threshold (float): The deseasonalized cov is used to auto-set some logic, lowering the cov_threshold will result in simpler and less complex residual smoothing.
+            If you pass something like 1000 then there will be no safeguards applied. Default 0.7.
+        moving_medians (bool): The default behavior is to fit an initial median to the time series. If True, then it will fit a median per seasonal period. Default False.
+        min_alpha (float): The minimum alpha in the SES ensemble. Default 0.05.
+        max_alpha (float): The maximum alpha used in the SES ensemble. Default 1.0.
+        trend_penalty (bool): Whether to apply a simple penalty to the linear trend component, very useful for dealing with the potentially dangerous piecewise trend. Default True.
+        multiplicative (bool, optional): Auto-set based on internal logic. If True, it will simply take the log of the time series. Default None.
+        smoother (bool): If True, then a simple exponential ensemble will be used rather than auto settings. Default False.
+        robust (bool, optional): If True then MFLES will fit using more reserved methods, i.e. not using piecewise trend or moving average residual smoother.
+            Auto-set based on internal logic. Default None.
+        verbose (bool): Print debugging information. Default False.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            This is required for generating future prediction intervals.
+        alias (str): Custom name of the model. Default 'MFLES'.
+    """
+
+    uses_exog = True
+
+    def __init__(
+        self,
+        season_length: Optional[Union[int, List[int]]] = None,
+        fourier_order: Optional[int] = None,
+        max_rounds: int = 50,
+        ma: Optional[int] = None,
+        alpha: float = 1.0,
+        decay: float = -1.0,
+        changepoints: bool = True,
+        n_changepoints: Union[float, int] = 0.25,
+        seasonal_lr: float = 0.9,
+        trend_lr: float = 0.9,
+        exogenous_lr: float = 1.0,
+        residuals_lr: float = 1.0,
+        cov_threshold: float = 0.7,
+        moving_medians: bool = False,
+        min_alpha: float = 0.05,
+        max_alpha: float = 1.0,
+        trend_penalty: bool = True,
+        multiplicative: Optional[bool] = None,
+        smoother: bool = False,
+        robust: Optional[bool] = None,
+        verbose: bool = False,
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        alias: str = "MFLES",
+    ):
+        try:
+            import sklearn  # noqa: F401
+        except ImportError:
+            raise ImportError("MFLES requires scikit-learn.") from None
+        self.season_length = season_length
+        self.fourier_order = fourier_order
+        self.max_rounds = max_rounds
+        self.ma = ma
+        self.alpha = alpha
+        self.decay = decay
+        self.changepoints = changepoints
+        self.n_changepoints = n_changepoints
+        self.seasonal_lr = seasonal_lr
+        self.trend_lr = trend_lr
+        self.exogenous_lr = exogenous_lr
+        self.residuals_lr = residuals_lr
+        self.cov_threshold = cov_threshold
+        self.moving_medians = moving_medians
+        self.min_alpha = min_alpha
+        self.max_alpha = max_alpha
+        self.trend_penalty = trend_penalty
+        self.multiplicative = multiplicative
+        self.smoother = smoother
+        self.robust = robust
+        self.verbose = verbose
+        self.prediction_intervals = prediction_intervals
+        self.alias = alias
+
+    def _fit(self, y: np.ndarray, X: Optional[np.ndarray]) -> Dict[str, Any]:
+        model = _MFLES(verbose=self.verbose, robust=self.robust)
+        fitted = model.fit(
+            y=y,
+            X=X,
+            seasonal_period=self.season_length,
+            fourier_order=self.fourier_order,
+            ma=self.ma,
+            alpha=self.alpha,
+            decay=self.decay,
+            n_changepoints=self.n_changepoints,
+            seasonal_lr=self.seasonal_lr,
+            linear_lr=self.trend_lr,
+            exogenous_lr=self.exogenous_lr,
+            rs_lr=self.residuals_lr,
+            cov_threshold=self.cov_threshold,
+            moving_medians=self.moving_medians,
+            max_rounds=self.max_rounds,
+            min_alpha=self.min_alpha,
+            max_alpha=self.max_alpha,
+            trend_penalty=self.trend_penalty,
+            multiplicative=self.multiplicative,
+            changepoints=self.changepoints,
+            smoother=self.smoother,
+        )
+        return {"model": model, "fitted": fitted}
+
+    def fit(self, y: np.ndarray, X: Optional[np.ndarray] = None) -> "MFLES":
+        r"""Fit the model
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like, optional): Exogenous of shape (t, n_x). Default None.
+
+        Returns:
+            self (MFLES): Fitted MFLES object.
+        """
+        y = _ensure_float(y)
+        self.model_ = self._fit(y=y, X=X)
+        self._store_cs(y=y, X=X)
+        residuals = y - self.model_["fitted"]
+        self.model_["sigma"] = _calculate_sigma(residuals, y.size)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        r"""Predict with fitted MFLES.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like, optional): Exogenous of shape (h, n_x). Default None.
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"mean": self.model_["model"].predict(forecast_horizon=h, X=X)}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None) -> Dict[str, Any]:
+        r"""Access fitted SklearnModel insample predictions.
+
+        Args:
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            level = sorted(level)
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ) -> Dict[str, Any]:
+        r"""Memory Efficient MFLES predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            h (int): Forecast horizon.
+            X (array-like): Insample exogenous of shape (t, n_x).
+            X_future (array-like): Exogenous of shape (h, n_x).
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions. Default False.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        model = self._fit(y=y, X=X)
+        res = {"mean": model["model"].predict(forecast_horizon=h, X=X_future)}
+        if fitted:
+            res["fitted"] = model["fitted"]
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                raise Exception("You must pass `prediction_intervals` to compute them.")
+            if fitted:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(residuals, y.size)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+
+class TBATS(AutoTBATS):
+    r"""Trigonometric Box-Cox transform, ARMA errors, Trend and Seasonal components (TBATS) model.
+
+    TBATS is an innovations state space model framework used for forecasting time series with multiple seasonalities. It uses a Box-Cox tranformation, ARMA errors, and a trigonometric representation of the seasonal patterns based on Fourier series.
+
+    The name TBATS is an acronym for the key features of the model: Trigonometric, Box-Cox transform, ARMA errors, Trend, and Seasonal components.
+
+    References:
+        - [De Livera, A. M., Hyndman, R. J., & Snyder, R. D. (2011). Forecasting time series with complex seasonal patterns using exponential smoothing. Journal of the American statistical association, 106(496), 1513-1527.](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=f3de25596ab60ef0e886366826bf58a02b35a44f)
+        - [De Livera, Alysha M (2017). Modeling time series with complex seasonal patterns using exponential smoothing. Monash University. Thesis.](https://doi.org/10.4225/03/589299681de3d)
+
+    Args:
+        season_length (Union[int, List[int]]): Number of observations per unit of time. Ex: 24 Hourly data.
+        use_boxcox (Optional[bool]): Whether or not to use a Box-Cox transformation. Default True.
+        bc_lower_bound (float): Lower bound for the Box-Cox transformation. Default 0.0.
+        bc_upper_bound (float): Upper bound for the Box-Cox transformation. Default 1.0.
+        use_trend (Optional[bool]): Whether or not to use a trend component. Default True.
+        use_damped_trend (Optional[bool]): Whether or not to dampen the trend component. Default False.
+        use_arma_errors (bool): Whether or not to use a ARMA errors. Default False.
+        alias (str): Custom name of the model. Default 'TBATS'.
+    """
+
+    def __init__(
+        self,
+        season_length: Union[int, List[int]],
+        use_boxcox: Optional[bool] = True,
+        bc_lower_bound: float = 0.0,
+        bc_upper_bound: float = 1.0,
+        use_trend: Optional[bool] = True,
+        use_damped_trend: Optional[bool] = False,
+        use_arma_errors: bool = False,
+        alias: str = "TBATS",
+    ):
+        super().__init__(
+            season_length=season_length,
+            use_boxcox=use_boxcox,
+            bc_lower_bound=bc_lower_bound,
+            bc_upper_bound=bc_upper_bound,
+            use_trend=use_trend,
+            use_damped_trend=use_damped_trend,
+            use_arma_errors=use_arma_errors,
+            alias=alias,
+        )
+
+
+class Theta(AutoTheta):
+    r"""Standard Theta Method.
+
+    References:
+        - [Jose A. Fiorucci, Tiago R. Pellegrini, Francisco Louzada, Fotios Petropoulos, Anne B. Koehler (2016). "Models for optimising the theta method and their relationship to state space models". International Journal of Forecasting](https://www.sciencedirect.com/science/article/pii/S0169207016300243)
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 24 Hourly data. Default 1.
+        decomposition_type (str): Sesonal decomposition type, 'multiplicative' (default) or 'additive'. Default 'multiplicative'.
+        alias (str): Custom name of the model. Default 'Theta'.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals. Default None.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        decomposition_type: str = "multiplicative",
+        alias: str = "Theta",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        super().__init__(
+            season_length=season_length,
+            model="STM",
+            decomposition_type=decomposition_type,
+            alias=alias,
+            prediction_intervals=prediction_intervals,
+        )
+
+
+class OptimizedTheta(AutoTheta):
+    r"""Optimized Theta Method.
+
+    References:
+        - [Jose A. Fiorucci, Tiago R. Pellegrini, Francisco Louzada, Fotios Petropoulos, Anne B. Koehler (2016). "Models for optimising the theta method and their relationship to state space models". International Journal of Forecasting](https://www.sciencedirect.com/science/article/pii/S0169207016300243)
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 24 Hourly data. Default 1.
+        decomposition_type (str): Sesonal decomposition type, 'multiplicative' (default) or 'additive'. Default 'multiplicative'.
+        alias (str): Custom name of the model. Default 'OptimizedTheta'.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction intervals. Default None.
+        theta (Optional[float]): Fixed theta parameter. By default, theta is estimated from the data.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        decomposition_type: str = "multiplicative",
+        alias: str = "OptimizedTheta",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        theta: Optional[float] = None,
+    ):
+        super().__init__(
+            season_length=season_length,
+            model="OTM",
+            decomposition_type=decomposition_type,
+            alias=alias,
+            prediction_intervals=prediction_intervals,
+            theta=theta,
+        )
+
+
+class DynamicTheta(AutoTheta):
+    r"""Dynamic Standard Theta Method.
+
+    References:
+        - [Jose A. Fiorucci, Tiago R. Pellegrini, Francisco Louzada, Fotios Petropoulos, Anne B. Koehler (2016). "Models for optimising the theta method and their relationship to state space models". International Journal of Forecasting](https://www.sciencedirect.com/science/article/pii/S0169207016300243)
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+        decomposition_type (str): Sesonal decomposition type, 'multiplicative' (default) or 'additive'.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        decomposition_type: str = "multiplicative",
+        alias: str = "DynamicTheta",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        super().__init__(
+            season_length=season_length,
+            model="DSTM",
+            decomposition_type=decomposition_type,
+            alias=alias,
+            prediction_intervals=prediction_intervals,
+        )
+
+
+class DynamicOptimizedTheta(AutoTheta):
+    r"""Dynamic Optimized Theta Method.
+
+    References:
+        - [Jose A. Fiorucci, Tiago R. Pellegrini, Francisco Louzada, Fotios Petropoulos, Anne B. Koehler (2016). "Models for optimising the theta method and their relationship to state space models". International Journal of Forecasting](https://www.sciencedirect.com/science/article/pii/S0169207016300243)
+
+    Args:
+        season_length (int): Number of observations per unit of time. Ex: 24 Hourly data.
+        decomposition_type (str): Sesonal decomposition type, 'multiplicative' (default) or 'additive'.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+        theta (Optional[float]): Fixed theta parameter. By default, theta is estimated from the data.
+    """
+
+    def __init__(
+        self,
+        season_length: int = 1,
+        decomposition_type: str = "multiplicative",
+        alias: str = "DynamicOptimizedTheta",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        theta: Optional[float] = None,
+    ):
+        super().__init__(
+            season_length=season_length,
+            model="DOTM",
+            decomposition_type=decomposition_type,
+            alias=alias,
+            prediction_intervals=prediction_intervals,
+            theta=theta,
+        )
+
+
+class GARCH(_TS):
+    r"""Generalized Autoregressive Conditional Heteroskedasticity (GARCH) model.
+
+    A method for modeling time series that exhibit non-constant volatility over time.
+    The GARCH model assumes that at time $t$, $y_t$ is given by:
+
+    ``` math
+    y_t = v_t \sigma_t
+    ```
+
+
+    with
+
+    ``` math
+    \sigma_t^2 = w + \sum_{i=1}^p a_i y_{t-i}^2 + \sum_{j=1}^q b_j \sigma_{t-j}^2.
+    ```
+
+    Here $v_t$ is a sequence of iid random variables with zero mean and unit variance.
+    The coefficients $w$, $a_i$, $i=1,...,p$, and $b_j$, $j=1,...,q$ must satisfy the following conditions:
+
+    1. $w > 0$ and $a_i, b_j \geq 0$ for all $i$ and $j$.
+
+    2. $\sum_{k=1}^{max(p,q)} a_k + b_k < 1$. Here it is assumed that $a_i=0$ for $i>p$ and $b_j=0$ for $j>q$.
+
+    The ARCH model is a particular case of the GARCH model when $q=0$.
+
+    References:
+        - [Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. Econometrica: Journal of the econometric society, 987-1007.](http://www.econ.uiuc.edu/~econ508/Papers/engle82.pdf)
+        - [Bollerslev, T. (1986). Generalized autoregressive conditional heteroskedasticity. Journal of econometrics, 31(3), 307-327.](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=7da8bfa5295375c1141d797e80065a599153c19d)
+        - [James D. Hamilton. Time Series Analysis Princeton University Press, Princeton, New Jersey, 1st Edition, 1994.](https://press.princeton.edu/books/hardcover/9780691042893/time-series-analysis)
+
+    Args:
+        p (int): Number of lagged versions of the series.
+        q (int): Number of lagged versions of the volatility.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        p: int = 1,
+        q: int = 1,
+        alias: str = "GARCH",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.p = p
+        self.q = q
+        if q != 0:
+            self.alias = alias + "(" + str(p) + "," + str(q) + ")"
+        else:
+            self.alias = alias + "(" + str(p) + ")"
+        self.prediction_intervals = prediction_intervals
+
+    def fit(self, y: np.ndarray, X: Optional[np.ndarray] = None):
+        r"""Fit GARCH model.
+
+        Fit GARCH model to a time series (numpy array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+
+        Returns:
+            self: GARCH model.
+        """
+        y = _ensure_float(y)
+        self.model_ = garch_model(y, p=self.p, q=self.q)
+        self.model_["actual_residuals"] = y - self.model_["fitted"]
+        self._store_cs(y, X)
+        return self
+
+    def predict(
+        self, h: int, X: Optional[np.ndarray] = None, level: Optional[List[int]] = None
+    ):
+        r"""Predict with fitted GARCH model.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fcst = garch_forecast(self.model_, h)
+        res = {"mean": fcst["mean"], "sigma2": fcst["sigma2"]}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            quantiles = _quantiles(level)
+            sigma = np.sqrt(res["sigma2"]).reshape(-1, 1)
+            lo = res["mean"].reshape(-1, 1) - quantiles * sigma
+            hi = res["mean"].reshape(-1, 1) + quantiles * sigma
+            lo = lo[:, ::-1]
+            lo = {f"lo-{l}": lo[:, i] for i, l in enumerate(reversed(level))}
+            hi = {f"hi-{l}": hi[:, i] for i, l in enumerate(level)}
+            res = {**res, **lo, **hi}
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted GARCH model predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            residuals = self.model_["actual_residuals"]
+            se = _calculate_sigma(residuals, len(residuals) - 1)
+            res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient GARCH model.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            forecasts (dict): Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        mod = garch_model(y, p=self.p, q=self.q)
+        fcst = garch_forecast(mod, h)
+        keys = ["mean", "sigma2"]
+        if fitted:
+            keys.append("fitted")
+        res = {key: fcst[key] for key in keys}
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_predict_conformal_intervals(res, level)
+            else:
+                quantiles = _quantiles(level)
+                sigma = np.sqrt(res["sigma2"]).reshape(-1, 1)
+                lo = res["mean"].reshape(-1, 1) - quantiles * sigma
+                hi = res["mean"].reshape(-1, 1) + quantiles * sigma
+                lo = lo[:, ::-1]
+                lo = {f"lo-{l}": lo[:, i] for i, l in enumerate(reversed(level))}
+                hi = {f"hi-{l}": hi[:, i] for i, l in enumerate(level)}
+                res = {**res, **lo, **hi}
+            if fitted:
+                se = _calculate_sigma(y - mod["fitted"], len(y) - 1)
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+
+class ARCH(GARCH):
+    r"""Autoregressive Conditional Heteroskedasticity (ARCH) model.
+
+    A particular case of the GARCH(p,q) model where $q=0$.
+    It assumes that at time $t$, $y_t$ is given by:
+
+    ``` math
+    y_t = \epsilon_t \sigma_t
+    ```
+
+    with
+
+    ``` math
+    \sigma_t^2 = w0 + \sum_{i=1}^p a_i y_{t-i}^2
+    ```
+
+    Here $\epsilon_t$ is a sequence of iid random variables with zero mean and unit variance.
+    The coefficients $w$ and $a_i$, $i=1,...,p$ must be nonnegative and $\sum_{k=1}^p a_k < 1$.
+
+    References:
+        - [Engle, R. F. (1982). Autoregressive conditional heteroscedasticity with estimates of the variance of United Kingdom inflation. Econometrica: Journal of the econometric society, 987-1007.](http://www.econ.uiuc.edu/~econ508/Papers/engle82.pdf)
+        - [James D. Hamilton. Time Series Analysis Princeton University Press, Princeton, New Jersey, 1st Edition, 1994.](https://press.princeton.edu/books/hardcover/9780691042893/time-series-analysis)
+
+    Args:
+        p (int): Number of lagged versions of the series.
+        alias (str): Custom name of the model.
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals.
+            By default, the model will compute the native prediction
+            intervals.
+    """
+
+    def __init__(
+        self,
+        p: int = 1,
+        alias: str = "ARCH",
+        prediction_intervals: Optional[ConformalIntervals] = None,
+    ):
+        self.p = p
+        self.alias = alias
+        super().__init__(p, q=0, alias=alias)
+
+
+class SklearnModel(_TS):
+    r"""scikit-learn model wrapper
+
+    Args:
+        model (sklearn.base.BaseEstimator): scikit-learn estimator
+        prediction_intervals (Optional[ConformalIntervals]): Information to compute conformal prediction intervals. This is required for generating future prediction intervals.
+        alias (str, optional): Custom name of the model. If `None` will use the model's class.
+    """
+
+    uses_exog = True
+
+    def __init__(
+        self,
+        model,
+        prediction_intervals: Optional[ConformalIntervals] = None,
+        alias: Optional[str] = None,
+    ):
+        self.model = model
+        self.prediction_intervals = prediction_intervals
+        self.alias = alias if alias is not None else model.__class__.__name__
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: np.ndarray,
+    ) -> "SklearnModel":
+        r"""Fit the model.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Exogenous of shape (t, n_x).
+
+        Returns:
+            SklearnModel: Fitted SklearnModel object.
+        """
+        from sklearn.base import clone
+
+        self.model_ = {"model": clone(self.model)}
+        self.model_["model"].fit(X, y)
+        self._store_cs(y=y, X=X)
+        self.model_["fitted"] = self.model_["model"].predict(X)
+        residuals = y - self.model_["fitted"]
+        self.model_["sigma"] = _calculate_sigma(residuals, y.size)
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: np.ndarray,
+        level: Optional[List[int]] = None,
+    ) -> Dict[str, Any]:
+        r"""Predict with fitted SklearnModel.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Exogenous of shape (h, n_x).
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"mean": self.model_["model"].predict(X)}
+        if level is None:
+            return res
+        level = sorted(level)
+        if self.prediction_intervals is not None:
+            res = self._add_predict_conformal_intervals(res, level)
+        else:
+            raise Exception("You must pass `prediction_intervals` to compute them.")
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None) -> Dict[str, Any]:
+        r"""Access fitted SklearnModel insample predictions.
+
+        Args:
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = {"fitted": self.model_["fitted"]}
+        if level is not None:
+            level = sorted(level)
+            res = _add_fitted_pi(res=res, se=self.model_["sigma"], level=level)
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: np.ndarray,
+        X_future: np.ndarray,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ) -> Dict[str, Any]:
+        r"""Memory Efficient SklearnModel predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            h (int): Forecast horizon.
+            X (array-like): Insample exogenous of shape (t, n_x).
+            X_future (array-like): Exogenous of shape (h, n_x).
+            level (List[int]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        from sklearn.base import clone
+
+        model = clone(self.model)
+        model.fit(X, y)
+        res = {"mean": model.predict(X_future)}
+        if fitted:
+            res["fitted"] = model.predict(X)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                raise Exception("You must pass `prediction_intervals` to compute them.")
+            if fitted:
+                residuals = y - res["fitted"]
+                sigma = _calculate_sigma(residuals, y.size)
+                res = _add_fitted_pi(res=res, se=sigma, level=level)
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: np.ndarray,
+        X_future: np.ndarray,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply fitted SklearnModel to a new/updated time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            h (int): Forecast horizon.
+            X (array-like): Insample exogenous of shape (t, n_x).
+            X_future (array-like): Exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `constant` for point predictions and `level_*` for probabilistic predictions.
+        """
+        if not hasattr(self, "model_"):
+            raise Exception("You have to use the `fit` method first")
+        res = {"mean": self.model_["model"].predict(X_future)}
+        if fitted:
+            res["fitted"] = self.model_["model"].predict(X)
+        if level is not None:
+            level = sorted(level)
+            if self.prediction_intervals is not None:
+                res = self._add_conformal_intervals(fcst=res, y=y, X=X, level=level)
+            else:
+                raise Exception("You must pass `prediction_intervals` to compute them.")
+            if fitted:
+                se = _calculate_sigma(y - res["fitted"], y.size)
+                res = _add_fitted_pi(res=res, se=se, level=level)
+        return res
+
+
+class ConstantModel(_TS):
+    def __init__(self, constant: float, alias: str = "ConstantModel"):
+        r"""Constant Model.
+
+        Returns Constant values.
+
+        Args:
+            constant (float): Custom value to return as forecast.
+            alias (str): Custom name of the model.
+        """
+        self.constant = constant
+        self.alias = alias
+
+    def fit(
+        self,
+        y: np.ndarray,
+        X: Optional[np.ndarray] = None,
+    ):
+        r"""Fit the Constant model.
+
+        Fit an Constant Model to a time series (numpy.array) `y`.
+
+        Args:
+            y (numpy.array): Clean time series of shape (t, ).
+            X (array-like): Optional exogenous of shape (t, n_x).
+
+        Returns:
+            ConstantModel: Constant fitted model.
+        """
+        y = _ensure_float(y)
+        self.n_y = len(y)
+        self._dtype = y.dtype
+        return self
+
+    def predict(
+        self,
+        h: int,  # forecasting horizon
+        X: Optional[np.ndarray] = None,  # exogenous regressors
+        level: Optional[List[int]] = None,  # confidence level
+    ):
+        r"""Predict with fitted ConstantModel.
+
+        Args:
+            h (int): Forecast horizon.
+            X (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        mean = np.full(h, self.constant, dtype=self._dtype)
+        res = {"mean": mean}
+
+        if level is not None:
+            for lv in sorted(level):
+                res[f"lo-{lv}"] = mean
+                res[f"hi-{lv}"] = mean
+
+        return res
+
+    def predict_in_sample(self, level: Optional[List[int]] = None):
+        r"""Access fitted Constant Model insample predictions.
+
+        Args:
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+
+        Returns:
+            dict: Dictionary with entries `fitted` for point predictions and `level_*` for probabilistic predictions.
+        """
+        fitted = np.full(self.n_y, self.constant, dtype=self._dtype)
+        res = {"fitted": fitted}
+        if level is not None:
+            for lv in sorted(level):
+                res[f"fitted-lo-{lv}"] = fitted
+                res[f"fitted-hi-{lv}"] = fitted
+
+        return res
+
+    def forecast(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Memory Efficient Constant Model predictions.
+
+        This method avoids memory burden due from object storage.
+        It is analogous to `fit_predict` without storing information.
+        It assumes you know the forecast horizon in advance.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n,).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels (0-100) for prediction intervals.
+            fitted (bool): Whether or not to return insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `mean` for point predictions and `level_*` for probabilistic predictions.
+        """
+        y = _ensure_float(y)
+        mean = np.full(h, self.constant, dtype=y.dtype)
+        res = {"mean": mean}
+
+        if fitted:
+            fitted_vals = np.full_like(y, self.constant)
+            res["fitted"] = fitted_vals
+
+        if level is not None:
+            for lv in sorted(level):
+                res[f"lo-{lv}"] = mean
+                res[f"hi-{lv}"] = mean
+                if fitted:
+                    res[f"fitted-lo-{lv}"] = fitted_vals
+                    res[f"fitted-hi-{lv}"] = fitted_vals
+        return res
+
+    def forward(
+        self,
+        y: np.ndarray,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        X_future: Optional[np.ndarray] = None,
+        level: Optional[List[int]] = None,
+        fitted: bool = False,
+    ):
+        r"""Apply Constant model predictions to a new/updated time series.
+
+        Args:
+            y (numpy.array): Clean time series of shape (n, ).
+            h (int): Forecast horizon.
+            X (array-like): Optional insample exogenous of shape (t, n_x).
+            X_future (array-like): Optional exogenous of shape (h, n_x).
+            level (List[float]): Confidence levels for prediction intervals.
+            fitted (bool): Whether or not returns insample predictions.
+
+        Returns:
+            dict: Dictionary with entries `constant` for point predictions and `level_*` for probabilistic predictions.
+        """
+        res = self.forecast(
+            y=y, h=h, X=X, X_future=X_future, level=level, fitted=fitted
+        )
+        return res
+
+
+class ZeroModel(ConstantModel):
+    def __init__(self, alias: str = "ZeroModel"):
+        r"""Returns Zero forecasts.
+
+        Returns Zero values.
+
+        Args:
+            alias (str): Custom name of the model.
+        """
+        super().__init__(constant=0, alias=alias)
+
+
+class NaNModel(ConstantModel):
+    def __init__(self, alias: str = "NaNModel"):
+        r"""NaN Model.
+
+        Returns NaN values.
+
+        Args:
+            alias (str): Custom name of the model.
+        """
+        super().__init__(constant=np.nan, alias=alias)

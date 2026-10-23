@@ -1,0 +1,7 @@
+project:
+  type: mintlify
+
+format:
+  mintlify-md:
+    code-fold: true
+

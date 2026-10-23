@@ -1,0 +1,3042 @@
+__all__ = [
+    "predict_arima",
+    "arima_string",
+    "forecast_arima",
+    "fitted_arima",
+    "auto_arima_f",
+    "print_statsforecast_ARIMA",
+    "ARIMASummary",
+    "AutoARIMA",
+    "simulate_arima",
+]
+
+
+import math
+import numbers
+import warnings
+from collections import namedtuple
+from functools import partial
+from typing import Any, Dict, Optional, Tuple, Union
+
+import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from coreforecast.scalers import boxcox, boxcox_lambda, inv_boxcox
+from scipy.optimize import minimize
+from scipy.signal import convolve
+from scipy.stats import norm
+
+from ._lib import arima as _arima
+from .mstl import mstl
+from .distributions import (
+    ArimaMethod,
+    Distribution,
+    _VALID_DISTRIBUTIONS,
+    _quantiles,
+    error_params_from_model,
+    extract_dist_params,
+    guard_dist_tail,
+)
+
+OptimResult = namedtuple("OptimResult", "success status x fun hess_inv")
+
+
+def arima_gradtrans(x, arma):
+    return _arima.arima_gradtrans(x, arma)
+
+
+def arima_undopars(x, arma):
+    return _arima.arima_undopars(x, arma)
+
+
+def ARIMA_invtrans(x, arma):
+    mp, mq, msp = arma[:3]
+    y = x.copy()
+    if mp > 0:
+        _arima.invpartrans(mp, x, y)
+    v = mp + mq
+    if msp > 0:
+        _arima.invpartrans(msp, x[v:], y[v:])
+    return y
+
+
+def _ar_stationary(phi):
+    # step-down check: stationary iff every partial autocorrelation is in (-1, 1)
+    if not len(phi):
+        return True
+    pacf = np.empty_like(phi)
+    _arima.invpartrans(len(phi), phi, pacf)
+    return np.isfinite(pacf).all()
+
+
+# Gardner's workspace and time grow as r^4 (~13GB for r=337), so larger state
+# spaces use Rossignol's method, which is O(r^2) in memory
+_GARDNER_MAX_R = 30
+
+
+def _q0(fn, phi, theta):
+    r = max(len(phi), len(theta) + 1)
+    res = np.zeros(r * r, dtype=np.float64)
+    fn(phi, theta, res)
+    return res.reshape(r, r)
+
+
+def getQ0(phi, theta):
+    return _q0(_arima.getQ0, phi, theta)
+
+
+def getQ0bis(phi, theta):
+    return _q0(_arima.getQ0bis, phi, theta)
+
+
+_SS_INIT = {"Gardner1980": getQ0, "Rossignol2011": getQ0bis}
+
+
+def _check_ssinit(SSinit):
+    if SSinit not in _SS_INIT:
+        raise ValueError(f"SSinit must be one of {tuple(_SS_INIT)}, got {SSinit!r}")
+
+
+def _resolve_ssinit(SSinit, r):
+    _check_ssinit(SSinit)
+    if SSinit == "Gardner1980" and r > _GARDNER_MAX_R:
+        return "Rossignol2011"
+    return SSinit
+
+
+def arima_transpar(params_in, arma, trans):
+    return _arima.arima_transpar(params_in, arma, trans)
+
+
+def arima_css(y, arma, phi, theta):
+    return _arima.arima_css(y, arma, phi, theta)
+
+
+def make_arima(
+    phi, theta, delta, kappa=1e6, tol=np.finfo(float).eps, SSinit="Gardner1980"
+):
+    # check nas phi
+    # check nas theta
+    p = len(phi)
+    q = len(theta)
+    r = max(p, q + 1)
+    SSinit = _resolve_ssinit(SSinit, r)
+    d = len(delta)
+
+    rd = r + d
+    Z = np.concatenate((np.array([1.0]), np.zeros(r - 1), delta))
+    T = np.zeros((rd, rd))
+
+    if p > 0:
+        T[:p, 0] = phi
+    if r > 1:
+        idx = np.arange(1, r)
+        T[idx - 1, idx] = 1
+
+    if d > 0:
+        T[r] = Z
+        if d > 1:
+            idx = np.arange(1, d)
+            T[r + idx, r + idx - 1] = 1
+
+    if q < r - 1:
+        theta = np.concatenate((theta, np.zeros(r - 1 - q)))
+
+    R = np.concatenate((np.array([1.0]), theta, np.zeros(d)))
+    V = R * R.reshape(-1, 1)
+    h = 0.0
+    a = np.zeros(rd)
+    Pn = np.zeros((rd, rd))
+    P = np.zeros((rd, rd))
+
+    if r > 1:
+        Pn[:r, :r] = _SS_INIT[SSinit](phi, theta)
+    else:
+        Pn[0, 0] = 1 / (1 - phi[0] ** 2) if p > 0 else 1.0
+
+    if d > 0:
+        idx = np.arange(d)
+        Pn[r + idx, r + idx] = kappa
+
+    return {
+        "phi": phi,
+        "theta": theta,
+        "delta": delta,
+        "Z": Z,
+        "a": a,
+        "P": P,
+        "T": T,
+        "V": V,
+        "h": h,
+        "Pn": Pn,
+    }
+
+
+def arima_like(y, phi, theta, delta, a, P, Pn, up, use_resid):
+    if use_resid:
+        rsResid = np.empty_like(y)
+    else:
+        rsResid = np.empty(0)
+    ssq, sumlog, nu = _arima.arima_like(
+        y,
+        phi,
+        theta,
+        delta,
+        a,
+        P.ravel(),
+        Pn.ravel(),
+        up,
+        use_resid,
+        rsResid,
+    )
+    if not use_resid:
+        rsResid = None
+    return ssq, sumlog, nu, rsResid
+
+
+def diff(x, lag, differences):
+    x = np.asarray(x, dtype=np.float64)
+    y = x.copy()
+    for _ in range(differences):
+        x = y.copy()
+        y[:lag] = np.nan
+        y[lag:] = x[lag:] - x[:-lag]
+    nans = lag * differences
+    return y[nans:]
+
+
+def fixed_params_from_dict(
+    fixed_dict: dict, order: tuple, seasonal: dict, intercept: bool, n_ex: int
+):
+    """Transforms dict params to list.
+
+    Args:
+        fixed_dict (dict): Dictionary of fixed parameters.
+        order (tuple): ARIMA order (p, d, q).
+        seasonal (dict): Seasonal parameters.
+        intercept (bool): Whether to include intercept.
+        n_ex (int): Number of external variables.
+
+    Returns:
+        list: List of parameter values.
+    """
+    ar_dict = {f"ar{i + 1}": np.nan for i in range(order[0])}
+    ma_dict = {f"ma{i + 1}": np.nan for i in range(order[2])}
+    sar_dict = {f"sar{i + 1}": np.nan for i in range(seasonal["order"][0])}
+    sma_dict = {f"sma{i + 1}": np.nan for i in range(seasonal["order"][2])}
+    intercept_dict = {"intercept": np.nan} if intercept else dict()
+    ex_dict = {f"ex_{i + 1}": np.nan for i in range(n_ex)}
+    full_dict = {
+        **ar_dict,
+        **ma_dict,
+        **sar_dict,
+        **sma_dict,
+        **intercept_dict,
+        **ex_dict,
+    }
+    full_dict.update(
+        (k, fixed_dict[k]) for k in full_dict.keys() & fixed_dict.keys()
+    )  # prevent adding non-existing keys
+    return list(full_dict.values())
+
+
+def arima(
+    x: np.ndarray,
+    order=(0, 0, 0),
+    seasonal={"order": (0, 0, 0), "period": 1},
+    xreg=None,
+    include_mean=True,
+    transform_pars=True,
+    fixed=None,
+    init=None,
+    method="CSS",
+    SSinit="Gardner1980",
+    optim_method="BFGS",
+    kappa=1e6,
+    tol=1e-8,
+    optim_control={"maxiter": 100},
+    distribution="normal",
+):
+    if distribution not in _VALID_DISTRIBUTIONS:
+        raise ValueError(
+            f"distribution must be one of {_VALID_DISTRIBUTIONS}, got {distribution!r}"
+        )
+    _check_ssinit(SSinit)
+    if distribution != Distribution.NORMAL and method == ArimaMethod.CSS:
+        raise ValueError(
+            "distribution != 'normal' is only supported for method='ML' or 'CSS-ML'"
+        )
+
+    x = x.astype(np.float64, copy=True)
+
+    # upARIMA runs on every objective evaluation, so it reuses one result dict
+    # and one pair of a/Pn buffers instead of allocating. arima_like() treats a
+    # and Pn as scratch space and both are fully rewritten below, and callers
+    # hand the dict straight to arima_like without holding on to it.
+    cache: Dict[str, Any] = {}
+    # set before ML when transform_pars is off: BFGS can't recover from the
+    # NaN likelihood outside the stationary region, so keep it inside
+    stationary_ml = False
+
+    def upARIMA(mod, phi, theta):
+        p = len(phi)
+        q = len(theta)
+        r = max(p, q + 1)
+        if stationary_ml and not _ar_stationary(phi):
+            return None
+
+        if cache.get("mod") is not mod:
+            cache["mod"] = mod
+            cache["Z"] = {
+                **mod,
+                "a": np.empty_like(mod["a"]),
+                "Pn": np.empty_like(mod["Pn"]),
+            }
+        Z = cache["Z"]
+        Z["phi"], Z["theta"] = phi, theta
+        Z["a"][:] = 0.0
+        Z["Pn"][:] = mod["Pn"]
+        if r > 1:
+            Q0 = Q0_fn(phi, theta)
+            if not np.isfinite(Q0).all():
+                return None
+            Z["Pn"][:r, :r] = Q0
+        elif p > 0 and phi[0] ** 2 == 1:
+            return None
+        else:
+            Z["Pn"][0, 0] = 1 / (1 - phi[0] ** 2) if p > 0 else 1
+        return Z
+
+    def arimaSS(y, mod):
+        return arima_like(
+            y,
+            mod["phi"],
+            mod["theta"],
+            mod["delta"],
+            mod["a"],
+            mod["P"],
+            mod["Pn"],
+            0,
+            True,
+        )
+
+    def armafn(p, x, trans, coef, mask, arma, mod, ncxreg, xreg, narma):
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        trarma = arima_transpar(par, arma, trans)
+        Z = upARIMA(mod, trarma[0], trarma[1])
+        if Z is None:
+            return np.finfo(np.float64).max
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+        res = arima_like(
+            x,
+            Z["phi"],
+            Z["theta"],
+            Z["delta"],
+            Z["a"],
+            Z["P"],
+            Z["Pn"],
+            0,
+            False,
+        )
+        if res[2] == 0.0:
+            return math.inf
+
+        s2 = res[0] / res[2]
+        if s2 <= 0:
+            return math.nan
+        return 0.5 * (math.log(s2) + res[1] / res[2])
+
+    def armafn_laplace(p, x, trans, coef, mask, arma, mod, ncxreg, xreg, narma):
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        trarma = arima_transpar(par, arma, trans)
+        Z = upARIMA(mod, trarma[0], trarma[1])
+        if Z is None:
+            return np.finfo(np.float64).max
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+        res = arima_like(
+            x,
+            Z["phi"],
+            Z["theta"],
+            Z["delta"],
+            Z["a"],
+            Z["P"],
+            Z["Pn"],
+            0,
+            True,  # use_resid=True — we need standardized innovations
+        )
+        if res[2] == 0.0:
+            return math.inf
+        std_resid = res[3]  # standardized innovations eₜ = vₜ/√fₜ
+        sum_abs = np.nansum(np.abs(std_resid))
+        if sum_abs <= 0:
+            return math.nan
+        b_hat = sum_abs / res[2]
+        return math.log(b_hat) + 0.5 * res[1] / res[2]
+
+    def armafn_t(p_ext, x, trans, coef, mask, arma, mod, ncxreg, xreg, narma):
+        # p_ext = [arma_free..., log_sigma2, log_nu_m2]
+        n_arma_free = int(mask.sum())
+        p = p_ext[:n_arma_free]
+        tail, tail_penalty = guard_dist_tail("t", p_ext[n_arma_free:])
+        log_sigma2, log_nu_m2 = tail
+        sigma2 = math.exp(log_sigma2)
+        nu = math.exp(log_nu_m2) + 2.0  # nu > 2
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        trarma = arima_transpar(par, arma, trans)
+        Z = upARIMA(mod, trarma[0], trarma[1])
+        if Z is None:
+            return np.finfo(np.float64).max
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+        res = arima_like(
+            x,
+            Z["phi"],
+            Z["theta"],
+            Z["delta"],
+            Z["a"],
+            Z["P"],
+            Z["Pn"],
+            0,
+            True,  # use_resid=True — need standardized innovations
+        )
+        if res[2] == 0.0:
+            return math.inf
+        n = res[2]
+        sumlog = res[1]
+        std_resid = res[3]  # eₜ = vₜ/√fₜ
+        # Concentrated -ℓ/n for t(0, σ², ν):
+        # -ℓ/n = 0.5*log(σ²) + lgamma(ν/2) - lgamma((ν+1)/2) + 0.5*log(νπ)
+        #        + ((ν+1)/2n) * Σ log(1 + eₜ²/(νσ²)) + 0.5*sumlog/n
+        half_nu1 = 0.5 * (nu + 1.0)
+        sum_log_kernel = np.nansum(
+            np.log1p(std_resid ** 2 / (nu * sigma2))
+        )
+        obj = (
+            0.5 * log_sigma2
+            + math.lgamma(nu / 2.0) - math.lgamma(half_nu1)
+            + 0.5 * math.log(nu * math.pi)
+            + half_nu1 / n * sum_log_kernel
+            + 0.5 * sumlog / n
+            + tail_penalty
+        )
+        return obj
+
+    def armafn_skewnorm(p_ext, x, trans, coef, mask, arma, mod, ncxreg, xreg, narma):
+        # p_ext = [arma_free..., log_sigma2, alpha]
+        n_arma_free = int(mask.sum())
+        p = p_ext[:n_arma_free]
+        tail, tail_penalty = guard_dist_tail("skew-normal", p_ext[n_arma_free:])
+        log_sigma2, alpha = tail
+        sigma = math.exp(0.5 * log_sigma2)
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        trarma = arima_transpar(par, arma, trans)
+        Z = upARIMA(mod, trarma[0], trarma[1])
+        if Z is None:
+            return np.finfo(np.float64).max
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+        res = arima_like(
+            x,
+            Z["phi"],
+            Z["theta"],
+            Z["delta"],
+            Z["a"],
+            Z["P"],
+            Z["Pn"],
+            0,
+            True,  # use_resid=True — need standardized innovations
+        )
+        if res[2] == 0.0:
+            return math.inf
+        n = res[2]
+        sumlog = res[1]
+        std_resid = res[3]  # eₜ = vₜ/√fₜ
+        # -ℓ/n for SN(0, σ², α):
+        # -ℓ/n = -log(2) + 0.5*log(2π) + 0.5*log(σ²) + Σeₜ²/(2nσ²)
+        #        - (1/n)*Σ log Φ(α*eₜ/σ) + 0.5*sumlog/n
+        obj = (
+            -math.log(2.0) + 0.5 * math.log(2.0 * math.pi)
+            + 0.5 * log_sigma2
+            + np.nansum(std_resid ** 2) / (2.0 * n * sigma ** 2)
+            - np.nansum(norm.logcdf(alpha * std_resid / sigma)) / n
+            + 0.5 * sumlog / n
+            + tail_penalty
+        )
+        return obj
+
+    def armafn_ged(p_ext, x, trans, coef, mask, arma, mod, ncxreg, xreg, narma):
+        # p_ext = [arma_free..., log_sigma, log_beta]
+        # GED(0, σ, β): f(e) = β/(2σΓ(1/β)) * exp(-(|e|/σ)^β)
+        n_arma_free = int(mask.sum())
+        p = p_ext[:n_arma_free]
+        tail, tail_penalty = guard_dist_tail("ged", p_ext[n_arma_free:])
+        log_sigma, log_beta = tail
+        sigma = math.exp(log_sigma)
+        beta = math.exp(log_beta)
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        trarma = arima_transpar(par, arma, trans)
+        Z = upARIMA(mod, trarma[0], trarma[1])
+        if Z is None:
+            return np.finfo(np.float64).max
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+        res = arima_like(
+            x,
+            Z["phi"],
+            Z["theta"],
+            Z["delta"],
+            Z["a"],
+            Z["P"],
+            Z["Pn"],
+            0,
+            True,  # use_resid=True — need standardized innovations
+        )
+        if res[2] == 0.0:
+            return math.inf
+        n = res[2]
+        sumlog = res[1]
+        std_resid = res[3]  # eₜ = vₜ/√fₜ
+        # -ℓ/n for GED(0, σ, β):
+        # -ℓ/n = log(2) + log(σ) + lgamma(1/β) - log(β)
+        #        + (1/n)*Σ(|eₜ|/σ)^β + 0.5*sumlog/n
+        obj = (
+            math.log(2.0) + log_sigma
+            + math.lgamma(1.0 / beta) - log_beta
+            + np.nansum(np.abs(std_resid / sigma) ** beta) / n
+            + 0.5 * sumlog / n
+            + tail_penalty
+        )
+        return obj
+
+    def arCheck(ar):
+        # last non-zero index: the AR order with trailing zeros trimmed
+        p = np.flatnonzero(np.append(1, -ar))[-1]
+        if not p:
+            return True
+        coefs = np.append(1, -ar[:p])
+        roots = np.polynomial.polynomial.polyroots(coefs)
+        return all(np.abs(roots) > 1)
+
+    def ar_stationarity_error(arma, pars):
+        """Message for a non-stationary (seasonal) AR part, or None."""
+        if arma[0] > 0 and not arCheck(pars[: arma[0]]):
+            return "non-stationary AR part"
+        if arma[2] > 0 and not arCheck(pars[arma[:2].sum() + np.arange(arma[2])]):
+            return "non-stationary seasonal AR part"
+        return None
+
+    def stationary_ar_checks(arma, pars):
+        error = ar_stationarity_error(arma, pars)
+        if error is not None:
+            raise ValueError(error)
+
+    def maInvert(ma):
+        q = len(ma)
+        q0 = np.flatnonzero(np.append(1, ma))[-1]
+        if not q0:
+            return ma
+        coefs = np.append(1, ma[:q0])
+        roots = np.polynomial.polynomial.polyroots(coefs)
+        ind = np.abs(roots) < 1
+        if not any(ind):
+            return ma
+        if q0 == 1:
+            return np.append(1 / ma[0], np.repeat(0, q - q0))
+        roots[ind] = 1 / roots[ind]
+        poly = np.array([1.0], dtype=np.complex128)
+        for r in roots:
+            poly = np.append(poly, 0) - np.append(0, poly) / r
+        return np.append(poly.real[1:], np.repeat(0, q - q0))
+
+    if x.ndim > 1:
+        raise ValueError("Only implemented for univariate time series")
+
+    if x.dtype not in (np.float32, np.float64):
+        x = x.astype(np.float64)
+    n = len(x)
+
+    if len(order) != 3 or any(o < 0 or not isinstance(o, int) for o in order):
+        raise ValueError(f"order must be 3 non-negative integers, got {order}")
+    if "order" not in seasonal:
+        raise ValueError("order must be a key in seasonal")
+    if len(seasonal["order"]) != 3 or any(
+        o < 0 or not isinstance(o, int) for o in seasonal["order"]
+    ):
+        raise ValueError("order must be 3 non-negative integers")
+
+    if seasonal["period"] is None or seasonal["period"] <= 0:
+        warnings.warn("Setting seasonal period to 1")
+        seasonal["period"] = 1
+
+    # fixed
+    # mask
+    arma = np.array(
+        [
+            *order[::2],
+            *seasonal["order"][::2],
+            seasonal["period"],
+            order[1],
+            seasonal["order"][1],
+        ],
+        dtype=np.int32,
+    )
+    narma = arma[:4].sum().item()
+    SSinit = _resolve_ssinit(
+        SSinit,
+        max(arma[0] + arma[4] * arma[2], arma[1] + arma[4] * arma[3] + 1).item(),
+    )
+    Q0_fn = _SS_INIT[SSinit]
+
+    # xtsp = init x, end x and frequency
+    # tsp(x) = None
+    Delta = np.array([1.0])
+    for i in range(order[1]):
+        Delta = convolve(Delta, np.array([1.0, -1.0]))
+
+    for i in range(seasonal["order"][1]):
+        Delta = convolve(Delta, np.array([1] + [0] * (seasonal["period"] - 1) + [-1]))
+    Delta = -Delta[1:]
+    nd = order[1] + seasonal["order"][1]
+    n_used = (~np.isnan(x)).sum() - len(Delta)
+
+    if xreg is None:
+        ncxreg = 0
+    else:
+        if xreg.shape[0] != n:
+            raise Exception("lengths of `x` and `xreg` do not match")
+
+        if xreg.dtype not in (np.float32, np.float64):
+            xreg = xreg.astype(np.float64)
+
+        ncxreg = xreg.shape[1]
+
+    nmxreg = [f"ex_{i + 1}" for i in range(ncxreg)]
+    if include_mean and (nd == 0):
+        intercept = np.ones(n, dtype=np.float64).reshape(-1, 1)
+        if xreg is None:
+            xreg = intercept
+        else:
+            xreg = np.concatenate([intercept, xreg], axis=1)
+        ncxreg += 1
+        nmxreg = ["intercept"] + nmxreg
+
+    # check nas for method CSS-ML
+    if method == ArimaMethod.CSS_ML:
+        anyna = np.isnan(x).any()
+        if ncxreg:
+            anyna |= np.isnan(xreg).any()
+        if anyna:
+            method = ArimaMethod.ML
+    if method in [ArimaMethod.CSS, ArimaMethod.CSS_ML]:
+        ncond = order[1] + seasonal["order"][1] * seasonal["period"]
+        ncond1 = order[0] + seasonal["order"][0] * seasonal["period"]
+        ncond = ncond + ncond1
+    else:
+        ncond = 0
+
+    if fixed is None:
+        fixed = np.full(narma + ncxreg, np.nan)
+    elif isinstance(fixed, dict):
+        add_intercept = "intercept" in nmxreg
+        fixed = fixed_params_from_dict(
+            fixed,
+            order=order,
+            seasonal=seasonal,
+            intercept=add_intercept,
+            n_ex=max(ncxreg - int(add_intercept), 0),
+        )
+    if len(fixed) != narma + ncxreg:
+        raise Exception("wrong length for `fixed`")
+    mask = np.isnan(fixed)
+
+    no_optim = not mask.any()
+
+    if no_optim:
+        transform_pars = False
+
+    if transform_pars:
+        ind = arma[0] + arma[1] + np.arange(arma[2])
+        # check masks and more
+        if any(~mask[np.arange(arma[0])]) or any(~mask[ind]):
+            warnings.warn(
+                "some AR parameters were fixed: setting transform_pars = False"
+            )
+            transform_pars = False
+
+    init0 = np.zeros(narma)
+    parscale = np.ones(narma)
+
+    # xreg processing
+    if ncxreg:
+        cn = nmxreg
+        orig_xreg = (ncxreg == 1) | (~mask[narma + np.arange(ncxreg)]).any()
+        if not orig_xreg:
+            _, _, vt = np.linalg.svd(xreg[(~np.isnan(xreg)).all(1)])
+            xreg = np.matmul(xreg, vt)
+        dx = x
+        dxreg = xreg
+        if order[1] > 0:
+            dx = diff(dx, 1, order[1])
+            dxreg = diff(dxreg, 1, order[1])
+        if seasonal["period"] > 1 and seasonal["order"][1] > 0:
+            dx = diff(dx, seasonal["period"], seasonal["order"][1])
+            dxreg = diff(dxreg, seasonal["period"], seasonal["order"][1])
+        model = sm.OLS(dx, dxreg)
+        result = model.fit()
+        fit = {"coefs": result.params, "stderrs": result.bse}
+        isna = np.isnan(x) | np.isnan(xreg).any(1)
+        n_used = (~isna).sum() - len(Delta)
+        init0 = np.append(init0, fit["coefs"])
+        ses = fit["stderrs"]
+        parscale = np.append(parscale, 10 * ses)
+
+    if n_used <= 0:
+        raise ValueError("Too few non-missing observations")
+
+    if init is not None:
+        if len(init) != len(init0):
+            raise ValueError(f"init should have length {len(init0)}")
+        # fixed coefficients don't use init, so it can't affect the fit there
+        init = np.where(np.isnan(init) | ~mask, init0, init)
+        if method == ArimaMethod.ML:
+            stationary_ar_checks(arma, init)
+            if transform_pars:
+                init = ARIMA_invtrans(init, arma)
+    else:
+        init = init0
+
+    def arma_css_op(p, x, coef, mask, arma, ncxreg, xreg, narma):
+        x = x.copy()
+        par = coef.copy()
+        par[mask] = p
+        phi, theta = arima_transpar(par, arma, False)
+
+        if ncxreg > 0:
+            x -= np.dot(xreg, par[narma + np.arange(ncxreg)])
+
+        res, _ = arima_css(x, arma, phi, theta)
+        if math.isinf(res):
+            import sys
+
+            return sys.float_info.max
+        if res <= 0.0:
+            return -math.inf
+        return 0.5 * math.log(res)
+
+    coef = np.array(fixed)
+    # parscale definition, think about it, scipy doesn't use it
+    if method == ArimaMethod.CSS:
+        if no_optim:
+            res = OptimResult(True, 0, np.array([]), 0.0, np.array([]))
+        else:
+            res = minimize(
+                arma_css_op,
+                init[mask],
+                args=(x, coef, mask, arma, ncxreg, xreg, narma),
+                method=optim_method,
+                tol=tol,
+                options=optim_control,
+            )
+
+        if res.status > 0:
+            warnings.warn(
+                f"possible convergence problem: minimize gave code {res.status}]"
+            )
+        coef[mask] = res.x
+        phi, theta = arima_transpar(coef, arma, False)
+        mod = make_arima(phi, theta, Delta, kappa, SSinit=SSinit)
+        if ncxreg > 0:
+            x -= np.dot(xreg, coef[narma + np.arange(ncxreg)])
+        val = arima_css(x, arma, phi, theta)
+        sigma2 = val[0]
+        var = None if no_optim else res.hess_inv / n_used
+    else:
+        if method == ArimaMethod.CSS_ML:
+            if not no_optim:
+                res = minimize(
+                    arma_css_op,
+                    init[mask],
+                    args=(x, coef, mask, arma, ncxreg, xreg, narma),
+                    method=optim_method,
+                    tol=tol,
+                    options=optim_control,
+                )
+                # status 1 is "maximum number of iterations exceeded"; 0 is
+                # success and 2 precision loss. Without transform_pars, only
+                # start ML from a non-stationary CSS estimate if init isn't
+                # stationary either.
+                converged = res.status != 1
+                css_coef = coef.copy()
+                css_coef[mask] = res.x
+                if converged and (
+                    ar_stationarity_error(arma, css_coef) is None
+                    or (
+                        not transform_pars
+                        and ar_stationarity_error(arma, np.where(mask, init, coef))
+                        is not None
+                    )
+                ):
+                    init[mask] = res.x
+                elif transform_pars or not converged:
+                    stationary_ar_checks(arma, init)
+                ncond = 0
+        if transform_pars:
+            init = ARIMA_invtrans(init, arma)
+            if arma[1] > 0:
+                ind = arma[0] + np.arange(arma[1])
+                init[ind] = maInvert(init[ind])
+            if arma[3] > 0:
+                ind = np.sum(arma[:3]) + np.arange(arma[3])
+                init[ind] = maInvert(init[ind])
+        trarma = arima_transpar(init, arma, transform_pars)
+        if not transform_pars and not no_optim:
+            ml_phi = arima_transpar(np.where(mask, init, coef), arma, False)[0]
+            stationary_ml = _ar_stationary(ml_phi)
+        mod = make_arima(trarma[0], trarma[1], Delta, kappa, SSinit=SSinit)
+        ml_args = (x, transform_pars, coef, mask, arma, mod, ncxreg, xreg, narma)
+        # objective actually optimized, plus the tail appended to the arma params
+        # (empty for normal/laplace, which concentrate their scale out)
+        ml_obj = armafn if distribution == Distribution.NORMAL else armafn_laplace
+        dist_tail_fit = np.array([])
+        nu_t = None
+        sigma2_t = None
+        alpha_sn = None
+        sigma2_sn = None
+        beta_ged = None
+        sigma2_ged = None
+        if distribution == Distribution.SKEW_NORMAL:
+            # Always optimize [arma_free..., log_sigma2, alpha] jointly.
+            n_arma_free = int(mask.sum())
+            log_sigma2_init = np.log(max(float(np.nanvar(x)), 1e-10))
+            alpha_init = 0.0  # start symmetric
+            init_sn = np.concatenate(
+                [init[mask], [log_sigma2_init, alpha_init]]
+            )
+            res_sn = minimize(
+                armafn_skewnorm,
+                init_sn,
+                args=ml_args,
+                method=optim_method,
+                tol=tol,
+                options=optim_control,
+            )
+            ml_obj = armafn_skewnorm
+            dist_tail_fit = res_sn.x[n_arma_free:]
+            _dp_sn = extract_dist_params("skew-normal", dist_tail_fit)
+            sigma2_sn = _dp_sn["sigma2"]
+            alpha_sn = _dp_sn["alpha_dist"]
+            hess_arma = (
+                res_sn.hess_inv[:n_arma_free, :n_arma_free]
+                if n_arma_free > 0 and np.ndim(res_sn.hess_inv) == 2
+                else np.array([])
+            )
+            res = OptimResult(
+                res_sn.success,
+                res_sn.status,
+                res_sn.x[:n_arma_free],
+                res_sn.fun,
+                hess_arma,
+            )
+        elif distribution == Distribution.T:
+            # Always optimize [arma_free..., log_sigma2, log_nu_m2] jointly.
+            n_arma_free = int(mask.sum())
+            log_sigma2_init = np.log(max(float(np.nanvar(x)), 1e-10))
+            log_nu_m2_init = np.log(3.0)  # initial nu = 5
+            init_t = np.concatenate(
+                [init[mask], [log_sigma2_init, log_nu_m2_init]]
+            )
+            res_t = minimize(
+                armafn_t,
+                init_t,
+                args=ml_args,
+                method=optim_method,
+                tol=tol,
+                options=optim_control,
+            )
+            ml_obj = armafn_t
+            dist_tail_fit = res_t.x[n_arma_free:]
+            _dp_t = extract_dist_params("t", dist_tail_fit)
+            sigma2_t = _dp_t["sigma2"]
+            nu_t = _dp_t["nu"]
+            hess_arma = (
+                res_t.hess_inv[:n_arma_free, :n_arma_free]
+                if n_arma_free > 0 and np.ndim(res_t.hess_inv) == 2
+                else np.array([])
+            )
+            res = OptimResult(
+                res_t.success,
+                res_t.status,
+                res_t.x[:n_arma_free],
+                res_t.fun,
+                hess_arma,
+            )
+        elif distribution == Distribution.GED:
+            # Always optimize [arma_free..., log_sigma, log_beta] jointly.
+            n_arma_free = int(mask.sum())
+            log_sigma_init = 0.5 * np.log(max(float(np.nanvar(x)), 1e-10))
+            log_beta_init = math.log(2.0)  # start at β=2 (normal shape)
+            init_ged = np.concatenate(
+                [init[mask], [log_sigma_init, log_beta_init]]
+            )
+            res_ged = minimize(
+                armafn_ged,
+                init_ged,
+                args=ml_args,
+                method=optim_method,
+                tol=tol,
+                options=optim_control,
+            )
+            ml_obj = armafn_ged
+            dist_tail_fit = res_ged.x[n_arma_free:]
+            _dp_ged = extract_dist_params("ged", dist_tail_fit)
+            sigma2_ged = _dp_ged["sigma2"]
+            beta_ged = _dp_ged["beta_dist"]
+            hess_arma = (
+                res_ged.hess_inv[:n_arma_free, :n_arma_free]
+                if n_arma_free > 0 and np.ndim(res_ged.hess_inv) == 2
+                else np.array([])
+            )
+            res = OptimResult(
+                res_ged.success,
+                res_ged.status,
+                res_ged.x[:n_arma_free],
+                res_ged.fun,
+                hess_arma,
+            )
+        elif no_optim:
+            res = OptimResult(
+                True,
+                0,
+                np.array([]),
+                ml_obj(np.array([]), *ml_args),
+                np.array([]),
+            )
+        else:
+            res = minimize(
+                ml_obj,
+                init[mask],
+                args=ml_args,
+                method=optim_method,
+                tol=tol,
+                options=optim_control,
+            )
+        coef[mask] = res.x
+        if transform_pars:
+            if arma[1] > 0:
+                ind = arma[0] + np.arange(arma[1])
+                if mask[ind].all():
+                    coef[ind] = maInvert(coef[ind])
+            if arma[3] > 0:
+                ind = np.sum(arma[:3]) + np.arange(arma[3])
+                if mask[ind].all():
+                    coef[ind] = maInvert(coef[ind])
+            if any(coef[mask] != res.x):
+                # maInvert re-parameterised the MA part; re-score there so res.fun
+                # (and loglik/aic below) matches the coefficients we report.
+                # scipy's maxiter=0 would return hess_inv = I, so evaluate
+                # directly and keep the approximation from the actual fit.
+                new_fun = ml_obj(np.concatenate([coef[mask], dist_tail_fit]), *ml_args)
+                res = OptimResult(
+                    res.success, res.status, coef[mask], new_fun, res.hess_inv
+                )
+            A = arima_gradtrans(coef, arma)
+            A = A[np.ix_(mask, mask)]
+            sol = np.matmul(res.hess_inv, A) / n_used
+            var = A.T @ sol
+            coef = arima_undopars(coef, arma)
+        else:
+            var = None if no_optim else res.hess_inv / n_used
+        trarma = arima_transpar(coef, arma, False)
+        mod = make_arima(trarma[0], trarma[1], Delta, kappa, SSinit=SSinit)
+        if ncxreg > 0:
+            x -= np.dot(xreg, coef[narma + np.arange(ncxreg)])
+        val = arimaSS(x, mod)
+        val = (val[0], val[3])
+        if distribution == Distribution.NORMAL:
+            sigma2 = val[0] / n_used
+        elif distribution == Distribution.LAPLACE:
+            b_hat = np.nansum(np.abs(val[1])) / n_used
+            sigma2 = 2.0 * b_hat**2
+        elif distribution == Distribution.T:
+            sigma2 = sigma2_t
+        elif distribution == Distribution.SKEW_NORMAL:
+            sigma2 = sigma2_sn
+        else:  # ged: sigma2 stores σ²
+            sigma2 = sigma2_ged
+
+    if distribution == Distribution.NORMAL:
+        value = 2 * n_used * res.fun + n_used + n_used * np.log(2 * np.pi)
+    elif distribution == Distribution.LAPLACE:
+        # -2ℓ(b̂) = 2n·res.fun + n·(2 + log(4))
+        value = 2 * n_used * res.fun + n_used * (2 + np.log(4))
+    else:  # t / skew-normal: obj = -ℓ/n, so -2ℓ = 2n·res.fun (no additive constant)
+        value = 2 * n_used * res.fun
+    # AIC = -2ℓ + 2k; normal/laplace: k=arma+1 (σ²); t/skew-normal/ged: k=arma+2 (σ²+extra)
+    n_dist_params = 2 if distribution in (Distribution.T, Distribution.SKEW_NORMAL, Distribution.GED) else 1
+    aic = value + 2 * (sum(mask) + n_dist_params) if method != ArimaMethod.CSS else np.nan
+    if method != ArimaMethod.CSS and not np.isfinite(value):
+        stationary_ar_checks(arma, coef)
+
+    nm = []
+    if arma[0] > 0:
+        nm.extend([f"ar{i + 1}" for i in range(arma[0])])
+    if arma[1] > 0:
+        nm.extend([f"ma{i + 1}" for i in range(arma[1])])
+    if arma[2] > 0:
+        nm.extend([f"sar{i + 1}" for i in range(arma[2])])
+    if arma[3] > 0:
+        nm.extend([f"sma{i + 1}" for i in range(arma[3])])
+    if ncxreg > 0:
+        nm += cn
+        if not orig_xreg and (var is not None):
+            ind = narma + np.arange(ncxreg)
+            coef[ind] = np.matmul(vt, coef[ind])
+            A = np.identity(narma + ncxreg)
+            A[np.ix_(ind, ind)] = vt
+            A = A[np.ix_(mask, mask)]
+            var = np.matmul(np.matmul(A, var), A.T)
+    # if no_optim:
+    #     var = pd.DataFrame(var, columns=nm[mask], index=nm[mask])
+    resid = val[1]
+
+    ans = {
+        "coef": dict(zip(nm, coef)),
+        "sigma2": sigma2,
+        "var_coef": var,
+        "mask": mask,
+        "loglik": -0.5 * value,
+        "aic": aic,
+        "arma": tuple(x.item() for x in arma),
+        "residuals": resid,
+        #'series': series,
+        "code": res.status,
+        "n_cond": ncond,
+        "nobs": n_used,
+        "model": mod,
+        "distribution": distribution,
+        "SSinit": SSinit,
+    }
+    if distribution == Distribution.T and nu_t is not None:
+        ans["nu"] = nu_t
+    if distribution == Distribution.SKEW_NORMAL and alpha_sn is not None:
+        ans["alpha_dist"] = alpha_sn
+    if distribution == Distribution.GED and beta_ged is not None:
+        ans["beta_dist"] = beta_ged
+    return ans
+
+
+def kalman_forecast(n, Z, a, P, T, V, h):
+    a = a.copy()
+    P = P.copy()
+    forecasts = np.empty(n)
+    se = np.empty(n)
+    z = Z.reshape(-1, 1) * Z.reshape(1, -1)
+    for l in range(n):
+        a = T @ a
+        forecasts[l] = a @ Z
+        mm = T @ P
+        P = V + mm @ T.T
+        se[l] = h + np.sum(z * P)
+    return forecasts, se
+
+
+def checkarima(obj):
+    if obj["var_coef"] is None:
+        return False
+    return any(np.isnan(np.sqrt(np.diag(obj["var_coef"]))))
+
+
+def predict_arima(model, n_ahead, newxreg=None, se_fit=True):
+    myNCOL = lambda x: x.shape[1] if x is not None else 0
+    # rsd = model['residuals']
+    # xreg = model['xreg']
+    # ncxreg = myNCOL(xreg)
+
+    # n = len(rsd)
+    arma = model["arma"]
+    ncoefs, coefs = list(model["coef"].keys()), list(model["coef"].values())
+
+    ncxreg = len([ncoef for ncoef in ncoefs if "ex_" in ncoef])
+    if myNCOL(newxreg) != ncxreg:
+        raise Exception("`xreg` and `newxreg` have different numbers of columns")
+
+    narma = sum(arma[:4])
+    if len(coefs) > narma:
+        if ncoefs[narma] == "intercept":
+            intercept = np.ones(n_ahead, dtype=np.float64).reshape(-1, 1)
+            if newxreg is None:
+                newxreg = intercept
+            else:
+                newxreg = np.concatenate([intercept, newxreg], axis=1)
+            ncxreg += 1
+        if narma == 0:
+            xm = np.matmul(newxreg, coefs)
+        else:
+            xm = np.matmul(newxreg, coefs[narma:])
+
+        xm = xm.flatten()
+    else:
+        xm = 0
+
+    # just warnings
+    # if (arma[2L] > 0L) {
+    #    ma <- coefs[arma[1L] + 1L:arma[2L]]
+    #    if (any(Mod(polyroot(c(1, ma))) < 1))
+    #        warning("MA part of model is not invertible")
+    # }
+
+    # if (arma[4L] > 0L) {
+    #    ma <- coefs[sum(arma[1L:3L]) + 1L:arma[4L]]
+    #    if (any(Mod(polyroot(c(1, ma))) < 1))
+    #        warning("seasonal MA part of model is not invertible")
+    # }
+
+    pred, se = kalman_forecast(
+        n_ahead, *(model["model"][var] for var in ["Z", "a", "P", "T", "V", "h"])
+    )
+    pred += xm
+    if se_fit:
+        se = np.sqrt(se * model["sigma2"])
+        return pred, se
+
+    return pred
+
+
+def convert_coef_name(name, inverse=False):
+    if not inverse:
+        if "ex" in name:
+            n = name.split("_")[1]
+            n = int(n)
+            if n == 1:
+                return "drift"
+            else:
+                return f"ex_{n - 1}"
+        else:
+            return name
+    else:
+        if "drift" in name:
+            return "ex_1"
+        elif "ex" in name:
+            n = name.split("_")[1]
+            n = int(n)
+            return f"ex_{n + 1}"
+        else:
+            return name
+
+
+def change_drift_name(model_coef, inverse=False):
+    return {
+        convert_coef_name(name, inverse): value for name, value in model_coef.items()
+    }
+
+
+def myarima(
+    x,
+    order=(0, 0, 0),
+    seasonal={"order": (0, 0, 0), "period": 1},
+    constant=True,
+    ic="aic",
+    trace=False,
+    approximation=False,
+    offset=0,
+    xreg=None,
+    method=None,
+    distribution="normal",
+    **kwargs,
+):
+    missing = np.isnan(x)
+    missing_idxs = np.where(~missing)[0]
+    firstnonmiss = missing_idxs.min()
+    lastnonmiss = missing_idxs.max() + 1
+    n = np.sum(~missing[firstnonmiss:lastnonmiss])
+    m = seasonal["period"]
+    seas_order = seasonal["order"]
+    use_season = np.sum(seas_order) > 0 and m > 0
+    diffs = order[1] + seas_order[1]
+    if method is None:
+        if approximation:
+            method = ArimaMethod.CSS
+        else:
+            method = ArimaMethod.CSS_ML
+    try:
+        if diffs == 1 and constant:
+            drift = np.arange(1, x.size + 1, dtype=np.float64).reshape(-1, 1)  # drift
+            if xreg is not None:
+                xreg = np.concatenate([drift, xreg], axis=1)
+            else:
+                xreg = drift
+            fit = arima(
+                x,
+                order,
+                seasonal,
+                xreg=xreg,
+                method=method,
+                distribution=distribution,
+                **kwargs,
+            )
+            fit["coef"] = change_drift_name(fit["coef"])
+        else:
+            fit = arima(
+                x,
+                order,
+                seasonal,
+                include_mean=constant,
+                method=method,
+                xreg=xreg,
+                distribution=distribution,
+                **kwargs,
+            )
+        # nxreg = 0 if xreg is None else xreg.shape[1]
+        nstar = n - order[1] - seas_order[1] * m
+        if diffs == 1 and constant:
+            fit["xreg"] = xreg
+        npar = fit["mask"].sum() + 1
+        if method == ArimaMethod.CSS:
+            if fit["sigma2"] <= 0:
+                fit["aic"] = -math.inf
+            else:
+                fit["aic"] = offset + nstar * math.log(fit["sigma2"]) + 2 * npar
+        if not math.isnan(fit["aic"]):
+            fit["bic"] = fit["aic"] + npar * (math.log(nstar) - 2)
+            if nstar - npar - 1 != 0:
+                fit["aicc"] = fit["aic"] + 2 * npar * (npar + 1) / (nstar - npar - 1)
+            else:
+                fit["aicc"] = math.inf
+            fit["ic"] = fit[ic]
+        else:
+            fit["ic"] = fit["aic"] = fit["bic"] = fit["aicc"] = math.inf
+        if distribution == Distribution.NORMAL:
+            fit["sigma2"] = np.nansum(fit["residuals"] ** 2) / (nstar - npar + 1)
+        minroot = 2
+        if order[0] + seas_order[0] > 0:
+            testvec = fit["model"]["phi"]
+            k = abs(testvec) > 1e-8
+            if k.sum() > 0:
+                last_nonzero = np.max(np.where(k)[0])
+                testvec = testvec[: (last_nonzero + 1)]
+                proots = np.polynomial.polynomial.polyroots(np.append(1, -testvec))
+                if proots.size > 0:
+                    minroot = min(minroot, *abs(proots))
+        if order[2] + seas_order[2] > 0 and fit["ic"] < math.inf:
+            testvec = fit["model"]["theta"]
+            k = abs(testvec) > 1e-8
+            if np.sum(k) > 0:
+                last_nonzero = np.max(np.where(k)[0])
+                testvec = testvec[: (last_nonzero + 1)]
+                proots = np.polynomial.polynomial.polyroots(np.append(1, testvec))
+                if proots.size > 0:
+                    minroot = min(minroot, *abs(proots))
+        if minroot < 1 + 0.01 or checkarima(fit):
+            fit["ic"] = math.inf
+        fit["xreg"] = xreg
+        if trace:
+            print(f"{arima_string(fit, padding=True)} : {fit['ic']:.4f}")
+        return fit
+    except ValueError:
+        if trace:
+            model_str = f"ARIMA({','.join(str(x) for x in order)})"
+            if use_season:
+                model_str += f"({','.join(str(x) for x in seas_order)})[{m}]"
+            if constant and diffs == 0:
+                model_str += " with non-zero mean"
+            elif constant and diffs == 1:
+                model_str += " with drift        "
+            elif not constant and diffs == 0:
+                model_str += " with zero mean    "
+            else:
+                model_str += "                   "
+            model_str += " : inf"
+            print(model_str)
+        return {"ic": math.inf}
+
+
+def search_arima(
+    x,
+    d=0,
+    D=0,
+    max_p=5,
+    max_q=5,
+    max_P=2,
+    max_Q=2,
+    max_order=5,
+    stationary=False,
+    ic="aic",
+    trace=False,
+    approximation=False,
+    xreg=None,
+    offset=None,
+    allow_drift=True,
+    allow_mean=True,
+    period=1,
+    **kwargs,
+):
+    m = period
+    allow_drift = allow_drift and (d + D) == 1
+    allow_mean = allow_mean and (d + D) == 0
+    max_K = int(allow_drift or allow_mean)
+
+    best_ic = np.inf
+    best_fit = None
+    for i in range(max_p + 1):
+        for j in range(max_q + 1):
+            for I in range(max_P + 1):
+                for J in range(max_Q + 1):
+                    if i + j + I + J > max_order:
+                        continue
+                    for K in range(max_K + 1):
+                        fit = myarima(
+                            x,
+                            order=(i, d, j),
+                            seasonal={"order": (I, D, J), "period": m},
+                            constant=K == 1,
+                            trace=trace,
+                            ic=ic,
+                            approximation=approximation,
+                            offset=offset,
+                            xreg=xreg,
+                            **kwargs,
+                        )
+                        if fit["ic"] < best_ic:
+                            best_ic = fit["ic"]
+                            best_fit = fit
+                            constant = K == 1
+    if best_fit is None:
+        raise RuntimeError("No ARIMA model able to be estimated")
+    if approximation:
+        if trace:
+            print("Now re-fitting the best model(s) without approximations...\n")
+        new_best_fit = myarima(
+            x,
+            order=tuple(best_fit["arma"][i] for i in [0, 5, 1]),
+            seasonal={
+                "order": tuple(best_fit["arma"][i] for i in [2, 6, 3]),
+                "period": m,
+            },
+            constant=constant,
+            ic=ic,
+            trace=False,
+            approximation=False,
+            xreg=xreg,
+            **kwargs,
+        )
+        if math.isfinite(new_best_fit["ic"]):
+            best_fit = new_best_fit
+        else:
+            best_fit = search_arima(
+                x,
+                d=d,
+                D=D,
+                max_p=max_p,
+                max_q=max_q,
+                max_P=max_P,
+                max_Q=max_Q,
+                max_order=max_order,
+                stationary=stationary,
+                ic=ic,
+                trace=trace,
+                approximation=False,
+                xreg=xreg,
+                offset=offset,
+                allow_drift=allow_drift,
+                allow_mean=allow_mean,
+                **kwargs,
+            )
+    return best_fit
+
+
+def arima2(x, model, xreg, method):
+    m = model["arma"][4]  # 5
+    use_drift = "drift" in model["coef"].keys()
+    use_intercept = "intercept" in model["coef"].keys()
+    use_xreg = model["xreg"] is not None
+    sigma2 = model["sigma2"]
+    # models fitted before SSinit was stored used Gardner1980
+    SSinit = model.get("SSinit", "Gardner1980")
+    if use_drift:
+        n = len(model["x"])
+        time = np.arange(0, (n + 1) / m, 1 / m)[:n].reshape(-1, 1)
+        # drift is the first column of the exogenous regressors
+        driftmod = sm.OLS(model["xreg"][:, 0], sm.add_constant(time)).fit()
+        n = len(x)
+        newtime = np.arange(0, (n + 1) / m, 1 / m)[:n].reshape(-1, 1)
+        newxreg = driftmod.predict(sm.add_constant(newtime)).reshape(-1, 1)
+        if xreg is not None:
+            xreg = np.concatenate([newxreg, xreg], axis=1)
+        else:
+            xreg = newxreg
+        use_xreg = True
+    if model["xreg"] is not None:
+        if xreg is None:
+            raise Exception("No regressors provided")
+        if xreg.shape[1] != model["xreg"].shape[1]:
+            raise Exception("Number of regressors does not match fitted model")
+
+    seas_arma = [model["arma"][i] for i in [2, 3, 6]]  # 3, 4, 7
+    order = tuple(model["arma"][i] for i in [0, 5, 1])  # 1, 6, 2
+    coefs = np.array(list(model["coef"].values()))
+    if model["arma"][4] > 1 and np.sum(np.abs(seas_arma) > 0):  # seasonal model
+        seasonal = dict(
+            order=tuple(model["arma"][i] for i in [2, 6, 3]),
+            period=m,  # 3, 7, 4
+        )
+        refit = Arima(
+            x=x,
+            order=order,
+            seasonal=seasonal,
+            include_mean=use_intercept,
+            method=method,
+            SSinit=SSinit,
+            fixed=coefs,
+            xreg=xreg if use_xreg else None,
+        )
+    elif len(model["coef"]) > 0:  # Nonseasonal model with some parameters
+        refit = Arima(
+            x=x,
+            order=order,
+            include_mean=use_intercept,
+            method=method,
+            SSinit=SSinit,
+            fixed=coefs,
+            xreg=xreg if use_xreg else None,
+        )
+    else:  # no parameters
+        refit = Arima(
+            x=x,
+            order=order,
+            include_mean=False,
+            method=method,
+            SSinit=SSinit,
+        )
+    n_coef = len(refit["coef"])
+    refit["var_coef"] = np.zeros((n_coef, n_coef), dtype=np.float32)
+    if use_xreg:
+        refit["xreg"] = xreg
+    refit["sigma2"] = sigma2
+    if use_drift:
+        refit["coef"] = change_drift_name(refit["coef"])
+    return refit
+
+
+def _check_blambda(blambda):
+    """Validate a Box-Cox parameter without resolving it.
+
+    Lets the models reject an invalid `blambda` when they're built, instead of
+    failing deep inside the fit.
+
+    Args:
+        blambda (None, float or str): Box-Cox transformation parameter, 'auto'
+            to select it from the data, or None for no transformation.
+
+    Raises:
+        ValueError: If `blambda` isn't None, a real number or 'auto'.
+    """
+    if blambda is None or isinstance(blambda, numbers.Real):
+        return
+    if isinstance(blambda, str) and blambda == "auto":
+        return
+    raise ValueError(f"blambda must be a float or 'auto', got {blambda!r}")
+
+
+def _resolve_blambda(x, blambda, period):
+    """Resolve the Box-Cox parameter, which can be a float or the string 'auto'.
+
+    'auto' is resolved as forecast::BoxCox does, with Guerrero's method over
+    [-0.9, 2], or over [0, 2] when `x` isn't strictly positive. Missing values
+    are left in place, since they're accounted for when computing the
+    coefficient of variation of each subseries.
+
+    Args:
+        x (np.ndarray): The series the parameter is selected from.
+        blambda (float or str): Box-Cox transformation parameter, or 'auto' to
+            select it from `x`.
+        period (int): Number of observations per unit of time. Subseries of at
+            least two observations are used, regardless of this value.
+
+    Returns:
+        float: The resolved Box-Cox transformation parameter.
+
+    Raises:
+        ValueError: If `blambda` isn't a real number or 'auto'.
+    """
+    _check_blambda(blambda)
+    if isinstance(blambda, str):
+        lower = -0.9
+        if np.any(x <= 0):
+            warnings.warn(
+                "Guerrero's method for selecting a Box-Cox parameter (lambda) "
+                "is given for strictly positive data."
+            )
+            # a negative lambda would turn every non-positive value into nan,
+            # so the search is restricted to where the transformation is defined
+            lower = 0.0
+        blambda = boxcox_lambda(
+            x, method="guerrero", season_length=max(period, 2), lower=lower, upper=2.0
+        )
+    return float(blambda)
+
+
+def _boxcox(x, blambda):
+    """Apply the Box-Cox transformation.
+
+    Args:
+        x (np.ndarray): Array with the data to transform.
+        blambda (float): Box-Cox transformation parameter.
+
+    Returns:
+        np.ndarray: The transformed data, with the same shape as `x`. Entries
+            that aren't strictly positive are nan when `blambda` < 0, where the
+            transformation is undefined.
+    """
+    # the transformations read the buffer directly, so they need contiguous input
+    x = np.ascontiguousarray(x)
+    if blambda < 0:
+        x = np.where(x <= 0, np.nan, x)
+    # coreforecast flattens its input, so the shape has to be restored
+    return boxcox(x, blambda).reshape(x.shape)
+
+
+def _inv_boxcox(x, blambda):
+    """Reverse the Box-Cox transformation.
+
+    Args:
+        x (np.ndarray): Array with the transformed data.
+        blambda (float): Box-Cox transformation parameter.
+
+    Returns:
+        np.ndarray: The data on the original scale, with the same shape as `x`.
+            When `blambda` < 0 the transformation has an asymptote at
+            -1/blambda, so entries at or above it are nan.
+    """
+    x = np.ascontiguousarray(x)
+    # coreforecast flattens its input, so the shape has to be restored
+    out = inv_boxcox(x, blambda).reshape(x.shape)
+    if blambda < 0:
+        undefined = x >= -1 / blambda
+        if undefined.any():
+            # no count in the message, so repeats collapse under the default filter
+            warnings.warn(
+                f"The Box-Cox back transformation with lambda={blambda:.6g} is "
+                f"undefined at and beyond {-1 / blambda:.6g}; the values there "
+                f"were set to nan."
+            )
+        out = np.where(undefined, np.nan, out)
+    return out
+
+
+def _inv_boxcox_mean(x, blambda, fvar=None, biasadj=False):
+    """Back-transform a Box-Cox transformed mean.
+
+    A plain back transformation yields medians, so when `biasadj` is True the
+    second order Taylor approximation of forecast::InvBoxCox is used to turn
+    them into means.
+
+    Args:
+        x (np.ndarray): Array with the transformed means.
+        blambda (float): Box-Cox transformation parameter.
+        fvar (float or np.ndarray, optional): Variance on the transformed
+            scale. Only required when `biasadj=True`. Defaults to None.
+        biasadj (bool, optional): Whether to adjust the back-transformed
+            medians to produce means. Defaults to False.
+
+    Returns:
+        np.ndarray: The means on the original scale.
+
+    Raises:
+        ValueError: If `biasadj=True` and no `fvar` is provided.
+    """
+    out = _inv_boxcox(x, blambda)
+    if biasadj:
+        if fvar is None:
+            raise ValueError("`fvar` is required when `biasadj=True`")
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out = out * (1 + 0.5 * fvar * (1 - blambda) / out ** (2 * blambda))
+    return out
+
+
+def Arima(
+    x,
+    order=(0, 0, 0),
+    seasonal={"order": (0, 0, 0), "period": 1},
+    xreg=None,
+    include_mean=True,
+    include_drift=False,
+    include_constant=None,
+    blambda=None,
+    biasadj=None,
+    method="CSS",
+    model=None,
+    distribution="normal",
+    **kwargs,
+):
+    x = x.copy()
+    origx = x.copy()
+    seas_order = seasonal["order"]
+    if model is not None and blambda is None:
+        # keep the transformation of the model we're applying to the new data
+        blambda = model["lambda"]
+        if biasadj is None:
+            biasadj = model.get("biasadj")
+    biasadj = bool(biasadj)
+    if blambda is not None:
+        blambda = _resolve_blambda(x, blambda, seasonal["period"])
+        x = _boxcox(x, blambda)
+    if xreg is not None:
+        if xreg.dtype not in (np.float32, np.float64):
+            raise ValueError("xreg should be a float array")
+    if len(x) <= order[1]:
+        raise ValueError("Not enough data to fit the model")
+    if len(x) <= order[1] + seas_order[1] * seasonal["period"]:
+        raise ValueError("Not enough data to fit the model")
+    if include_constant is not None:
+        if include_constant:
+            include_mean = True
+            if order[1] + seas_order[1] == 1:
+                include_drift = True
+        else:
+            include_mean = include_drift = False
+    if order[1] + seas_order[1] > 1 and include_drift:
+        warnings.warn("No drift term fitted as the order of difference is 2 or more.")
+        include_drift = False
+    if model is not None:
+        tmp = arima2(x=x, model=model, xreg=xreg, method=method)
+        xreg = tmp["xreg"]
+        tmp["lambda"] = model["lambda"]
+    else:
+        if include_drift:
+            drift = np.arange(1, x.size + 1, dtype=np.float64).reshape(-1, 1)  # drift
+            if xreg is not None:
+                xreg = np.concatenate([drift, xreg], axis=1)
+            else:
+                xreg = drift
+            if "fixed" in kwargs:
+                if isinstance(kwargs["fixed"], dict):
+                    if "drift" not in kwargs["fixed"]:
+                        kwargs["fixed"]["drift"] = np.nan
+                    kwargs["fixed"] = change_drift_name(kwargs["fixed"], inverse=True)
+        if xreg is None:
+            tmp = arima(
+                x,
+                order=order,
+                seasonal=seasonal,
+                include_mean=include_mean,
+                method=method,
+                distribution=distribution,
+                **kwargs,
+            )
+        else:
+            tmp = arima(
+                x,
+                order=order,
+                seasonal=seasonal,
+                xreg=xreg,
+                include_mean=include_mean,
+                method=method,
+                distribution=distribution,
+                **kwargs,
+            )
+            if include_drift:
+                tmp["coef"] = change_drift_name(tmp["coef"])
+
+    npar = np.sum(tmp["mask"]) + 1
+    missing = np.isnan(tmp["residuals"])
+    nonmiss_idxs = np.where(~missing)[0]
+    firstnonmiss = np.min(nonmiss_idxs)
+    lastnonmiss = np.max(nonmiss_idxs) + 1
+    n = np.sum(~missing[firstnonmiss:lastnonmiss])
+    nstar = n - tmp["arma"][5] - tmp["arma"][6] * tmp["arma"][4]
+    tmp["aicc"] = tmp["aic"] + 2 * npar * (nstar / (nstar - npar - 1) - 1)
+    tmp["bic"] = tmp["aic"] + npar * (math.log(nstar) - 2)
+    tmp["xreg"] = xreg
+    tmp["lambda"] = blambda
+    tmp["biasadj"] = biasadj
+    tmp["x"] = origx
+    if model is None and distribution == Distribution.NORMAL:
+        tmp["sigma2"] = np.nansum(tmp["residuals"] ** 2) / (nstar - npar + 1)
+    return tmp
+
+
+def arima_string(model, padding=False):
+    order = tuple(model["arma"][i] for i in [0, 5, 1, 2, 6, 3, 4])
+    m = order[6]
+    result = f"ARIMA({order[0]},{order[1]},{order[2]})"
+    if m > 1 and sum(order[3:6]) > 0:
+        result += f"({order[3]},{order[4]},{order[5]})[{m}]"
+    if padding and m > 1 and sum(order[3:6]) == 0:
+        n_spaces = 9 + len(str(m))
+        result += n_spaces * " "
+
+    if model["xreg"] is not None:
+        if model["xreg"].shape[1] == 1 and ("drift" in model["coef"].keys()):
+            result += " with drift" + "        "
+        else:
+            result = f"Regression with {result} errors"
+    else:
+        if ("constant" in model["coef"].keys()) or (
+            "intercept" in model["coef"].keys()
+        ):
+            result += " with non-zero mean"
+        elif order[1] == 0 and order[4] == 0:
+            result += " with zero mean" + 4 * " "
+        else:
+            result += " " + len("with non-zero mean") * " "
+    if not padding:
+        pass
+
+    return result
+
+
+def is_constant(x):
+    return np.all(x[0] == x)
+
+
+def forecast_arima(
+    model,
+    h=None,
+    level=None,
+    fan=False,
+    xreg=None,
+    blambda=None,
+    bootstrap=False,
+    npaths=5_000,
+    biasadj=None,
+):
+    if h is None:
+        h = 2 * model["arma"][4] if model["arma"][4] > 1 else 10
+    if blambda is None:
+        blambda = model["lambda"]
+    if biasadj is None:
+        biasadj = model.get("biasadj", False)
+
+    use_drift = "drift" in model["coef"].keys()
+    x = model["x"]
+    usexreg = use_drift or (model["xreg"] is not None)
+    if (xreg is not None) and usexreg:
+        if xreg.dtype not in (np.float32, np.float64):
+            raise ValueError("xreg should be a float array")
+
+        # origxreg = xreg
+        h = xreg.shape[0]
+    else:
+        if xreg is not None:
+            warnings.warn(
+                "xreg not required by this model, ignoring the provided regressors"
+            )
+            xreg = None
+        # origxreg = None
+
+    if fan:
+        level = np.arange(51, 100, 3)
+
+    if use_drift:
+        n = len(x)
+        drift = np.arange(1, h + 1, dtype=np.float64).reshape(-1, 1)
+        drift += n
+        if xreg is not None:
+            xreg = np.concatenate([drift, xreg], axis=1)
+        else:
+            xreg = drift
+        model["coef"] = change_drift_name(model["coef"], inverse=True)
+
+    if is_constant(x):
+        pred = np.repeat(x[0], h)
+        se = np.repeat(0, h)
+        # `x` is kept on the original scale, so there's nothing to back transform
+        blambda = None
+    elif usexreg:
+        if xreg is None:
+            raise Exception("No regressors provided")
+        # ncxreg = len([ncoef for ncoef in model['coef'].keys() if 'ex_' in ncoef])
+        # if xreg.shape[1] != ncxreg:
+        #    raise Exception('Number of regressors does not match fitted model"')
+        pred, se = predict_arima(model, n_ahead=h, newxreg=xreg)
+        if use_drift:
+            model["coef"] = change_drift_name(model["coef"])
+    else:
+        pred, se = predict_arima(model, n_ahead=h)
+
+    if level is not None:
+        # nint = len(level)
+        if bootstrap:
+            raise NotImplementedError("bootstrap=True")
+        else:
+            dist = model.get("distribution", Distribution.NORMAL)
+            quantiles = _quantiles(level, distribution=dist, dist_params=error_params_from_model(model))
+            lower = pd.DataFrame(
+                pred.reshape(-1, 1) - quantiles * se.reshape(-1, 1),
+                columns=[f"{l}%" for l in level],
+            )
+            upper = pd.DataFrame(
+                pred.reshape(-1, 1) + quantiles * se.reshape(-1, 1),
+                columns=[f"{l}%" for l in level],
+            )
+    else:
+        lower = None
+        upper = None
+
+    if blambda is not None:
+        if lower is not None and upper is not None:
+            lower = pd.DataFrame(
+                _inv_boxcox(lower.to_numpy(), blambda), columns=lower.columns
+            )
+            upper = pd.DataFrame(
+                _inv_boxcox(upper.to_numpy(), blambda), columns=upper.columns
+            )
+        pred = _inv_boxcox_mean(pred, blambda, fvar=se**2, biasadj=biasadj)
+
+    ans = {
+        "method": None,
+        "model": model,
+        "level": None,
+        "mean": pred,
+        "lower": lower,
+        "upper": upper,
+        "x": x,
+        "series": None,
+        "fitted": None,
+        "residuals": model["residuals"],
+    }
+
+    return ans
+
+
+def simulate_arima(
+    model,
+    h,
+    n_paths,
+    xreg=None,
+    seed=None,
+    error_distribution="normal",
+    error_params=None,
+):
+    """
+    Simulate future paths from a fitted ARIMA model.
+
+    Parameters
+    ----------
+    model : dict
+        Fitted ARIMA model dictionary.
+    h : int
+        Forecast horizon.
+    n_paths : int
+        Number of simulation paths to generate.
+    xreg : np.ndarray, optional
+        Future exogenous regressors of shape (h, n_x).
+    seed : int, optional
+        Random seed for reproducibility.
+    error_distribution : str, default='normal'
+        Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+        'laplace', 'skew-normal', 'ged'.
+    error_params : dict, optional
+        Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+    Returns
+    -------
+    np.ndarray
+        Simulated paths of shape (n_paths, h).
+    """
+    from statsforecast.simulation import sample_errors
+
+    if model.get("constant", False):
+        return np.full((n_paths, h), model["x"][-1])
+
+    # Set up random generator
+    rng = np.random.default_rng(seed)
+    if seed is not None:
+        np.random.seed(seed)  # For backward compatibility
+
+    # Regression component (similar to forecast_arima and predict_arima)
+    use_drift = "drift" in model["coef"].keys()
+    if use_drift:
+        n = len(model["x"])
+        drift = np.arange(1, h + 1, dtype=np.float64).reshape(-1, 1)
+        drift += n
+        if xreg is not None:
+            xreg = np.concatenate([drift, xreg], axis=1)
+        else:
+            xreg = drift
+    arma = model["arma"]
+    ncoefs = list(model["coef"].keys())
+    coefs = np.array(list(model["coef"].values()))
+    narma = sum(arma[:4])
+
+    newxreg = xreg
+    if len(coefs) > narma:
+        if ncoefs[narma] == "intercept":
+            intercept = np.ones(h, dtype=np.float64).reshape(-1, 1)
+            if newxreg is None:
+                newxreg = intercept
+            else:
+                newxreg = np.concatenate([intercept, newxreg], axis=1)
+
+        if newxreg is not None:
+            if narma == 0:
+                needed_cols = len(coefs)
+                reg_coefs = coefs
+            else:
+                needed_cols = len(coefs) - narma
+                reg_coefs = coefs[narma:]
+
+            if newxreg.shape[1] != needed_cols:
+                if newxreg.shape[1] > needed_cols:
+                    xm = np.matmul(newxreg[:, :needed_cols], reg_coefs)
+                else:
+                    raise Exception(
+                        f"Number of regressors ({newxreg.shape[1]}) does not match fitted model ({needed_cols})"
+                    )
+            else:
+                xm = np.matmul(newxreg, reg_coefs)
+            xm = xm.flatten()
+        else:
+            xm = 0
+    else:
+        xm = 0
+
+    # Kalman filter state-space components
+    Z, a_init, T, V, obs_h = [model["model"][var] for var in ["Z", "a", "T", "V", "h"]]
+    sigma2 = model["sigma2"]
+
+    paths = np.empty((n_paths, h))
+
+    # V can be singular, so we use SVD-based sampling for state transition noise
+    u, s, _ = np.linalg.svd(V * sigma2)
+    state_noise_std = u * np.sqrt(s)
+
+    obs_noise_std = np.sqrt(obs_h * sigma2)
+    residuals = model.get("residuals", None)
+
+    for i in range(n_paths):
+        a = a_init.copy()
+        for t in range(h):
+            # State transition noise (Gaussian for state-space consistency)
+            state_noise = rng.normal(size=a.size)
+            a = T @ a + state_noise_std @ state_noise
+
+            # Observation noise with selected distribution
+            obs_noise = sample_errors(
+                size=1,
+                sigma=obs_noise_std,
+                distribution=error_distribution,
+                params=error_params,
+                residuals=residuals,
+                rng=rng,
+            )[0]
+            paths[i, t] = (Z @ a) + obs_noise
+
+    if not isinstance(xm, int):
+        paths += xm
+
+    if model.get("lambda") is not None:
+        # the model was fitted on the transformed scale, so are the paths
+        paths = _inv_boxcox(paths, model["lambda"])
+
+    return paths
+
+
+def fitted_arima(model, h=1):
+    """Returns h-step forecasts for the data used in fitting the model.
+
+    Args:
+        model: The fitted ARIMA model.
+        h (int): Number of steps ahead. Defaults to 1.
+
+    Returns:
+        Fitted values or None if not available.
+    """
+    if h == 1:
+        x = model.get("x")
+        if model.get("fitted") is not None:
+            return model.get("fitted")
+        elif x is None:
+            return None
+        elif model.get("lambda") is None:
+            return x - model["residuals"]
+        else:
+            blambda = model["lambda"]
+            # residuals are on the transformed scale
+            fits = _boxcox(x, blambda) - model["residuals"]
+            return _inv_boxcox_mean(
+                fits,
+                blambda,
+                fvar=model["sigma2"],
+                biasadj=model.get("biasadj", False),
+            )
+    else:
+        raise NotImplementedError("h > 1")
+
+
+def _transformed_fitted_arima(model):
+    """Return the in-sample predictions on the Box-Cox transformed scale.
+
+    Prediction intervals are built on this scale, where `sigma2` lives, and
+    then back transformed.
+
+    Args:
+        model: The fitted ARIMA model.
+
+    Returns:
+        np.ndarray: Fitted values on the transformed scale, or None if the
+            model was fitted without a Box-Cox transformation.
+    """
+    blambda = model.get("lambda")
+    if blambda is None:
+        return None
+    return _boxcox(model["x"], blambda) - model["residuals"]
+
+
+def seas_heuristic(x, period):
+    # nperiods = period > 1
+    season = math.nan
+    stlfit = mstl(x, period)
+    remainder = stlfit["remainder"]
+    seasonal = stlfit.get("seasonal", None)
+    vare = np.var(remainder, ddof=1)
+    if seasonal is not None:
+        season = max(0, min(1, 1 - vare / np.var(remainder + seasonal, ddof=1)))
+    return season
+
+
+def nsdiffs(x, test="seas", alpha=0.05, period=1, max_D=1, **kwargs):
+    D = 0
+    if alpha < 0.01:
+        warnings.warn(
+            "Specified alpha value is less than the minimum, setting alpha=0.01"
+        )
+        alpha = 0.01
+    elif alpha > 0.1:
+        warnings.warn(
+            "Specified alpha value is larger than the maximum, setting alpha=0.1"
+        )
+        alpha = 0.1
+    if test == "ocsb":
+        warnings.warn(
+            "Significance levels other than 5% are not currently supported by test='ocsb', defaulting to alpha = 0.05."
+        )
+        alpha = 0.05
+    if test in ("hegy", "ch"):
+        raise NotImplementedError
+    if is_constant(x):
+        return D
+    if period == 1:
+        raise ValueError("Non seasonal data")
+    elif period < 1:
+        warnings.warn(
+            "I can't handle data with frequency less than 1. Seasonality will be ignored."
+        )
+        return 0
+    if period >= len(x):
+        return 0
+
+    def run_tests(x, test, alpha):
+        try:
+            diff = seas_heuristic(x, period) > 0.64
+            if diff not in (0, 1):
+                raise ValueError(f"Found {diff} in seasonal test.")
+        except Exception as e:
+            warnings.warn(
+                f"The chosen seasonal unit root test encountered an error when testing for the {D} difference.\n"
+                f"From {test}(): {e}\n"
+                f"{D} seasonal differences will be used. Consider using a different unit root test."
+            )
+            diff = 0
+        return diff
+
+    dodiff = run_tests(x, test, alpha)
+    if dodiff and not isinstance(period, int):
+        warnings.warn(
+            "The time series frequency has been rounded to support seasonal differencing."
+        )
+        period = round(period)
+    while dodiff and D < max_D:
+        D += 1
+        x = diff(x, period, 1)
+        if is_constant(x):
+            return D
+        if len(x) >= 2 * period and D < max_D:
+            dodiff = run_tests(x, test, alpha)
+        else:
+            dodiff = False
+    return D
+
+
+def ndiffs(x, alpha=0.05, test="kpss", kind="level", max_d=2):
+    x = x[~np.isnan(x)]
+    d = 0
+    if alpha < 0.01:
+        warnings.warn(
+            "Specified alpha value is less than the minimum, setting alpha=0.01"
+        )
+        alpha = 0.01
+    elif alpha > 0.1:
+        warnings.warn(
+            "Specified alpha value is larger than the maximum, setting alpha=0.1"
+        )
+        alpha = 0.1
+    if is_constant(x):
+        return d
+
+    def run_tests(x, test, alpha):
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                nlags = math.floor(3 * math.sqrt(len(x)) / 13)
+                diff = sm.tsa.kpss(x, "c", nlags=nlags)[1] < alpha
+        except Exception as e:
+            warnings.warn(
+                f"The chosen unit root test encountered an error when testing for the {d} difference.\n"
+                f"From {test}(): {e}\n"
+                f"{d} differences will be used. Consider using a different unit root test."
+            )
+            diff = False
+        return diff
+
+    dodiff = run_tests(x, test, alpha)
+    if math.isnan(dodiff):
+        return d
+    while dodiff and d < max_d:
+        d += 1
+        x = diff(x, 1, 1)
+        if is_constant(x):
+            return d
+        dodiff = run_tests(x, test, alpha)
+        if math.isnan(dodiff):
+            return d - 1
+    return d
+
+
+def newmodel(p, d, q, P, D, Q, constant, results):
+    curr = np.array([p, d, q, P, D, Q, constant])
+    in_results = (curr == results[:, :7]).all(1).any()
+    return not in_results
+
+
+def auto_arima_f(
+    x,
+    d=None,
+    D=None,
+    max_p=5,
+    max_q=5,
+    max_P=2,
+    max_Q=2,
+    max_order=5,
+    max_d=2,
+    max_D=1,
+    start_p=2,
+    start_q=2,
+    start_P=1,
+    start_Q=1,
+    stationary=False,
+    seasonal=True,
+    ic="aicc",
+    stepwise=True,
+    nmodels=94,
+    trace=False,
+    approximation=None,
+    method=None,
+    truncate=None,
+    xreg=None,
+    test="kpss",
+    test_kwargs=None,
+    seasonal_test="seas",
+    seasonal_test_kwargs=None,
+    allowdrift=True,
+    allowmean=True,
+    blambda=None,
+    biasadj=False,
+    period=1,
+    distribution="normal",
+    SSinit="Gardner1980",
+):
+    if approximation is None:
+        approximation = len(x) > 150 or period > 12
+    if x.ndim > 1:
+        raise ValueError("auto_arima can only handle univariate time series")
+    # myarima swallows ValueErrors, so validate before the search
+    _check_ssinit(SSinit)
+    if test_kwargs is None:
+        test_kwargs = {}
+    if seasonal_test_kwargs is None:
+        seasonal_test_kwargs = {}
+    x = x.copy()
+    origx = x
+    missing = np.isnan(x)
+    nonmissing_idxs = np.where(~missing)[0]
+    firstnonmiss = nonmissing_idxs.min()
+    lastnonmiss = nonmissing_idxs.max() + 1
+    series_len = int(np.sum(~missing[firstnonmiss:lastnonmiss]))
+    x = x[firstnonmiss:]
+    m = period if seasonal else 1
+    if xreg is not None:
+        if xreg.dtype not in (np.float32, np.float64):
+            raise ValueError("xreg should be a float array")
+        xreg = xreg[firstnonmiss:]
+    if is_constant(x):
+        if np.isnan(x).all():
+            raise ValueError("all data are missing")
+        if allowmean:
+            fit = Arima(
+                x,
+                order=(0, 0, 0),
+                seasonal={"order": (0, 0, 0), "period": m},
+                SSinit=SSinit,
+                fixed=np.array([np.mean(x)]),
+            )
+        else:
+            fit = Arima(
+                x,
+                order=(0, 0, 0),
+                seasonal={"order": (0, 0, 0), "period": m},
+                SSinit=SSinit,
+                include_mean=False,
+            )
+        fit["x"] = origx
+        fit["constant"] = True
+        return fit
+    if m < 1:
+        m = 1
+    else:
+        m = round(m)
+    max_p = min(max_p, series_len // 3)
+    max_q = min(max_q, series_len // 3)
+    max_P = min(max_P, math.floor(series_len / 3 / m))
+    max_Q = min(max_Q, math.floor(series_len / 3 / m))
+    if series_len <= 3:
+        ic = "aic"
+    if blambda is not None:
+        blambda = _resolve_blambda(x, blambda, period)
+        x = _boxcox(x, blambda)
+    if xreg is not None:
+        xx = x.copy()
+        xregg = xreg.copy()
+        constant_columns = np.array([is_constant(col) for col in xregg.T])
+        if constant_columns.all():
+            xregg = None
+        else:
+            if constant_columns.any():
+                xregg = xregg[:, ~constant_columns]
+            X = np.hstack([np.ones([xregg.shape[0], 1]), xregg])
+            X = X[~np.isnan(X).any(1)]
+            _, sv, _ = np.linalg.svd(X)
+            if sv.min() / sv.sum() < np.finfo(np.float64).eps:
+                raise ValueError("xreg is rank deficient")
+            j = (~np.isnan(x)) & (~np.isnan(np.nansum(xregg, 1)))
+            xx[j] = sm.OLS(x, sm.add_constant(xregg)).fit().resid
+    else:
+        xx = x
+        xregg = None
+    if stationary:
+        d = D = 0
+    if m == 1:
+        D = max_P = max_Q = 0
+    elif D is None and len(xx) <= 2 * m:
+        D = 0
+    elif D is None:
+        D = nsdiffs(
+            xx, period=m, test=seasonal_test, max_D=max_D, **seasonal_test_kwargs
+        )
+        if D > 0 and xregg is not None:
+            diffxreg = diff(xregg, m, D)
+            if any(is_constant(col) for col in xregg.T):
+                D -= 1
+        if D > 0:
+            dx = diff(xx, m, D)
+            if np.isnan(dx).all():
+                D -= 1
+    if D > 0:
+        dx = diff(xx, m, D)
+    else:
+        dx = xx
+    if xregg is not None:
+        if D > 0:
+            diffxreg = diff(xregg, m, D)
+        else:
+            diffxreg = xregg
+    if d is None:
+        d = ndiffs(dx, test=test, max_d=max_d, **test_kwargs)
+        if d > 0 and xregg is not None:
+            diffxreg = diff(diffxreg, 1, d)
+            if any(is_constant(col) for col in diffxreg.T):
+                d -= 1
+        if d > 0:
+            diffdx = diff(dx, 1, d)
+            if np.isnan(diffdx).all():
+                d -= 1
+    if D >= 2:
+        warnings.warn(
+            "Having more than one seasonal differences is not recommended. Please consider using only one seasonal difference."
+        )
+    elif D + d > 2:
+        warnings.warn(
+            "Having 3 or more differencing operations is not recommended. Please consider reducing the total number of differences."
+        )
+    if d > 0:
+        dx = diff(dx, 1, d)
+    if len(dx) == 0:
+        raise ValueError("not enough data to proceed")
+    elif is_constant(dx):
+        if xreg is None:
+            if D > 0 and d == 0:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, D, 0), "period": m},
+                    SSinit=SSinit,
+                    include_constant=True,
+                    fixed=np.array([np.mean(dx / m)]),
+                    method=method,
+                )
+            elif D > 0 and d > 0:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, D, 0), "period": m},
+                    SSinit=SSinit,
+                    method=method,
+                )
+            elif d == 2:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, 0, 0), "period": m},
+                    SSinit=SSinit,
+                    method=method,
+                )
+            elif d < 2:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, 0, 0), "period": m},
+                    SSinit=SSinit,
+                    include_constant=True,
+                    fixed=np.array([np.mean(dx)]),
+                    method=method,
+                )
+            else:
+                raise ValueError(
+                    "Data follow a simple polynomial and are not suitable for ARIMA modelling."
+                )
+        else:
+            if D > 0:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, D, 0), "period": m},
+                    SSinit=SSinit,
+                    xreg=xreg,
+                    method=method,
+                )
+            else:
+                fit = Arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, 0, 0), "period": m},
+                    SSinit=SSinit,
+                    xreg=xreg,
+                    method=method,
+                )
+        fit["x"] = origx
+        fit["lambda"] = blambda
+        fit["biasadj"] = biasadj
+        return fit
+    if m > 1:
+        if max_p > 0:
+            max_p = min(max_p, m - 1)
+        if max_q > 0:
+            max_q = min(max_q, m - 1)
+    if approximation:
+        if truncate is not None:
+            if len(x) > truncate:
+                x = x[-truncate:]
+        try:
+            if D == 0:
+                fit = arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, 0, 0), "period": m},
+                    xreg=xreg,
+                )
+            else:
+                fit = arima(
+                    x,
+                    order=(0, d, 0),
+                    seasonal={"order": (0, D, 0), "period": m},
+                    xreg=xreg,
+                )
+            offset = -2 * fit["loglik"] - series_len * math.log(fit["sigma2"])
+        except:
+            offset = 0
+    else:
+        offset = 0
+    allowdrift = allowdrift and (d + D) == 1
+    allowmean = allowmean and (d + D) == 0
+    constant = allowdrift or allowmean
+    if approximation and trace:
+        print("Fitting models using approximations to speed things up")
+    if not stepwise:
+        bestfit = search_arima(
+            x,
+            d,
+            D,
+            max_p,
+            max_q,
+            max_P,
+            max_Q,
+            max_order,
+            stationary,
+            ic,
+            trace,
+            approximation,
+            method=method,
+            xreg=xreg,
+            offset=offset,
+            allow_drift=allowdrift,
+            allow_mean=allowmean,
+            period=m,
+            SSinit=SSinit,
+        )
+        bestfit["lambda"] = blambda
+        bestfit["biasadj"] = biasadj
+        bestfit["x"] = origx
+        if trace:
+            print(f"Best model: {arima_string(bestfit, padding=True)}\n\n")
+        return bestfit
+    if len(x) < 10:
+        start_p = min(start_p, 1)
+        start_q = min(start_q, 1)
+        start_P = 0
+        start_Q = 0
+    p = start_p = min(start_p, max_p)
+    q = start_q = min(start_q, max_q)
+    P = start_P = min(start_P, max_P)
+    Q = start_Q = min(start_Q, max_Q)
+    results = np.full((nmodels, 8), np.nan)
+    p_myarima = partial(
+        myarima,
+        x=x,
+        constant=constant,
+        ic=ic,
+        trace=trace,
+        approximation=approximation,
+        offset=offset,
+        xreg=xreg,
+        method=method,
+        distribution=distribution,
+        SSinit=SSinit,
+    )
+    bestfit = p_myarima(
+        order=(p, d, q),
+        seasonal={"order": (P, D, Q), "period": m},
+    )
+    results[0] = (p, d, q, P, D, Q, constant, bestfit["ic"])
+    fit = p_myarima(
+        order=(0, d, 0),
+        seasonal={"order": (0, D, 0), "period": m},
+    )
+    results[1] = (0, d, 0, 0, D, 0, constant, fit["ic"])
+    if fit["ic"] < bestfit["ic"]:
+        bestfit = fit
+        p = q = P = Q = 0
+    k = 2
+    if max_p > 0 or max_P > 0:
+        p_ = int(max_p > 0)
+        P_ = int(m > 1 and max_P > 0)
+        fit = p_myarima(
+            order=(p_, d, 0),
+            seasonal={"order": (P_, D, 0), "period": m},
+        )
+        results[k] = (p_, d, 0, P_, D, 0, constant, fit["ic"])
+        if fit["ic"] < bestfit["ic"]:
+            bestfit = fit
+            p = p_
+            P = P_
+            q = Q = 0
+        k += 1
+    if max_q > 0 or max_Q > 0:
+        q_ = int(max_q > 0)
+        Q_ = int(m > 1 and max_Q > 0)
+        fit = p_myarima(
+            order=(0, d, q_),
+            seasonal={"order": (0, D, Q_), "period": m},
+        )
+        results[k] = (0, d, q_, 0, D, Q_, constant, fit["ic"])
+        if fit["ic"] < bestfit["ic"]:
+            bestfit = fit
+            p = P = 0
+            Q = Q_
+            q = q_
+        k += 1
+    if constant:
+        fit = p_myarima(
+            order=(0, d, 0),
+            seasonal={"order": (0, D, 0), "period": m},
+            constant=False,
+        )
+        results[k] = (0, d, 0, 0, D, 0, 0, fit["ic"])
+        if fit["ic"] < bestfit["ic"]:
+            bestfit = fit
+            p = q = P = Q = 0
+        k += 1
+
+    def try_params(p, d, q, P, D, Q, constant, k, bestfit):
+        improved = False
+        if k >= results.shape[0]:
+            return k, bestfit, improved
+        fit = p_myarima(
+            order=(p, d, q),
+            seasonal={"order": (P, D, Q), "period": m},
+            constant=constant,
+        )
+        results[k] = (p, d, q, P, D, Q, constant, fit["ic"])
+        k += 1
+        if fit["ic"] < bestfit["ic"]:
+            bestfit = fit
+            improved = True
+        return k, bestfit, improved
+
+    startk = 0
+    while startk < k and k < nmodels:
+        startk = k
+        if P > 0 and newmodel(p, d, q, P - 1, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q, P - 1, D, Q, constant, k, bestfit
+            )
+            if improved:
+                P -= 1
+                continue
+        if Q > 0 and newmodel(p, d, q, P, D, Q - 1, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q, P, D, Q - 1, constant, k, bestfit
+            )
+            if improved:
+                Q -= 1
+                continue
+        if P < max_P and newmodel(p, d, q, P + 1, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q, P + 1, D, Q, constant, k, bestfit
+            )
+            if improved:
+                P += 1
+                continue
+        if Q < max_Q and newmodel(p, d, q, P, D, Q + 1, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q, P, D, Q + 1, constant, k, bestfit
+            )
+            if improved:
+                Q += 1
+                continue
+        if (
+            Q > 0
+            and P > 0
+            and newmodel(p, d, q, P - 1, D, Q - 1, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p, d, q, P - 1, D, Q - 1, constant, k, bestfit
+            )
+            if improved:
+                P -= 1
+                Q -= 1
+                continue
+        if (
+            Q < max_Q
+            and P > 0
+            and newmodel(p, d, q, P - 1, D, Q + 1, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p, d, q, P - 1, D, Q + 1, constant, k, bestfit
+            )
+            if improved:
+                P -= 1
+                Q += 1
+                continue
+        if (
+            Q > 0
+            and P < max_P
+            and newmodel(p, d, q, P + 1, D, Q - 1, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p, d, q, P + 1, D, Q - 1, constant, k, bestfit
+            )
+            if improved:
+                P += 1
+                Q -= 1
+                continue
+        if (
+            Q < max_Q
+            and P < max_P
+            and newmodel(p, d, q, P + 1, D, Q + 1, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p, d, q, P + 1, D, Q + 1, constant, k, bestfit
+            )
+            if improved:
+                P += 1
+                Q += 1
+                continue
+        if p > 0 and newmodel(p - 1, d, q, P, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p - 1, d, q, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p -= 1
+                continue
+        if q > 0 and newmodel(p, d, q - 1, P, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q - 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                q -= 1
+                continue
+        if p < max_p and newmodel(p + 1, d, q, P, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p + 1, d, q, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p += 1
+                continue
+        if q < max_q and newmodel(p, d, q + 1, P, D, Q, constant, results[:k]):
+            k, bestfit, improved = try_params(
+                p, d, q + 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                q += 1
+                continue
+        if (
+            q > 0
+            and p > 0
+            and newmodel(p - 1, d, q - 1, P, D, Q, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p - 1, d, q - 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p -= 1
+                q -= 1
+                continue
+        if (
+            q < max_q
+            and p > 0
+            and newmodel(p - 1, d, q + 1, P, D, Q, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p - 1, d, q + 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p -= 1
+                q += 1
+                continue
+        if (
+            q > 0
+            and p < max_p
+            and newmodel(p + 1, d, q - 1, P, D, Q, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p + 1, d, q - 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p += 1
+                q -= 1
+                continue
+        if (
+            q < max_q
+            and p < max_p
+            and newmodel(p + 1, d, q + 1, P, D, Q, constant, results[:k])
+        ):
+            k, bestfit, improved = try_params(
+                p + 1, d, q + 1, P, D, Q, constant, k, bestfit
+            )
+            if improved:
+                p += 1
+                q += 1
+                continue
+        if (allowdrift or allowmean) and newmodel(
+            p, d, q, P, D, Q, not constant, results[:k]
+        ):
+            k, bestfit, improved = try_params(
+                p, d, q, P, D, Q, not constant, k, bestfit
+            )
+            if improved:
+                constant = not constant
+                continue
+    if k >= nmodels:
+        warnings.warn(
+            f"Stepwise search was stopped early due to reaching the model number limit: nmodels={nmodels}"
+        )
+    if approximation and "arma" in bestfit:
+        if trace:
+            print("Now re-fitting the best model(s) without approximations...\n")
+        icorder = np.argsort(results[:, 7])
+        nmodels = np.sum(~np.isnan(results[:, 7]))
+        for i in range(nmodels):
+            k = icorder[i]
+            p, q, P, Q, constant = map(int, results[k, [0, 2, 3, 5, 6]])
+            fit = myarima(
+                x,
+                (p, d, q),
+                {"order": (P, D, Q), "period": m},
+                constant=results[k, 6],
+                ic=ic,
+                trace=trace,
+                approximation=False,
+                method=method,
+                xreg=xreg,
+                distribution=distribution,
+                SSinit=SSinit,
+            )
+            if fit["ic"] < math.inf:
+                bestfit = fit
+                break
+    if math.isinf(bestfit["ic"]) and method != ArimaMethod.CSS:
+        raise ValueError("No suitable ARIMA model found")
+
+    bestfit["x"] = origx
+    bestfit["ic"] = None
+    bestfit["lambda"] = blambda
+    bestfit["biasadj"] = biasadj
+
+    return bestfit
+
+
+def forward_arima(fitted_model, y, xreg=None, method="CSS-ML"):
+    return Arima(x=y, model=fitted_model, xreg=xreg, method=method)
+
+
+def print_statsforecast_ARIMA(model, digits=3, se=True):
+    print(arima_string(model, padding=False))
+    if model["lambda"] is not None:
+        print(f"Box Cox transformation: lambda={model['lambda']}")
+    if len(model["coef"]) > 0:
+        print("\nCoefficients:")
+        coef = [round(coef, ndigits=digits) for coef in model["coef"].values()]
+        if se and len(model["var_coef"]):
+            ses = np.zeros(len(coef))
+            ses[model["mask"]] = np.sqrt(np.diag(model["var_coef"])).round(
+                decimals=digits
+            )
+            coef = pd.DataFrame(
+                np.stack([coef, ses]),
+                columns=model["coef"].keys(),
+                index=["coefficient", "s.e."],
+            )
+            if "intercept" in coef.columns:
+                coef = coef.rename(columns={"intercept": "mean"})
+            print(coef)
+    else:
+        print("This model does not have coefficients, be sure its properly trained.")
+    print(f"\nsigma^2 = {round(model['sigma2'], ndigits=digits)}", end="")
+    if model["loglik"] is not None:
+        print(f": log likelihood = {model['loglik']:.2f}", end="")
+    print("\n")
+    if not np.isnan(model["aic"]):
+        print(f"AIC={round(model['aic'], 2)}")
+
+
+class ARIMASummary:
+    """ARIMA Summary."""
+
+    def __init__(self, model):
+        self.model = model
+
+    def __repr__(self):
+        return arima_string(self.model)
+
+    def summary(self):
+        return print_statsforecast_ARIMA(self.model)
+
+
+class AutoARIMA:
+    """An AutoARIMA estimator.
+
+    Returns best ARIMA model according to either AIC, AICc or BIC value.
+    The function conducts a search over possible model within the order constraints provided.
+
+    Args:
+        d (int, optional): Order of first-differencing.
+            If missing, will choose a value based on `test`. Defaults to None.
+        D (int, optional): Order of seasonal-differencing.
+            If missing, will choose a value based on `season_test`. Defaults to None.
+        max_p (int): Maximum value of p. Defaults to 5.
+        max_q (int): Maximum value of q. Defaults to 5.
+        max_P (int): Maximum value of P. Defaults to 2.
+        max_Q (int): Maximum value of Q. Defaults to 2.
+        max_order (int): Maximum value of p+q+P+Q if model selection is not stepwise. Defaults to 5.
+        max_d (int): Maximum number of non-seasonal differences. Defaults to 2.
+        max_D (int): Maximum number of seasonal differences. Defaults to 1.
+        start_p (int): Starting value of p in stepwise procedure. Defaults to 2.
+        start_q (int): Starting value of q in stepwise procedure. Defaults to 2.
+        start_P (int): Starting value of P in stepwise procedure. Defaults to 1.
+        start_Q (int): Starting value of Q in stepwise procedure. Defaults to 1.
+        stationary (bool): If True, restricts search to stationary models. Defaults to False.
+        seasonal (bool): If False, restricts search to non-seasonal models. Defaults to True.
+        ic (str): Information criterion to be used in model selection. Defaults to 'aicc'.
+        stepwise (bool): If True, will do stepwise selection (faster).
+            Otherwise, it searches over all models.
+            Non-stepwise selection can be very slow,
+            especially for seasonal models. Defaults to True.
+        nmodels (int): Maximum number of models considered in the stepwise search. Defaults to 94.
+        trace (bool): If True, the list of ARIMA models considered will be reported. Defaults to False.
+        approximation (bool, optional): If True, estimation is via conditional sums of squares
+            and the information criteria used for model
+            selection are approximated.
+            The final model is still computed using
+            maximum likelihood estimation.
+            Approximation should be used for long time series
+            or a high seasonal period to avoid excessive computation times. Defaults to None.
+        method (str, optional): fitting method: maximum likelihood or minimize conditional
+            sum-of-squares.
+            The default (unless there are missing values)
+            is to use conditional-sum-of-squares to find starting values,
+            then maximum likelihood. Can be abbreviated. Defaults to None.
+        truncate (bool, optional): An integer value indicating how many observations
+            to use in model selection.
+            The last truncate values of the series are
+            used to select a model when truncate is not None
+            and approximation=True.
+            All observations are used if either truncate=None
+            or approximation=False. Defaults to None.
+        test (str): Type of unit root test to use. See ndiffs for details. Defaults to 'kpss'.
+        test_kwargs (str, optional): Additional arguments to be passed to the unit root test. Defaults to None.
+        seasonal_test (str): This determines which method is used to select the number
+            of seasonal differences.
+            The default method is to use a measure of seasonal
+            strength computed from an STL decomposition.
+            Other possibilities involve seasonal unit root tests. Defaults to 'seas'.
+        seasonal_test_kwargs (dict, optional): Additional arguments to be passed to the seasonal
+            unit root test. See nsdiffs for details. Defaults to None.
+        allowdrift (bool): If True, models with drift terms are considered. Defaults to True.
+        allowmean (bool): If True, models with a non-zero mean are considered. Defaults to True.
+        blambda (float or str, optional): Box-Cox transformation parameter.
+            If 'auto', the parameter is automatically selected with the
+            Guerrero method over [-0.9, 2].
+            The transformation is ignored if None.
+            Otherwise, data transformed before model is estimated. Defaults to None.
+        biasadj (bool): Use adjusted back-transformed mean for Box-Cox transformations.
+            If transformed data is used to produce forecasts and fitted values,
+            a regular back transformation will result in median forecasts.
+            If biasadj is True, an adjustment will be made to produce
+            mean forecasts and fitted values. Defaults to False.
+        period (int): Number of observations per unit of time.
+            For example 24 for Hourly data. Defaults to 1.
+        SSinit (str): Method used to compute the initial state covariance,
+            either "Gardner1980" or "Rossignol2011". Gardner1980 automatically
+            switches to Rossignol2011 for large state spaces, e.g. long seasonal
+            periods, where it would be too slow or memory intensive. Defaults to "Gardner1980".
+
+    Notes:
+        * This implementation is a mirror of Hyndman's forecast::auto.arima.
+
+    References:
+        [1] https://github.com/robjhyndman/forecast
+    """
+
+    # objects pickled before SSinit existed lack the instance attribute
+    SSinit = "Gardner1980"
+
+    def __init__(
+        self,
+        d: Optional[int] = None,
+        D: Optional[int] = None,
+        max_p: int = 5,
+        max_q: int = 5,
+        max_P: int = 2,
+        max_Q: int = 2,
+        max_order: int = 5,
+        max_d: int = 2,
+        max_D: int = 1,
+        start_p: int = 2,
+        start_q: int = 2,
+        start_P: int = 1,
+        start_Q: int = 1,
+        stationary: bool = False,
+        seasonal: bool = True,
+        ic: str = "aicc",
+        stepwise: bool = True,
+        nmodels: int = 94,
+        trace: bool = False,
+        approximation: Optional[bool] = None,
+        method: Optional[str] = None,
+        truncate: Optional[bool] = None,
+        test: str = "kpss",
+        test_kwargs: Optional[str] = None,
+        seasonal_test: str = "seas",
+        seasonal_test_kwargs: Optional[Dict] = None,
+        allowdrift: bool = True,
+        allowmean: bool = True,
+        blambda: Optional[Union[float, str]] = None,
+        biasadj: bool = False,
+        period: int = 1,
+        SSinit: str = "Gardner1980",
+    ):
+        self.d = d
+        self.D = D
+        self.max_p = max_p
+        self.max_q = max_q
+        self.max_P = max_P
+        self.max_Q = max_Q
+        self.max_order = max_order
+        self.max_d = max_d
+        self.max_D = max_D
+        self.start_p = start_p
+        self.start_q = start_q
+        self.start_P = start_P
+        self.start_Q = start_Q
+        self.stationary = stationary
+        self.seasonal = seasonal
+        self.ic = ic
+        self.stepwise = stepwise
+        self.nmodels = nmodels
+        self.trace = trace
+        self.approximation = approximation
+        self.method = method
+        self.truncate = truncate
+        self.test = test
+        self.test_kwargs = test_kwargs
+        self.seasonal_test = seasonal_test
+        self.seasonal_test_kwargs = seasonal_test_kwargs
+        self.allowdrift = allowdrift
+        self.allowmean = allowmean
+        _check_blambda(blambda)
+        self.blambda = blambda
+        self.biasadj = biasadj
+        self.period = period
+        _check_ssinit(SSinit)
+        self.SSinit = SSinit
+
+    def fit(self, y: np.ndarray, X: Optional[np.ndarray] = None):
+        """Fit the AutoARIMA estimator.
+
+        Fit an AutoARIMA to a time series (numpy array) `y`
+        and optionally exogenous variables (numpy array) `X`.
+
+        Args:
+            y (np.ndarray): One-dimensional numpy array of floats without `np.nan` or `np.inf`
+                values.
+            X (np.ndarray, optional): An optional 2-d numpy array of exogenous variables (float).
+                Defaults to None.
+        """
+        model_ = auto_arima_f(
+            x=y,
+            d=self.d,
+            D=self.D,
+            max_p=self.max_p,
+            max_q=self.max_q,
+            max_P=self.max_P,
+            max_Q=self.max_Q,
+            max_order=self.max_order,
+            max_d=self.max_d,
+            max_D=self.max_D,
+            start_p=self.start_p,
+            start_q=self.start_q,
+            start_P=self.start_P,
+            start_Q=self.start_Q,
+            stationary=self.stationary,
+            seasonal=self.seasonal,
+            ic=self.ic,
+            stepwise=self.stepwise,
+            nmodels=self.nmodels,
+            trace=self.trace,
+            approximation=self.approximation,
+            method=self.method,
+            truncate=self.truncate,
+            xreg=X,
+            test=self.test,
+            test_kwargs=self.test_kwargs,
+            seasonal_test=self.seasonal_test,
+            seasonal_test_kwargs=self.seasonal_test_kwargs,
+            allowdrift=self.allowdrift,
+            allowmean=self.allowmean,
+            blambda=self.blambda,
+            biasadj=self.biasadj,
+            period=self.period,
+            SSinit=self.SSinit,
+        )
+        self.model_ = ARIMASummary(model_)
+
+        return self
+
+    def predict(
+        self,
+        h: int,
+        X: Optional[np.ndarray] = None,
+        level: Optional[Union[int, Tuple[int]]] = None,
+    ):
+        """Forecast future values using a fitted AutoArima.
+
+        Args:
+            h (int): Number of periods for forecasting.
+            X (np.ndarray, optional): Future exogenous variables. Defaults to None.
+            level (int or tuple of int, optional): Confidence level for prediction intervals. Defaults to None.
+
+        Returns:
+            pd.DataFrame: The array of fitted values.
+                The confidence intervals for the forecasts are returned if
+                level is not None.
+        """
+        forecast = forecast_arima(
+            self.model_.model,
+            h=h,
+            xreg=X,
+            level=(level,) if isinstance(level, int) else level,
+        )
+
+        mean = pd.DataFrame({"mean": forecast["mean"]})
+
+        if level is not None:
+            lo = forecast["lower"].add_prefix("lo_")
+            hi = forecast["upper"].add_prefix("hi_")
+
+            return pd.concat([lo, mean, hi], axis=1)
+
+        return mean
+
+    def predict_in_sample(self, level: Optional[Union[int, Tuple[int]]] = None):
+        """Return fitted in sample values using a fitted AutoArima.
+
+        Args:
+            level (int or tuple of int, optional): Confidence level for prediction intervals. Defaults to None.
+
+        Returns:
+            pd.DataFrame: The array of fitted values.
+                The confidence intervals for the forecasts are returned if
+                level is not None.
+        """
+        fitted_values = pd.DataFrame({"mean": fitted_arima(self.model_.model)})
+        if level is not None:
+            _level = [level] if isinstance(level, int) else level
+            _level = sorted(_level)
+            se = np.sqrt(self.model_.model["sigma2"])
+            dist = self.model_.model.get("distribution", "normal")
+            quantiles = _quantiles(_level, distribution=dist, dist_params=error_params_from_model(self.model_.model))
+
+            # intervals are built on the scale the model was fitted on
+            blambda = self.model_.model.get("lambda")
+            trans_fitted = _transformed_fitted_arima(self.model_.model)
+            center = (
+                fitted_values.values if trans_fitted is None else trans_fitted
+            ).reshape(-1, 1)
+
+            lo = center - quantiles * se.reshape(-1, 1)
+            hi = center + quantiles * se.reshape(-1, 1)
+            if blambda is not None:
+                lo = _inv_boxcox(lo, blambda)
+                hi = _inv_boxcox(hi, blambda)
+            lo = pd.DataFrame(lo, columns=[f"lo_{l}%" for l in _level])
+            lo = lo.iloc[:, ::-1]
+            hi = pd.DataFrame(hi, columns=[f"hi_{l}%" for l in _level])
+
+            return pd.concat([lo, fitted_values, hi], axis=1)
+
+        return fitted_values
+
+    def summary(self):
+        return self.model_.summary()
