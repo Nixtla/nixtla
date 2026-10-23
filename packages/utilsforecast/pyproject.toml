@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="utilsforecast"
+version = "0.2.17"
+description = "Forecasting utilities"
+authors = [{name = "Nixtla", email = "business@nixtla.io"}]
+license = {text = "Apache Software License 2.0"}
+readme = "README.md"
+requires-python=">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+keywords = ["time-series", "analysis", "forecasting"]
+dependencies = [
+    "numpy",
+    "packaging",
+    "pandas>=1.5",
+    "narwhals>=2.0",
+]
+
+[project.optional-dependencies]
+plotting = [
+    "pandas[plot]",
+    "plotly",
+    "plotly-resampler; python_version < '3.14'",
+]
+polars = [
+    "polars[numpy]>=1.0,<=1.31",
+]
+
+[dependency-groups]
+dev = [
+    "numba>=0.58.0",
+    "pip",
+    "pre-commit",
+    "pyarrow",
+    "scipy",
+    "pandas[plot]",
+    "plotly",
+    "plotly-resampler; python_version < '3.14'",
+    "polars[numpy]>=1.0",
+    "pytest",
+    "pytest-cov",
+    "fugue[dask,spark]>=0.9.4",
+    "dask",
+    "pip-licenses",
+    "mkdocstrings-parser@git+https://github.com/Nixtla/mkdocstrings-parser.git@main",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/utilsforecast"
+Documentation = "https://nixtlaverse.verse.io/utilsforecast"
+Repository = "https://github.com/Nixtla/utilsforecast"
+
+
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["utilsforecast*"]
+
+[tool.setuptools.package-data]
+utilsforecast = ["py.typed"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = 'utilsforecast.compat'
+ignore_errors = true
+
+[tool.ruff.lint]
+select = ["F", "ARG", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.coverage]
+branch = true
+source = ["utilsforecast"]
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov utilsforecast -vv"

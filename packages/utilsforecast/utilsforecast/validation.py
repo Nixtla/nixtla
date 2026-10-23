@@ -1,0 +1,156 @@
+"""Utilities to validate input data"""
+
+__all__ = [
+    "ensure_shallow_copy",
+    "ensure_time_dtype",
+    "validate_format",
+    "validate_freq",
+]
+
+
+import re
+from typing import Optional, Union
+
+import pandas as pd
+
+from .compat import DataFrame, DFType, Series, pl, pl_DataFrame, pl_Series
+
+
+def _is_int_dtype(s: Union[pd.Index, Series]) -> bool:
+    if isinstance(s, (pd.Index, pd.Series)):
+        out = pd.api.types.is_integer_dtype(s.dtype)
+    else:
+        try:
+            out = s.dtype.is_integer()
+        except AttributeError:
+            out = s.is_integer()
+    return out
+
+
+def _is_dt_dtype(s: Union[pd.Index, Series]) -> bool:
+    if isinstance(s, (pd.Index, pd.Series)):
+        out = pd.api.types.is_datetime64_any_dtype(s.dtype)
+    else:
+        out = s.dtype in (pl.Date, pl.Datetime)
+    return out
+
+
+def _is_dt_or_int(s: Series) -> bool:
+    return _is_dt_dtype(s) or _is_int_dtype(s)
+
+
+def ensure_shallow_copy(df: pd.DataFrame) -> pd.DataFrame:
+    from packaging.version import Version
+
+    if Version(pd.__version__) < Version("1.4"):
+        # https://github.com/pandas-dev/pandas/pull/43406
+        df = df.copy()
+    return df
+
+
+def ensure_time_dtype(df: DFType, time_col: str = "ds") -> DFType:
+    """Make sure that `time_col` contains timestamps or integers.
+    If it contains strings, try to cast them as timestamps."""
+    times = df[time_col]
+    if _is_dt_or_int(times):
+        return df
+    parse_err_msg = (
+        f"Failed to parse '{time_col}' from string to datetime. "
+        "Please make sure that it contains valid timestamps or integers."
+    )
+    if isinstance(times, pd.Series) and pd.api.types.is_string_dtype(times):
+        try:
+            times = pd.to_datetime(times)
+        except ValueError:
+            raise ValueError(parse_err_msg)
+        df = ensure_shallow_copy(df.copy(deep=False))
+        df[time_col] = times
+    elif isinstance(times, pl_Series) and times.dtype == pl.Utf8:
+        try:
+            times = times.str.to_datetime()
+        except pl.exceptions.ComputeError:
+            raise ValueError(parse_err_msg)
+        df = df.with_columns(times)
+    else:
+        raise ValueError(f"'{time_col}' should have valid timestamps or integers.")
+    return df
+
+
+def validate_format(
+    df: DataFrame,
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+    target_col: Optional[str] = "y",
+) -> None:
+    """Ensure DataFrame has expected format.
+
+    Args:
+        df (pandas or polars DataFrame): DataFrame with time series in long format.
+        id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
+        time_col (str, optional): Column that identifies each timestamp. Defaults to 'ds'.
+        target_col (str, optional): Column that contains the target. Defaults to 'y'.
+
+    Returns:
+        None
+    """
+    if not isinstance(df, (pd.DataFrame, pl_DataFrame)):
+        raise ValueError(
+            f"`df` must be either pandas or polars dataframe, got {type(df)}"
+        )
+
+    # required columns
+    expected_cols = {id_col, time_col}
+    if target_col is not None:
+        expected_cols.add(target_col)
+    missing_cols = sorted(expected_cols - set(df.columns))
+    if missing_cols:
+        raise ValueError(f"The following columns are missing: {missing_cols}")
+
+    # time col
+    if not _is_dt_or_int(df[time_col]):
+        times_dtype = df[time_col].dtype
+        raise ValueError(
+            f"The time column ('{time_col}') should have either timestamps or integers, got '{times_dtype}'."
+        )
+
+    # target col
+    if target_col is None:
+        return None
+    target = df[target_col]
+    if isinstance(target, pd.Series):
+        is_numeric = pd.api.types.is_numeric_dtype(target.dtype)
+    else:
+        try:
+            is_numeric = target.dtype.is_numeric()
+        except AttributeError:
+            is_numeric = target.is_numeric()
+    if not is_numeric:
+        raise ValueError(
+            f"The target column ('{target_col}') should have a numeric data type, got '{target.dtype}')"
+        )
+
+
+def validate_freq(
+    times: Series,
+    freq: Union[str, int],
+) -> None:
+    if _is_int_dtype(times) and not isinstance(freq, int):
+        raise ValueError(
+            "Time column contains integers but the specified frequency is not an integer. "
+            "Please provide a valid integer, e.g. `freq=1`"
+        )
+    if _is_dt_dtype(times) and isinstance(freq, int):
+        raise ValueError(
+            "Time column contains timestamps but the specified frequency is an integer. "
+            "Please provide a valid pandas or polars offset, e.g. `freq='D'` or `freq='1d'`."
+        )
+    # try to catch pandas frequency in polars dataframe
+    if isinstance(times, pl_Series) and isinstance(freq, str):
+        missing_n = re.search(r"\d+", freq) is None
+        uppercase = re.sub(r"\d+", "", freq).isupper()
+        if missing_n or uppercase:
+            raise ValueError(
+                "You must specify a valid polars offset when using polars dataframes. "
+                "You can find the available offsets in "
+                "https://pola-rs.github.io/polars/py-polars/html/reference/expressions/api/polars.Expr.dt.offset_by.html"
+            )
