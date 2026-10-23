@@ -1,0 +1,452 @@
+
+
+
+__all__ = ['ConvLayer', 'ProbMask', 'ProbAttention', 'Informer']
+
+
+import math
+from typing import Optional
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from neuralforecast.common._modules import (
+    AttentionLayer,
+    DataEmbedding,
+    TransDecoder,
+    TransDecoderLayer,
+    TransEncoder,
+    TransEncoderLayer,
+)
+
+from ..common._base_model import BaseModel
+from ..losses.pytorch import MAE
+
+
+class ConvLayer(nn.Module):
+    """
+    ConvLayer
+    """
+
+    def __init__(self, c_in):
+        super(ConvLayer, self).__init__()
+        self.downConv = nn.Conv1d(
+            in_channels=c_in,
+            out_channels=c_in,
+            kernel_size=3,
+            padding=2,
+            padding_mode="circular",
+        )
+        self.norm = nn.BatchNorm1d(c_in)
+        self.activation = nn.ELU()
+        self.maxPool = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
+
+    def forward(self, x):
+        x = self.downConv(x.permute(0, 2, 1))
+        x = self.norm(x)
+        x = self.activation(x)
+        x = self.maxPool(x)
+        x = x.transpose(1, 2)
+        return x
+
+
+class ProbMask:
+    """
+    ProbMask
+    """
+
+    def __init__(self, B, H, L, index, scores, device="cpu"):
+        _mask = torch.ones(L, scores.shape[-1], dtype=torch.bool, device=device).triu(1)
+        _mask_ex = _mask[None, None, :].expand(B, H, L, scores.shape[-1])
+        indicator = _mask_ex[
+            torch.arange(B)[:, None, None], torch.arange(H)[None, :, None], index, :
+        ].to(device)
+        self._mask = indicator.view(scores.shape).to(device)
+
+    @property
+    def mask(self):
+        return self._mask
+
+
+class ProbAttention(nn.Module):
+    """
+    ProbAttention
+    """
+
+    def __init__(
+        self,
+        mask_flag=True,
+        factor=5,
+        scale=None,
+        attention_dropout=0.1,
+        output_attention=False,
+    ):
+        super(ProbAttention, self).__init__()
+        self.factor = factor
+        self.scale = scale
+        self.mask_flag = mask_flag
+        self.output_attention = output_attention
+        self.dropout = nn.Dropout(attention_dropout)
+
+    def _prob_QK(self, Q, K, sample_k, n_top):  # n_top: c*ln(L_q)
+        # Q [B, H, L, D]
+        B, H, L_K, E = K.shape
+        _, _, L_Q, _ = Q.shape
+
+        # calculate the sampled Q_K
+        K_expand = K.unsqueeze(-3).expand(B, H, L_Q, L_K, E)
+
+        index_sample = torch.randint(
+            L_K, (L_Q, sample_k)
+        )  # real U = U_part(factor*ln(L_k))*L_q
+        K_sample = K_expand[:, :, torch.arange(L_Q).unsqueeze(1), index_sample, :]
+        Q_K_sample = torch.matmul(Q.unsqueeze(-2), K_sample.transpose(-2, -1)).squeeze()
+
+        # find the Top_k query with sparsity measurement
+        M = Q_K_sample.max(-1)[0] - torch.div(Q_K_sample.sum(-1), L_K)
+        M_top = M.topk(n_top, sorted=False)[1]
+
+        # use the reduced Q to calculate Q_K
+        Q_reduce = Q[
+            torch.arange(B)[:, None, None], torch.arange(H)[None, :, None], M_top, :
+        ]  # factor*ln(L_q)
+        Q_K = torch.matmul(Q_reduce, K.transpose(-2, -1))  # factor*ln(L_q)*L_k
+
+        return Q_K, M_top
+
+    def _get_initial_context(self, V, L_Q):
+        B, H, L_V, D = V.shape
+        if not self.mask_flag:
+            # V_sum = V.sum(dim=-2)
+            V_sum = V.mean(dim=-2)
+            contex = V_sum.unsqueeze(-2).expand(B, H, L_Q, V_sum.shape[-1]).clone()
+        else:  # use mask
+            assert L_Q == L_V  # requires that L_Q == L_V, i.e. for self-attention only
+            contex = V.cumsum(dim=-2)
+        return contex
+
+    def _update_context(self, context_in, V, scores, index, L_Q, attn_mask):
+        B, H, L_V, D = V.shape
+
+        if self.mask_flag:
+            attn_mask = ProbMask(B, H, L_Q, index, scores, device=V.device)
+            scores.masked_fill_(attn_mask.mask, -np.inf)
+
+        attn = torch.softmax(scores, dim=-1)  # nn.Softmax(dim=-1)(scores)
+
+        context_in[
+            torch.arange(B)[:, None, None], torch.arange(H)[None, :, None], index, :
+        ] = torch.matmul(attn, V).type_as(context_in)
+        if self.output_attention:
+            attns = (torch.ones([B, H, L_V, L_V], device=attn.device) / L_V).type_as(
+                attn
+            )
+            attns[
+                torch.arange(B)[:, None, None], torch.arange(H)[None, :, None], index, :
+            ] = attn
+            return (context_in, attns)
+        else:
+            return (context_in, None)
+
+    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
+        B, L_Q, H, D = queries.shape
+        _, L_K, _, _ = keys.shape
+
+        queries = queries.transpose(2, 1)
+        keys = keys.transpose(2, 1)
+        values = values.transpose(2, 1)
+
+        U_part = self.factor * np.ceil(np.log(L_K)).astype("int").item()  # c*ln(L_k)
+        u = self.factor * np.ceil(np.log(L_Q)).astype("int").item()  # c*ln(L_q)
+
+        U_part = U_part if U_part < L_K else L_K
+        u = u if u < L_Q else L_Q
+
+        scores_top, index = self._prob_QK(queries, keys, sample_k=U_part, n_top=u)
+
+        # add scale factor
+        scale = self.scale or 1.0 / math.sqrt(D)
+        if scale is not None:
+            scores_top = scores_top * scale
+        # get the context
+        context = self._get_initial_context(values, L_Q)
+        # update the context with selected top_k queries
+        context, attn = self._update_context(
+            context, values, scores_top, index, L_Q, attn_mask
+        )
+
+        return context.contiguous(), attn
+
+
+class Informer(BaseModel):
+    """Informer
+
+        The Informer model tackles the vanilla Transformer computational complexity challenges for long-horizon forecasting.
+        The architecture has three distinctive features:
+        1) A ProbSparse self-attention mechanism with an O time and memory complexity Llog(L).
+        2) A self-attention distilling process that prioritizes attention and efficiently handles long input sequences.
+        3) An MLP multi-step decoder that predicts long time-series sequences in a single forward operation rather than step-by-step.
+
+    The Informer model utilizes a three-component approach to define its embedding:
+        1) It employs encoded autoregressive features obtained from a convolution network.
+        2) It uses window-relative positional embeddings derived from harmonic functions.
+        3) Absolute positional embeddings obtained from calendar features are utilized.
+
+    Args:
+        h (int): forecast horizon.
+        input_size (int): maximum sequence length for truncated train backpropagation.
+        futr_exog_list (str list): future exogenous columns.
+        hist_exog_list (str list): historic exogenous columns.
+        stat_exog_list (str list): static exogenous columns.
+        cat_exog_list (str list): exogenous columns (from `hist_exog_list` / `futr_exog_list`) to embed instead of scale.
+        categorical_cardinalities (dict): mapping from each categorical column to its number of distinct categories.
+        cat_emb_dim (str or int): categorical embedding size strategy ('fastai', 'sqrt', 'half') or an explicit integer.
+        exclude_insample_y (bool): the model skips the autoregressive features y[t-input_size:t] if True.
+        decoder_input_size_multiplier (float): multiplier for the input size of the decoder.
+        hidden_size (int): units of embeddings and encoders.
+        dropout (float): dropout throughout Informer architecture.
+        factor (int): Probsparse attention factor.
+        n_head (int): controls number of multi-head's attention.
+        conv_hidden_size (int): channels of the convolutional encoder.
+        activation (str): activation from ['ReLU', 'Softplus', 'Tanh', 'SELU', 'LeakyReLU', 'PReLU', 'Sigmoid', 'GELU'].
+        encoder_layers (int): number of layers for the TCN encoder.
+        decoder_layers (int): number of layers for the MLP decoder.
+        distil (bool): whether the Informer decoder uses bottlenecks.
+        loss (PyTorch module): instantiated train loss class from [losses collection](./losses.pytorch.html).
+        valid_loss (PyTorch module): instantiated valid loss class from [losses collection](./losses.pytorch.html).
+        max_steps (int): maximum number of training steps.
+        learning_rate (float): Learning rate between (0, 1).
+        num_lr_decays (int): Number of learning rate decays, evenly distributed across max_steps.
+        early_stop_patience_steps (int): Number of validation iterations before early stopping.
+        val_monitor (str): metric to monitor for early stopping. Valid options: "ptl/val_loss", "valid_loss", "train_loss". Default: "ptl/val_loss".
+        val_check_steps (int): Number of training steps between every validation loss check.
+        batch_size (int): number of different series in each batch.
+        valid_batch_size (int): number of different series in each validation and test batch, if None uses batch_size.
+        windows_batch_size (int): number of windows to sample in each training batch, default uses all.
+        inference_windows_batch_size (int): number of windows to sample in each inference batch.
+        start_padding_enabled (bool): if True, the model will pad the time series with zeros at the beginning, by input size.
+        training_data_availability_threshold (Union[float, List[float]]): minimum fraction of valid data points required for training windows. Single float applies to both insample and outsample; list of two floats specifies [insample_fraction, outsample_fraction]. Default 0.0 allows windows with only 1 valid data point (current behavior).
+        step_size (int): step size between each window of temporal data.
+        scaler_type (str): type of scaler for temporal inputs normalization see [temporal scalers](https://github.com/Nixtla/neuralforecast/blob/main/neuralforecast/common/_scalers.py).
+        random_seed (int): random_seed for pytorch initializer and numpy generators.
+        drop_last_loader (bool): if True `TimeSeriesDataLoader` drops last non-full batch.
+        alias (str): optional,  Custom name of the model.
+        optimizer (Subclass of 'torch.optim.Optimizer'): optional, user specified optimizer instead of the default choice (Adam).
+        optimizer_kwargs (dict): optional, list of parameters used by the user specified `optimizer`.
+        lr_scheduler (Subclass of 'torch.optim.lr_scheduler.LRScheduler'): optional, user specified lr_scheduler instead of the default choice (StepLR).
+
+
+    References:
+        - [Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, Wancai Zhang. "Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting"](https://arxiv.org/abs/2012.07436)
+    """
+
+    # Class attributes
+    EXOGENOUS_FUTR = True
+    EXOGENOUS_HIST = False
+    EXOGENOUS_STAT = False
+    EXOGENOUS_CAT = True
+    MULTIVARIATE = False
+    RECURRENT = False
+
+    def __init__(
+        self,
+        h: int,
+        input_size: int,
+        futr_exog_list=None,
+        hist_exog_list=None,
+        stat_exog_list=None,
+        cat_exog_list=None,
+        categorical_cardinalities=None,
+        cat_emb_dim="fastai",
+        exclude_insample_y=False,
+        decoder_input_size_multiplier: float = 0.5,
+        hidden_size: int = 128,
+        dropout: float = 0.05,
+        factor: int = 3,
+        n_head: int = 4,
+        conv_hidden_size: int = 32,
+        activation: str = "gelu",
+        encoder_layers: int = 2,
+        decoder_layers: int = 1,
+        distil: bool = True,
+        loss=MAE(),
+        valid_loss=None,
+        max_steps: int = 5000,
+        learning_rate: float = 1e-4,
+        num_lr_decays: int = -1,
+        early_stop_patience_steps: int = -1,
+        val_monitor: str = "ptl/val_loss",
+        val_check_steps: int = 100,
+        batch_size: int = 32,
+        valid_batch_size: Optional[int] = None,
+        windows_batch_size=1024,
+        inference_windows_batch_size=1024,
+        start_padding_enabled=False,
+        training_data_availability_threshold=0.0,
+        step_size: int = 1,
+        scaler_type: str = "identity",
+        random_seed: int = 1,
+        drop_last_loader: bool = False,
+        alias: Optional[str] = None,
+        optimizer=None,
+        optimizer_kwargs=None,
+        lr_scheduler=None,
+        lr_scheduler_kwargs=None,
+        dataloader_kwargs=None,
+        **trainer_kwargs,
+    ):
+        super(Informer, self).__init__(
+            h=h,
+            input_size=input_size,
+            hist_exog_list=hist_exog_list,
+            stat_exog_list=stat_exog_list,
+            futr_exog_list=futr_exog_list,
+            cat_exog_list=cat_exog_list,
+            categorical_cardinalities=categorical_cardinalities,
+            cat_emb_dim=cat_emb_dim,
+            exclude_insample_y=exclude_insample_y,
+            loss=loss,
+            valid_loss=valid_loss,
+            max_steps=max_steps,
+            learning_rate=learning_rate,
+            num_lr_decays=num_lr_decays,
+            early_stop_patience_steps=early_stop_patience_steps,
+            val_monitor=val_monitor,
+            val_check_steps=val_check_steps,
+            batch_size=batch_size,
+            valid_batch_size=valid_batch_size,
+            windows_batch_size=windows_batch_size,
+            inference_windows_batch_size=inference_windows_batch_size,
+            start_padding_enabled=start_padding_enabled,
+            training_data_availability_threshold=training_data_availability_threshold,
+            step_size=step_size,
+            scaler_type=scaler_type,
+            drop_last_loader=drop_last_loader,
+            alias=alias,
+            random_seed=random_seed,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
+            lr_scheduler=lr_scheduler,
+            lr_scheduler_kwargs=lr_scheduler_kwargs,
+            dataloader_kwargs=dataloader_kwargs,
+            **trainer_kwargs,
+        )
+
+        # Architecture
+        self.label_len = int(np.ceil(input_size * decoder_input_size_multiplier))
+        if (self.label_len >= input_size) or (self.label_len <= 0):
+            raise Exception(
+                f"Check decoder_input_size_multiplier={decoder_input_size_multiplier}, range (0,1)"
+            )
+
+        if activation not in ["relu", "gelu"]:
+            raise Exception(f"Check activation={activation}")
+
+        self.c_out = self.loss.outputsize_multiplier
+        self.output_attention = False
+        self.enc_in = 1
+        self.dec_in = 1
+
+        # Embedding
+        self.enc_embedding = DataEmbedding(
+            c_in=self.enc_in,
+            exog_input_size=self.futr_exog_size,
+            hidden_size=hidden_size,
+            pos_embedding=True,
+            dropout=dropout,
+        )
+        self.dec_embedding = DataEmbedding(
+            self.dec_in,
+            exog_input_size=self.futr_exog_size,
+            hidden_size=hidden_size,
+            pos_embedding=True,
+            dropout=dropout,
+        )
+
+        # Encoder
+        self.encoder = TransEncoder(
+            [
+                TransEncoderLayer(
+                    AttentionLayer(
+                        ProbAttention(
+                            False,
+                            factor,
+                            attention_dropout=dropout,
+                            output_attention=self.output_attention,
+                        ),
+                        hidden_size,
+                        n_head,
+                    ),
+                    hidden_size,
+                    conv_hidden_size,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for l in range(encoder_layers)
+            ],
+            (
+                [ConvLayer(hidden_size) for l in range(encoder_layers - 1)]
+                if distil
+                else None
+            ),
+            norm_layer=torch.nn.LayerNorm(hidden_size),
+        )
+        # Decoder
+        self.decoder = TransDecoder(
+            [
+                TransDecoderLayer(
+                    AttentionLayer(
+                        ProbAttention(
+                            True,
+                            factor,
+                            attention_dropout=dropout,
+                            output_attention=False,
+                        ),
+                        hidden_size,
+                        n_head,
+                    ),
+                    AttentionLayer(
+                        ProbAttention(
+                            False,
+                            factor,
+                            attention_dropout=dropout,
+                            output_attention=False,
+                        ),
+                        hidden_size,
+                        n_head,
+                    ),
+                    hidden_size,
+                    conv_hidden_size,
+                    dropout=dropout,
+                    activation=activation,
+                )
+                for l in range(decoder_layers)
+            ],
+            norm_layer=torch.nn.LayerNorm(hidden_size),
+            projection=nn.Linear(hidden_size, self.c_out, bias=True),
+        )
+
+    def forward(self, windows_batch):
+        # Parse windows_batch
+        insample_y = windows_batch["insample_y"]
+        futr_exog = windows_batch["futr_exog"]
+
+        if self.futr_exog_size > 0:
+            x_mark_enc = futr_exog[:, : self.input_size, :]
+            x_mark_dec = futr_exog[:, -(self.label_len + self.h) :, :]
+        else:
+            x_mark_enc = None
+            x_mark_dec = None
+
+        x_dec = torch.zeros(size=(len(insample_y), self.h, 1), device=insample_y.device)
+        x_dec = torch.cat([insample_y[:, -self.label_len :, :], x_dec], dim=1)
+
+        enc_out = self.enc_embedding(insample_y, x_mark_enc)
+        enc_out, _ = self.encoder(enc_out, attn_mask=None)  # attns visualization
+
+        dec_out = self.dec_embedding(x_dec, x_mark_dec)
+        dec_out = self.decoder(dec_out, enc_out, x_mask=None, cross_mask=None)
+
+        forecast = dec_out[:, -self.h :]
+        return forecast

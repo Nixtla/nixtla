@@ -1,0 +1,878 @@
+
+
+
+__all__ = ['TFT']
+
+
+from typing import Callable, Optional, Tuple
+
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import Tensor
+from torch.nn import LayerNorm
+
+from ..common._base_model import BaseModel
+from ..losses.pytorch import MAE
+
+
+def get_activation_fn(activation_str: str) -> Callable:
+    activation_map = {
+        "ReLU": F.relu,
+        "Softplus": F.softplus,
+        "Tanh": F.tanh,
+        "SELU": F.selu,
+        "LeakyReLU": F.leaky_relu,
+        "Sigmoid": F.sigmoid,
+        "ELU": F.elu,
+        "GLU": F.glu,
+        "GELU": F.gelu,
+    }
+    return activation_map.get(activation_str, F.elu)
+
+
+class MaybeLayerNorm(nn.Module):
+    def __init__(self, output_size, hidden_size, eps):
+        super().__init__()
+        if output_size and output_size == 1:
+            self.ln = nn.Identity()
+        else:
+            self.ln = LayerNorm(output_size if output_size else hidden_size, eps=eps)
+
+    def forward(self, x):
+        return self.ln(x)
+
+
+class GLU(nn.Module):
+    def __init__(self, hidden_size, output_size):
+        super().__init__()
+        self.lin = nn.Linear(hidden_size, output_size * 2)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.lin(x)
+        x = F.glu(x)
+        return x
+
+
+class GRN(nn.Module):
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        output_size=None,
+        context_hidden_size=None,
+        dropout=0,
+        activation="ELU",
+    ):
+        super().__init__()
+        self.layer_norm = MaybeLayerNorm(output_size, hidden_size, eps=1e-3)
+        self.lin_a = nn.Linear(input_size, hidden_size)
+        if context_hidden_size is not None:
+            self.lin_c = nn.Linear(context_hidden_size, hidden_size, bias=False)
+        self.lin_i = nn.Linear(hidden_size, hidden_size)
+        self.glu = GLU(hidden_size, output_size if output_size else hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.out_proj = nn.Linear(input_size, output_size) if output_size else None
+        self.activation_fn = get_activation_fn(activation)
+
+    def forward(self, a: Tensor, c: Optional[Tensor] = None):
+        x = self.lin_a(a)
+        if c is not None:
+            x = x + self.lin_c(c).unsqueeze(1)
+        x = self.activation_fn(x)
+        x = self.lin_i(x)
+        x = self.dropout(x)
+        x = self.glu(x)
+        y = a if not self.out_proj else self.out_proj(a)
+        x = x + y
+        x = self.layer_norm(x)
+        return x
+
+
+class TFTEmbedding(nn.Module):
+    def __init__(
+        self, hidden_size, stat_input_size, futr_input_size, hist_input_size, tgt_size
+    ):
+        super().__init__()
+        # There are 4 types of input:
+        # 1. Static continuous
+        # 2. Temporal known a priori continuous
+        # 3. Temporal observed continuous
+        # 4. Temporal observed targets (time series obseved so far)
+
+        self.hidden_size = hidden_size
+
+        self.stat_input_size = stat_input_size
+        self.futr_input_size = futr_input_size
+        self.hist_input_size = hist_input_size
+        self.tgt_size = tgt_size
+
+        # Instantiate Continuous Embeddings if size is not None
+        for attr, size in [
+            ("stat_exog_embedding", stat_input_size),
+            ("futr_exog_embedding", futr_input_size),
+            ("hist_exog_embedding", hist_input_size),
+            ("tgt_embedding", tgt_size),
+        ]:
+            if size:
+                vectors = nn.Parameter(torch.Tensor(size, hidden_size))
+                bias = nn.Parameter(torch.zeros(size, hidden_size))
+                torch.nn.init.xavier_normal_(vectors)
+                setattr(self, attr + "_vectors", vectors)
+                setattr(self, attr + "_bias", bias)
+            else:
+                setattr(self, attr + "_vectors", None)
+                setattr(self, attr + "_bias", None)
+
+    def _apply_embedding(
+        self,
+        cont: Optional[Tensor],
+        cont_emb: Tensor,
+        cont_bias: Tensor,
+    ):
+        if cont is not None:
+            # the line below is equivalent to following einsums
+            # e_cont = torch.einsum('btf,fh->bthf', cont, cont_emb)
+            # e_cont = torch.einsum('bf,fh->bhf', cont, cont_emb)
+            e_cont = torch.mul(cont.unsqueeze(-1), cont_emb)
+            e_cont = e_cont + cont_bias
+            return e_cont
+
+        return None
+
+    def forward(self, target_inp, stat_exog=None, futr_exog=None, hist_exog=None):
+        # temporal/static categorical/continuous known/observed input
+        # tries to get input, if fails returns None
+
+        # Static inputs are expected to be equal for all timesteps
+        # For memory efficiency there is no assert statement
+        stat_exog = stat_exog[:, :] if stat_exog is not None else None
+
+        s_inp = self._apply_embedding(
+            cont=stat_exog,
+            cont_emb=self.stat_exog_embedding_vectors,
+            cont_bias=self.stat_exog_embedding_bias,
+        )
+        k_inp = self._apply_embedding(
+            cont=futr_exog,
+            cont_emb=self.futr_exog_embedding_vectors,
+            cont_bias=self.futr_exog_embedding_bias,
+        )
+        o_inp = self._apply_embedding(
+            cont=hist_exog,
+            cont_emb=self.hist_exog_embedding_vectors,
+            cont_bias=self.hist_exog_embedding_bias,
+        )
+
+        # Temporal observed targets
+        # t_observed_tgt = torch.einsum('btf,fh->btfh',
+        #                               target_inp, self.tgt_embedding_vectors)
+        target_inp = torch.matmul(
+            target_inp.unsqueeze(3).unsqueeze(4),
+            self.tgt_embedding_vectors.unsqueeze(1),
+        ).squeeze(3)
+        target_inp = target_inp + self.tgt_embedding_bias
+
+        return s_inp, k_inp, o_inp, target_inp
+
+
+class VariableSelectionNetwork(nn.Module):
+    def __init__(self, hidden_size, num_inputs, dropout, grn_activation):
+        super().__init__()
+        self.joint_grn = GRN(
+            input_size=hidden_size * num_inputs,
+            hidden_size=hidden_size,
+            output_size=num_inputs,
+            context_hidden_size=hidden_size,
+            activation=grn_activation,
+        )
+        self.var_grns = nn.ModuleList(
+            [
+                GRN(
+                    input_size=hidden_size,
+                    hidden_size=hidden_size,
+                    dropout=dropout,
+                    activation=grn_activation,
+                )
+                for _ in range(num_inputs)
+            ]
+        )
+
+    def forward(self, x: Tensor, context: Optional[Tensor] = None):
+        Xi = x.reshape(*x.shape[:-2], -1)
+        grn_outputs = self.joint_grn(Xi, c=context)
+        sparse_weights = F.softmax(grn_outputs, dim=-1)
+        transformed_embed_list = [m(x[..., i, :]) for i, m in enumerate(self.var_grns)]
+        transformed_embed = torch.stack(transformed_embed_list, dim=-1)
+        # the line below performs batched matrix vector multiplication
+        # for temporal features it's bthf,btf->bth
+        # for static features it's bhf,bf->bh
+        variable_ctx = torch.matmul(
+            transformed_embed, sparse_weights.unsqueeze(-1)
+        ).squeeze(-1)
+
+        return variable_ctx, sparse_weights
+
+
+class InterpretableMultiHeadAttention(nn.Module):
+    def __init__(self, n_head, hidden_size, example_length, attn_dropout, dropout):
+        super().__init__()
+        self.n_head = n_head
+        assert hidden_size % n_head == 0
+        self.d_head = hidden_size // n_head
+        self.qkv_linears = nn.Linear(
+            hidden_size, (2 * self.n_head + 1) * self.d_head, bias=False
+        )
+        self.out_proj = nn.Linear(self.d_head, hidden_size, bias=False)
+
+        self.attn_dropout = nn.Dropout(attn_dropout)
+        self.out_dropout = nn.Dropout(dropout)
+        self.scale = self.d_head**-0.5
+        self.register_buffer(
+            "_mask",
+            torch.triu(
+                torch.full((example_length, example_length), float("-inf")), 1
+            ).unsqueeze(0),
+        )
+
+    def forward(
+        self, x: Tensor, mask_future_timesteps: bool = True
+    ) -> Tuple[Tensor, Tensor]:
+        # [Batch,Time,MultiHead,AttDim] := [N,T,M,AD]
+        bs, t, h_size = x.shape
+        qkv = self.qkv_linears(x)
+        q, k, v = qkv.split(
+            (self.n_head * self.d_head, self.n_head * self.d_head, self.d_head), dim=-1
+        )
+        q = q.view(bs, t, self.n_head, self.d_head)
+        k = k.view(bs, t, self.n_head, self.d_head)
+        v = v.view(bs, t, self.d_head)
+
+        # [N,T1,M,Ad] x [N,T2,M,Ad] -> [N,M,T1,T2]
+        # attn_score = torch.einsum('bind,bjnd->bnij', q, k)
+        attn_score = torch.matmul(q.permute((0, 2, 1, 3)), k.permute((0, 2, 3, 1)))
+        attn_score.mul_(self.scale)
+
+        if mask_future_timesteps:
+            attn_score = attn_score + self._mask
+
+        attn_prob = F.softmax(attn_score, dim=3)
+        attn_prob = self.attn_dropout(attn_prob)
+
+        # [N,M,T1,T2] x [N,M,T1,Ad] -> [N,M,T1,Ad]
+        # attn_vec = torch.einsum('bnij,bjd->bnid', attn_prob, v)
+        attn_vec = torch.matmul(attn_prob, v.unsqueeze(1))
+        m_attn_vec = torch.mean(attn_vec, dim=1)
+        out = self.out_proj(m_attn_vec)
+        out = self.out_dropout(out)
+
+        return out, attn_prob
+
+
+class StaticCovariateEncoder(nn.Module):
+    def __init__(
+        self,
+        hidden_size,
+        num_static_vars,
+        dropout,
+        grn_activation,
+        rnn_type="lstm",
+        n_rnn_layers=1,
+        one_rnn_initial_state=False,
+    ):
+        super().__init__()
+        self.vsn = VariableSelectionNetwork(
+            hidden_size=hidden_size,
+            num_inputs=num_static_vars,
+            dropout=dropout,
+            grn_activation=grn_activation,
+        )
+        self.rnn_type = rnn_type.lower()
+
+        self.n_rnn_layers = n_rnn_layers
+
+        self.n_states = 1 if one_rnn_initial_state else n_rnn_layers
+
+        n_contexts = 2 + 2 * self.n_states if rnn_type == "lstm" else 2 + self.n_states
+
+        self.context_grns = nn.ModuleList(
+            [
+                GRN(input_size=hidden_size, hidden_size=hidden_size, dropout=dropout)
+                for _ in range(n_contexts)
+            ]
+        )
+
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+        variable_ctx, sparse_weights = self.vsn(x)
+
+        # Context vectors:
+        # variable selection context
+        # enrichment context
+        # state_c context
+        # state_h context
+
+        cs, ce = list(m(variable_ctx) for m in self.context_grns[:2])  # type: ignore
+
+        if self.n_states == 1:
+            ch = torch.cat(
+                self.n_rnn_layers
+                * list(
+                    m(variable_ctx).unsqueeze(0)
+                    for m in self.context_grns[2 : self.n_states + 2]
+                )
+            )
+
+            if self.rnn_type == "lstm":
+                cc = torch.cat(
+                    self.n_rnn_layers
+                    * list(
+                        m(variable_ctx).unsqueeze(0)
+                        for m in self.context_grns[self.n_states + 2 :]
+                    )
+                )
+
+        else:
+            ch = torch.cat(
+                list(
+                    m(variable_ctx).unsqueeze(0)
+                    for m in self.context_grns[2 : self.n_states + 2]
+                )
+            )
+
+            if self.rnn_type == "lstm":
+                cc = torch.cat(
+                    list(
+                        m(variable_ctx).unsqueeze(0)
+                        for m in self.context_grns[self.n_states + 2 :]
+                    )
+                )
+        if self.rnn_type != "lstm":
+            cc = ch
+
+        return cs, ce, ch, cc, sparse_weights  # type: ignore
+
+
+class TemporalCovariateEncoder(nn.Module):
+    def __init__(
+        self,
+        hidden_size,
+        num_historic_vars,
+        num_future_vars,
+        dropout,
+        grn_activation,
+        rnn_type="lstm",
+        n_rnn_layers=1,
+    ):
+        super(TemporalCovariateEncoder, self).__init__()
+        self.rnn_type = rnn_type.lower()
+        self.n_rnn_layers = n_rnn_layers
+
+        self.history_vsn = VariableSelectionNetwork(
+            hidden_size=hidden_size,
+            num_inputs=num_historic_vars,
+            dropout=dropout,
+            grn_activation=grn_activation,
+        )
+        if self.rnn_type == "lstm":
+            self.history_encoder = nn.LSTM(
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                batch_first=True,
+                num_layers=n_rnn_layers,
+            )
+
+            self.future_encoder = nn.LSTM(
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                batch_first=True,
+                num_layers=n_rnn_layers,
+            )
+
+        elif self.rnn_type == "gru":
+            self.history_encoder = nn.GRU(
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                batch_first=True,
+                num_layers=n_rnn_layers,
+            )
+            self.future_encoder = nn.GRU(
+                input_size=hidden_size,
+                hidden_size=hidden_size,
+                batch_first=True,
+                num_layers=n_rnn_layers,
+            )
+        else:
+            raise ValueError('RNN type should be in ["lstm","gru"] !')
+
+        self.future_vsn = VariableSelectionNetwork(
+            hidden_size=hidden_size,
+            num_inputs=num_future_vars,
+            dropout=dropout,
+            grn_activation=grn_activation,
+        )
+
+        # Shared Gated-Skip Connection
+        self.input_gate = GLU(hidden_size, hidden_size)
+        self.input_gate_ln = LayerNorm(hidden_size, eps=1e-3)
+
+    def forward(self, historical_inputs, future_inputs, cs, ch, cc):
+        # [N,X_in,L] -> [N,hidden_size,L]
+        historical_features, history_vsn_sparse_weights = self.history_vsn(
+            historical_inputs, cs
+        )
+        if self.rnn_type == "lstm":
+            history, state = self.history_encoder(historical_features, (ch, cc))
+
+        elif self.rnn_type == "gru":
+            history, state = self.history_encoder(historical_features, ch)
+
+        future_features, future_vsn_sparse_weights = self.future_vsn(future_inputs, cs)
+        future, _ = self.future_encoder(future_features, state)
+        # torch.cuda.synchronize() # this call gives prf boost for unknown reasons
+
+        input_embedding = torch.cat([historical_features, future_features], dim=1)
+        temporal_features = torch.cat([history, future], dim=1)
+        temporal_features = self.input_gate(temporal_features)
+        temporal_features = temporal_features + input_embedding
+        temporal_features = self.input_gate_ln(temporal_features)
+        return temporal_features, history_vsn_sparse_weights, future_vsn_sparse_weights
+
+
+class TemporalFusionDecoder(nn.Module):
+    def __init__(
+        self,
+        n_head,
+        hidden_size,
+        example_length,
+        encoder_length,
+        attn_dropout,
+        dropout,
+        grn_activation,
+    ):
+        super(TemporalFusionDecoder, self).__init__()
+        self.encoder_length = encoder_length
+
+        # ------------- Encoder-Decoder Attention --------------#
+        self.enrichment_grn = GRN(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            context_hidden_size=hidden_size,
+            dropout=dropout,
+            activation=grn_activation,
+        )
+        self.attention = InterpretableMultiHeadAttention(
+            n_head=n_head,
+            hidden_size=hidden_size,
+            example_length=example_length,
+            attn_dropout=attn_dropout,
+            dropout=dropout,
+        )
+        self.attention_gate = GLU(hidden_size, hidden_size)
+        self.attention_ln = LayerNorm(normalized_shape=hidden_size, eps=1e-3)
+
+        self.positionwise_grn = GRN(
+            input_size=hidden_size,
+            hidden_size=hidden_size,
+            dropout=dropout,
+            activation=grn_activation,
+        )
+
+        # ---------------------- Decoder -----------------------#
+        self.decoder_gate = GLU(hidden_size, hidden_size)
+        self.decoder_ln = LayerNorm(normalized_shape=hidden_size, eps=1e-3)
+
+    def forward(self, temporal_features, ce):
+        # ------------- Encoder-Decoder Attention --------------#
+        # Static enrichment
+        enriched = self.enrichment_grn(temporal_features, c=ce)
+
+        # Temporal self attention
+        x, atten_vect = self.attention(enriched, mask_future_timesteps=True)
+
+        # Don't compute historical quantiles
+        x = x[:, self.encoder_length :, :]
+        temporal_features = temporal_features[:, self.encoder_length :, :]
+        enriched = enriched[:, self.encoder_length :, :]
+
+        x = self.attention_gate(x)
+        x = x + enriched
+        x = self.attention_ln(x)
+
+        # Position-wise feed-forward
+        x = self.positionwise_grn(x)
+
+        # ---------------------- Decoder ----------------------#
+        # Final skip connection
+        x = self.decoder_gate(x)
+        x = x + temporal_features
+        x = self.decoder_ln(x)
+
+        return x, atten_vect
+
+
+class TFT(BaseModel):
+    """TFT
+
+    The Temporal Fusion Transformer architecture (TFT) is an Sequence-to-Sequence
+    model that combines static, historic and future available data to predict an
+    univariate target. The method combines gating layers, an LSTM recurrent encoder,
+    with and interpretable multi-head attention layer and a multi-step forecasting
+    strategy decoder.
+
+    Args:
+        h (int): Forecast horizon.
+        input_size (int): autorregresive inputs size, y=[1,2,3,4] input_size=2 -> y_[t-2:t]=[1,2].
+        tgt_size (int): target size.
+        stat_exog_list (str list): static continuous columns.
+        hist_exog_list (str list): historic continuous columns.
+        futr_exog_list (str list): future continuous columns.
+        hidden_size (int): units of embeddings and encoders.
+        n_head (int): number of attention heads in temporal fusion decoder.
+        attn_dropout (float): dropout of fusion decoder's attention layer.
+        grn_activation (str): activation for the GRN module from ['ReLU', 'Softplus', 'Tanh', 'SELU', 'LeakyReLU', 'Sigmoid', 'ELU', 'GLU', 'GELU'].
+        n_rnn_layers (int): number of RNN layers.
+        rnn_type (str): recurrent neural network (RNN) layer type from ["lstm","gru"].
+        one_rnn_initial_state (str): Initialize all rnn layers with the same initial states computed from static covariates.
+        dropout (float): dropout of inputs VSNs.
+        loss (PyTorch module): instantiated train loss class from [losses collection](./losses.pytorch.html).
+        valid_loss (PyTorch module): instantiated valid loss class from [losses collection](./losses.pytorch.html).
+        max_steps (int): maximum number of training steps.
+        learning_rate (float): Learning rate between (0, 1).
+        num_lr_decays (int): Number of learning rate decays, evenly distributed across max_steps.
+        early_stop_patience_steps (int): Number of validation iterations before early stopping.
+        val_monitor (str): metric to monitor for early stopping. Valid options: "ptl/val_loss", "valid_loss", "train_loss". Default: "ptl/val_loss".
+        val_check_steps (int): Number of training steps between every validation loss check.
+        batch_size (int): number of different series in each batch.
+        valid_batch_size (int): number of different series in each validation and test batch.
+        windows_batch_size (int): windows sampled from rolled data, default uses all.
+        inference_windows_batch_size (int): number of windows to sample in each inference batch, -1 uses all.
+        start_padding_enabled (bool): if True, the model will pad the time series with zeros at the beginning, by input size.
+        training_data_availability_threshold (Union[float, List[float]]): minimum fraction of valid data points required for training windows. Single float applies to both insample and outsample; list of two floats specifies [insample_fraction, outsample_fraction]. Default 0.0 allows windows with only 1 valid data point (current behavior).
+        step_size (int): step size between each window of temporal data.
+        scaler_type (str): type of scaler for temporal inputs normalization see [temporal scalers](https://github.com/Nixtla/neuralforecast/blob/main/neuralforecast/common/_scalers.py).
+        random_seed (int): random seed initialization for replicability.
+        drop_last_loader (bool): if True `TimeSeriesDataLoader` drops last non-full batch.
+        alias (str): optional,  Custom name of the model.
+        optimizer (Subclass of 'torch.optim.Optimizer'): optional, user specified optimizer instead of the default choice (Adam).
+        optimizer_kwargs (dict): optional, list of parameters used by the user specified `optimizer`.
+        lr_scheduler (Subclass of 'torch.optim.lr_scheduler.LRScheduler'): optional, user specified lr_scheduler instead of the default choice (StepLR).
+        lr_scheduler_kwargs (dict): optional, list of parameters used by the user specified `lr_scheduler`.
+        dataloader_kwargs (dict): optional, list of parameters passed into the PyTorch Lightning dataloader by the `TimeSeriesDataLoader`.
+        **trainer_kwargs (int):  keyword trainer arguments inherited from [PyTorch Lightning's trainer](https://pytorch-lightning.readthedocs.io/en/stable/api/pytorch_lightning.trainer.trainer.Trainer.html?highlight=trainer).
+
+    References:
+        - [Bryan Lim, Sercan O. Arik, Nicolas Loeff, Tomas Pfister, "Temporal Fusion Transformers for interpretable multi-horizon time series forecasting"](https://www.sciencedirect.com/science/article/pii/S0169207021000637)
+    """
+
+    # Class attributes
+    EXOGENOUS_FUTR = True
+    EXOGENOUS_HIST = True
+    EXOGENOUS_STAT = True
+    MULTIVARIATE = False  # If the model produces multivariate forecasts (True) or univariate (False)
+    RECURRENT = (
+        False  # If the model produces forecasts recursively (True) or direct (False)
+    )
+
+    def __init__(
+        self,
+        h,
+        input_size,
+        tgt_size: int = 1,
+        stat_exog_list=None,
+        hist_exog_list=None,
+        futr_exog_list=None,
+        hidden_size: int = 128,
+        n_head: int = 4,
+        attn_dropout: float = 0.0,
+        grn_activation: str = "ELU",
+        n_rnn_layers: int = 1,
+        rnn_type: str = "lstm",
+        one_rnn_initial_state: bool = False,
+        dropout: float = 0.1,
+        loss=MAE(),
+        valid_loss=None,
+        max_steps: int = 1000,
+        learning_rate: float = 1e-3,
+        num_lr_decays: int = -1,
+        early_stop_patience_steps: int = -1,
+        val_monitor: str = "ptl/val_loss",
+        val_check_steps: int = 100,
+        batch_size: int = 32,
+        valid_batch_size: Optional[int] = None,
+        windows_batch_size: int = 1024,
+        inference_windows_batch_size: int = 1024,
+        start_padding_enabled=False,
+        training_data_availability_threshold=0.0,
+        step_size: int = 1,
+        scaler_type: str = "robust",
+        random_seed: int = 1,
+        drop_last_loader=False,
+        alias: Optional[str] = None,
+        optimizer=None,
+        optimizer_kwargs=None,
+        lr_scheduler=None,
+        lr_scheduler_kwargs=None,
+        dataloader_kwargs=None,
+        **trainer_kwargs,
+    ):
+        # Inherit BaseWindows class
+        super(TFT, self).__init__(
+            h=h,
+            input_size=input_size,
+            stat_exog_list=stat_exog_list,
+            hist_exog_list=hist_exog_list,
+            futr_exog_list=futr_exog_list,
+            loss=loss,
+            valid_loss=valid_loss,
+            max_steps=max_steps,
+            learning_rate=learning_rate,
+            num_lr_decays=num_lr_decays,
+            early_stop_patience_steps=early_stop_patience_steps,
+            val_monitor=val_monitor,
+            val_check_steps=val_check_steps,
+            batch_size=batch_size,
+            valid_batch_size=valid_batch_size,
+            windows_batch_size=windows_batch_size,
+            inference_windows_batch_size=inference_windows_batch_size,
+            start_padding_enabled=start_padding_enabled,
+            training_data_availability_threshold=training_data_availability_threshold,
+            step_size=step_size,
+            scaler_type=scaler_type,
+            random_seed=random_seed,
+            drop_last_loader=drop_last_loader,
+            alias=alias,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
+            lr_scheduler=lr_scheduler,
+            lr_scheduler_kwargs=lr_scheduler_kwargs,
+            dataloader_kwargs=dataloader_kwargs,
+            **trainer_kwargs,
+        )
+        self.example_length = input_size + h
+        self.interpretability_params = dict([])  # type: ignore
+        self.tgt_size = tgt_size
+        self.grn_activation = grn_activation
+        futr_exog_size = max(self.futr_exog_size, 1)
+        num_historic_vars = futr_exog_size + self.hist_exog_size + tgt_size
+        self.n_rnn_layers = n_rnn_layers
+        self.rnn_type = rnn_type.lower()
+        # ------------------------------- Encoders -----------------------------#
+        self.embedding = TFTEmbedding(
+            hidden_size=hidden_size,
+            stat_input_size=self.stat_exog_size,
+            futr_input_size=futr_exog_size,
+            hist_input_size=self.hist_exog_size,
+            tgt_size=tgt_size,
+        )
+
+        if self.stat_exog_size > 0:
+            self.static_encoder = StaticCovariateEncoder(
+                hidden_size=hidden_size,
+                num_static_vars=self.stat_exog_size,
+                dropout=dropout,
+                grn_activation=self.grn_activation,
+                rnn_type=self.rnn_type,
+                n_rnn_layers=n_rnn_layers,
+                one_rnn_initial_state=one_rnn_initial_state,
+            )
+
+        self.temporal_encoder = TemporalCovariateEncoder(
+            hidden_size=hidden_size,
+            num_historic_vars=num_historic_vars,
+            num_future_vars=futr_exog_size,
+            dropout=dropout,
+            grn_activation=self.grn_activation,
+            n_rnn_layers=n_rnn_layers,
+            rnn_type=self.rnn_type,
+        )
+
+        # ------------------------------ Decoders -----------------------------#
+        self.temporal_fusion_decoder = TemporalFusionDecoder(
+            n_head=n_head,
+            hidden_size=hidden_size,
+            example_length=self.example_length,
+            encoder_length=self.input_size,
+            attn_dropout=attn_dropout,
+            dropout=dropout,
+            grn_activation=self.grn_activation,
+        )
+
+        # Adapter with Loss dependent dimensions
+        self.output_adapter = nn.Linear(
+            in_features=hidden_size, out_features=self.loss.outputsize_multiplier
+        )
+
+    def forward(self, windows_batch):
+
+        # Parsiw windows_batch
+        y_insample = windows_batch["insample_y"]  # <- [B,T,1]
+        futr_exog = windows_batch["futr_exog"]
+        hist_exog = windows_batch["hist_exog"]
+        stat_exog = windows_batch["stat_exog"]
+
+        if futr_exog is None:
+            futr_exog = y_insample[:, [-1]]
+            futr_exog = futr_exog.repeat(1, self.example_length, 1)
+
+        s_inp, k_inp, o_inp, t_observed_tgt = self.embedding(
+            target_inp=y_insample,
+            hist_exog=hist_exog,
+            futr_exog=futr_exog,
+            stat_exog=stat_exog,
+        )
+
+        # -------------------------------- Inputs ------------------------------#
+        # Static context
+        if s_inp is not None:
+            cs, ce, ch, cc, static_encoder_sparse_weights = self.static_encoder(s_inp)
+            # ch, cc = ch.unsqueeze(0), cc.unsqueeze(0)  # LSTM initial states
+        else:
+            # If None add zeros
+            batch_size, example_length, target_size, hidden_size = t_observed_tgt.shape
+            cs = torch.zeros(size=(batch_size, hidden_size), device=y_insample.device)
+            ce = torch.zeros(size=(batch_size, hidden_size), device=y_insample.device)
+            ch = torch.zeros(
+                size=(self.n_rnn_layers, batch_size, hidden_size),
+                device=y_insample.device,
+            )
+            cc = torch.zeros(
+                size=(self.n_rnn_layers, batch_size, hidden_size),
+                device=y_insample.device,
+            )
+            static_encoder_sparse_weights = []
+
+        # Historical inputs
+        _historical_inputs = [
+            k_inp[:, : self.input_size, :],
+            t_observed_tgt[:, : self.input_size, :],
+        ]
+        if o_inp is not None:
+            _historical_inputs.insert(0, o_inp[:, : self.input_size, :])
+        historical_inputs = torch.cat(_historical_inputs, dim=-2)
+        # Future inputs
+        future_inputs = k_inp[:, self.input_size :]
+
+        # ---------------------------- Encode/Decode ---------------------------#
+        # Embeddings + VSN + LSTM encoders
+        temporal_features, history_vsn_wgts, future_vsn_wgts = self.temporal_encoder(
+            historical_inputs=historical_inputs,
+            future_inputs=future_inputs,
+            cs=cs,
+            ch=ch,
+            cc=cc,
+        )
+
+        # Static enrichment, Attention and decoders
+        temporal_features, attn_wts = self.temporal_fusion_decoder(
+            temporal_features=temporal_features, ce=ce
+        )
+
+        # Store params
+        self.interpretability_params = {
+            "history_vsn_wgts": history_vsn_wgts,
+            "future_vsn_wgts": future_vsn_wgts,
+            "static_encoder_sparse_weights": static_encoder_sparse_weights,
+            "attn_wts": attn_wts,
+        }
+
+        # Adapt output to loss
+        y_hat = self.output_adapter(temporal_features)
+
+        return y_hat
+
+    def mean_on_batch(self, tensor):
+        batch_size = tensor.size(0)
+        if batch_size > 1:
+            return tensor.mean(dim=0)
+        else:
+            return tensor.squeeze(0)
+
+    def feature_importances(self):
+        """
+        Compute the feature importances for historical, future, and static features.
+
+        Returns:
+            dict: A dictionary containing the feature importances for each feature type.
+                The keys are 'hist_vsn', 'future_vsn', and 'static_vsn', and the values
+                are pandas DataFrames with the corresponding feature importances.
+        """
+        if not self.interpretability_params:
+            raise ValueError(
+                "No interpretability_params. Make a prediction using the model to generate them."
+            )
+
+        importances = {}
+
+        # Historical feature importances
+        hist_vsn_wgts = self.interpretability_params.get("history_vsn_wgts")
+        hist_exog_list = list(self.hist_exog_list) + list(self.futr_exog_list)
+        hist_exog_list += (
+            [f"observed_target_{i+1}" for i in range(self.tgt_size)]
+            if self.tgt_size > 1
+            else ["observed_target"]
+        )
+        if len(self.futr_exog_list) < 1:
+            hist_exog_list += ["repeated_target"]
+        hist_vsn_imp = pd.DataFrame(
+            self.mean_on_batch(hist_vsn_wgts).cpu().numpy(), columns=hist_exog_list
+        )
+        importances["Past variable importance over time"] = hist_vsn_imp
+        #  importances["Past variable importance"] = hist_vsn_imp.mean(axis=0).sort_values()
+
+        # Future feature importances
+        if self.futr_exog_size > 0:
+            future_vsn_wgts = self.interpretability_params.get("future_vsn_wgts")
+            future_vsn_imp = pd.DataFrame(
+                self.mean_on_batch(future_vsn_wgts).cpu().numpy(),
+                columns=self.futr_exog_list,
+            )
+            importances["Future variable importance over time"] = future_vsn_imp
+        #   importances["Future variable importance"] = future_vsn_imp.mean(axis=0).sort_values()
+
+        # Static feature importances
+        if self.stat_exog_size > 0:
+            static_encoder_sparse_weights = self.interpretability_params.get(
+                "static_encoder_sparse_weights"
+            )
+
+            static_vsn_imp = pd.DataFrame(
+                self.mean_on_batch(static_encoder_sparse_weights).cpu().numpy(),
+                index=self.stat_exog_list,
+                columns=["importance"],
+            )
+            importances["Static covariates"] = static_vsn_imp.sort_values(
+                by="importance"
+            )
+
+        return importances
+
+    def attention_weights(self):
+        """
+        Batch average attention weights
+
+        Returns:
+        np.ndarray: A 1D array containing the attention weights for each time step.
+
+        """
+
+        attention = (
+            self.mean_on_batch(self.interpretability_params["attn_wts"])
+            .mean(dim=0)
+            .cpu()
+            .numpy()
+        )
+
+        return attention
+
+    def feature_importance_correlations(self) -> pd.DataFrame:
+        """
+        Compute the correlation between the past and future feature importances and the mean attention weights.
+
+        Returns:
+        pd.DataFrame: A DataFrame containing the correlation coefficients between the past feature importances and the mean attention weights.
+        """
+        attention = self.attention_weights()[self.input_size :, :].mean(axis=0)
+        p_c = self.feature_importances()["Past variable importance over time"]
+        p_c["Correlation with Mean Attention"] = attention[: self.input_size]
+        return p_c.corr(method="spearman").round(2)

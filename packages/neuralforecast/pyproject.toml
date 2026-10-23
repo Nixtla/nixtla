@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools>=83.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuralforecast"
+version = "3.3.0"
+description = "Time series forecasting suite using deep learning models"
+authors = [
+    {name = "Nixtla", email = "business@nixtla.io"}
+]
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["time-series", "forecasting", "deep-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "coreforecast>=0.0.6",
+    "fsspec",
+    "numpy>=1.21.6",
+    "pandas>=1.3.5",
+    "scipy",
+    "torch>=2.9.1",
+    "tornado>=6.5.5",
+    "pytorch-lightning>=2.6.6",
+    "safetensors>=0.8.0",
+    "ray[train,tune]>=2.2.0",
+    "optuna",
+    "utilsforecast>=0.2.3",
+]
+[project.optional-dependencies]
+spark = ["fugue", "pyspark>=3.5", "pyarrow>=23.0.1"]
+
+[dependency-groups]
+aws = ["fsspec[s3]"]
+dev = [
+    "black>=26.3.1",
+    "captum",
+    "gitpython",
+    "hyperopt",
+    "ipython<=8.32.0",
+    "matplotlib",
+    "mypy",
+    "ninja",
+    "polars",
+    "pre-commit",
+    "pyarrow",
+    "ruff",
+    "s3fs",
+    "transformers",
+    "xlstm",
+    "pytest",
+    "pytest-cov",
+    "pip-licenses",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/neuralforecast/"
+Documentation = "https://nixtlaverse.nixtla.io/neuralforecast/"
+
+[tool.setuptools]
+packages = ["neuralforecast"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+lint.select = ["F"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = 'neuralforecast.compat'
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--cov=neuralforecast",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=80",
+]
+
+[tool.coverage.run]
+source = ["neuralforecast"]
+omit = [
+    "*/tmp/ray/*",
+    "*/_ray_pkg_*/*",
+    "*/runtime_resources/*",
+]
+
+[tool.coverage.report]
+omit = [
+    "*/tmp/ray/*",
+    "*/_ray_pkg_*/*",
+    "*/runtime_resources/*",
+]
