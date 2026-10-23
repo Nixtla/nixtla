@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlforecast"
+version = "1.1.0"
+description = "Scalable machine learning based time series forecasting"
+authors = [{name = "José Morales", email = "jmoralz92@gmail.com"}]
+license = {text = "Apache Software License 2.0"}
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["python", "forecast", "forecasting", "machine-learning", "dask"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "cloudpickle",
+    "coreforecast>=0.0.15",
+    "fsspec",
+    "narwhals",
+    "optuna",
+    "pandas<3.0",
+    "scikit-learn>=1.3",
+    "utilsforecast>=0.2.9",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/mlforecast"
+Repository = "https://github.com/Nixtla/mlforecast"
+Documentation = "https://nixtlaverse.nixtla.io/mlforecast/"
+
+[project.optional-dependencies]
+dask = ["fugue[dask]>=0.9.4", "dask[complete]", "lightgbm", "xgboost"]
+ray = [
+    "fugue[ray]>=0.9.4; sys_platform != 'win32'",
+    "ray[data,train]>=2.56; sys_platform != 'win32'",
+    "lightgbm>=4.6; sys_platform != 'win32'",
+    # RayXGBForecast mixes RayForecastBase into XGBRegressor, which needs
+    # XGBModel.get_params' "parent has no get_params" fallback, added in 2.1.4
+    "xgboost>=2.1.4; sys_platform != 'win32'"
+]
+spark = ["fugue[spark]>=0.9.4", "pyspark>=3.3", "lightgbm", "xgboost"]
+aws = ["fsspec[s3]"]
+gcp = ["fsspec[gcs]"]
+azure = ["fsspec[adl]"]
+polars = ["polars[numpy]"]
+
+[dependency-groups]
+dev = [
+    "datasetsforecast>=1",
+    "gitpython",
+    "holidays<0.21",
+    "lightgbm>=4.6",
+    "matplotlib",
+    "mlflow>=2.10.0",
+    "numpy",
+    "pandas",
+    "pre-commit",
+    "polars[numpy]<=1.31.0",
+    "pyarrow",
+    "ruff",
+    "setuptools",
+    "statsmodels",
+    "xgboost",
+    "catboost",
+    "pytest",
+    "pytest-benchmark",
+    "pytest-cov",
+    "pip-licenses",
+    "pytest-xdist",
+    "pytest-codspeed",
+    "pytest-rerunfailures",
+    "pytest-timeout",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@main"
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages]
+find = {}
+
+[tool.setuptools.dynamic]
+version = {attr = "mlforecast.__version__"}
+
+[tool.ruff.lint]
+select = ["F", "ARG"]
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = 'mlforecast.compat'
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "ray: marks tests as requiring Ray (deselect with '-m \"not ray\"')",
+]
+addopts = [
+    "--cov=mlforecast",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-fail-under=75", #TODO: adds tests to increase coverage to 80
+]

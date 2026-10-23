@@ -1,0 +1,2878 @@
+import copy
+import datetime
+import tempfile
+import warnings
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import polars as pl
+import pytest
+import utilsforecast.processing as ufp
+
+from sklearn.linear_model import LinearRegression
+
+from mlforecast.callbacks import SaveFeatures
+from mlforecast.core import (
+    TimeSeries,
+    _build_function_transform_name,
+    _build_lag_transform_name,
+    _name_models,
+)
+from mlforecast.lag_transforms import (
+    ExpandingMean,
+    LookupLag,
+    RollingMean,
+    RollingQuantile,
+    RollingStd,
+)
+from mlforecast.date_features import _DUMMY_ALIASES
+from mlforecast.pooled import PooledState
+from mlforecast.target_transforms import (
+    BaseTargetTransform,
+    Differences,
+    LocalStandardScaler,
+)
+from mlforecast.utils import (
+    generate_daily_series,
+    generate_prices_for_series,
+)
+from .conftest import make_groupby_df
+
+
+@pytest.fixture
+def series():
+    series = generate_daily_series(20, n_static_features=2)
+    return series
+
+
+@pytest.fixture
+def serie(series):
+    uids = series["unique_id"].unique()
+    serie = series[series["unique_id"].eq(uids[0])]
+    return serie
+
+
+def _expanding_mean(x):
+    return pd.Series(x).expanding().mean().to_numpy()
+
+
+def _rolling_mean(x, window_size):
+    return pd.Series(x).rolling(window_size).mean().to_numpy()
+
+
+def test_build_function_transform_name():
+    assert _build_function_transform_name(_expanding_mean, 1) == "_expanding_mean_lag1"
+    assert (
+        _build_function_transform_name(_rolling_mean, 2, 7)
+        == "_rolling_mean_lag2_window_size7"
+    )
+    assert _build_lag_transform_name(ExpandingMean(), 1) == "expanding_mean_lag1"
+    assert (
+        _build_lag_transform_name(RollingMean(7), 2) == "rolling_mean_lag2_window_size7"
+    )
+
+
+# one duplicate
+def test_name_models_with_duplicates():
+    names = ["a", "b", "a", "c"]
+    expected = ["a", "b", "a2", "c"]
+    actual = _name_models(names)
+    assert actual == expected
+
+
+# no duplicates
+def test_name_models_without_duplicates():
+    names = ["a", "b", "c"]
+    actual = _name_models(names)
+    assert actual == names
+    with pytest.raises(ValueError) as exec:
+        (TimeSeries(freq="D", lags=list(range(2))),)
+    assert "lags must be positive integers" in str(exec.value)
+
+    with pytest.raises(ValueError) as exec:
+        (TimeSeries(freq="D", lag_transforms={0: 1}),)
+
+    assert "keys of lag_transforms must be positive integers" in str(exec.value)
+
+
+@pytest.fixture
+def x():
+    n = 7 * 14
+    x = pd.DataFrame(
+        {
+            "id": np.repeat(0, n),
+            "ds": np.arange(n),
+            "y": np.arange(7)[[x % 7 for x in np.arange(n)]],
+        }
+    )
+    x["y"] = x["ds"] * 0.1 + x["y"]
+    return x
+
+
+def test_fit_only_instance_uses_class_defaults():
+    # LightGBMCV and the distributed partitions only run `_fit`, so their
+    # instances (and pickles of them) lack the settings fit_transform stores
+    series = generate_daily_series(3, min_length=20, max_length=20)
+    ts = TimeSeries(freq="D", lags=[1, 2])
+    X, y = ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", return_X_y=True
+    )
+    model = LinearRegression().fit(X, y)
+    expected = ts.predict({"m": model}, horizon=3)
+    for name in ("as_numpy", "max_horizon", "_horizons", "horizon_features_"):
+        ts.__dict__.pop(name, None)
+    pd.testing.assert_frame_equal(ts.predict({"m": model}, horizon=3), expected)
+    # the settings a warm clone reads must fall through to the defaults as well
+    warm = ts._clone_warm(series)
+    pd.testing.assert_frame_equal(warm.predict({"m": model}, horizon=3), expected)
+
+
+def test_clone_warm_keeps_max_horizon_without_horizons():
+    # instances fit before sparse horizons existed (v0.10 to v1.0.2 pickles)
+    # carry max_horizon but no _horizons; the warm clone must stay direct
+    series = generate_daily_series(3, min_length=20, max_length=20)
+    ts = TimeSeries(freq="D", lags=[1, 2])
+    prep = ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", max_horizon=2
+    )
+    models = {"m": {}}
+    for h in range(2):
+        rows = prep[f"y{h}"].notna()
+        X, y = prep.loc[rows, ts.features_order_], prep.loc[rows, f"y{h}"]
+        models["m"][h] = LinearRegression().fit(X, y)
+    expected = ts.predict(models, horizon=2)
+    ts.__dict__.pop("_horizons")
+    warm = ts._clone_warm(series)
+    assert (warm._horizons, warm.max_horizon) == ([0, 1], 2)
+    pd.testing.assert_frame_equal(warm.predict(models, horizon=2), expected)
+
+
+# differences
+def test_target_transform_differences(x):
+    ts = TimeSeries(freq=1, target_transforms=[Differences([1, 7])])
+    ts._fit(x.iloc[:-14], id_col="id", time_col="ds", target_col="y")
+    ts.as_numpy = False
+    np.testing.assert_allclose(
+        x["y"].diff(1).diff(7).values[:-14],
+        ts.ga.data,
+    )
+    ts.y_pred = np.zeros(14)
+
+    xx = ts.predict({"A": A()}, 14)
+    np.testing.assert_allclose(xx["A"], x["y"].tail(14).values)
+
+
+class A:
+    def fit(self, X):  # noqa
+        return self
+
+    def predict(self, X):
+        return np.zeros(X.shape[0])
+
+
+# tfms namer
+def namer(cls, lag, *args):  # noqa
+    return f"hello_from_{type(cls).__name__.lower()}"
+
+
+@pytest.fixture
+def ts():
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={1: [RollingMean(7), ExpandingMean()]},
+        lag_transforms_namer=namer,
+    )
+    return ts
+
+
+def test_tfms_namer(x, ts):
+    transformed = ts.fit_transform(x, id_col="id", time_col="ds", target_col="y")
+    assert transformed.columns.tolist() == [
+        "id",
+        "ds",
+        "y",
+        "hello_from_rollingmean",
+        "hello_from_expandingmean",
+    ]
+    with pytest.raises(ValueError) as exec:
+        TimeSeries(freq=1, date_features=[lambda: 1])
+
+    assert "Can't use a lambda" in str(exec.value)
+
+
+def month_start_or_end(dates):
+    return dates.is_month_start | dates.is_month_end
+
+
+@pytest.fixture
+def flow_config():
+    flow_config = dict(
+        freq="W-THU",
+        lags=[7],
+        lag_transforms={1: [ExpandingMean(), RollingMean(7)]},
+        date_features=["dayofweek", "week", month_start_or_end],
+    )
+    return flow_config
+
+
+def test_ts_flow_config(flow_config):
+    ts = TimeSeries(**flow_config)
+    assert TimeSeries(freq=ts.freq).freq == TimeSeries(freq="W-THU").freq
+    assert ts.freq == pd.tseries.frequencies.to_offset(flow_config["freq"])
+    assert ts.date_features == flow_config["date_features"]
+    assert list(ts.transforms.keys()) == [
+        "lag7",
+        "expanding_mean_lag1",
+        "rolling_mean_lag1_window_size7",
+    ]
+
+
+# int y is converted to float32
+def test_y_fp32(serie):
+    serie2 = serie.copy()
+    serie2["y"] = serie2["y"].astype(int)
+    ts = TimeSeries(num_threads=1, freq="D")
+    ts._fit(serie2, id_col="unique_id", time_col="ds", target_col="y")
+    assert ts.ga.data.dtype == np.float32
+
+
+# _compute_transforms
+def _shift_array(x, n):
+    return np.hstack([np.full(n, np.nan), x[:-n]])
+
+
+def test_compute_transforms(flow_config, serie):
+    y = serie.y.values
+    lag_1 = _shift_array(y, 1)
+
+    for num_threads in (1, 2):
+        ts = TimeSeries(**flow_config)
+        ts._fit(serie, id_col="unique_id", time_col="ds", target_col="y")
+        transforms = ts._compute_transforms(ts.transforms, updates_only=False)
+
+        np.testing.assert_allclose(transforms["lag7"], _shift_array(y, 7))
+        np.testing.assert_allclose(
+            transforms["expanding_mean_lag1"], _expanding_mean(lag_1)
+        )
+        np.testing.assert_allclose(
+            transforms["rolling_mean_lag1_window_size7"], _rolling_mean(lag_1, 7)
+        )
+
+
+# update_y
+def test_update_y(serie):
+    ts = TimeSeries(freq="D", lags=[1])
+    ts._fit(serie, id_col="unique_id", time_col="ds", target_col="y")
+
+    max_size = np.diff(ts.ga.indptr)
+    ts._update_y([1])
+    ts._update_y([2])
+
+    assert np.diff(ts.ga.indptr) == max_size + 2
+    assert ts.ga.data[-2:].tolist() == [1, 2]
+
+
+# _update_features
+def test_update_features(flow_config, serie):
+    ts = TimeSeries(**flow_config)
+    ts.fit_transform(serie, id_col="unique_id", time_col="ds", target_col="y")
+    ts._predict_setup()
+    updates = ts._update_features()
+
+    last_date = serie["ds"].max()
+    first_prediction_date = last_date + pd.offsets.Day()
+
+    y = serie.y.values
+
+    # these have an offset becase we can now "see" our last y value
+    expected = pd.DataFrame(
+        {
+            "unique_id": ts.uids,
+            "lag7": _shift_array(y, 6)[-1],
+            "expanding_mean_lag1": _expanding_mean(y)[-1],
+            "rolling_mean_lag1_window_size7": _rolling_mean(y, 7)[-1],
+            "dayofweek": np.uint8([getattr(first_prediction_date, "dayofweek")]),
+            "week": np.uint8([first_prediction_date.isocalendar()[1]]),
+            "month_start_or_end": month_start_or_end(first_prediction_date),
+        }
+    )
+    statics = serie.tail(1).drop(columns=["ds", "y"])
+    pd.testing.assert_frame_equal(updates, statics.merge(expected))
+
+    assert ts.curr_dates[0] == first_prediction_date
+
+
+# _get_predictions
+def test_get_predictions(serie):
+    ts = TimeSeries(freq="D", lags=[1])
+    ts._fit(serie, id_col="unique_id", time_col="ds", target_col="y")
+    ts._predict_setup()
+    ts._update_features()
+    ts._update_y([1.0])
+    preds = ts._get_predictions()
+
+    last_ds = serie["ds"].max()
+    expected = pd.DataFrame(
+        {
+            "unique_id": serie["unique_id"][[0]],
+            "ds": [last_ds + pd.offsets.Day()],
+            "y_pred": [1.0],
+        }
+    )
+    pd.testing.assert_frame_equal(preds, expected)
+
+
+@pytest.fixture
+def flow_config2():
+    flow_config = dict(
+        freq="D",
+        lags=[7, 14],
+        lag_transforms={
+            2: [
+                RollingMean(7),
+                RollingMean(14),
+            ]
+        },
+        date_features=["dayofweek", "month", "year"],
+        num_threads=2,
+    )
+    return flow_config
+
+
+def test_ts_fit_transform(flow_config2, series):
+    ts = TimeSeries(**flow_config2)
+    _ = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    np.testing.assert_equal(
+        ts.ga.data,
+        series.groupby("unique_id", observed=True).tail(ts.keep_last_n)["y"],
+    )
+    assert ts.uids.tolist() == series["unique_id"].unique().tolist()
+    np.testing.assert_array_equal(
+        ts.last_dates, series.groupby("unique_id", observed=True)["ds"].max().values
+    )
+    pd.testing.assert_frame_equal(
+        ts.static_features_,
+        series.groupby("unique_id", observed=True)
+        .tail(1)
+        .drop(columns=["ds", "y"])
+        .reset_index(drop=True),
+    )
+    ts.fit_transform(
+        series,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=["static_0"],
+    )
+
+    pd.testing.assert_frame_equal(
+        ts.static_features_,
+        series.groupby("unique_id", observed=True)
+        .tail(1)[["unique_id", "static_0"]]
+        .reset_index(drop=True),
+    )
+
+
+def test_keep_last_n(flow_config2, series):
+    keep_last_n = 15
+
+    ts = TimeSeries(**flow_config2)
+    df = ts.fit_transform(
+        series,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        keep_last_n=keep_last_n,
+    )
+    ts._predict_setup()
+
+    expected_lags = ["lag7", "lag14"]
+    expected_transforms = [
+        "rolling_mean_lag2_window_size7",
+        "rolling_mean_lag2_window_size14",
+    ]
+    expected_date_features = ["dayofweek", "month", "year"]
+
+    assert ts.features == expected_lags + expected_transforms + expected_date_features
+    assert (
+        ts.static_features_.columns.tolist() + ts.features
+        == df.columns.drop(["ds", "y"]).tolist()
+    )
+    # we dropped 2 rows because of the lag 2 and 13 more to have the window of size 14
+    assert df.shape[0] == series.shape[0] - (2 + 13) * ts.ga.n_groups
+    assert ts.ga.data.size == ts.ga.n_groups * keep_last_n
+
+    series_with_nulls = series.copy()
+    series_with_nulls.loc[1, "y"] = np.nan
+    with pytest.raises(Exception) as exec:
+        ts.fit_transform(
+            series_with_nulls, id_col="unique_id", time_col="ds", target_col="y"
+        )
+    assert "y column contains null values" in str(exec.value)
+
+
+# unsorted df
+def test_unsorted_df(flow_config2, series):
+    ts = TimeSeries(**flow_config2)
+    df = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    unordered_series = series.sample(frac=1.0)
+    assert not unordered_series.set_index(
+        "ds", append=True
+    ).index.is_monotonic_increasing
+    df2 = ts.fit_transform(
+        unordered_series, id_col="unique_id", time_col="ds", target_col="y"
+    )
+    pd.testing.assert_frame_equal(
+        df.reset_index(drop=True),
+        df2.sort_values(["unique_id", "ds"]).reset_index(drop=True),
+    )
+
+
+# existing features arent recomputed
+def test_existing_features():
+    df_with_features = pd.DataFrame(
+        {
+            "unique_id": [1, 1, 1],
+            "ds": pd.date_range("2000-01-01", freq="D", periods=3),
+            "y": [10.0, 11.0, 12.0],
+            "lag1": [1, 1, 1],
+            "month": [12, 12, 12],
+        }
+    )
+    ts = TimeSeries(freq="D", lags=[1, 2], date_features=["year", "month"])
+    transformed = ts.fit_transform(
+        df_with_features,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    pd.testing.assert_series_equal(transformed["lag1"], df_with_features["lag1"])
+    pd.testing.assert_series_equal(transformed["month"], df_with_features["month"])
+    np.testing.assert_array_equal(transformed["year"], 3 * [2000])
+    np.testing.assert_array_equal(transformed["lag2"].values, [np.nan, np.nan, 10.0])
+
+
+# non-standard df
+def test_non_standard_df(flow_config2, series):
+    ts = TimeSeries(**flow_config2)
+    df = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    non_std_series = series.reset_index().rename(
+        columns={"unique_id": "some_id", "ds": "timestamp", "y": "value"}
+    )
+    non_std_res = ts.fit_transform(
+        non_std_series,
+        id_col="some_id",
+        time_col="timestamp",
+        target_col="value",
+        static_features=[],
+    )
+    non_std_res = non_std_res.reset_index(drop=True)
+    pd.testing.assert_frame_equal(
+        df.reset_index(),
+        non_std_res.rename(
+            columns={"timestamp": "ds", "value": "y", "some_id": "unique_id"}
+        ),
+    )
+
+
+# integer timestamps
+def identity(x):
+    return x
+
+
+def test_integer_timestamps(flow_config2, series):
+    flow_config_int_ds = copy.deepcopy(flow_config2)
+    flow_config_int_ds["date_features"] = [identity]
+    flow_config_int_ds["freq"] = 1
+    ts = TimeSeries(**flow_config_int_ds)
+    int_ds_series = series.copy()
+    int_ds_series["ds"] = int_ds_series["ds"].astype("int64")
+    int_ds_res = ts.fit_transform(
+        int_ds_series, id_col="unique_id", time_col="ds", target_col="y"
+    )
+    int_ds_res["ds"] = pd.to_datetime(int_ds_res["ds"])
+    int_ds_res["identity"] = pd.to_datetime(int_ds_res["ds"])
+
+    df = TimeSeries(**flow_config2).fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y"
+    )
+
+    df2 = df.drop(columns=flow_config2["date_features"])
+    df2["identity"] = df2["ds"]
+    pd.testing.assert_frame_equal(df2, int_ds_res)
+
+
+class DummyModel:
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        return X["lag7"].values
+
+
+def test_ts_predict(flow_config2, series):
+    horizon = 7
+    model = DummyModel()
+    ts = TimeSeries(**flow_config2)
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    predictions = ts.predict({"DummyModel": model}, horizon)
+
+    grouped_series = series.groupby("unique_id", observed=True)
+    expected_preds = grouped_series["y"].tail(7)  # the model predicts the lag-7
+    last_dates = grouped_series["ds"].max()
+    expected_dsmin = last_dates + pd.offsets.Day()
+    expected_dsmax = last_dates + horizon * pd.offsets.Day()
+    grouped_preds = predictions.groupby("unique_id", observed=True)
+
+    np.testing.assert_allclose(predictions["DummyModel"], expected_preds)
+    pd.testing.assert_series_equal(grouped_preds["ds"].min(), expected_dsmin)
+    pd.testing.assert_series_equal(grouped_preds["ds"].max(), expected_dsmax)
+
+
+def test_ts_with_diff_conf(flow_config2, series):
+    horizon = 7
+
+    flow_config_int_ds = copy.deepcopy(flow_config2)
+    flow_config_int_ds["date_features"] = [identity]
+    flow_config_int_ds["freq"] = 1
+    model = DummyModel()
+    ts = TimeSeries(**flow_config2)
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    predictions = ts.predict({"DummyModel": model}, horizon=horizon)
+    ts = TimeSeries(**flow_config_int_ds)
+
+    int_ds_series = series.copy()
+    int_ds_series["ds"] = int_ds_series["ds"].astype("int64")
+
+    ts.fit_transform(int_ds_series, id_col="unique_id", time_col="ds", target_col="y")
+    int_ds_predictions = ts.predict({"DummyModel": model}, horizon=horizon)
+    pd.testing.assert_frame_equal(
+        predictions.drop(columns="ds"), int_ds_predictions.drop(columns="ds")
+    )
+
+
+class PredictPrice:
+    def predict(self, X):
+        return X["price"]
+
+
+def test_dynamic_features(flow_config2):
+    series = generate_daily_series(20, n_static_features=2, equal_ends=True)
+    dynamic_series = series.rename(columns={"static_1": "product_id"})
+    prices_catalog = generate_prices_for_series(dynamic_series)
+    series_with_prices = dynamic_series.merge(prices_catalog, how="left")
+
+    model = PredictPrice()
+    ts = TimeSeries(**flow_config2)
+    ts.fit_transform(
+        series_with_prices,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=["static_0", "product_id"],
+    )
+    predictions = ts.predict({"PredictPrice": model}, horizon=1, X_df=prices_catalog)
+    pd.testing.assert_frame_equal(
+        predictions.rename(columns={"PredictPrice": "price"}),
+        prices_catalog.merge(predictions[["unique_id", "ds"]])[
+            ["unique_id", "ds", "price"]
+        ],
+    )
+
+    # predicting for a subset
+    sample_ids = ["id_00", "id_16"]
+    sample_preds = ts.predict({"price": model}, 1, X_df=prices_catalog, ids=sample_ids)
+    pd.testing.assert_frame_equal(
+        sample_preds,
+        prices_catalog.merge(
+            predictions[predictions["unique_id"].isin(sample_ids)][["unique_id", "ds"]]
+        )[["unique_id", "ds", "price"]],
+    )
+    with pytest.raises(Exception) as exec:
+        ts.predict({"y": model}, 1, ids=["bonjour"])
+    assert "{'bonjour'}" in str(exec.value)
+
+
+class SeasonalNaiveModel:
+    def predict(self, X):
+        return X["lag7"]
+
+
+class NaiveModel:
+    def predict(self, X: pd.DataFrame):
+        return X["lag1"]
+
+
+def test_ts_update(series):
+    two_series = series[series["unique_id"].isin(["id_00", "id_19"])].copy()
+    two_series["unique_id"] = pd.Categorical(
+        two_series["unique_id"], ["id_00", "id_19"]
+    )
+    ts = TimeSeries(freq="D", lags=[1], date_features=["dayofweek"])
+    ts.fit_transform(
+        two_series,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+    )
+    last_vals_two_series = two_series.groupby("unique_id", observed=True).tail(1)
+    last_val_id0 = last_vals_two_series[lambda x: x["unique_id"].eq("id_00")].copy()
+    new_values = last_val_id0.copy()
+    new_values["ds"] += pd.offsets.Day()
+    new_serie = pd.DataFrame(
+        {
+            "unique_id": ["new_idx", "new_idx"],
+            "ds": pd.to_datetime(["2020-01-01", "2020-01-02"]),
+            "y": [5.0, 6.0],
+            "static_0": [0, 0],
+            "static_1": [1, 1],
+        }
+    )
+    new_values = pd.concat([new_values, new_serie])
+    ts.update(new_values)
+    preds = ts.predict({"Naive": NaiveModel()}, 1)
+    expected_id0 = last_val_id0.copy()
+    expected_id0["ds"] += pd.offsets.Day()
+    expected_id1 = last_vals_two_series[lambda x: x["unique_id"].eq("id_19")].copy()
+    last_val_new_serie = new_serie.tail(1)[["unique_id", "ds", "y"]]
+    expected = pd.concat([expected_id0, expected_id1, last_val_new_serie])
+    expected = expected[["unique_id", "ds", "y"]]
+    expected = expected.rename(columns={"y": "Naive"}).reset_index(drop=True)
+    expected["unique_id"] = pd.Categorical(
+        expected["unique_id"], categories=["id_00", "id_19", "new_idx"]
+    )
+    expected["ds"] += pd.offsets.Day()
+    pd.testing.assert_frame_equal(preds, expected)
+    pd.testing.assert_frame_equal(
+        ts.static_features_,
+        (
+            pd.concat([last_vals_two_series, new_serie.tail(1)])[
+                ["unique_id", "static_0", "static_1"]
+            ]
+            .astype(ts.static_features_.dtypes)
+            .reset_index(drop=True)
+        ),
+    )
+    # with target transforms
+    ts = TimeSeries(
+        freq="D",
+        lags=[7],
+        target_transforms=[Differences([1, 2]), LocalStandardScaler()],
+    )
+    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y")
+    new_values = two_series.groupby("unique_id", observed=True).tail(7).copy()
+    new_values["ds"] += 7 * pd.offsets.Day()
+    orig_last7 = ts.ga.take_from_groups(slice(-7, None)).data
+    ts.update(new_values)
+    preds = ts.predict({"SeasonalNaive": SeasonalNaiveModel()}, 7)
+    np.testing.assert_allclose(
+        new_values["y"].values,
+        preds["SeasonalNaive"].values,
+    )
+    last7 = ts.ga.take_from_groups(slice(-7, None)).data
+    assert 0 < np.abs(last7 / orig_last7 - 1).mean() < 0.5
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_lag_transform(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [1, 2, 3, 4, 10, 20, 30, 40],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [1, 2, 3, 4, 10, 20, 30, 40],
+            }
+        )
+    tfm = RollingMean(2, global_=True)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    expected_by_ds = {1: np.nan, 2: 5.5, 3: 8.25, 4: 13.75}
+    if engine == "polars":
+        expected = prep["ds"].to_pandas().map(expected_by_ds).to_numpy()
+    else:
+        expected = prep["ds"].map(expected_by_ds).to_numpy()
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_lag_transform(engine):
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3, 4], "x"),
+            ("c", [5, 6, 7, 8], "x"),
+            ("b", [10, 20, 30, 40], "y"),
+        ],
+    )
+    tfm = RollingMean(2, groupby=["brand"])
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    # Brand "x" has 2 series (a, c) — tests multi-series RANGE semantics:
+    # ds=2: window [0,1] → ts=1: {1,5} → mean=3.0
+    # ds=3: window [1,2] → {1,5,2,6} → mean=3.5
+    # ds=4: window [2,3] → {2,6,3,7} → mean=4.5
+    # Brand "y" has 1 series (b):
+    # ds=3: window [1,2] → {10,20} → mean=15.0
+    expected_by_key = {
+        ("x", 1): np.nan,
+        ("x", 2): 3.0,
+        ("x", 3): 3.5,
+        ("x", 4): 4.5,
+        ("y", 1): np.nan,
+        ("y", 2): np.nan,
+        ("y", 3): 15.0,
+        ("y", 4): 25.0,
+    }
+    if engine == "polars":
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
+    else:
+        expected = np.array(
+            [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
+            dtype=float,
+        )
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_lag_transform_requires_aligned_ends(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+            }
+        )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, global_=True)]})
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require all series to end at the same timestamp",
+    ):
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+        )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_lag_transform_requires_aligned_ends(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "brand": ["x", "x", "x", "y", "y", "y", "y"],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "brand": ["x", "x", "x", "y", "y", "y", "y"],
+            }
+        )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, groupby=["brand"])]})
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require all series to end at the same timestamp",
+    ):
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=["brand"],
+        )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_local_partition_lag_transform_requires_aligned_ends(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "promo": [0, 1, 0, 1, 0, 1, 0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 1, 2, 3, 4],
+                "y": [1, 2, 3, 10, 20, 30, 40],
+                "promo": [0, 1, 0, 1, 0, 1, 0],
+            }
+        )
+    ts = TimeSeries(
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require all series to end at the same timestamp",
+    ):
+        ts.fit_transform(
+            df,
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+        )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_update_requires_complete_timestamps(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+        update_df = pl.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+            }
+        )
+        update_df = pd.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+            }
+        )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, global_=True)]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
+    ):
+        ts.update(update_df)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_pooled_update_with_no_new_rows_is_a_noop(engine):
+    """An update carrying no rows appends nothing; only a partial one is an error."""
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1.0, 2.0, 10.0, 20.0],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+    tfm = ExpandingMean(global_=True)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    ts.fit_transform(df, id_col="unique_id", time_col="ds", target_col="y")
+    state = ts._pooled_states[("global", (), ())]
+    before = (state.n_ordinals, state.width)
+    ts.update(df.head(0))
+    assert (state.n_ordinals, state.width) == before
+    ts._predict_setup()
+    feats = ts._update_features()[tfm._get_name(1)].to_numpy()
+    np.testing.assert_allclose(feats, [8.25, 8.25])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_update_requires_complete_timestamps(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "brand": ["x", "x", "y", "y"],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+        update_df = pl.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "brand": ["x"],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "brand": ["x", "x", "y", "y"],
+            }
+        )
+        update_df = pd.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "brand": ["x"],
+            }
+        )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, groupby=["brand"])]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
+    ):
+        ts.update(update_df)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_local_partition_update_requires_complete_timestamps(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "promo": [0, 1, 1, 0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+        update_df = pl.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "promo": [0],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 2, 10, 20],
+                "promo": [0, 1, 1, 0],
+            }
+        )
+        update_df = pd.DataFrame(
+            {
+                "unique_id": ["a"],
+                "ds": [3],
+                "y": [3],
+                "promo": [0],
+            }
+        )
+    ts = TimeSeries(
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+    )
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    with pytest.raises(
+        ValueError,
+        match="Pooled lag transforms require updates to include all series for each timestamp.",
+    ):
+        ts.update(update_df)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_update_new_group_order(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 1, 2, 2],
+                "brand": ["b", "b", "b", "b"],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+        update_df = pl.DataFrame(
+            {
+                "unique_id": ["a", "b", "c"],
+                "ds": [3, 3, 3],
+                "y": [1, 2, 100],
+                "brand": ["b", "b", "a"],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "b", "b"],
+                "ds": [1, 2, 1, 2],
+                "y": [1, 1, 2, 2],
+                "brand": ["b", "b", "b", "b"],
+            }
+        )
+        update_df = pd.DataFrame(
+            {
+                "unique_id": ["a", "b", "c"],
+                "ds": [3, 3, 3],
+                "y": [1, 2, 100],
+                "brand": ["b", "b", "a"],
+            }
+        )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(1, groupby=["brand"])]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+        keep_last_n=10_000,  # full-history check: disable pooled trim
+    )
+    ts.update(update_df)
+    from mlforecast.pooled import lookup
+
+    state = ts._pooled_states[("groupby", ("brand",), ())]
+    full_df = ufp.vertical_concat([df, update_df])
+    # every observation must land in its brand's bucket: aggregate the expected
+    # rows the same way the state does and compare the per-bucket totals
+    brands = np.asarray(full_df["brand"].to_numpy())
+    ys = np.asarray(full_df["y"].to_numpy(), dtype=float)
+    bids = lookup([brands], state.bucket_uniques)
+    assert (bids >= 0).all()
+    exp_sum = np.bincount(bids, weights=ys, minlength=state.n_buckets)
+    exp_count = np.bincount(bids, minlength=state.n_buckets).astype(float)
+    np.testing.assert_allclose(state.base["sum"].sum(axis=1), exp_sum)
+    np.testing.assert_allclose(state.base["count"].sum(axis=1), exp_count)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_lag_transform_uses_transformed_target(engine):
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3], "x"),
+            ("b", [10, 20, 30], "x"),
+        ],
+    )
+    tfm = RollingMean(1, groupby=["brand"])
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={1: [tfm]},
+        target_transforms=[Differences([1])],
+    )
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=["brand"],
+        dropna=False,
+    )
+    col = tfm._get_name(1)
+    result = prep[col].to_numpy()
+    # After Differences([1]): a=[NaN,1,1], b=[NaN,10,10]
+    # Rows with NaN target (ds=1 for both series) are always dropped.
+    # Remaining: a@ds=2, a@ds=3, b@ds=2, b@ds=3
+    # RollingMean(1, lag=1) with RANGE semantics across brand "x" (NaN excluded):
+    # ds=2: window ts=1 -> {NaN, NaN} -> no valid obs -> NaN
+    # ds=3: window ts=2 -> {1, 10} -> mean=5.5
+    expected = np.array([np.nan, 5.5, np.nan, 5.5])
+    np.testing.assert_allclose(result, expected, equal_nan=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_partition_by_uses_previous_matching_occurrence(engine):
+    dates = pd.date_range("2021-01-01", "2024-12-31", freq="D")
+    easter = {
+        2021: "2021-04-04",
+        2022: "2022-04-17",
+        2023: "2023-04-09",
+        2024: "2024-03-31",
+    }
+    rows = []
+    for i, uid in enumerate(["store_1", "store_2"]):
+        df_uid = pd.DataFrame(
+            {
+                "unique_id": uid,
+                "ds": dates,
+                "y": np.arange(len(dates), dtype=float) + 10_000 * i,
+            }
+        )
+        df_uid["holiday_name"] = "no_holiday"
+        for dt in easter.values():
+            df_uid.loc[df_uid["ds"] == dt, "holiday_name"] = "easter"
+        df_uid.loc[df_uid["ds"].dt.strftime("%m-%d") == "12-25", "holiday_name"] = (
+            "christmas"
+        )
+        rows.append(df_uid)
+    df = pd.concat(rows, ignore_index=True)
+    if engine == "polars":
+        df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
+
+    tfm = LookupLag(partition_by=["holiday_name"])
+    freq = "1d" if engine == "polars" else "D"
+    ts = TimeSeries(freq=freq, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+        dropna=False,
+    )
+    prep_pd = prep.to_pandas() if engine == "polars" else prep
+    col = tfm._get_name(1)
+    holidays = prep_pd[prep_pd["holiday_name"].isin(["easter", "christmas"])].copy()
+    expected = holidays.groupby(
+        ["unique_id", "holiday_name"], sort=False, observed=True
+    )["y"].shift(1)
+    np.testing.assert_allclose(holidays[col].to_numpy(), expected.to_numpy())
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_lookup_lag_partition_by_uses_transformed_target(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 100.0, 3.0, 200.0, 10.0, 1000.0, 30.0, 2000.0],
+            "event": ["x", "promo", "x", "promo", "x", "promo", "x", "promo"],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
+
+    tfm = LookupLag(partition_by=["event"])
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={1: [tfm]},
+        target_transforms=[LocalStandardScaler()],
+    )
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+        dropna=False,
+    )
+    prep_pd = prep.to_pandas() if engine == "polars" else prep
+    col = tfm._get_name(1)
+    expected = prep_pd.groupby(["unique_id", "event"], sort=False, observed=True)[
+        "y"
+    ].shift(1)
+    np.testing.assert_allclose(
+        prep_pd[col].to_numpy(),
+        expected.to_numpy(),
+        equal_nan=True,
+    )
+
+
+def test_global_update_y_appends_observations():
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a", "a", "b", "b"],
+            "ds": [1, 2, 1, 2],
+            "y": [1, 2, 10, 20],
+        }
+    )
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, global_=True)]})
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    ts._predict_setup()
+    ts._update_features()
+    global_state = ts._pooled_states[("global", (), ())]
+    orig_ordinals = global_state.n_ordinals
+    n_series = len(ts.uids)
+    ts._update_y(np.zeros(n_series))
+    # one appended timestamp holding every series' prediction
+    assert global_state.n_ordinals == orig_ordinals + 1
+    assert global_state.base["count"][:, -1].sum() == n_series
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_rolling_std(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [5, 5, 5, 5, 5, 5, 5, 5],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [5, 5, 5, 5, 5, 5, 5, 5],
+            }
+        )
+    tfm = RollingStd(2, global_=True)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    expected_by_ds = {1: np.nan, 2: 0.0, 3: 0.0, 4: 0.0}
+    if engine == "polars":
+        expected = np.array([expected_by_ds[d] for d in prep["ds"].to_list()])
+    else:
+        expected = prep["ds"].map(expected_by_ds).to_numpy()
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_expanding_mean(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [1, 2, 3, 4, 10, 20, 30, 40],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a", "a", "a", "a", "b", "b", "b", "b"],
+                "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+                "y": [1, 2, 3, 4, 10, 20, 30, 40],
+            }
+        )
+    tfm = ExpandingMean(global_=True)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    expected_by_ds = {1: np.nan, 2: 5.5, 3: 8.25, 4: 11.0}
+    if engine == "polars":
+        expected = np.array([expected_by_ds[d] for d in prep["ds"].to_list()])
+    else:
+        expected = prep["ds"].map(expected_by_ds).to_numpy()
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_global_rolling_quantile(engine):
+    if engine == "polars":
+        df = pl.DataFrame(
+            {
+                "unique_id": ["a"] * 5 + ["b"] * 5,
+                "ds": [1, 2, 3, 4, 5, 1, 2, 3, 4, 5],
+                "y": [1, 1, 1, 1, 1, 0, 2, 4, 6, 8],
+            }
+        ).with_columns(pl.col("unique_id").cast(pl.Categorical))
+    else:
+        df = pd.DataFrame(
+            {
+                "unique_id": ["a"] * 5 + ["b"] * 5,
+                "ds": [1, 2, 3, 4, 5, 1, 2, 3, 4, 5],
+                "y": [1, 1, 1, 1, 1, 0, 2, 4, 6, 8],
+            }
+        )
+    tfm = RollingQuantile(p=0.5, window_size=3, global_=True)
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+    )
+    expected_by_ds = {1: np.nan, 2: np.nan, 3: 1.0, 4: 1.0, 5: 1.5}
+    if engine == "polars":
+        expected = np.array([expected_by_ds[d] for d in prep["ds"].to_list()])
+    else:
+        expected = prep["ds"].map(expected_by_ds).to_numpy()
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_rolling_std(engine):
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 1, 1, 1], "x"),
+            ("c", [3, 3, 3, 3], "x"),
+            ("b", [4, 4, 4, 4], "y"),
+        ],
+    )
+    tfm = RollingStd(2, groupby=["brand"])
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    # Brand "x" has 2 series (a=[1,1,1,1], c=[3,3,3,3]):
+    # ds=2: window [0,1] → ts=1: {1,3} → std(ddof=1)=sqrt(2)
+    # ds=3: window [1,2] → {1,3,1,3} → std(ddof=1)=sqrt(4/3)
+    # Brand "y" has 1 series (b=[4,4,4,4]):
+    # ds=3,4: window has {4,4} → std=0
+    expected_by_key = {
+        ("x", 1): np.nan,
+        ("x", 2): np.std([1, 3], ddof=1),
+        ("x", 3): np.std([1, 3, 1, 3], ddof=1),
+        ("x", 4): np.std([1, 3, 1, 3], ddof=1),
+        ("y", 1): np.nan,
+        ("y", 2): np.nan,
+        ("y", 3): 0.0,
+        ("y", 4): 0.0,
+    }
+    if engine == "polars":
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
+    else:
+        expected = np.array(
+            [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
+            dtype=float,
+        )
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_expanding_mean(engine):
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 2, 3, 4], "x"),
+            ("c", [5, 6, 7, 8], "x"),
+            ("b", [10, 20, 30, 40], "y"),
+        ],
+    )
+    tfm = ExpandingMean(groupby=["brand"])
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    # Brand "x" has 2 series (a, c) — expanding sees all past observations:
+    # ds=2: ts<2 → {1,5} → mean=3.0
+    # ds=3: ts<3 → {1,5,2,6} → mean=3.5
+    # ds=4: ts<4 → {1,5,2,6,3,7} → mean=4.0
+    expected_by_key = {
+        ("x", 1): np.nan,
+        ("x", 2): 3.0,
+        ("x", 3): 3.5,
+        ("x", 4): 4.0,
+        ("y", 1): np.nan,
+        ("y", 2): 10.0,
+        ("y", 3): 15.0,
+        ("y", 4): 20.0,
+    }
+    if engine == "polars":
+        expected = np.array(
+            [
+                expected_by_key[(b, d)]
+                for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+            ],
+            dtype=float,
+        )
+    else:
+        expected = np.array(
+            [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
+            dtype=float,
+        )
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_group_rolling_quantile(engine):
+    df = make_groupby_df(
+        engine,
+        [
+            ("a", [1, 3, 5, 7, 9], "x"),
+            ("c", [0, 2, 4, 6, 8], "x"),
+            ("b", [2, 4, 6, 8, 10], "y"),
+        ],
+    )
+    tfm = RollingQuantile(p=0.5, window_size=3, groupby=["brand"])
+    ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
+    prep = ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=["brand"],
+    )
+    # Brand "x" has 2 series (a, c) — RANGE median:
+    # ds=3: window [0,2] → ts=1,2: {1,0,3,2} → median=1.5
+    # ds=4: window [1,3] → ts=1,2,3: {1,0,3,2,5,4} → median=2.5
+    # ds=5: window [2,4] → ts=2,3,4: {3,2,5,4,7,6} → median=4.5
+    expected_by_key = {
+        ("x", 1): np.nan,
+        ("x", 2): np.nan,
+        ("x", 3): 1.5,
+        ("x", 4): 2.5,
+        ("x", 5): 4.5,
+        ("y", 1): np.nan,
+        ("y", 2): np.nan,
+        ("y", 3): np.nan,
+        ("y", 4): 4.0,
+        ("y", 5): 6.0,
+    }
+    if engine == "polars":
+        expected = [
+            expected_by_key[(b, d)]
+            for b, d in zip(prep["brand"].to_list(), prep["ds"].to_list())
+        ]
+        expected = np.array(expected, dtype=float)
+    else:
+        expected = np.array(
+            [expected_by_key[(b, d)] for b, d in zip(prep["brand"], prep["ds"])],
+            dtype=float,
+        )
+    col = tfm._get_name(1)
+    np.testing.assert_allclose(
+        prep[col].to_numpy(),
+        expected,
+        equal_nan=True,
+    )
+
+
+def _generate_series_with_freq(n_series, freq_name, n_static_features, engine):
+    """Helper to generate series with specific frequency."""
+    from utilsforecast.data import generate_series
+    from math import ceil, log10
+
+    max_length = 200 if freq_name == "yearly" else 500
+    freq_map = {
+        "hourly": "h",
+        "daily": "D",
+        "weekly": "W",
+        "monthly": "MS",
+        "yearly": "YS",
+    }
+
+    series = generate_series(
+        n_series=n_series,
+        freq=freq_map[freq_name],
+        min_length=50,
+        max_length=max_length,
+        n_static_features=n_static_features,
+        equal_ends=False,
+        static_as_categorical=True,
+        with_trend=False,
+        seed=0,
+        engine=engine,
+    )
+
+    n_digits = ceil(log10(n_series))
+    if engine == "pandas":
+        series["unique_id"] = (
+            "id_" + series["unique_id"].astype(str).str.rjust(n_digits, "0")
+        ).astype("category")
+    else:
+        try:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.pad_start(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+        except AttributeError:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+    return series
+
+
+def _get_freq_config(freq_name, engine):
+    """Get frequency configuration for pandas and polars."""
+    freq_configs = {
+        "hourly": {
+            "pandas_freq": "h",
+            "polars_freq": "1h",
+            "polars_offset1": "1h",
+            "polars_offset2": "2h",
+            "polars_offset3": "3h",
+            "polars_offset_misaligned": "30m",
+            "pandas_offset1": pd.offsets.Hour(),
+            "pandas_offset2": pd.offsets.Hour(2),
+            "pandas_offset3": pd.offsets.Hour(3),
+            "pandas_offset_misaligned": pd.offsets.Minute(30),
+        },
+        "daily": {
+            "pandas_freq": "D",
+            "polars_freq": "1d",
+            "polars_offset1": "1d",
+            "polars_offset2": "2d",
+            "polars_offset3": "3d",
+            "polars_offset_misaligned": "12h",
+            "pandas_offset1": pd.offsets.Day(),
+            "pandas_offset2": pd.offsets.Day(2),
+            "pandas_offset3": pd.offsets.Day(3),
+            "pandas_offset_misaligned": pd.offsets.Hour(12),
+        },
+        "weekly": {
+            "pandas_freq": "W",
+            "polars_freq": "1w",
+            "polars_offset1": "1w",
+            "polars_offset2": "2w",
+            "polars_offset3": "3w",
+            "polars_offset_misaligned": "3d",
+            "pandas_offset1": pd.offsets.Week(),
+            "pandas_offset2": pd.offsets.Week(2),
+            "pandas_offset3": pd.offsets.Week(3),
+            "pandas_offset_misaligned": pd.offsets.Day(3),
+        },
+        "monthly": {
+            "pandas_freq": "MS",
+            "polars_freq": "1mo",
+            "polars_offset1": "1mo",
+            "polars_offset2": "2mo",
+            "polars_offset3": "3mo",
+            "polars_offset_misaligned": "15d",
+            "pandas_offset1": pd.offsets.MonthBegin(),
+            "pandas_offset2": pd.offsets.MonthBegin(2),
+            "pandas_offset3": pd.offsets.MonthBegin(3),
+            "pandas_offset_misaligned": pd.offsets.Day(15),
+        },
+        "yearly": {
+            "pandas_freq": "YS",
+            "polars_freq": "1y",
+            "polars_offset1": "1y",
+            "polars_offset2": "2y",
+            "polars_offset3": "3y",
+            "polars_offset_misaligned": "6mo",
+            "pandas_offset1": pd.offsets.YearBegin(),
+            "pandas_offset2": pd.offsets.YearBegin(2),
+            "pandas_offset3": pd.offsets.YearBegin(3),
+            "pandas_offset_misaligned": pd.offsets.MonthBegin(6),
+        },
+    }
+
+    config = freq_configs[freq_name]
+    return (
+        config["polars_freq"] if engine == "polars" else config["pandas_freq"],
+        config,
+    )
+
+
+def _make_valid_update(series, engine, freq_config):
+    """Create a valid update dataframe with correct frequency alignment."""
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update1 = last_vals.with_columns(
+            pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+        )
+        update2 = last_vals.with_columns(
+            pl.col("ds").dt.offset_by(freq_config["polars_offset2"])
+        )
+        update = pl.concat([update1, update2])
+        return update.with_columns((pl.col("y") + 1).alias("y"))
+    last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+    update1 = last_vals.copy()
+    update2 = last_vals.copy()
+    update1["ds"] += freq_config["pandas_offset1"]
+    update2["ds"] += freq_config["pandas_offset2"]
+    update = pd.concat([update1, update2], ignore_index=True)
+    update["y"] = update["y"] + 1
+    return update
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
+def test_update_validation_valid_continuous(engine, freq_name):
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    update = _make_valid_update(series, engine, freq_config)
+    ts.update(update, validate_new_data=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
+def test_update_validation_invalid_gap(engine, freq_name):
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = pl.concat(
+            [
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset3"])
+                ),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = pd.concat(
+            [
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset3"]),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
+def test_update_validation_invalid_start(engine, freq_name):
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = pl.concat(
+            [
+                last_vals,
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = pd.concat(
+            [
+                last_vals,
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="invalid start"):
+        ts.update(update, validate_new_data=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
+def test_update_validation_new_series(engine, freq_name):
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    update = _make_valid_update(series, engine, freq_config)
+
+    # Create new series with proper timestamps for the frequency
+    if engine == "polars":
+        if freq_name == "hourly":
+            dates = [
+                datetime.datetime(2020, 1, 1, 0, 0),
+                datetime.datetime(2020, 1, 1, 1, 0),
+            ]
+        elif freq_name == "daily":
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 1, 2)]
+        elif freq_name == "weekly":
+            dates = [datetime.datetime(2020, 1, 5), datetime.datetime(2020, 1, 12)]
+        elif freq_name == "monthly":
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 2, 1)]
+        else:  # yearly
+            dates = [datetime.datetime(2020, 1, 1), datetime.datetime(2021, 1, 1)]
+
+        new_series = pl.DataFrame(
+            {
+                "unique_id": ["new_0", "new_0"],
+                "ds": dates,
+                "y": [1.0, 2.0],
+                "static_0": [0, 0],
+                "static_1": [1, 1],
+            }
+        ).with_columns(
+            pl.col("ds").dt.cast_time_unit("ns"),
+            pl.col("unique_id").cast(pl.Categorical),
+        )
+        cast_exprs = []
+        for col, dtype in update.schema.items():
+            if dtype == pl.Categorical and new_series.schema[col] != pl.Categorical:
+                cast_exprs.append(
+                    pl.col(col).cast(pl.Utf8).cast(pl.Categorical).alias(col)
+                )
+            else:
+                cast_exprs.append(pl.col(col).cast(dtype).alias(col))
+        new_series = new_series.with_columns(cast_exprs)
+        update = pl.concat([update, new_series])
+    else:
+        if freq_name == "hourly":
+            dates = pd.date_range("2020-01-01", periods=2, freq="h")
+        elif freq_name == "daily":
+            dates = pd.date_range("2020-01-01", periods=2, freq="D")
+        elif freq_name == "weekly":
+            dates = pd.date_range("2020-01-05", periods=2, freq="W")
+        elif freq_name == "monthly":
+            dates = pd.date_range("2020-01-01", periods=2, freq="MS")
+        else:  # yearly
+            dates = pd.date_range("2020-01-01", periods=2, freq="YS")
+
+        new_series = pd.DataFrame(
+            {
+                "unique_id": ["new_0", "new_0"],
+                "ds": dates,
+                "y": [1.0, 2.0],
+                "static_0": [0, 0],
+                "static_1": [1, 1],
+            }
+        )
+        update = pd.concat([update, new_series], ignore_index=True)
+    ts.update(update, validate_new_data=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "freq_name", ["hourly", "daily", "weekly", "monthly", "yearly"]
+)
+def test_update_validation_frequency_mismatch(engine, freq_name):
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        # Create one properly aligned timestamp and one misaligned
+        update = pl.concat(
+            [
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
+                last_vals.with_columns(
+                    pl.col("ds")
+                    .dt.offset_by(freq_config["polars_offset1"])
+                    .dt.offset_by(freq_config["polars_offset_misaligned"])
+                ),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        # Create one properly aligned timestamp and one misaligned
+        update = pd.concat(
+            [
+                last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"]),
+                last_vals.assign(
+                    ds=last_vals["ds"]
+                    + freq_config["pandas_offset1"]
+                    + freq_config["pandas_offset_misaligned"]
+                ),
+            ],
+            ignore_index=True,
+        )
+    with pytest.raises(ValueError, match="missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("freq_name", ["hourly", "daily"])
+def test_update_validation_misaligned_intermediate_timestamp(engine, freq_name):
+    """Test that misaligned intermediate timestamps are caught even when min/max are aligned.
+
+    This is a critical bug: the current validation only checks min and max timestamps,
+    so it misses misaligned intermediate values. For example, with hourly data:
+    [12:00, 13:30, 14:00] should FAIL because 13:30 is not aligned, but currently
+    it passes because min (12:00) and max (14:00) are both aligned.
+    """
+    series = _generate_series_with_freq(
+        3, freq_name, n_static_features=2, engine=engine
+    )
+    freq, freq_config = _get_freq_config(freq_name, engine)
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+
+    # Create update with aligned min/max but misaligned middle timestamp
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        # Create: [last+1h, last+1.5h, last+2h] for hourly (1.5h is misaligned)
+        # or [last+1d, last+1.5d, last+2d] for daily (1.5d is misaligned)
+        update = pl.concat(
+            [
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset1"])
+                ),
+                last_vals.with_columns(
+                    pl.col("ds")
+                    .dt.offset_by(freq_config["polars_offset1"])
+                    .dt.offset_by(freq_config["polars_offset_misaligned"])
+                ),
+                last_vals.with_columns(
+                    pl.col("ds").dt.offset_by(freq_config["polars_offset2"])
+                ),
+            ]
+        )
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        # Create three timestamps: aligned, misaligned, aligned
+        df1 = last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset1"])
+        df2 = last_vals.assign(
+            ds=last_vals["ds"]
+            + freq_config["pandas_offset1"]
+            + freq_config["pandas_offset_misaligned"]
+        )
+        df3 = last_vals.assign(ds=last_vals["ds"] + freq_config["pandas_offset2"])
+        update = pd.concat([df1, df2, df3], ignore_index=True)
+
+    with pytest.raises(ValueError, match="aligned|missing or duplicate timestamps"):
+        ts.update(update, validate_new_data=True)
+
+
+def test_ts_polars():
+    two_series = generate_daily_series(2, n_static_features=2, engine="polars")
+    ts = TimeSeries(freq="1d", lags=[1], date_features=["weekday"])
+    ts.fit_transform(
+        two_series,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+    )
+    last_vals_two_series = two_series.join(
+        two_series.group_by("unique_id").agg(pl.col("ds").max()), on=["unique_id", "ds"]
+    )
+    last_val_id0 = last_vals_two_series.filter(pl.col("unique_id") == "id_0")
+    new_values = last_val_id0.with_columns(
+        pl.col("unique_id").cast(pl.Categorical),
+        pl.col("ds").dt.offset_by("1d"),
+        pl.col("static_0").cast(pl.Int64),
+        pl.col("static_1").cast(pl.Int64),
+    )
+    new_serie = pl.DataFrame(
+        {
+            "unique_id": ["new_idx", "new_idx"],
+            "ds": [datetime.datetime(2020, 1, 1), datetime.datetime(2020, 1, 2)],
+            "y": [5.0, 6.0],
+            "static_0": [0, 0],
+            "static_1": [1, 1],
+        }
+    ).with_columns(
+        pl.col("ds").dt.cast_time_unit("ns"),
+        pl.col("unique_id").cast(pl.Categorical),
+    )
+    new_values = pl.concat([new_values, new_serie])
+    ts.update(new_values)
+    preds = ts.predict({"Naive": NaiveModel()}, 1)
+    expected_id0 = last_val_id0.with_columns(pl.col("ds").dt.offset_by("1d"))
+    expected_id1 = last_vals_two_series.filter(pl.col("unique_id") == "id_1")
+    last_val_new_serie = new_serie.tail(1)
+    expected = pl.concat([expected_id0, expected_id1])
+    expected = ufp.vertical_concat([expected, last_val_new_serie])
+    pd.testing.assert_series_equal(
+        expected["unique_id"].cat.get_categories().to_pandas(),
+        pd.Series(["id_0", "id_1", "new_idx"], name="unique_id"),
+    )
+    expected = expected[["unique_id", "ds", "y"]]
+    expected = ufp.rename(expected, {"y": "Naive"})
+    expected = expected.with_columns(pl.col("ds").dt.offset_by("1d"))
+    pd.testing.assert_frame_equal(preds.to_pandas(), expected.to_pandas())
+    pd.testing.assert_frame_equal(
+        ts.static_features_.to_pandas(),
+        (
+            ufp.vertical_concat([last_vals_two_series, new_serie.tail(1)])[
+                ["unique_id", "static_0", "static_1"]
+            ]
+            .to_pandas()
+            .astype(ts.static_features_.to_pandas().dtypes)
+            .reset_index(drop=True)
+        ),
+    )
+    # with target transforms
+    ts = TimeSeries(
+        freq="1d",
+        lags=[7],
+        target_transforms=[Differences([1, 2]), LocalStandardScaler()],
+    )
+    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y")
+    new_values = two_series.group_by("unique_id").tail(7)
+    new_values = new_values.with_columns(pl.col("ds").dt.offset_by("7d"))
+    orig_last7 = ts.ga.take_from_groups(slice(-7, None)).data
+    ts.update(new_values)
+    preds = ts.predict({"SeasonalNaive": SeasonalNaiveModel()}, 7)
+    np.testing.assert_allclose(
+        new_values["y"].to_numpy(),
+        preds["SeasonalNaive"].to_numpy(),
+    )
+    last7 = ts.ga.take_from_groups(slice(-7, None)).data
+    assert 0 < np.abs(last7 / orig_last7 - 1).mean() < 0.5
+
+
+# target_transform with keep_last_n
+def test_target_transform_with_keep_last_n(series):
+    ts = TimeSeries(freq="D", lags=[1], target_transforms=[LocalStandardScaler()])
+    ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10
+    )
+    preds = ts.predict({"y": NaiveModel()}, 1)
+    expected = (
+        series.groupby("unique_id", observed=True)
+        .tail(1)[["unique_id", "ds", "y"]]
+        .reset_index(drop=True)
+    )
+    expected["ds"] += pd.offsets.Day()
+    pd.testing.assert_frame_equal(preds, expected)
+
+
+# raise error when omitting the static_features argument and passing them as dynamic in predict
+def test_omit_static_features(series):
+    valid = series.groupby("unique_id", observed=True).tail(10)
+    train = series.drop(valid.index)
+    ts = TimeSeries(freq="D", lags=[1], target_transforms=[LocalStandardScaler()])
+    ts.fit_transform(
+        train, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10
+    )
+    with pytest.warns(UserWarning, match="static during fit and will be ignored"):
+        ts.predict({"y": NaiveModel()}, 1, X_df=valid.drop(columns=["y"]))
+
+
+def test_pd_vs_pl():
+    series_pl = generate_daily_series(
+        5, static_as_categorical=False, n_static_features=5, engine="polars"
+    )
+    series_pd = generate_daily_series(
+        5, static_as_categorical=False, n_static_features=5, engine="pandas"
+    )
+    series_pl = series_pl.with_columns(pl.col("unique_id").cast(str))
+    series_pd["unique_id"] = series_pd["unique_id"].astype(str)
+
+    cfg = dict(
+        lags=[1, 2, 3, 4],
+        lag_transforms={
+            1: [ExpandingMean(), RollingMean(7), RollingMean(14)],
+            2: [ExpandingMean(), RollingMean(7), RollingMean(14)],
+            3: [ExpandingMean(), RollingMean(7), RollingMean(14)],
+            4: [ExpandingMean(), RollingMean(7), RollingMean(14)],
+        },
+        date_features=["day", "month", "quarter", "year"],
+        target_transforms=[Differences([1])],
+    )
+    feats_pl = SaveFeatures()
+    ts_pl = TimeSeries(freq="1d", **cfg)
+    prep_pl = ts_pl.fit_transform(series_pl, "unique_id", "ds", "y")
+    fcst_pl = ts_pl.predict({"y": NaiveModel()}, 2, before_predict_callback=feats_pl)
+
+    feats_pd = SaveFeatures()
+    ts_pd = TimeSeries(freq="1D", **cfg)
+    prep_pd = ts_pd.fit_transform(series_pd, "unique_id", "ds", "y")
+    fcst_pd = ts_pd.predict({"y": NaiveModel()}, 2, before_predict_callback=feats_pd)
+
+    prep_pd = prep_pd.reset_index(drop=True)
+    prep_pl = prep_pl.to_pandas()
+    fcst_pl = fcst_pl.to_pandas()
+    # date features have different dtypes
+    pd.testing.assert_frame_equal(prep_pl, prep_pd, check_dtype=False)
+    pd.testing.assert_frame_equal(
+        feats_pl.get_features(with_step=True).to_pandas(),
+        feats_pd.get_features(with_step=True),
+        check_dtype=False,
+    )
+    pd.testing.assert_frame_equal(fcst_pl, fcst_pd)
+
+
+# dropped series
+@pytest.mark.parametrize("ordered", "[True, False]")
+def test_dropped_series(ordered):
+    series = generate_daily_series(10, min_length=5, max_length=20)
+    if not ordered:
+        series = series.sample(frac=1.0, random_state=40)
+    ts = TimeSeries(freq="D", lags=[10])
+    with warnings.catch_warnings(record=True):
+        prep = ts.fit_transform(series, "unique_id", "ds", "y")
+    dropped = ts.uids[ts._dropped_series].tolist()
+    assert not prep["unique_id"].isin(dropped).any()
+    assert set(prep["unique_id"].unique().tolist() + dropped) == set(
+        series["unique_id"].unique()
+    )
+
+
+# short series exception
+def test_short_series_exception():
+    series = generate_daily_series(2, min_length=5, max_length=15)
+    ts = TimeSeries(freq="D", lags=[1], target_transforms=[Differences([20])])
+    with pytest.raises(Exception) as exec:
+        (ts.fit_transform(series, "unique_id", "ds", "y"),)
+    assert "are too short for the 'Differences' transformation" in str(exec.value)
+
+
+# test predict
+class Lag1PlusOneModel:
+    def predict(self, X):
+        return X["lag1"] + 1
+
+
+def test_lag_predict(series):
+    valid = series.groupby("unique_id", observed=True).tail(10)
+    train = series.drop(valid.index)
+
+    ts = TimeSeries(freq="D", lags=[1])
+    for max_horizon in [None, 2]:
+        if max_horizon is None:
+            mod1 = Lag1PlusOneModel()
+            mod2 = Lag1PlusOneModel()
+        else:
+            mod1 = [Lag1PlusOneModel() for _ in range(max_horizon)]
+            mod2 = [Lag1PlusOneModel() for _ in range(max_horizon)]
+        ts.fit_transform(train, "unique_id", "ds", "y", max_horizon=max_horizon)
+        # each model gets the correct historic values
+        preds = ts.predict(models={"mod1": mod1, "mod2": mod2}, horizon=2)
+        np.testing.assert_allclose(preds["mod1"], preds["mod2"])
+        # idempotency
+        preds2 = ts.predict(models={"mod1": mod1, "mod2": mod2}, horizon=2)
+        np.testing.assert_allclose(preds2["mod1"], preds2["mod2"])
+        pd.testing.assert_frame_equal(preds, preds2)
+
+
+# save & load
+def test_save_and_load():
+    series = generate_daily_series(2, n_static_features=2)
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        date_features=["dayofweek"],
+        lag_transforms={1: [RollingMean(1)]},
+        target_transforms=[Differences([20])],
+    )
+    ts.fit_transform(series, "unique_id", "ds", "y")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fname = Path(tmpdir) / "hi"
+        ts.save(fname)
+        ts2 = TimeSeries.load(fname)
+    preds = ts.predict({"model": NaiveModel()}, 10)
+    preds2 = ts2.predict({"model": NaiveModel()}, 10)
+    pd.testing.assert_frame_equal(preds, preds2)
+
+
+# automatically set keep_last_n for built-in lag transforms
+def test_keep_last_n_for_built_in_lag_transforms(series):
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        date_features=["dayofweek"],
+        lag_transforms={
+            1: [RollingMean(1), RollingMean(4)],
+        },
+    )
+    ts.fit_transform(series, "unique_id", "ds", "y", keep_last_n=20)
+    assert ts.keep_last_n == 20
+    ts.fit_transform(series, "unique_id", "ds", "y")
+    assert ts.keep_last_n == 4
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        date_features=["dayofweek"],
+        lag_transforms={
+            1: [RollingMean(1), RollingMean(4)],
+            5: [ExpandingMean()],
+        },
+    )
+    ts.fit_transform(series, "unique_id", "ds", "y", keep_last_n=20)
+    assert ts.keep_last_n == 20
+    ts.fit_transform(series, "unique_id", "ds", "y")
+    # the expanding mean carries its own accumulator, but each update still
+    # reads the value 5 positions back, and one more has to survive so that a
+    # trimmed serie stays longer than the lag
+    assert ts.keep_last_n == 6
+
+
+# no target nulls when dropna=False
+def test_target_nulls(series):
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        target_transforms=[Differences([5])],
+    )
+    prep = ts.fit_transform(series, "unique_id", "ds", "y", dropna=False)
+    assert not prep["y"].isnull().any()
+
+
+def test_timeseries_num_threads_minus_one(series):
+    """Test that TimeSeries correctly handles num_threads=-1."""
+    from joblib import cpu_count
+
+    ts = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        num_threads=-1,
+    )
+    assert ts.num_threads == cpu_count()
+    assert ts.num_threads >= 1
+
+    # Verify it works in fit_transform and produces same results as num_threads=1
+    prep_multi = ts.fit_transform(series, "unique_id", "ds", "y")
+    assert prep_multi is not None
+
+    # Compare with num_threads=1
+    ts_single = TimeSeries(
+        freq="D",
+        lags=[1, 2],
+        num_threads=1,
+    )
+    prep_single = ts_single.fit_transform(series, "unique_id", "ds", "y")
+
+    pd.testing.assert_frame_equal(prep_multi, prep_single)
+
+
+# ---------------------------------------------------------------------------
+# date_features_as_dummies tests
+# ---------------------------------------------------------------------------
+
+
+def test_date_feature_dummies_column_names():
+    """_date_feature_names expands dummy features; non-dummy features stay ordinal."""
+    ts = TimeSeries(
+        freq="D",
+        date_features=["dayofweek", "year"],
+        date_features_as_dummies=True,
+    )
+    names = ts._date_feature_names
+    expected = [f"dayofweek_{i}" for i in range(7)] + ["year"]
+    assert names == expected
+
+
+def test_date_feature_dummies_pandas(series):
+    """dayofweek expands to 7 binary uint8 columns on a pandas DataFrame."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    for i in range(7):
+        col = f"dayofweek_{i}"
+        assert col in result.columns, f"missing column {col}"
+        assert result[col].isin([0, 1]).all(), f"{col} has values outside {{0, 1}}"
+    # Original ordinal column should not be present
+    assert "dayofweek" not in result.columns
+
+
+def test_date_feature_dummies_polars(series):
+    """dayofweek expands to 7 binary columns on a polars DataFrame."""
+    pl_series = pl.from_pandas(series)
+    ts = TimeSeries(
+        freq="1d",  # polars offset format
+        lags=[1],
+        date_features=["dayofweek"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(
+        pl_series, id_col="unique_id", time_col="ds", target_col="y"
+    )
+    result_pd = result.to_pandas()
+    for i in range(7):
+        col = f"dayofweek_{i}"
+        assert col in result_pd.columns, f"missing column {col}"
+        assert result_pd[col].isin([0, 1]).all()
+    assert "dayofweek" not in result_pd.columns
+
+
+def test_date_feature_dummies_mixed(series):
+    """Features in _DUMMY_ALIASES are dummified; others stay ordinal."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek", "year"],  # year not in _DUMMY_ALIASES
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    assert "dayofweek_0" in result.columns  # dummy
+    assert "dayofweek" not in result.columns  # ordinal version removed
+    assert "year" in result.columns  # stays ordinal
+
+
+def test_date_feature_dummies_false_default(series):
+    """date_features_as_dummies=False (default) keeps ordinal behavior."""
+    ts = TimeSeries(freq="D", lags=[1], date_features=["dayofweek"])
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    assert "dayofweek" in result.columns
+    assert "dayofweek_0" not in result.columns
+
+
+def test_date_feature_dummies_predict(series):
+    """End-to-end fit + predict works with date_features_as_dummies=True."""
+    from mlforecast.forecast import MLForecast
+    from sklearn.linear_model import Ridge
+
+    fcst = MLForecast(
+        models={"ridge": Ridge()},
+        freq="D",
+        lags=[1],
+        date_features=["dayofweek", "month"],
+        date_features_as_dummies=True,
+    )
+    fcst.fit(series)
+    preds = fcst.predict(7)
+    assert preds.shape[0] == series["unique_id"].nunique() * 7
+    assert "ridge" in preds.columns
+
+
+def test_date_feature_dummies_quarter(series):
+    """quarter dummy creates 4 binary columns (values 1-4)."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["quarter"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    for q in range(1, 5):
+        col = f"quarter_{q}"
+        assert col in result.columns, f"missing {col}"
+        assert result[col].isin([0, 1]).all()
+    # Exactly one quarter indicator is 1 per row
+    quarter_cols = [f"quarter_{q}" for q in range(1, 5)]
+    assert (result[quarter_cols].sum(axis=1) == 1).all()
+
+
+def test_date_feature_dummies_month_values(series):
+    """month dummy has 12 columns and exactly one is 1 per row."""
+    ts = TimeSeries(
+        freq="D",
+        lags=[1],
+        date_features=["month"],
+        date_features_as_dummies=True,
+    )
+    result = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    month_cols = [f"month_{m}" for m in range(1, 13)]
+    for col in month_cols:
+        assert col in result.columns
+    assert (result[month_cols].sum(axis=1) == 1).all()
+
+
+def test_date_feature_dummies_all_supported(series):
+    """Every feature in _DUMMY_ALIASES can be dummified without error."""
+    # Use a series that covers all hours/minutes/seconds by overriding frequency
+    for feature, calendar_feature in _DUMMY_ALIASES.items():
+        ts = TimeSeries(
+            freq="D",
+            lags=[1],
+            date_features=[feature],
+            date_features_as_dummies=True,
+        )
+        result = ts.fit_transform(
+            series, id_col="unique_id", time_col="ds", target_col="y"
+        )
+        expected_cols = [f"{feature}_{v}" for v in calendar_feature.values]
+        for col in expected_cols:
+            assert col in result.columns, f"feature={feature}: missing {col}"
+
+
+def test_non_jitted_tfms(series):
+    lags = [1, 2]
+
+    def my_py_tfm(x):
+        return x
+
+    def assert_same_as_native(df):
+        for lag in lags:
+            np.testing.assert_allclose(df[f"lag{lag}"], df[f"my_py_tfm_lag{lag}"])
+
+    ts = TimeSeries(
+        freq="D",
+        lags=lags,
+        lag_transforms={lag: [my_py_tfm] for lag in lags},
+        num_threads=2,
+    )
+    expected_warning = "Non-numba transforms are computed sequentially"
+    with pytest.warns(UserWarning, match=expected_warning):
+        result = ts.fit_transform(
+            series, id_col="unique_id", time_col="ds", target_col="y"
+        )
+    assert_same_as_native(result)
+
+    cbk = SaveFeatures()
+    with pytest.warns(UserWarning, match=expected_warning):
+        ts.predict({"naive": NaiveModel()}, horizon=5, before_predict_callback=cbk)
+    feats = cbk.get_features()
+    assert_same_as_native(feats)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("equal_ends", [True, False])
+def test_predict_date_features_per_series(engine, equal_ends):
+    # uniform last dates take a broadcast fast path in _update_features;
+    # staggered last dates compute per-series. Both must yield the date
+    # feature of each series' own next timestamp at every step.
+    horizon = 3
+    series = generate_daily_series(
+        3, n_static_features=1, equal_ends=equal_ends, engine=engine
+    )
+    freq = "1d" if engine == "polars" else "D"
+    ts = TimeSeries(freq=freq, lags=[1], date_features=["day"])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    cbk = SaveFeatures()
+    ts.predict({"Naive": NaiveModel()}, horizon, before_predict_callback=cbk)
+    feats = cbk.get_features()
+    if engine == "polars":
+        expected = np.concatenate(
+            [
+                ts.last_dates.dt.offset_by(f"{k}d").dt.day().to_numpy()
+                for k in range(1, horizon + 1)
+            ]
+        )
+    else:
+        expected = np.concatenate(
+            [
+                np.asarray((ts.last_dates + pd.Timedelta(days=k)).day)
+                for k in range(1, horizon + 1)
+            ]
+        )
+    np.testing.assert_array_equal(np.asarray(feats["day"]), expected)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_predict_warns_on_null_statics(engine):
+    series = generate_daily_series(
+        2, n_static_features=1, static_as_categorical=False, engine=engine
+    )
+    if engine == "polars":
+        first_uid = series["unique_id"][0]
+        series = series.with_columns(
+            pl.when(pl.col("unique_id") == first_uid)
+            .then(None)
+            .otherwise(pl.col("static_0"))
+            .alias("static_0")
+        )
+        freq = "1d"
+    else:
+        first_uid = series["unique_id"].iloc[0]
+        series.loc[series["unique_id"] == first_uid, "static_0"] = np.nan
+        freq = "D"
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    with pytest.warns(UserWarning, match="Found null values in static_0"):
+        ts.predict({"Naive": NaiveModel()}, 2)
+
+
+def test_predict_warns_on_null_computed_features():
+    # a lag longer than every series produces NaN feature values during
+    # predict; pandas treats NaN as null so the diagnostic must fire
+    series = generate_daily_series(2, min_length=20, max_length=30)
+    ts = TimeSeries(freq="D", lags=[1, 50])
+    ts.fit_transform(
+        series, id_col="unique_id", time_col="ds", target_col="y", dropna=False
+    )
+    with pytest.warns(UserWarning, match="Found null values in lag50"):
+        ts.predict({"Naive": NaiveModel()}, 1)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_validation_categorical_ids(engine):
+    series = generate_daily_series(2, engine=engine)
+    if engine == "polars":
+        series = series.with_columns(pl.col("unique_id").cast(pl.Categorical))
+        freq = "1d"
+    else:
+        series["unique_id"] = series["unique_id"].astype("category")
+        freq = "D"
+    ts = TimeSeries(freq=freq, lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    if engine == "polars":
+        last_vals = series.join(
+            series.group_by("unique_id").agg(pl.col("ds").max()),
+            on=["unique_id", "ds"],
+        )
+        update = last_vals.with_columns(pl.col("ds").dt.offset_by("1d"))
+    else:
+        last_vals = series.groupby("unique_id", observed=True).tail(1).copy()
+        update = last_vals.assign(ds=last_vals["ds"] + pd.Timedelta(days=1))
+    ts.update(update, validate_new_data=True)
+
+
+def test_update_validation_polars_ns_timestamps():
+    # nanosecond-precision timestamps are not representable as python
+    # datetimes; validation must not round-trip them through python objects.
+    # n is chosen so the update's timestamp (n ns = 1us) crosses a
+    # microsecond boundary: a us-truncating round-trip would then expect a
+    # start of 0us and reject the valid update
+    n = 1000
+    times = pl.Series("ds", np.arange(n), dtype=pl.Int64).cast(pl.Datetime("ns"))
+    series = pl.DataFrame(
+        {
+            "unique_id": ["a"] * n + ["b"] * n,
+            "ds": pl.concat([times, times]),
+            "y": np.arange(2 * n, dtype=np.float64),
+        }
+    )
+    ts = TimeSeries(freq="1ns", lags=[1])
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    next_time = pl.Series("ds", [n], dtype=pl.Int64).cast(pl.Datetime("ns"))
+    update = pl.DataFrame(
+        {
+            "unique_id": ["a", "b"],
+            "ds": pl.concat([next_time, next_time]),
+            "y": [1.0, 2.0],
+        }
+    )
+    ts.update(update, validate_new_data=True)
+
+
+# Regression: the "weekofyear" date feature on a pandas DatetimeIndex used to
+# raise AttributeError because isocalendar() exposes the ISO week under the
+# "week" column, not "weekofyear". Both aliases must return that column.
+def test_pandas_weekofyear_alias():
+    dates = pd.date_range("2020-12-20", periods=40, freq="D")
+    df = pd.DataFrame({"unique_id": ["a"] * 40, "ds": dates, "y": np.arange(40.0)})
+
+    prep_week = TimeSeries(freq="D", date_features=["week"]).fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y"
+    )
+    prep_woy = TimeSeries(freq="D", date_features=["weekofyear"]).fit_transform(
+        df, id_col="unique_id", time_col="ds", target_col="y"
+    )
+
+    expected = dates.isocalendar()["week"].to_numpy()
+    np.testing.assert_array_equal(np.asarray(prep_woy["weekofyear"]), expected)
+    np.testing.assert_array_equal(
+        np.asarray(prep_woy["weekofyear"]), np.asarray(prep_week["week"])
+    )
+
+
+def _update_validation_df(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": ["a"] * 4 + ["b"] * 4,
+            "ds": [1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [1.0, 2.0, 3.0, 4.0, 10.0, 20.0, 30.0, 40.0],
+            "promo": [0, 0, 0, 0, 1, 1, 1, 1],
+        }
+    )
+    if engine == "polars":
+        df = pl.from_pandas(df)
+    return df
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_update_new_series_without_static_features_mutates_nothing(engine):
+    ts = TimeSeries(freq=1, lags=[1])
+    ts.fit_transform(
+        _update_validation_df(engine),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=["promo"],
+    )
+    uids = list(ts.uids)
+    new = pd.DataFrame({"unique_id": ["a", "b", "c"], "ds": [5] * 3, "y": [1.0] * 3})
+    if engine == "polars":
+        new = pl.from_pandas(new)
+    with pytest.raises(ValueError, match="New series must include"):
+        ts.update(new)
+    assert list(ts.uids) == uids
+    assert ts.ga.n_groups == len(uids)
+
+
+def test_update_new_series_with_target_transforms_mutates_nothing():
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=[LocalStandardScaler()])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    uids = list(ts.uids)
+    new = pd.DataFrame({"unique_id": ["a", "b", "c"], "ds": [5] * 3, "y": [1.0] * 3})
+    with pytest.raises(ValueError, match="Can not update target_transforms"):
+        ts.update(new)
+    assert list(ts.uids) == uids
+
+
+def test_update_failing_target_transform_mutates_nothing():
+    class FailingDifferences(Differences):
+        fail = True
+
+        def update(self, ga):
+            ga = super().update(ga)
+            if self.fail:
+                raise RuntimeError("update failed")
+            return ga
+
+    def fitted_ts(tfm):
+        ts = TimeSeries(freq=1, lags=[1], target_transforms=[tfm])
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            static_features=[],
+        )
+        return ts
+
+    ts = fitted_ts(FailingDifferences([1]))
+    last_dates = list(ts.last_dates)
+    data = ts.ga.data.copy()
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(RuntimeError, match="update failed"):
+        ts.update(new)
+    assert list(ts.last_dates) == last_dates
+    np.testing.assert_array_equal(ts.ga.data, data)
+
+    ts.target_transforms[0].fail = False
+    ts.update(new)
+    expected = fitted_ts(Differences([1]))
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+
+
+@pytest.mark.parametrize(
+    "ts_kwargs",
+    [
+        {"lag_transforms": {1: [RollingMean(2, min_samples=1, global_=True)]}},
+        {"lags": [1]},
+    ],
+)
+def test_update_duplicate_rows_mutates_nothing(ts_kwargs):
+    ts = TimeSeries(freq=1, **ts_kwargs)
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
+    )
+    uids = list(ts.uids)
+    data = ts.ga.data.copy()
+    dup = pd.DataFrame(
+        {"unique_id": ["a", "a", "b"], "ds": [5, 5, 5], "y": [5.0, 6.0, 50.0]}
+    )
+    with pytest.raises(ValueError, match="duplicate rows"):
+        ts.update(dup)
+    assert list(ts.uids) == uids
+    np.testing.assert_array_equal(ts.ga.data, data)
+
+
+def _features_after(ts):
+    ts._predict_setup()
+    return ts._get_features_for_next_step()
+
+
+@pytest.mark.parametrize(
+    "new",
+    [
+        pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]}),
+        pd.DataFrame(
+            {
+                "unique_id": ["a", "b", "c"],
+                "ds": [5] * 3,
+                "y": [5.0, 50.0, 7.0],
+                "promo": [0, 1, 2],
+            }
+        ),
+    ],
+)
+def test_update_failing_after_target_transforms_mutates_nothing(monkeypatch, new):
+    def fitted_ts():
+        ts = TimeSeries(
+            freq=1,
+            lags=[1],
+            lag_transforms={
+                1: [
+                    ExpandingMean(),
+                    ExpandingMean(global_=True),
+                    RollingMean(2, min_samples=1, groupby=["promo"]),
+                ]
+            },
+            target_transforms=None if "promo" in new else [Differences([1])],
+        )
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            dropna=False,
+            static_features=["promo"],
+        )
+        return ts
+
+    def fail(*_):
+        raise RuntimeError("update failed")
+
+    ts = fitted_ts()
+    with monkeypatch.context() as m:
+        m.setattr(PooledState, "set_series_bucket_id", fail)
+        with pytest.raises(RuntimeError, match="update failed"):
+            ts.update(new)
+    expected = fitted_ts()
+    assert list(ts.uids) == list(expected.uids)
+    pd.testing.assert_frame_equal(ts.static_features_, expected.static_features_)
+    pd.testing.assert_frame_equal(_features_after(ts), _features_after(expected))
+    ts.update(new)
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+    pd.testing.assert_frame_equal(_features_after(ts), _features_after(expected))
+
+
+def test_update_interrupted_target_transform_chain_mutates_nothing():
+    class Interrupted(LocalStandardScaler):
+        interrupt = False
+
+        def update(self, ga):
+            if self.interrupt:
+                raise KeyboardInterrupt
+            return super().update(ga)
+
+    def fitted_ts():
+        ts = TimeSeries(
+            freq=1, lags=[1], target_transforms=[Differences([1]), Interrupted()]
+        )
+        ts.fit_transform(
+            _update_validation_df("pandas"),
+            id_col="unique_id",
+            time_col="ds",
+            target_col="y",
+            static_features=[],
+        )
+        return ts
+
+    ts = fitted_ts()
+    ts.target_transforms[1].interrupt = True
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(KeyboardInterrupt):
+        ts.update(new)
+    ts.target_transforms[1].interrupt = False
+    ts.update(new)
+    expected = fitted_ts()
+    expected.update(new)
+    np.testing.assert_array_equal(ts.ga.data, expected.ga.data)
+
+
+def test_update_failure_restores_target_transforms_in_place():
+    class Failing(LocalStandardScaler):
+        def update(self, _ga):
+            raise RuntimeError("update failed")
+
+    diffs = Differences([1])
+    tfms = (diffs, Failing())
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=tfms)
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    tails = copy.deepcopy(diffs.scalers_[0].tails_)
+    new = pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]})
+    with pytest.raises(RuntimeError, match="update failed"):
+        ts.update(new)
+    assert ts.target_transforms[0] is diffs
+    np.testing.assert_array_equal(diffs.scalers_[0].tails_, tails)
+
+
+def test_update_duplicate_rows_with_validation_names_series():
+    ts = TimeSeries(freq=1, lags=[1])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    dup = pd.DataFrame(
+        {"unique_id": ["a", "a", "b"], "ds": [5, 5, 5], "y": [5.0, 6.0, 50.0]}
+    )
+    with pytest.raises(ValueError, match="'a'"):
+        ts.update(dup, validate_new_data=True)
+
+
+def test_update_target_transform_returning_only_target():
+    class OnlyTarget(BaseTargetTransform):
+        def fit_transform(self, df):
+            return df
+
+        def update(self, df):
+            return df[[self.id_col, self.target_col]]
+
+        def inverse_transform(self, df):
+            return df
+
+    ts = TimeSeries(freq=1, lags=[1], target_transforms=[OnlyTarget()])
+    ts.fit_transform(
+        _update_validation_df("pandas"),
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        static_features=[],
+    )
+    ts.update(pd.DataFrame({"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0]}))
+    assert list(ts.last_dates) == [5, 5]
+
+
+def test_update_target_transform_returning_only_target_with_partition():
+    class OnlyTarget(BaseTargetTransform):
+        def fit_transform(self, df):
+            return df
+
+        def update(self, df):
+            return df[[self.id_col, self.target_col]]
+
+        def inverse_transform(self, df):
+            return df
+
+    df = _update_validation_df("pandas").assign(price=1.0)
+    ts = TimeSeries(
+        freq=1,
+        lag_transforms={
+            1: [RollingMean(2, min_samples=1, global_=True, partition_by=["price"])]
+        },
+        target_transforms=[OnlyTarget()],
+    )
+    ts.fit_transform(
+        df,
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        dropna=False,
+        static_features=[],
+    )
+    ts.update(
+        pd.DataFrame(
+            {"unique_id": ["a", "b"], "ds": [5, 5], "y": [5.0, 50.0], "price": 2.0}
+        )
+    )
+    assert list(ts.last_dates) == [5, 5]

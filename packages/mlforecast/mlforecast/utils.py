@@ -1,0 +1,146 @@
+__all__ = [
+    "generate_daily_series",
+    "generate_prices_for_series",
+    "PredictionIntervals",
+    "TransferConformal",
+]
+
+
+from math import ceil, log10
+import warnings
+
+import numpy as np
+import pandas as pd
+from joblib import cpu_count
+from utilsforecast.compat import DataFrame, pl
+from utilsforecast.data import generate_series
+
+from .conformal_prediction import PredictionIntervals, TransferConformal  # noqa: F401
+
+
+def _resolve_num_threads(num_threads: int) -> int:
+    """Convert num_threads=-1 to actual CPU count.
+
+    Args:
+        num_threads: Number of threads. Use -1 for all available CPUs.
+
+    Returns:
+        int: Resolved number of threads (always >= 1)
+
+    Note:
+        Uses joblib.cpu_count() which respects CPU affinity and cgroup limits
+        (Docker/Kubernetes resource constraints). Falls back to 1 if CPU
+        count cannot be determined.
+    """
+    if num_threads == -1:
+        try:
+            resolved = cpu_count()
+            if resolved is None:
+                warnings.warn(
+                    "Could not determine CPU count, using num_threads=1.",
+                    UserWarning,
+                    stacklevel=3,
+                )
+                return 1
+            return resolved
+        except Exception as e:
+            warnings.warn(
+                f"Error determining CPU count ({e}), using num_threads=1.",
+                UserWarning,
+                stacklevel=3,
+            )
+            return 1
+    if num_threads < 1:
+        raise ValueError(
+            f"num_threads must be -1 or a positive integer, got {num_threads}."
+        )
+    return num_threads
+
+
+def generate_daily_series(
+    n_series: int,
+    min_length: int = 50,
+    max_length: int = 500,
+    n_static_features: int = 0,
+    equal_ends: bool = False,
+    static_as_categorical: bool = True,
+    with_trend: bool = False,
+    seed: int = 0,
+    engine: str = "pandas",
+) -> DataFrame:
+    """Generate Synthetic Panel Series.
+
+    Args:
+        n_series (int): Number of series for synthetic panel.
+        min_length (int, default=50): Minimum length of synthetic panel's series.
+        max_length (int, default=500): Maximum length of synthetic panel's series.
+        n_static_features (int, default=0): Number of static exogenous variables for synthetic panel's series.
+        equal_ends (bool, default=False): Series should end in the same date stamp `ds`.
+        static_as_categorical (bool, default=True): Static features should have a categorical data type.
+        with_trend (bool, default=False): Series should have a (positive) trend.
+        seed (int, default=0): Random seed used for generating the data.
+        engine (str, default='pandas'): Output Dataframe type.
+
+    Returns:
+        pandas or polars DataFrame: Synthetic panel with columns [`unique_id`, `ds`, `y`] and exogenous features.
+    """
+    series = generate_series(
+        n_series=n_series,
+        freq="D",
+        min_length=min_length,
+        max_length=max_length,
+        n_static_features=n_static_features,
+        equal_ends=equal_ends,
+        static_as_categorical=static_as_categorical,
+        with_trend=with_trend,
+        seed=seed,
+        engine=engine,
+    )
+    n_digits = ceil(log10(n_series))
+
+    if engine == "pandas":
+        series["unique_id"] = (
+            "id_" + series["unique_id"].astype(str).str.rjust(n_digits, "0")
+        ).astype("category")
+    else:
+        try:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.pad_start(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+        except AttributeError:
+            series = series.with_columns(
+                ("id_" + pl.col("unique_id").cast(pl.Utf8).str.rjust(n_digits, "0"))
+                .alias("unique_id")
+                .cast(pl.Categorical)
+            )
+    return series
+
+
+def generate_prices_for_series(
+    series: pd.DataFrame, horizon: int = 7, seed: int = 0
+) -> pd.DataFrame:
+    rng = np.random.RandomState(seed)
+    unique_last_dates = series.groupby("unique_id", observed=True)["ds"].max().nunique()
+    if unique_last_dates > 1:
+        raise ValueError("series must have equal ends.")
+    day_offset = pd.tseries.frequencies.Day()
+    starts_ends = series.groupby("unique_id", observed=True)["ds"].agg(["min", "max"])
+    dfs = []
+    for idx, (start, end) in starts_ends.iterrows():
+        product_df = pd.DataFrame(
+            {
+                "unique_id": idx,
+                "price": rng.rand((end - start).days + 1 + horizon),
+            },
+            index=pd.date_range(start, end + horizon * day_offset, name="ds"),
+        )
+        dfs.append(product_df)
+    prices_catalog = pd.concat(dfs).reset_index()
+    return prices_catalog
+
+
+class _ShortSeriesException(Exception):
+    def __init__(self, idxs):
+        self.idxs = idxs

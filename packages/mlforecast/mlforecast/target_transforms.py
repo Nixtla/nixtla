@@ -1,0 +1,541 @@
+__all__ = [
+    "BaseTargetTransform",
+    "Differences",
+    "AutoDifferences",
+    "AutoSeasonalDifferences",
+    "AutoSeasonalityAndDifferences",
+    "LocalStandardScaler",
+    "LocalMinMaxScaler",
+    "LocalRobustScaler",
+    "LocalBoxCox",
+    "GlobalSklearnTransformer",
+]
+
+
+import abc
+import copy
+from typing import Callable, Iterable, List, Optional, Sequence, TypeVar
+
+import coreforecast.scalers as core_scalers
+import numpy as np
+import utilsforecast.processing as ufp
+from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
+from sklearn.base import TransformerMixin, clone
+from utilsforecast.compat import DataFrame
+
+from .grouped_array import GroupedArray
+from .utils import _ShortSeriesException
+
+_GATransform = TypeVar("_GATransform", bound="_BaseGroupedArrayTargetTransform")
+_Transform = TypeVar("_Transform")
+
+
+def _bare_instance(obj: _Transform) -> _Transform:
+    """An instance of `obj`'s class with no attributes set.
+
+    Calling the constructor instead would downgrade a user subclass whose
+    `__init__` takes different arguments, so clones start from this and copy
+    over the arguments they know about.
+    """
+    return type(obj).__new__(type(obj))
+
+
+class BaseTargetTransform(abc.ABC):
+    """Base class used for target transformations."""
+
+    def set_column_names(self, id_col: str, time_col: str, target_col: str):
+        self.id_col = id_col
+        self.time_col = time_col
+        self.target_col = target_col
+
+    def clone(self) -> "BaseTargetTransform":
+        """An unfitted instance with the same arguments.
+
+        The default copies the fitted state along, which is safe for any
+        subclass; override it when that state is large.
+        """
+        return copy.deepcopy(self)
+
+    def update(self, df: DataFrame) -> DataFrame:
+        raise NotImplementedError
+
+    @staticmethod
+    def stack(transforms: Sequence["BaseTargetTransform"]) -> "BaseTargetTransform":
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def fit_transform(self, df: DataFrame) -> DataFrame: ...
+
+    @abc.abstractmethod
+    def inverse_transform(self, df: DataFrame) -> DataFrame: ...
+
+
+class _BaseGroupedArrayTargetTransform(abc.ABC):
+    """Base class used for target transformations that operate on grouped arrays."""
+
+    num_threads: int = 1
+    scaler_: core_scalers._BaseLocalScaler
+
+    def set_num_threads(self, num_threads: int) -> None:
+        self.num_threads = num_threads
+
+    def clone(self: _GATransform) -> _GATransform:
+        """An unfitted instance with the same arguments and thread count."""
+        out = self._clone()
+        out.num_threads = self.num_threads
+        return out
+
+    def _clone(self: _GATransform) -> _GATransform:
+        # the default copies the fitted state along; override it to rebuild
+        # from the arguments when that state is large
+        return copy.deepcopy(self)
+
+    @abc.abstractmethod
+    def update(self, ga: GroupedArray) -> GroupedArray: ...
+
+    @abc.abstractmethod
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray: ...
+
+    @abc.abstractmethod
+    def inverse_transform(self, ga: GroupedArray) -> GroupedArray: ...
+
+    def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
+        return self.inverse_transform(ga)
+
+    @abc.abstractmethod
+    def take(self, idxs: np.ndarray) -> "_BaseGroupedArrayTargetTransform": ...
+
+    @staticmethod
+    def stack(
+        scalers: Sequence["_BaseGroupedArrayTargetTransform"],
+    ) -> "_BaseGroupedArrayTargetTransform":
+        first_scaler = scalers[0]
+        core_scaler = first_scaler.scaler_
+        out = copy.deepcopy(first_scaler)
+        out.scaler_ = core_scaler.stack([sc.scaler_ for sc in scalers])
+        return out
+
+
+class Differences(_BaseGroupedArrayTargetTransform):
+    """Subtracts previous values of the serie. Can be used to remove trend or seasonalities."""
+
+    store_fitted = False
+
+    def __init__(self, differences: Iterable[int]):
+        self.differences = list(differences)
+
+    def _clone(self) -> "Differences":
+        out = _bare_instance(self)
+        out.differences = list(self.differences)
+        return out
+
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
+        self.fitted_: List[np.ndarray] = []
+        self.fitted_indptr_: Optional[np.ndarray] = None
+        original_sizes = np.diff(ga.indptr)
+        total_diffs = sum(self.differences)
+        small_series = original_sizes < total_diffs
+        if small_series.any():
+            raise _ShortSeriesException(np.where(small_series)[0])
+        self.scalers_ = []
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        for d in self.differences:
+            if self.store_fitted:
+                # these are saved in order to be able to perform a correct
+                # inverse transform when trying to retrieve the fitted values.
+                self.fitted_.append(core_ga.data.copy())
+                if self.fitted_indptr_ is None:
+                    self.fitted_indptr_ = core_ga.indptr.copy()
+            scaler = core_scalers.Difference(d)
+            transformed = scaler.fit_transform(core_ga)
+            self.scalers_.append(scaler)
+            core_ga = core_ga._with_data(transformed)
+        return GroupedArray(core_ga.data, ga.indptr)
+
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        for scaler in self.scalers_:
+            transformed = scaler.update(core_ga)
+            core_ga = core_ga._with_data(transformed)
+        return GroupedArray(transformed, ga.indptr)
+
+    def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        for scaler in self.scalers_[::-1]:
+            transformed = scaler.inverse_transform(core_ga)
+            core_ga = core_ga._with_data(transformed)
+        return GroupedArray(transformed, ga.indptr)
+
+    def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
+        if self.fitted_[0].size < ga.data.size:
+            raise ValueError("fitted differences are smaller than provided target.")
+        transformed = ga.data
+        for d, fitted in zip(reversed(self.differences), reversed(self.fitted_)):
+            fitted_ga = CoreGroupedArray(fitted, self.fitted_indptr_)
+            adds = fitted_ga._lag(d)
+            if adds.size > ga.data.size:
+                adds = CoreGroupedArray(adds, self.fitted_indptr_)._tails(ga.indptr)
+            transformed = transformed + adds
+        return GroupedArray(transformed, ga.indptr)
+
+    def take(self, idxs: np.ndarray) -> "Differences":
+        out = self.clone()
+        if self.fitted_indptr_ is None:
+            out.fitted_ = []
+            out.fitted_indptr_ = None
+        else:
+            out.fitted_ = [
+                np.hstack(
+                    [
+                        data[self.fitted_indptr_[i] : self.fitted_indptr_[i + 1]]
+                        for i in idxs
+                    ]
+                )
+                for data in self.fitted_
+            ]
+            sizes = np.diff(self.fitted_indptr_)[idxs]
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
+        out.scalers_ = [scaler.take(idxs) for scaler in self.scalers_]
+        return out
+
+    @staticmethod
+    def stack(scalers: Sequence["Differences"]) -> "Differences":  # type: ignore[override]
+        first_scaler = scalers[0]
+        core_scaler = first_scaler.scalers_[0]
+        diffs = first_scaler.differences
+        out = first_scaler.clone()
+        out.fitted_ = []
+        if first_scaler.fitted_indptr_ is None:
+            out.fitted_indptr_ = None
+        else:
+            for i in range(len(scalers[0].fitted_)):
+                out.fitted_.append(np.hstack([sc.fitted_[i] for sc in scalers]))
+            sizes = np.hstack([np.diff(sc.fitted_indptr_) for sc in scalers])
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
+        out.scalers_ = [
+            core_scaler.stack([sc.scalers_[i] for sc in scalers])
+            for i in range(len(diffs))
+        ]
+        return out
+
+
+class AutoDifferences(_BaseGroupedArrayTargetTransform):
+    """Find and apply the optimal number of differences to each serie.
+
+    Args:
+        max_diffs (int): Maximum number of differences to apply.
+    """
+
+    store_fitted = False
+
+    def __init__(self, max_diffs: int):
+        self.scaler_ = core_scalers.AutoDifferences(max_diffs)
+
+    def _clone(self) -> "AutoDifferences":
+        out = _bare_instance(self)
+        out.scaler_ = core_scalers.AutoDifferences(self.scaler_.max_diffs)
+        return out
+
+    def _diffs_per_step(self, indptr_dtype: np.dtype) -> List[np.ndarray]:
+        """Convert stored differences into per-step difference arrays.
+
+        For each differencing step, returns an array indicating the lag to use
+        for each series. This is needed to properly reverse the differencing
+        during inverse_transform_fitted.
+
+        Args:
+            indptr_dtype: The dtype to use for the resulting arrays.
+
+        Returns:
+            List of arrays, one per differencing step, where each array contains
+            the lag value (0 or season_length) to use for each series.
+        """
+        diffs = self.scaler_.diffs_
+        if isinstance(diffs, list):
+            return [d.astype(indptr_dtype, copy=False) for d in diffs]
+        if diffs.size == 0:
+            return []
+        season_length = getattr(self.scaler_, "season_length", 1)
+        max_diffs = int(diffs.max())
+        return [
+            np.where(diffs > i, season_length, 0).astype(indptr_dtype, copy=False)
+            for i in range(max_diffs)
+        ]
+
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        transformed = self.scaler_.fit_transform(core_ga)
+        self.fitted_: List[np.ndarray] = []
+        self.fitted_indptr_: Optional[np.ndarray] = None
+        if self.store_fitted:
+            self.fitted_indptr_ = core_ga.indptr.copy()
+            fitted = core_ga.data.copy()
+            for ds in self._diffs_per_step(core_ga.indptr.dtype):
+                self.fitted_.append(fitted)
+                fitted = core_ga._with_data(fitted)._diffs(ds)
+        return GroupedArray(transformed, ga.indptr)
+
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        return GroupedArray(self.scaler_.update(core_ga), ga.indptr)
+
+    def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        return GroupedArray(self.scaler_.inverse_transform(core_ga), ga.indptr)
+
+    def inverse_transform_fitted(self, ga: GroupedArray) -> GroupedArray:
+        """Inverse transform fitted values.
+
+        Reverses the differencing transformation by reconstructing the original
+        values from the differenced fitted values. This is used when fitted=True
+        to restore the fitted predictions to the original scale.
+
+        Args:
+            ga: GroupedArray containing the differenced fitted values.
+
+        Returns:
+            GroupedArray with fitted values in the original scale.
+
+        Raises:
+            ValueError: If fitted differences are smaller than provided target.
+        """
+        if not self.fitted_ or self.fitted_indptr_ is None:
+            return ga
+        if self.fitted_[0].size < ga.data.size:
+            raise ValueError(
+                f"fitted differences are smaller than provided target. "
+                f"Fitted size: {self.fitted_[0].size}, target size: {ga.data.size}"
+            )
+        transformed = ga.data.copy()
+        diffs_per_step = self._diffs_per_step(self.fitted_indptr_.dtype)
+        for ds, fitted in zip(reversed(diffs_per_step), reversed(self.fitted_)):
+            adds = np.empty_like(fitted)
+            for i, (start, end) in enumerate(
+                zip(self.fitted_indptr_[:-1], self.fitted_indptr_[1:])
+            ):
+                d = int(ds[i])
+                if d == 0:
+                    adds[start:end] = 0
+                elif d >= (end - start):
+                    adds[start:end] = np.nan
+                else:
+                    adds[start : start + d] = np.nan
+                    adds[start + d : end] = fitted[start : end - d]
+            if adds.size > ga.data.size:
+                adds = CoreGroupedArray(adds, self.fitted_indptr_)._tails(ga.indptr)
+            transformed = transformed + adds
+        return GroupedArray(transformed, ga.indptr)
+
+    def take(self, idxs: np.ndarray) -> "AutoDifferences":
+        out = self.clone()
+        out.scaler_ = self.scaler_.take(idxs)
+        if self.fitted_indptr_ is None:
+            out.fitted_ = []
+            out.fitted_indptr_ = None
+        else:
+            out.fitted_ = [
+                np.hstack(
+                    [
+                        data[self.fitted_indptr_[i] : self.fitted_indptr_[i + 1]]
+                        for i in idxs
+                    ]
+                )
+                for data in self.fitted_
+            ]
+            sizes = np.diff(self.fitted_indptr_)[idxs]
+            out.fitted_indptr_ = np.append(0, sizes.cumsum())
+        return out
+
+
+class AutoSeasonalDifferences(AutoDifferences):
+    """Find and apply the optimal number of seasonal differences to each group.
+
+    Args:
+        season_length (int): Length of the seasonal period.
+        max_diffs (int): Maximum number of differences to apply.
+        n_seasons (int, optional): Number of seasons to use to determine the number of differences. Defaults to 10.
+            If `None` will use all samples, otherwise `season_length` * `n_seasons samples` will be used for the test.
+            Smaller values will be faster but could be less accurate.
+    """
+
+    def __init__(
+        self, season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
+    ):
+        self.scaler_ = core_scalers.AutoSeasonalDifferences(
+            season_length=season_length,
+            max_diffs=max_diffs,
+            n_seasons=n_seasons,
+        )
+
+    def _clone(self) -> "AutoSeasonalDifferences":
+        out = _bare_instance(self)
+        out.scaler_ = core_scalers.AutoSeasonalDifferences(
+            season_length=self.scaler_.season_length,
+            max_diffs=self.scaler_.max_diffs,
+            n_seasons=self.scaler_.n_seasons,
+        )
+        return out
+
+
+class AutoSeasonalityAndDifferences(AutoDifferences):
+    """Find the length of the seasonal period and apply the optimal number of differences to each group.
+
+    Args:
+        max_season_length (int): Maximum length of the seasonal period.
+        max_diffs (int): Maximum number of differences to apply.
+        n_seasons (int, optional): Number of seasons to use to determine the number of differences. Defaults to 10.
+            If `None` will use all samples, otherwise `max_season_length` * `n_seasons samples` will be used for the test.
+            Smaller values will be faster but could be less accurate.
+
+    Raises:
+        ValueError: If any series has fewer than `max_diffs + 4` observations. This ensures that after differencing,
+            there are at least 4 observations remaining for STL decomposition (minimum 2 periods × minimum period of 2).
+    """
+
+    def __init__(
+        self, max_season_length: int, max_diffs: int, n_seasons: Optional[int] = 10
+    ):
+        self.max_diffs = max_diffs
+        self.scaler_ = core_scalers.AutoSeasonalityAndDifferences(
+            max_season_length=max_season_length,
+            max_diffs=max_diffs,
+            n_seasons=n_seasons,
+        )
+
+    def _clone(self) -> "AutoSeasonalityAndDifferences":
+        out = _bare_instance(self)
+        out.max_diffs = self.max_diffs
+        out.scaler_ = core_scalers.AutoSeasonalityAndDifferences(
+            max_season_length=self.scaler_.max_season_length,
+            max_diffs=self.scaler_.max_diffs,
+            n_seasons=self.scaler_.n_seasons,
+        )
+        return out
+
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
+        # Validate that each series has enough data for STL decomposition
+        # STL requires at least 2 periods of the detected seasonal period after differencing.
+        # Since the minimum detectable period is 2, we need at least 4 observations after differencing.
+        series_lengths = np.diff(ga.indptr)
+        min_required = self.max_diffs + 4
+        short_series = series_lengths < min_required
+
+        if short_series.any():
+            short_indices = np.where(short_series)[0]
+            short_lengths = series_lengths[short_series]
+            raise ValueError(
+                f"Insufficient data in {len(short_indices)} series for seasonality detection. "
+                f"With max_diffs={self.max_diffs}, each series requires at least {min_required} observations "
+                f"to ensure STL decomposition can run (need 4+ observations after differencing). "
+                f"Found series with lengths: {short_lengths[:5].tolist()}"
+                f"{'...' if len(short_lengths) > 5 else ''}. "
+                f"Either filter out short series, decrease max_diffs, or use a different transformation."
+            )
+
+        # Call parent's fit_transform
+        return super().fit_transform(ga)
+
+
+class _BaseLocalScaler(_BaseGroupedArrayTargetTransform):
+    scaler_factory: Callable[[], core_scalers._BaseLocalScaler]
+
+    def update(self, ga: GroupedArray) -> GroupedArray:
+        ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        return GroupedArray(self.scaler_.transform(ga), ga.indptr)
+
+    def fit_transform(self, ga: GroupedArray) -> GroupedArray:
+        self.scaler_ = self.scaler_factory()
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        transformed = self.scaler_.fit_transform(core_ga)
+        return GroupedArray(transformed, ga.indptr)
+
+    def inverse_transform(self, ga: GroupedArray) -> GroupedArray:
+        core_ga = CoreGroupedArray(ga.data, ga.indptr, self.num_threads)
+        transformed = self.scaler_.inverse_transform(core_ga)
+        return GroupedArray(transformed, ga.indptr)
+
+    def _clone(self) -> "_BaseLocalScaler":
+        # an unfitted local scaler is its factory; `scaler_` is what fit builds
+        out = _bare_instance(self)
+        out.scaler_factory = self.scaler_factory
+        return out
+
+    def take(self, idxs: np.ndarray) -> "_BaseLocalScaler":
+        out = self.clone()
+        out.scaler_ = self.scaler_.take(idxs)
+        return out
+
+
+class LocalStandardScaler(_BaseLocalScaler):
+    """Standardizes each serie by subtracting its mean and dividing by its standard deviation."""
+
+    scaler_factory = core_scalers.LocalStandardScaler
+
+
+class LocalMinMaxScaler(_BaseLocalScaler):
+    """Scales each serie to be in the [0, 1] interval."""
+
+    scaler_factory = core_scalers.LocalMinMaxScaler
+
+
+class LocalRobustScaler(_BaseLocalScaler):
+    """Scaler robust to outliers.
+
+    Args:
+        scale (str): Statistic to use for scaling. Can be either 'iqr' (Inter Quartile Range) or 'mad' (Median Absolute Deviation).
+            Defaults to 'iqr'.
+    """
+
+    def __init__(self, scale: str):
+        self.scaler_factory = lambda: core_scalers.LocalRobustScaler(scale)
+
+
+class LocalBoxCox(_BaseLocalScaler):
+    """Finds the optimum lambda for each serie and applies the Box-Cox transformation"""
+
+    def __init__(self):
+        self.scaler_factory = lambda: core_scalers.LocalBoxCoxScaler(
+            method="loglik", lower=0.0
+        )
+
+
+class GlobalSklearnTransformer(BaseTargetTransform):
+    """Applies the same scikit-learn transformer to all series."""
+
+    def __init__(self, transformer: TransformerMixin):
+        self.transformer = transformer
+
+    def clone(self) -> "GlobalSklearnTransformer":
+        out = _bare_instance(self)
+        out.transformer = self.transformer
+        return out
+
+    def fit_transform(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
+        self.transformer_ = clone(self.transformer)
+        transformed = self.transformer_.fit_transform(df[[self.target_col]].to_numpy())
+        return ufp.assign_columns(df, self.target_col, transformed[:, 0])
+
+    def inverse_transform(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
+        cols_to_transform = [
+            c for c in df.columns if c not in (self.id_col, self.time_col)
+        ]
+        transformed = np.hstack(
+            [
+                self.transformer_.inverse_transform(df[[col]].to_numpy())
+                for col in cols_to_transform
+            ]
+        )
+        return ufp.assign_columns(df, cols_to_transform, transformed)
+
+    def update(self, df: DataFrame) -> DataFrame:
+        df = ufp.copy_if_pandas(df, deep=False)
+        transformed = self.transformer_.transform(df[[self.target_col]].to_numpy())
+        return ufp.assign_columns(df, self.target_col, transformed[:, 0])
+
+    @staticmethod
+    def stack(
+        transforms: Sequence["GlobalSklearnTransformer"],  # type: ignore[override]
+    ) -> "GlobalSklearnTransformer":
+        return transforms[0]
