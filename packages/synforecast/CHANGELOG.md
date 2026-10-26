@@ -16,6 +16,9 @@
   offset, so a stream of fresh draws should reuse built members or give each
   rebuild a random 64-bit seed. Consecutive seeds repeat series of other
   entries exactly (see the `members` docs).
+- Python 3.15 support: CI tests it, and wheels are built for CPython 3.15.
+  On 3.15 synforecast requires polars 2.0 or newer, the first release that
+  works on Python 3.15.
 
 ### Changed
 
@@ -35,6 +38,11 @@
   any other period uses the kernel's
   cosine series in O(n J), or Durbin-Levinson in O(n^2) for length scales so
   short that J would exceed n. About 1 ms instead of 560 ms at length 2,273.
+
+### Removed
+
+- Python 3.10 support (end of life 2026-10-31). synforecast now requires
+  Python 3.11 or newer.
 
 ### Reproducibility
 
