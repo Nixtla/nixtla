@@ -1243,6 +1243,21 @@ def test_none_target():
         to_numpy(series_pd.drop(columns=["unique_id", "ds"])),
     )
 
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_process_df_null_ids(engine):
+    constructor = pd.DataFrame if engine == "pandas" else pl.DataFrame
+    df = constructor(
+        {
+            "unique_id": ["a", "a", None, "b"],
+            "ds": [1, 2, 1, 1],
+            "y": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    with pytest.raises(ValueError, match="id column .* contains null values"):
+        process_df(df, "unique_id", "ds", "y")
+
+
 @pytest.mark.parametrize("n_static_features", [0, 2])
 def test_n_static_features(static_features, n_static_features):
     series_pl = generate_series(
