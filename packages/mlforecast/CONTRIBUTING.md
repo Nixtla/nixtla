@@ -64,13 +64,16 @@ git merge upstream/main
 
 ## Local setup for development
 
+Python 3.11 or newer is required; Python 3.10 is no longer supported. The required
+test matrix covers Python 3.11–3.14 on Linux, macOS, and Windows.
+
 ### 1. Set up your environment with uv
 
 Create and activate a virtual environment:
 
 ```sh
 # Create virtual environment (optionally specify Python version)
-uv venv --python 3.10
+uv venv --python 3.11
 
 # Activate the environment
 # On macOS/Linux:

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=84.1.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,14 +9,13 @@ description = "Scalable machine learning based time series forecasting"
 authors = [{name = "José Morales", email = "jmoralz92@gmail.com"}]
 license = {text = "Apache Software License 2.0"}
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["python", "forecast", "forecasting", "machine-learning", "dask"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Natural Language :: English",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -57,18 +56,18 @@ polars = ["polars[numpy]"]
 [dependency-groups]
 dev = [
     "datasetsforecast>=1",
-    "gitpython",
+    "gitpython>=3.2.1",
     "holidays<0.21",
     "lightgbm>=4.6",
     "matplotlib",
-    "mlflow>=2.10.0",
+    "mlflow>=3.17.2",
     "numpy",
     "pandas",
     "pre-commit",
     "polars[numpy]<=1.31.0",
     "pyarrow",
     "ruff",
-    "setuptools",
+    "setuptools>=84.1.0",
     "statsmodels",
     "xgboost",
     "catboost",
