@@ -42,8 +42,17 @@
 
 - **Rust SARIMA exogenous support**, then drop the Python SARIMA path.
 - **Rust batch dispatch** for `Copula`, `VAR`, `DailyActiveUsers`, `IoTSensor`.
-- **Streaming generation** — chunked Parquet/Arrow output for corpora larger than
-  memory.
+- **Streaming generation** — `generate_values` and `members=` give
+  DataFrame-free, per-draw generation in memory; next is chunked Parquet/Arrow
+  output for corpora larger than memory.
+- **TCM cost** — TCM takes over 80% of `pretraining_pool` generation time at
+  every length from 128 to 8,192 steps, with 3 of about 60 entries; speed up
+  its causal-model simulation.
+- **Fresh-seed draws** — rebuilding a pool member with a new seed costs more
+  than drawing its series; make per-draw reseeding cheaper than a full rebuild.
+- **Long-series KernelSynth** — sampling is O(n^2) per kernel term but only
+  about 11% of pool time at 8,192 steps; sample fast-decaying terms by
+  circulant embedding if corpora get longer.
 
 ## Integrations and docs
 

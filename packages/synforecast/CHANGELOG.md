@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `BaseGenerator.generate_values(n_series, n_jobs)`: the series `generate`
+  would draw, as value arrays without building a DataFrame (native Rust batch
+  path where available). Both methods go through a new `_generate_metadata`
+  hook, so a custom generator with its own generation scheme overrides that
+  hook rather than `generate`.
+- `members=` on `pretraining_pool`, `interpretable_pool` and `seasonal_pool`:
+  build only the selected pool entries, each identical to the full pool's
+  entry. Drawing one member per series no longer constructs the whole pool
+  (0.11 ms instead of 3.6 ms per draw). Entry seeds are `seed` plus a fixed
+  offset, so a stream of fresh draws should reuse built members or give each
+  rebuild a random 64-bit seed. Consecutive seeds repeat series of other
+  entries exactly (see the `members` docs).
+
+### Changed
+
+- `KernelSynthGenerator` writes each composition as a polynomial in `x x'`
+  with stationary coefficients, `K = sum_d (x x')^d T_d(x - x')`, and samples
+  it exactly as `sum_d x^d * f_d` from independent O(n^2) Durbin-Levinson
+  draws. No composition forms a dense covariance or an O(n^3) Cholesky any
+  more, including those with a linear kernel. Both bulk `generate()` (Rust
+  batch path) and `generate_single_series` run the same Rust sampler, so
+  `Multivariatizer` and `SynAugment` get it too. `jitter` is now added to each
+  polynomial term and escalated tenfold on a numerical breakdown, to at least
+  1e-6 of the term's variance even with `jitter=0`.
+- `KernelSynthGenerator.max_kernels` is now at most 64.
+- `GaussianProcessGenerator(kernel="periodic")` samples exactly without an
+  O(n^3) Cholesky, for any length scale. An integer period up to
+  `4 * max(length, 1024)` samples one period by a circulant FFT and tiles it;
+  any other period uses the kernel's
+  cosine series in O(n J), or Durbin-Levinson in O(n^2) for length scales so
+  short that J would exceed n. About 1 ms instead of 560 ms at length 2,273.
+
+### Reproducibility
+
+- Same-seed output of periodic `GaussianProcessGenerator` differs from 0.2.0;
+  the sampled distribution is unchanged.
+- Same-seed output of `KernelSynthGenerator` differs from 0.2.0; the sampled
+  distribution is unchanged up to the jitter.
+- `pretraining_pool` and `interpretable_pool` build the same generators with
+  the same seeds as 0.2.0; only their KernelSynth and periodic
+  `GaussianProcessGenerator` entries produce different output. Every other
+  generator is bit-identical to 0.2.0.
+
 ## 0.2.0 - 2026-10-12
 
 ### Added

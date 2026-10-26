@@ -71,6 +71,7 @@ _GEN_TYPE_MAP: dict[str, int] = {
     "TSIGenerator": 28,
     "TCMGenerator": 29,
     "MARGenerator": 30,
+    "KernelSynthGenerator": 31,
 }
 
 
@@ -104,7 +105,6 @@ def _batch_results_to_metadata(
     all_metadata: list[SeriesMetadata] = []
     for i, r in enumerate(results):
         length = int(lengths[i])
-        timestamps = gen._timestamps(length)
 
         cp_idx = (
             np.asarray(r["cp_indices"])
@@ -125,7 +125,7 @@ def _batch_results_to_metadata(
         all_metadata.append(
             SeriesMetadata(
                 values=np.asarray(r["values"]),
-                timestamps=timestamps,
+                timestamps=None,
                 series_id=start_id + i,
                 length=length,
                 anomaly_indices=anom_idx,
@@ -717,13 +717,19 @@ class BaseGenerator(BaseModel, ABC):
         any generator-specific extra columns.
 
         Args:
-            series_metadata: List of SeriesMetadata for all generated series
+            series_metadata: List of SeriesMetadata for all generated series;
+                series without timestamps get the generator's calendar.
         Returns:
             DataFrame in the configured engine.
         """
         # Flatten core columns
         flat_values = np.concatenate([m.values for m in series_metadata])
-        flat_timestamps = np.concatenate([m.timestamps for m in series_metadata])
+        flat_timestamps = np.concatenate(
+            [
+                self._timestamps(m.length) if m.timestamps is None else m.timestamps
+                for m in series_metadata
+            ]
+        )
         flat_ids = np.repeat(
             np.array([m.series_id for m in series_metadata], dtype=np.int64),
             [m.length for m in series_metadata],
@@ -802,10 +808,8 @@ class BaseGenerator(BaseModel, ABC):
             pi_seeds: One row of :meth:`_draw_pi_seeds`.
 
         Returns:
-            SeriesMetadata for the generated series
+            SeriesMetadata for the generated series, without timestamps.
         """
-        timestamps = self._timestamps(length)
-
         local_copy = self.model_copy()
         local_copy._rng = np.random.default_rng(gen_seed)
         values = local_copy.generate_single_series(length=length)
@@ -816,7 +820,7 @@ class BaseGenerator(BaseModel, ABC):
 
         return SeriesMetadata(
             values=values,
-            timestamps=timestamps,
+            timestamps=None,
             series_id=series_id,
             length=length,
             anomaly_indices=anom_indices,
@@ -845,11 +849,55 @@ class BaseGenerator(BaseModel, ABC):
         """
         if n_series < 1:
             raise ValueError(f"n_series must be a positive integer, got {n_series}.")
+        return self._build_dataframe(
+            self._generate_metadata(n_series, start_id, n_jobs)
+        )
+
+    def generate_values(self, n_series: int, n_jobs: int = -1) -> list[np.ndarray]:
+        """Generate series as value arrays, without building a DataFrame.
+
+        Draws exactly the series :meth:`generate` would, with the same overlays
+        (missing points as NaN), and leaves the generator in the same state.
+        No DataFrame, exogenous column, or calendar is built, so lengths beyond
+        pandas' datetime range work. Generators with their own generation
+        scheme override :meth:`_generate_metadata`, which both methods share.
+
+        Args:
+            n_series (int): Number of time series to generate.
+            n_jobs (int): Number of parallel workers. -1 (default) uses
+                ``RAYON_NUM_THREADS`` if set, otherwise all logical cores.
+                Results are seed-deterministic and do not depend on n_jobs.
+
+        Returns:
+            One 1-D float array per series in id order (``n_series * n_sensors``
+            for ``IoTSensorGenerator``).
+        """
+        if n_series < 1:
+            raise ValueError(f"n_series must be a positive integer, got {n_series}.")
+        metadata = self._generate_metadata(n_series, 0, n_jobs)
+        # Correlated exogenous draws still advance self.rng, as in generate().
+        if self.exogenous is not None and self.exogenous.correlated:
+            flat_values = np.concatenate([m.values for m in metadata])
+            for exog_config in self.exogenous.correlated:
+                generate_correlated_exog(metadata, flat_values, exog_config, self.rng)
+        return [np.asarray(m.values, dtype=np.float64) for m in metadata]
+
+    def _generate_metadata(
+        self,
+        n_series: int,
+        start_id: int,
+        n_jobs: int,
+    ) -> list[SeriesMetadata]:
+        """Draw the series of :meth:`generate` as metadata, without timestamps.
+
+        Both :meth:`generate` and :meth:`generate_values` go through this hook,
+        so a generator with its own generation scheme overrides this method
+        rather than :meth:`generate`. Timestamps are left as None and filled in
+        by :meth:`_build_dataframe`.
+        """
         if n_jobs == -1:
             n_jobs = _default_n_workers
-        all_metadata = self._generate_parallel(n_series, start_id, n_jobs)
-
-        return self._build_dataframe(all_metadata)
+        return self._generate_parallel(n_series, start_id, n_jobs)
 
     def _generate_parallel(
         self,

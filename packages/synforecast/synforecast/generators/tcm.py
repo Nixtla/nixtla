@@ -590,13 +590,21 @@ class TCMGenerator(BaseGenerator):
         Returns:
             DataFrame in long format with columns [id_col, time_col, target_col].
         """
+        return super().generate(n_series, start_id=start_id, n_jobs=n_jobs)
+
+    def _generate_metadata(
+        self,
+        n_series: int,
+        start_id: int,
+        n_jobs: int,
+    ) -> list[SeriesMetadata]:
+        """Draw independent SCMs, or the nodes of one shared SCM in multivariate mode."""
         if not self.multivariate:
-            return super().generate(n_series, start_id=start_id, n_jobs=n_jobs)
+            return super()._generate_metadata(n_series, start_id, n_jobs)
 
         length = int(self.rng.integers(self.min_length, self.max_length + 1))
         samples = self._generate_multivariate(length, n_series)
 
-        timestamps = self._timestamps(length)
         pi_seeds = self._draw_pi_seeds(n_series)
         all_metadata: list[SeriesMetadata] = []
         for i in range(n_series):
@@ -607,7 +615,7 @@ class TCMGenerator(BaseGenerator):
             all_metadata.append(
                 SeriesMetadata(
                     values=values,
-                    timestamps=timestamps,
+                    timestamps=None,
                     series_id=start_id + i,
                     length=length,
                     anomaly_indices=anom_indices,
@@ -615,4 +623,4 @@ class TCMGenerator(BaseGenerator):
                     missing_indices=miss_indices,
                 )
             )
-        return self._build_dataframe(all_metadata)
+        return all_metadata

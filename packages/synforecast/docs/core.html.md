@@ -7,4 +7,5 @@ description: Base class for all time series generators
     options:
       members:
         - generate
+        - generate_values
         - generate_single_series

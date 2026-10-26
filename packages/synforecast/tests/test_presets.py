@@ -1,6 +1,7 @@
 """Tests for the pool presets."""
 
 import warnings
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -696,3 +697,76 @@ class TestPretrainingPoolSeasonalPeriodValidation:
             pool = pretraining_pool(freq="MS", include_seasonal=True, seasonal_period=1)
         assert "explicitly" not in str(record[0].message)
         assert len(pool) == 54
+
+
+class TestPoolMembers:
+    """``members=`` builds exactly the selected entries of the full pool."""
+
+    @staticmethod
+    def _factories() -> list[tuple[Any, dict[str, Any]]]:
+        from synforecast import seasonal_pool
+
+        base = {"min_length": 40, "max_length": 60, "freq": "MS", "seed": 3}
+        return [
+            (interpretable_pool, base),
+            (pretraining_pool, {**base, "include_seasonal": True}),
+            (seasonal_pool, base),
+        ]
+
+    @pytest.mark.parametrize("which", [0, 1, 2])
+    def test_selected_entries_match_full_pool(self, which: int) -> None:
+        factory, kwargs = self._factories()[which]
+        full = factory(**kwargs)
+        picks = [len(full) - 1, 0, 5, 5]
+        chosen = factory(**kwargs, members=picks)
+        assert len(chosen) == len(picks)
+        assert chosen[2] is not chosen[3]
+        for gen, index in zip(chosen, picks, strict=True):
+            ref = factory(**kwargs)[index]
+            assert type(gen) is type(ref)
+            assert gen.model_dump() == ref.model_dump()
+            for a, b in zip(
+                gen.generate_values(2, n_jobs=1),
+                ref.generate_values(2, n_jobs=1),
+                strict=True,
+            ):
+                np.testing.assert_array_equal(a, b)
+
+    def test_accepts_any_integer_iterable(self) -> None:
+        kwargs = {"min_length": 20, "max_length": 20, "freq": "D", "seed": 1}
+        assert interpretable_pool(**kwargs, members=[]) == []
+        by_list = interpretable_pool(**kwargs, members=[0, 1, 2])
+        for members in (range(3), (i for i in range(3)), np.arange(3)):
+            got = interpretable_pool(**kwargs, members=members)
+            assert [g.model_dump() for g in got] == [g.model_dump() for g in by_list]
+
+    @pytest.mark.parametrize("bad", [[42], [-1], [0, 100]])
+    def test_out_of_range_raises(self, bad: list[int]) -> None:
+        with pytest.raises(IndexError, match="out of range"):
+            interpretable_pool(freq="D", members=bad)
+
+    @pytest.mark.parametrize("bad", [[1.5], ["0"]])
+    def test_non_integer_raises(self, bad: list[Any]) -> None:
+        with pytest.raises(TypeError):
+            interpretable_pool(freq="D", members=bad)
+
+    @pytest.mark.parametrize("members", [[], [0]])
+    def test_clash_check_runs_for_any_selection(self, members: list[int]) -> None:
+        from synforecast import seasonal_pool
+
+        with pytest.raises(ValueError, match="seasonal_pool sets .*alias"):
+            seasonal_pool(freq="MS", alias="x", members=members)
+        with pytest.raises(ValueError, match="seasonal_pool sets .*alias"):
+            pretraining_pool(
+                freq="MS", include_seasonal=True, alias="x", members=members
+            )
+
+    def test_unselected_entries_are_never_constructed(self, monkeypatch) -> None:
+        import synforecast.presets as presets
+
+        def fail(*_args: Any, **_kwargs: Any) -> None:
+            raise AssertionError("MARGenerator should not be constructed")
+
+        monkeypatch.setattr(presets, "MARGenerator", fail)
+        (gen,) = pretraining_pool(freq="D", members=[0])
+        assert isinstance(gen, BaseGenerator)

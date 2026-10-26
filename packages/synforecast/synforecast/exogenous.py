@@ -91,7 +91,7 @@ class SeriesMetadata:
     """
 
     values: np.ndarray
-    timestamps: np.ndarray
+    timestamps: np.ndarray | None
     series_id: int
     length: int
     anomaly_indices: np.ndarray | None = None

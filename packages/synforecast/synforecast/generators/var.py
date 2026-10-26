@@ -274,7 +274,7 @@ class VARGenerator(BaseGenerator):
         self,
         n_series: int,
         start_id: int = 0,
-        n_jobs: int = -1,  # noqa: ARG002
+        n_jobs: int = -1,
     ) -> IntoDataFrameT:
         """Generate n_series correlated time series using the VAR model.
 
@@ -290,10 +290,18 @@ class VARGenerator(BaseGenerator):
         Returns:
             DataFrame in long format with columns [id_col, time_col, target_col]; each unique_id is one correlated variable.
         """
+        return super().generate(n_series, start_id=start_id, n_jobs=n_jobs)
+
+    def _generate_metadata(
+        self,
+        n_series: int,
+        start_id: int,
+        n_jobs: int,  # noqa: ARG002
+    ) -> list[SeriesMetadata]:
+        """Draw n_series correlated variables sharing one length."""
         length = self.rng.integers(self.min_length, self.max_length + 1)
         samples = self._generate_multivariate(length, n_series)
 
-        timestamps = self._timestamps(length)
         pi_seeds = self._draw_pi_seeds(n_series)
         all_metadata: list[SeriesMetadata] = []
 
@@ -305,7 +313,7 @@ class VARGenerator(BaseGenerator):
             all_metadata.append(
                 SeriesMetadata(
                     values=values,
-                    timestamps=timestamps,
+                    timestamps=None,
                     series_id=start_id + i,
                     length=length,
                     anomaly_indices=anom_indices,
@@ -313,4 +321,4 @@ class VARGenerator(BaseGenerator):
                     missing_indices=miss_indices,
                 )
             )
-        return self._build_dataframe(all_metadata)
+        return all_metadata

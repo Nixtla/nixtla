@@ -146,6 +146,49 @@ class TestGPStats:
         assert corr_full > 0.5
         assert corr_full - corr_half > 0.3
 
+    @pytest.mark.parametrize("period", [12.0, 9.5])
+    def test_periodic_marginal_variance_and_correlation(self, period: float) -> None:
+        """Many short paths: variance amplitude^2 and the kernel's lag correlations (integer and non-integer period)."""
+        ls, amp = 0.8, 1.5
+        gen = GaussianProcessGenerator(
+            min_length=30,
+            max_length=30,
+            freq="D",
+            kernel="periodic",
+            length_scale=ls,
+            period=period,
+            amplitude=amp,
+            noise_variance=0.0,
+            seed=11,
+        )
+        vals = np.array(list(series_values(gen.generate(4000, n_jobs=1)).values()))
+        assert vals[:, 0].var() == pytest.approx(amp**2, rel=0.1)
+        for lag in (1, 3, 6, 12):
+            expected = np.exp(-2.0 * np.sin(np.pi * lag / period) ** 2 / ls**2)
+            got = np.corrcoef(vals[:, 0], vals[:, lag])[0, 1]
+            assert abs(got - expected) < 0.06, f"lag {lag}: {got:.3f} vs {expected:.3f}"
+
+    @pytest.mark.parametrize("period", [7.0, 7.3])
+    @pytest.mark.parametrize("length_scale", [1e-8, 1e30, float("inf")])
+    def test_periodic_extreme_length_scales_are_finite(
+        self, period: float, length_scale: float
+    ) -> None:
+        gen = GaussianProcessGenerator(
+            min_length=500,
+            max_length=500,
+            freq="D",
+            kernel="periodic",
+            length_scale=length_scale,
+            period=period,
+            noise_variance=0.0,
+            seed=2,
+        )
+        for values in series_values(gen.generate(3, n_jobs=1)).values():
+            assert np.all(np.isfinite(values))
+            if length_scale > 1:
+                # The constant-kernel limit.
+                np.testing.assert_allclose(values, values[0], atol=1e-9)
+
     def test_smoothness_ordering(self) -> None:
         """Rougher kernels have larger first-difference variance: for a
         stationary GP, E[(y_{t+1}-y_t)^2] = 2 * k(0) * (1 - corr(1))."""

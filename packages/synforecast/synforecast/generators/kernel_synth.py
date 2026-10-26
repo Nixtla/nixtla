@@ -3,12 +3,20 @@
 import numpy as np
 from pydantic import Field, model_validator
 
+from synforecast._lib import multivariate as _rs_mv
 from synforecast.base import BaseGenerator
 
-# Divergence guards, mirroring the other pretraining generators (TSI/TCM).
-_MAX_ABS = 1e8
-_MIN_STD = 1e-8
-_MAX_RETRIES = 8
+# Shared with rust/src/generators/kernel_synth.rs.
+_KIND_IDS = {
+    "rbf": 0,
+    "rational_quadratic": 1,
+    "periodic": 2,
+    "linear": 3,
+    "white": 4,
+    "constant": 5,
+}
+# Mirrors MAX_KERNELS in rust/src/generators/kernel_synth.rs.
+_MAX_KERNELS = 64
 
 
 class KernelSynthGenerator(BaseGenerator):
@@ -28,7 +36,9 @@ class KernelSynthGenerator(BaseGenerator):
     (e.g. locally periodic, amplitude-varying seasonality). SynForecast makes
     the bank configurable, expresses seasonal periods in time steps on a
     normalized grid, and adds bounded retries, divergence guards, and optional
-    standardization.
+    standardization. It also replaces the reference's dense Cholesky sampler
+    with the exact O(n^2) polynomial decomposition described below, which
+    adds ``jitter`` to each term and escalates it on a numerical breakdown.
 
     Base kernels (r = |x_i - x_j|, all on the normalized grid):
         - rbf: ``exp(-r^2 / (2 l^2))`` — smooth, length-scale ``l``
@@ -41,13 +51,20 @@ class KernelSynthGenerator(BaseGenerator):
         - white: ``w`` on the diagonal — independent noise
         - constant: a constant offset
 
+    Each composition is a polynomial ``K = sum_d (x x')^d T_d(x - x')`` with
+    stationary PSD ``T_d`` (only the linear kernel is non-stationary), sampled
+    exactly as ``sum_d x^d * f_d`` with independent O(n^2) Durbin-Levinson
+    draws ``f_d ~ GP(0, T_d)``. Both bulk ``generate()`` and
+    ``generate_single_series`` run this sampler in Rust.
+
     Because a composed kernel can be near-degenerate or produce an exploding
     scale, non-finite, near-constant, or ``|y| >= 1e8`` draws are redrawn a
     bounded number of times before falling back to Gaussian noise.
 
     Args:
         max_kernels (int): Maximum number of base kernels composed per series;
-            the count is drawn uniformly from ``1..max_kernels`` (default: 5).
+            the count is drawn uniformly from ``1..max_kernels`` (default: 5,
+            at most 64).
         seasonal_periods (list[float]): Periodic-kernel periods, in time steps,
             forming the periodic entries of the bank (default: a broad set from
             4 up to 730 covering common hourly/daily/weekly/quarterly/yearly
@@ -62,8 +79,10 @@ class KernelSynthGenerator(BaseGenerator):
             kernel (default: [0.1, 1.0]).
         include_constant (bool): Include a constant kernel in the bank
             (default: True).
-        jitter (float): Diagonal jitter added before factorization for
-            numerical stability (default: 1e-6).
+        jitter (float): Diagonal jitter added to each term ``T_d``. On a
+            numerical breakdown it is escalated tenfold up to three times, to
+            at least ``1e-6`` times the term's variance even when ``jitter`` is
+            0 (default: 1e-6).
         standardize (bool): Standardize each sampled series to zero mean and
             unit variance. Kernel compositions span extreme scales, so
             standardization keeps the pool comparable for pretraining
@@ -72,7 +91,10 @@ class KernelSynthGenerator(BaseGenerator):
     """
 
     max_kernels: int = Field(
-        default=5, ge=1, description="Max base kernels composed per series"
+        default=5,
+        ge=1,
+        le=_MAX_KERNELS,
+        description="Max base kernels composed per series",
     )
     seasonal_periods: list[float] = Field(
         default=[
@@ -150,63 +172,23 @@ class KernelSynthGenerator(BaseGenerator):
         object.__setattr__(self, "_bank", bank)
         return self
 
-    def _gram(
-        self,
-        spec: tuple[str, float],
-        length: int,
-        r: np.ndarray,
-        r2: np.ndarray,
-        outer: np.ndarray,
-    ) -> np.ndarray:
-        """Gram matrix for one base kernel on the normalized grid."""
-        kind, param = spec
-        if kind == "rbf":
-            return np.exp(-0.5 * r2 / param**2)
-        if kind == "rational_quadratic":
-            return (1.0 + r2 / (2.0 * param)) ** (-param)
-        if kind == "periodic":
-            p_norm = param / length
-            return np.exp(-2.0 * np.sin(np.pi * r / p_norm) ** 2)
-        if kind == "linear":
-            return param**2 + outer
-        if kind == "white":
-            return param * np.eye(length)
-        # constant
-        return param * np.ones((length, length))
+    def _get_batch_params(self) -> tuple[np.ndarray, list[np.ndarray]]:
+        """Encode the bank for ``GEN_KERNEL_SYNTH`` in ``rust/src/batch.rs``.
 
-    def _sample_prior(self, K: np.ndarray, length: int) -> np.ndarray:
-        """Draw one sample from N(0, K), robust to ill-conditioned K."""
-        K = K + self.jitter * np.eye(length)
-        try:
-            factor = np.linalg.cholesky(K)
-        except np.linalg.LinAlgError:
-            eigvals, eigvecs = np.linalg.eigh(K)
-            eigvals = np.maximum(eigvals, 0.0)
-            factor = eigvecs * np.sqrt(eigvals)[None, :]
-        return factor @ self.rng.standard_normal(length)
-
-    def _compose_and_sample(
-        self,
-        length: int,
-        r: np.ndarray,
-        r2: np.ndarray,
-        outer: np.ndarray,
-    ) -> np.ndarray:
-        """Draw a kernel composition and sample one path from its GP prior."""
-        n_bank = len(self._bank)
-        n_kernels = int(self.rng.integers(1, self.max_kernels + 1))
-        indices = self.rng.integers(0, n_bank, size=n_kernels)
-
-        K = self._gram(self._bank[indices[0]], length, r, r2, outer)
-        for j in range(1, n_kernels):
-            comp = self._gram(self._bank[indices[j]], length, r, r2, outer)
-            # 0 -> add (mix behaviors), 1 -> multiply (modulate behaviors)
-            K = K + comp if self.rng.integers(0, 2) == 0 else K * comp
-
-        return self._sample_prior(K, length)
+        scalars: [max_kernels, jitter, standardize]
+        arrays:  [kernel kind ids (``_KIND_IDS``), kernel parameters]
+        """
+        kinds = np.array([_KIND_IDS[kind] for kind, _ in self._bank], dtype=float)
+        params = np.array([param for _, param in self._bank], dtype=float)
+        scalars = np.array(
+            [float(self.max_kernels), self.jitter, float(self.standardize)]
+        )
+        return scalars, [kinds, params]
 
     def generate_single_series(self, length: int) -> np.ndarray:
         """Generate one KernelSynth series.
+
+        Runs the same Rust sampler as the batch path, seeded from ``self.rng``.
 
         Args:
             length (int): The length of the series to generate
@@ -214,24 +196,6 @@ class KernelSynthGenerator(BaseGenerator):
         Returns:
             Array of time series values
         """
-        x = np.linspace(0.0, 1.0, length) if length > 1 else np.zeros(1)
-        diff = x[:, None] - x[None, :]
-        r = np.abs(diff)
-        r2 = diff * diff
-        outer = x[:, None] * x[None, :]
-
-        for _ in range(_MAX_RETRIES):
-            values = self._compose_and_sample(length, r, r2, outer)
-            if not np.all(np.isfinite(values)):
-                continue
-            if np.abs(values).max() >= _MAX_ABS:
-                continue
-            std = float(values.std()) if length > 1 else 1.0
-            if length > 1 and std <= _MIN_STD:
-                continue
-            if self.standardize and length > 1:
-                values = (values - values.mean()) / std
-            return values
-
-        # Retry budget exhausted (pathological bank): fall back to noise.
-        return self.rng.normal(0.0, 1.0, length)
+        scalars, (kinds, params) = self._get_batch_params()
+        seed = int(self.rng.integers(0, 2**63))
+        return _rs_mv.kernel_synth(length, scalars, kinds, params, seed)

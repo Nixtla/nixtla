@@ -1,4 +1,5 @@
 pub mod domain;
+pub mod kernel_synth;
 pub mod mar;
 pub mod multivariate;
 pub mod statistical;
