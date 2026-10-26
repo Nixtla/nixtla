@@ -20,7 +20,7 @@ uv run pytest tests/unit
 pytest sessions — use `make test_integration` (see [Tests](#tests)).
 
 Branch from `main`, push to your fork, and open a PR against `main`. The CI
-matrix runs on Python 3.10–3.14 against `tests/unit`.
+matrix runs on Python 3.11–3.15 against `tests/unit`.
 
 ## What contributions are welcome
 
@@ -217,7 +217,7 @@ Do not add a new top-level dependency without opening an issue first.
 
 ## Code style and tooling
 
-- Python 3.10+. Use modern syntax: `X | None`, `list[int]`, PEP 695 where
+- Python 3.11+. Use modern syntax: `X | None`, `list[int]`, PEP 695 where
   natural.
 - `from __future__ import annotations` at the top of every module.
 - Type-annotate all public functions. Use `numpy.typing.NDArray`.
@@ -402,7 +402,7 @@ Three things to highlight:
 - CI must be green before review. `Lint` runs `pre-commit run --all-files`
   (ruff check, ruff format, the YAML/TOML checks, the notebook normalizer) plus
   `mypy` in strict mode over `src/`. `CI` runs the unit suite on Linux, macOS
-  and Windows against Python 3.10–3.14 with core dependencies only, the unit
+  and Windows against Python 3.11–3.15 with core dependencies only, the unit
   suite once more with every extra installed (the only job where the
   `quantile-forest` and `utilsforecast` tests actually execute rather than
   skip), the integration suite on Linux, the unit suite again at the declared

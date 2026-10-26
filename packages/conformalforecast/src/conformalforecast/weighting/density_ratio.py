@@ -336,5 +336,7 @@ class DensityRatio(WeightFunction):
                 "ratio can be evaluated for those points."
             )
         flat = self._standardize_apply(rows)
-        w = np.clip(self._odds(self.estimator.predict_proba(flat)), 0.0, self.clip_value_)
+        w: NDArray[np.floating] = np.clip(
+            self._odds(self.estimator.predict_proba(flat)), 0.0, self.clip_value_
+        )
         return w.reshape(arr.shape[0], arr.shape[1], arr.shape[2])

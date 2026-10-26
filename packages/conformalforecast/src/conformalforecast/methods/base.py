@@ -40,7 +40,7 @@ quantiles use the masked helpers in ``_quantiles.py``.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -69,11 +69,6 @@ from ..base import (
 )
 from ..nonconformity import ScoreField
 from ..nonconformity._field import BUILTIN_KINDS, score_options
-
-if TYPE_CHECKING:
-    # Annotation-only: typing.Self is 3.11+, and typing_extensions is not a
-    # declared dependency, so it is never imported at runtime.
-    from typing_extensions import Self
 
 __all__ = ["ConformalForecaster", "ConformalMethod"]
 

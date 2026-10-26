@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14", "3.15"]
     steps:
       - name: Clone repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,20 +124,20 @@ jobs:
 
       - name: Install lowest direct dependencies
         run: |
-          uv venv --python 3.10 .venv-lowest
+          uv venv --python 3.11 .venv-lowest
           uv pip install --python .venv-lowest/bin/python --resolution lowest-direct --editable .
           uv pip install --python .venv-lowest/bin/python 'pytest>=8'
 
-      # The declared floors (numpy>=1.24, narwhals>=2.9, scipy>=1.11,
+      # The declared floors (numpy>=2.0, narwhals>=2.9, scipy>=1.13,
       # pydantic>=2.7) are a promise to users; this is the only thing that
       # checks it is a real one.
       - name: Verify runtime dependency floor
         run: >-
           .venv-lowest/bin/python -I -c
           "import numpy, narwhals, scipy, pydantic;
-          assert numpy.__version__.startswith('1.24'), numpy.__version__;
+          assert numpy.__version__.startswith('2.0'), numpy.__version__;
           assert narwhals.__version__.startswith('2.9'), narwhals.__version__;
-          assert scipy.__version__.startswith('1.11'), scipy.__version__;
+          assert scipy.__version__.startswith('1.13'), scipy.__version__;
           assert pydantic.__version__.startswith('2.7'), pydantic.__version__"
 
       - name: Run unit tests at the dependency floor
@@ -150,7 +150,7 @@ jobs:
       - name: Install the nixtla extra at its floor
         run: >-
           uv pip install --python .venv-lowest/bin/python --resolution lowest-direct
-          --editable '.[nixtla]' 'pandas>=2.2' 'polars>=1.0' 'scikit-learn>=1.4'
+          --editable '.[nixtla]' 'pandas>=2.2.2' 'polars>=1.1' 'scikit-learn>=1.4.2'
 
       - name: Build adapters at the dependency floor
         run: .venv-lowest/bin/python -m pytest tests/integration/test_polars_backend.py -o addopts='-q'

@@ -9,7 +9,7 @@ fitted side and returns a new fitted object.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import Self
 
 import numpy as np
 from numpy.typing import NDArray
@@ -17,9 +17,6 @@ from numpy.typing import NDArray
 from ..base import CalibrationResult, Exog, Forecast, Series
 from ..weighting.base import WeightFunction
 from .base import ConformalForecaster
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
 
 _ESTIMATORS = ("mad", "std", "iqr")
 _MAD_TO_SIGMA = 1.4826

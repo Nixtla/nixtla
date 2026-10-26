@@ -220,8 +220,8 @@ where a limit is deliberate rather than accidental, it says so.
   page cannot execute without it — but it is the concrete instance of the problem
   above, and applies to any future extra a documentation page depends on.
 - **The extras have no dependency-floor test.** `Test lowest direct dependencies`
-  installs the core package only, so it verifies `narwhals>=2.9`, `numpy>=1.24`,
-  `scipy>=1.11` and `pydantic>=2.7` but never resolves an extra. The
+  installs the core package only, so it verifies `narwhals>=2.9`, `numpy>=2.0`,
+  `scipy>=1.13` and `pydantic>=2.7` but never resolves an extra. The
   forecasting-library floors are therefore asserted and unverified in both
   directions.
 
