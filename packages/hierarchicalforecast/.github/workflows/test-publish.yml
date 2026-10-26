@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [310, 311, 312, 313, 314]
+        python-version: [311, 312, 313, 314, 315]
         os-platform:
           [
             [ubuntu-latest, manylinux_x86_64],
@@ -33,7 +33,7 @@ jobs:
           platforms: arm64
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v4.2.1
+        uses: pypa/cibuildwheel@v4.3.4
         env:
           CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           CIBW_ENABLE: cpython-prerelease
@@ -56,7 +56,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Build sdist
         run: |

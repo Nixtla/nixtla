@@ -53,7 +53,7 @@ git submodule update --init --recursive
 `uv` is an [open-source package management](https://docs.astral.sh/uv/getting-started/installation/) and environment management system that runs on Windows, macOS, and Linux. Once you have `uv` installed, run:
 
 ```sh
-uv venv --python 3.10
+uv venv --python 3.11
 ```
 
 Then, activate your new environment:
