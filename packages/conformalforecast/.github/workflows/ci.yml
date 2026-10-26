@@ -146,11 +146,14 @@ jobs:
       # The core-only install above never builds an adapter, so a floor that
       # breaks them (narwhals' frame aliases, the `nixtla` extra's pins) would
       # pass. The polars backend suite builds statsforecast and mlforecast
-      # adapters on both frame libraries.
+      # adapters on both frame libraries. pyarrow (transitive, via fugue) needs
+      # NumPy 2 from 26.0 without declaring it, so it is capped to stay
+      # importable next to the numpy floor.
       - name: Install the nixtla extra at its floor
         run: >-
           uv pip install --python .venv-lowest/bin/python --resolution lowest-direct
           --editable '.[nixtla]' 'pandas>=2.2' 'polars>=1.0' 'scikit-learn>=1.4'
+          'pyarrow<26'
 
       - name: Build adapters at the dependency floor
         run: .venv-lowest/bin/python -m pytest tests/integration/test_polars_backend.py -o addopts='-q'
