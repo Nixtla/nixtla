@@ -618,18 +618,18 @@ integration-docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.7" },
-    { name = "matplotlib", marker = "extra == 'plotting'", specifier = ">=3.7" },
+    { name = "matplotlib", marker = "extra == 'all'", specifier = ">=3.8.4" },
+    { name = "matplotlib", marker = "extra == 'plotting'", specifier = ">=3.8.4" },
     { name = "mlforecast", marker = "extra == 'all'", specifier = ">=1.1" },
     { name = "mlforecast", marker = "extra == 'nixtla'", specifier = ">=1.1" },
     { name = "narwhals", specifier = ">=2.9" },
     { name = "neuralforecast", marker = "extra == 'all'", specifier = ">=3.2.1" },
     { name = "neuralforecast", marker = "extra == 'nixtla'", specifier = ">=3.2.1" },
-    { name = "numpy", specifier = ">=1.24" },
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "quantile-forest", marker = "extra == 'all'", specifier = ">=1.4.2" },
     { name = "quantile-forest", marker = "extra == 'spci'", specifier = ">=1.4.2" },
-    { name = "scipy", specifier = ">=1.11" },
+    { name = "scipy", specifier = ">=1.13" },
     { name = "statsforecast", marker = "extra == 'all'", specifier = ">=2.1.1" },
     { name = "statsforecast", marker = "extra == 'nixtla'", specifier = ">=2.1.1" },
     { name = "utilsforecast", marker = "extra == 'all'", specifier = ">=0.2.16" },
@@ -640,13 +640,13 @@ provides-extras = ["all", "nixtla", "plotting", "spci"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=2.3.0" },
-    { name = "pandas", specifier = ">=2.2" },
-    { name = "polars", specifier = ">=1.0" },
+    { name = "pandas", specifier = ">=2.2.2" },
+    { name = "polars", specifier = ">=1.1" },
     { name = "pre-commit", specifier = ">=4.6.2" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "ruff", specifier = ">=0.16.10" },
-    { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "scikit-learn", specifier = ">=1.4.2" },
 ]
 docs = [
     { name = "ipykernel", specifier = "<8.0" },
@@ -662,9 +662,9 @@ integration-docs = [
     { name = "lightgbm", specifier = ">=4.0" },
     { name = "mlforecast", specifier = ">=1.1" },
     { name = "neuralforecast", specifier = ">=3.2.1" },
-    { name = "polars", specifier = ">=1.0" },
+    { name = "polars", specifier = ">=1.1" },
     { name = "quantile-forest", specifier = ">=1.4.2" },
-    { name = "scikit-learn", specifier = ">=1.4" },
+    { name = "scikit-learn", specifier = ">=1.4.2" },
     { name = "statsforecast", specifier = ">=2.1.1" },
     { name = "torch", marker = "sys_platform != 'darwin'", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform == 'darwin'" },

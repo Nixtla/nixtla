@@ -438,7 +438,7 @@ Capability failures raise `UnsupportedCapability` uniformly from the base class.
 
 ## Dependency policy
 
-- Core deps only: `narwhals>=2.9`, `numpy>=1.24`, `pydantic>=2.7`, `scipy>=1.11`.
+- Core deps only: `narwhals>=2.9`, `numpy>=2.0`, `pydantic>=2.7`, `scipy>=1.13`.
   pandas and polars are both optional: the Nixtla adapters accept either through
   narwhals, and `[nixtla]` adds `utilsforecast`, which does the `freq` arithmetic
   in each backend's own dialect.

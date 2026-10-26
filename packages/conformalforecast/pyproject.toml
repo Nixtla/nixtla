@@ -30,9 +30,9 @@ classifiers = [
 ]
 dependencies = [
     "narwhals>=2.9",
-    "numpy>=1.24",
+    "numpy>=2.0",
     "pydantic>=2.7",
-    "scipy>=1.11",
+    "scipy>=1.13",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +46,7 @@ nixtla = [
     "utilsforecast>=0.2.16",
 ]
 spci = ["quantile-forest>=1.4.2"]
-plotting = ["matplotlib>=3.7"]
+plotting = ["matplotlib>=3.8.4"]
 all = ["conformalforecast[nixtla,spci,plotting]"]
 
 [project.urls]
@@ -69,11 +69,11 @@ dev = [
     # Test-only: exercises the DensityRatioEstimator protocol against real
     # classifiers. Never a runtime dependency -- DensityRatio requires the
     # caller to supply an estimator, so the shipped package needs no extra.
-    "scikit-learn>=1.4",
+    "scikit-learn>=1.4.2",
     # Test-only: the adapters accept either frame library and the package
     # depends on neither, so the tests bring both.
-    "pandas>=2.2",
-    "polars>=1.0",
+    "pandas>=2.2.2",
+    "polars>=1.1",
 ]
 docs = [
     "ipykernel<8.0",
@@ -91,12 +91,12 @@ integration-docs = [
     "lightgbm>=4.0",
     "mlforecast>=1.1",
     "neuralforecast>=3.2.1",
-    "polars>=1.0",
+    "polars>=1.1",
     # The `spci` extra, needed by nbs/docs/methods/spci.ipynb. The docs CI job
     # installs dependency groups only -- never extras -- so without this line
     # that page dies on `import quantile_forest` in `make test_docs`.
     "quantile-forest>=1.4.2",
-    "scikit-learn>=1.4",
+    "scikit-learn>=1.4.2",
     "statsforecast>=2.1.1",
     "torch",
     "utilsforecast>=0.2.16",

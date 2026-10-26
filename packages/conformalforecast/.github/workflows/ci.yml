@@ -128,16 +128,16 @@ jobs:
           uv pip install --python .venv-lowest/bin/python --resolution lowest-direct --editable .
           uv pip install --python .venv-lowest/bin/python 'pytest>=8'
 
-      # The declared floors (numpy>=1.24, narwhals>=2.9, scipy>=1.11,
+      # The declared floors (numpy>=2.0, narwhals>=2.9, scipy>=1.13,
       # pydantic>=2.7) are a promise to users; this is the only thing that
       # checks it is a real one.
       - name: Verify runtime dependency floor
         run: >-
           .venv-lowest/bin/python -I -c
           "import numpy, narwhals, scipy, pydantic;
-          assert numpy.__version__.startswith('1.24'), numpy.__version__;
+          assert numpy.__version__.startswith('2.0'), numpy.__version__;
           assert narwhals.__version__.startswith('2.9'), narwhals.__version__;
-          assert scipy.__version__.startswith('1.11'), scipy.__version__;
+          assert scipy.__version__.startswith('1.13'), scipy.__version__;
           assert pydantic.__version__.startswith('2.7'), pydantic.__version__"
 
       - name: Run unit tests at the dependency floor
@@ -146,14 +146,11 @@ jobs:
       # The core-only install above never builds an adapter, so a floor that
       # breaks them (narwhals' frame aliases, the `nixtla` extra's pins) would
       # pass. The polars backend suite builds statsforecast and mlforecast
-      # adapters on both frame libraries. pyarrow (transitive, via fugue) needs
-      # NumPy 2 from 26.0 without declaring it, so it is capped to stay
-      # importable next to the numpy floor.
+      # adapters on both frame libraries.
       - name: Install the nixtla extra at its floor
         run: >-
           uv pip install --python .venv-lowest/bin/python --resolution lowest-direct
-          --editable '.[nixtla]' 'pandas>=2.2' 'polars>=1.0' 'scikit-learn>=1.4'
-          'pyarrow<26'
+          --editable '.[nixtla]' 'pandas>=2.2.2' 'polars>=1.1' 'scikit-learn>=1.4.2'
 
       - name: Build adapters at the dependency floor
         run: .venv-lowest/bin/python -m pytest tests/integration/test_polars_backend.py -o addopts='-q'
