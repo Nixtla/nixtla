@@ -93,8 +93,7 @@ framework types.
 - The base field is `method_: SkipValidation[ConformalMethod[Any]]`: pydantic
   would otherwise validate against the *parametrized* class, which no concrete
   method subclasses. The narrowed subclass fields are validated normally.
-- `Self` comes from `typing_extensions` under `TYPE_CHECKING` only (3.10
-  floor; `typing_extensions` is not a declared dependency).
+- `Self` comes from `typing` (3.11 floor).
 
 ### The array-surface invariant
 
@@ -427,7 +426,7 @@ Capability failures raise `UnsupportedCapability` uniformly from the base class.
 
 ## Style and tooling
 
-- Python 3.10+. Use modern syntax: `X | None`, `list[int]`, PEP 695 where natural.
+- Python 3.11+. Use modern syntax: `X | None`, `list[int]`, PEP 695 where natural.
 - `from __future__ import annotations` at the top of every module.
 - Type-annotate all public functions. Use `numpy.typing.NDArray`.
 - Docstrings: NumPy style (Parameters / Returns / Raises sections).

@@ -16,7 +16,7 @@ uv add conformalforecast
 ```
 
 The core install is pure Python and depends only on `narwhals`, `numpy`,
-`pydantic` and `scipy`; pandas and polars are both optional. Python 3.10 or
+`pydantic` and `scipy`; pandas and polars are both optional. Python 3.11 or
 newer is required.
 
 ## Verify the install
