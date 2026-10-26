@@ -20,6 +20,32 @@ undo. It is not a substitute for the architecture guide: read
   someone else may have pulled.
 - One PR, one change. Do not bundle a drive-by refactor with a fix.
 
+## Opening a PR
+
+Every PR runs these checks; get them right when you open it, not after CI
+fails:
+
+- **`PR title`** — a conventional commit, `<type>[scope][!]: <description>`
+  with type one of `feat fix docs test refactor perf ci build chore revert`.
+  The merge commit takes its subject from the title.
+- **`Changelog label`** — exactly one of `breaking change`, `enhancement`
+  (`feat`), `bug` (`fix`), `documentation` (`docs`), `maintenance`
+  (`ci`/`test`/`refactor`/`chore`), `dependencies`, or `skip-changelog`.
+  Apply it at creation: `gh pr create --label <label> ...`.
+- **`PR targets main`** — see above.
+- **`CI`** — unit tests across ubuntu/macos/windows × every supported Python,
+  unit tests with every extra, the lowest-direct-dependency resolution,
+  integration tests and the sdist build. Locally: `make test`,
+  `make test_extras`, `make test_integration`.
+- **`Lint`** — pre-commit on all files plus mypy. Locally: `make lint`.
+- **`Build Docs`** — executes the docs notebooks, builds the site, checks
+  `docs.json` navigation and runs `mint validate`. Run `make test_docs` and
+  `uv run python scripts/check_docs_nav.py` when you touch `nbs/`, `docs/` or
+  a public docstring.
+- **`CodeQL`** — static analysis; nothing to run locally.
+
+Fill in [the PR template](.github/PULL_REQUEST_TEMPLATE.md).
+
 ## Before you commit
 
 - Run the tests. Do not report a result you have not seen — `make test` for the

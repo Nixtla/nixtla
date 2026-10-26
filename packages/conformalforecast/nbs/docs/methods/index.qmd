@@ -22,13 +22,13 @@ not this one.
 
 | Method | Group | Handles | Needs |
 |---|---|---|---|
-| [`SplitConformal`](split.html) | offline | the exchangeable baseline | nothing beyond point forecasts |
-| [`ConformalizedQuantileRegression`](cqr.html) | offline | heteroscedastic errors — noise that varies with level or season | a **quantile-capable** forecaster |
-| [`WeightedSplit`](weighted_split.html) | offline | covariate shift — the target's features differ from the calibration set's | target features (`adapt`) or target labels (`recalibrate`) |
-| [`AdaptiveConformalInference`](aci.html) | online | distribution shift, by moving the target `alpha` itself | a learning rate `gamma` |
-| [`AggregatedAdaptiveConformalInference`](agaci.html) | online | shift, without having to pick `gamma` | nothing — it runs a panel of `gamma`s |
-| [`NonexchangeableConformalPrediction`](nexcp.html) | online | shift, by down-weighting stale residuals | a decay `rho` |
-| [`SequentialPredictiveConformalInference`](spci.html) | online | *conditional* coverage — width that varies per step | the `spci` extra (quantile-forest) |
+| [`SplitConformal`](./split.html) | offline | the exchangeable baseline | nothing beyond point forecasts |
+| [`ConformalizedQuantileRegression`](./cqr.html) | offline | heteroscedastic errors — noise that varies with level or season | a **quantile-capable** forecaster |
+| [`WeightedSplit`](./weighted_split.html) | offline | covariate shift — the target's features differ from the calibration set's | target features (`adapt`) or target labels (`recalibrate`) |
+| [`AdaptiveConformalInference`](./aci.html) | online | distribution shift, by moving the target `alpha` itself | a learning rate `gamma` |
+| [`AggregatedAdaptiveConformalInference`](./agaci.html) | online | shift, without having to pick `gamma` | nothing — it runs a panel of `gamma`s |
+| [`NonexchangeableConformalPrediction`](./nexcp.html) | online | shift, by down-weighting stale residuals | a decay `rho` |
+| [`SequentialPredictiveConformalInference`](./spci.html) | online | *conditional* coverage — width that varies per step | the `spci` extra (quantile-forest) |
 
 Each method is configuration, and calibrating it returns a fitted object. The
 pages below drive the **forecaster surface** —
@@ -43,45 +43,45 @@ split and [Embedding](../concepts/embedding.html) for when to reach for it.
 Work down this list and stop at the first line that describes your problem.
 
 1. **You have never used conformal prediction here before.** Start with
-   [split conformal](split.html). It is one page of math, it has no knobs, and its
+   [split conformal](./split.html). It is one page of math, it has no knobs, and its
    coverage is a theorem rather than a hope. Everything else on this list is a
    response to a way it can fail — measure that failure before you fix it.
 2. **Your errors are much larger at some times than others** — a seasonal peak,
    a high-volume series in a panel — and a constant-width band is too wide most
-   of the year and too narrow at the peak. Use [CQR](cqr.html), if your forecaster can
+   of the year and too narrow at the peak. Use [CQR](./cqr.html), if your forecaster can
    emit quantiles. Constant-width is a property of the *score*, not of conformal
    prediction.
 3. **Your measured coverage drifts away from target over time.** The world moved.
    Use an online method:
-   - [ACI](aci.html) if you are willing to tune one learning rate, and want the
+   - [ACI](./aci.html) if you are willing to tune one learning rate, and want the
      simplest thing that provably recovers long-run coverage.
-   - [AgACI](agaci.html) if you are not — it runs several learning rates at once and
+   - [AgACI](./agaci.html) if you are not — it runs several learning rates at once and
      aggregates them, which is usually what you want in production.
-   - [NexCP](nexcp.html) if you would rather express "recent errors matter more" as a
+   - [NexCP](./nexcp.html) if you would rather express "recent errors matter more" as a
      decay on the calibration set than as a moving target.
 4. **You are predicting a different domain than you calibrated on** — a new
    region, a new customer segment, a shifted operating range — and the
    difference shows up in *features* you can measure, not in the same panel
    drifting under you over time. That is the boundary against item 3: temporal
    drift on a fixed panel is an online-method problem, a domain that differs in
-   measurable ways is this one. Use [weighted split conformal](weighted_split.html),
+   measurable ways is this one. Use [weighted split conformal](./weighted_split.html),
    which needs either target features (`adapt(weighting=DensityRatio(...),
    target_X=...)`) or target labels (`recalibrate()`). See
    [Transfer and adaptation](../capabilities/transfer.html) for the full set of verbs
    and which one your data allows.
 5. **Coverage is fine on average but wrong in identifiable places** — the
    interval is too wide in calm periods and too narrow in volatile ones. That is
-   a conditional-coverage problem. Use [SPCI](spci.html), which fits a quantile
+   a conditional-coverage problem. Use [SPCI](./spci.html), which fits a quantile
    regressor on the residual history and lets the width move with it.
 
 Two of those choices have an **asymmetric** mode, which is a setting rather than
 a different method, so it does not get its own line above. Reach for it when the
 two tails do not cost the same — being short on inventory is not the mirror image
 of being long on it — or when the forecaster is biased and you would rather the
-band shifted than widened on both sides. [Split conformal](split.html) with
+band shifted than widened on both sides. [Split conformal](./split.html) with
 `symmetric=False` scores signed residuals and takes one one-sided quantile per
 tail; it needs no extra capability, works through every adapter, and costs more
-calibration data, since each tail now enforces its own `ceil(1 / level)` floor. [CQR](cqr.html) with the same flag tilts the quantile levels
+calibration data, since each tail now enforces its own `ceil(1 / level)` floor. [CQR](./cqr.html) with the same flag tilts the quantile levels
 it requests instead, which tracks asymmetry that varies with the input rather
 than applying a constant offset — but no shipped Nixtla adapter can serve those
 levels today.

@@ -151,7 +151,7 @@ intervals under the same name.
 
 ## Next
 
-- [Architecture](architecture.html) — the two surfaces and the shape conventions.
+- [Architecture](./architecture.html) — the two surfaces and the shape conventions.
 - [Methods](../methods/index.html) — what each method does, with the papers.
 - [Adapters](../adapters/index.html) — the forecaster-surface route, if you want the
   orchestration after all.
