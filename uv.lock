@@ -11,7 +11,7 @@ resolution-markers = [
 
 [manifest]
 constraints = [
-    { name = "aiohttp", specifier = ">=3.14.3" },
+    { name = "aiohttp", specifier = ">=3.14.5" },
     { name = "bleach", specifier = ">=6.4.0" },
     { name = "cryptography", specifier = ">=50.0.0" },
     { name = "jupyter-server", specifier = ">=2.20.0" },

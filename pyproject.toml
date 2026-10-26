@@ -96,7 +96,7 @@ Repository = "https://github.com/Nixtla/nixtla/"
 # value, so CI and local development stay on the same uv.
 required-version = ">=0.12.10"
 constraint-dependencies = [
-    "aiohttp>=3.14.3",
+    "aiohttp>=3.14.5",
     "bleach>=6.4.0",
     "cryptography>=50.0.0",
     "jupyter-server>=2.20.0",
