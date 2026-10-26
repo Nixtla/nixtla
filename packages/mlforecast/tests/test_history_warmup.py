@@ -293,9 +293,9 @@ def test_history_warmup_calibration_state_defaults():
 
     calibrated = _new_fcst("local")
     calibrated.fit(df.copy(), prediction_intervals=PredictionIntervals(n_windows=2))
-    cs_df_before = calibrated._cs_df
+    calibration_before = calibrated._calibration_
     calibrated.history_warmup(df.copy())
-    assert calibrated._cs_df is cs_df_before
+    assert calibrated._calibration_ is calibration_before
 
 
 def test_history_warmup_as_numpy():

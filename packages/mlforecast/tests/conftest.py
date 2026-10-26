@@ -72,24 +72,6 @@ def setup_forecast_data():
 
 
 @pytest.fixture
-def weighted_conformal_setup():
-    """Small synthetic dataset + fitted MLForecast for weighted conformal tests."""
-    series = generate_daily_series(4, min_length=60, max_length=80, seed=0)
-    h = 7
-    n_windows = 2
-    fcst = MLForecast(
-        models=lgb.LGBMRegressor(random_state=0, verbosity=-1, n_estimators=5),
-        freq="D",
-        lags=[1, 7],
-        date_features=["dayofweek"],
-        num_threads=1,
-    )
-    pi = PredictionIntervals(method="weighted_conformal_error", n_windows=n_windows, h=h)
-    fcst.fit(series, prediction_intervals=pi)
-    return fcst, series, h, n_windows
-
-
-@pytest.fixture
 def scale_aligned_setup():
     """Source series at normal scale; target series scaled up ×400."""
     rng = np.random.default_rng(42)  # noqa: F841
@@ -107,6 +89,6 @@ def scale_aligned_setup():
         date_features=["dayofweek"],
         num_threads=1,
     )
-    pi = PredictionIntervals(method="conformal_error", n_windows=n_windows, h=h, scale_estimator="mad")
+    pi = PredictionIntervals(method="conformal_error", n_windows=n_windows, h=h)
     fcst.fit(source_series, prediction_intervals=pi)
     return fcst, source_series, target_series, h

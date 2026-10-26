@@ -48,7 +48,7 @@ from mlforecast.core import (
     _name_models,
 )
 
-from ..forecast import MLForecast
+from ..forecast import MLForecast, _train_ends
 from ..grouped_array import GroupedArray
 from ..utils import _resolve_num_threads
 
@@ -61,6 +61,7 @@ class DistributedMLForecast:
     """Multi backend distributed pipeline"""
 
     _PARTITION_FIELDS = ("ts", "train", "valid", "first_uid", "all_uids", "x_df")
+    _train_ends_: Optional[pd.DataFrame] = None
 
     def __init__(
         self,
@@ -443,7 +444,27 @@ class DistributedMLForecast:
             raise NotImplementedError(
                 "Only spark, dask, and ray engines are supported."
             )
+        self._train_ends_ = None
         return self
+
+    @staticmethod
+    def _get_train_ends(items: List[List[Any]]) -> Iterable[List[Any]]:
+        for row in items:
+            data = dict(zip(DistributedMLForecast._PARTITION_FIELDS, row))
+            yield [cloudpickle.dumps(_train_ends(cloudpickle.loads(data["ts"])))]
+
+    def _collect_train_ends(self) -> pd.DataFrame:
+        # `update` moves the partitions' last dates past what the models trained on
+        res = fa.transform(
+            self._partition_results,
+            DistributedMLForecast._get_train_ends,
+            schema="train_ends:binary",
+            engine=self.engine,
+            as_fugue=True,
+        )
+        return ufp.vertical_concat(
+            [cloudpickle.loads(x) for x in res.as_pandas()["train_ends"]]
+        )
 
     def fit(
         self,
@@ -473,7 +494,7 @@ class DistributedMLForecast:
         Returns:
             (DistributedMLForecast): Forecast object with series values and trained models.
         """
-        return self._fit(
+        self._fit(
             df,
             id_col=id_col,
             time_col=time_col,
@@ -483,6 +504,8 @@ class DistributedMLForecast:
             keep_last_n=keep_last_n,
             weight_col=weight_col,
         )
+        self._train_ends_ = self._collect_train_ends()
+        return self
 
     @staticmethod
     def _attach_x_df(part: pd.DataFrame, uid_to_xdf: dict) -> Iterable[pd.DataFrame]:
@@ -851,6 +874,8 @@ class DistributedMLForecast:
         dummy_df.as_pandas()
         with fsspec.open(f"{path}/models.pkl", "wb") as f:
             cloudpickle.dump(self.models_, f)
+        with fsspec.open(f"{path}/train_ends.pkl", "wb") as f:
+            cloudpickle.dump(self._train_ends_, f)
         self._base_ts.save(f"{path}/_base_ts.pkl")
 
     @staticmethod
@@ -891,6 +916,8 @@ class DistributedMLForecast:
         )
         with fsspec.open(f"{path}/models.pkl", "rb") as f:
             models = cloudpickle.load(f)
+        with fsspec.open(f"{path}/train_ends.pkl", "rb") as f:
+            train_ends = cloudpickle.load(f)
         base_ts = TimeSeries.load(f"{path}/_base_ts.pkl")
         fcst = DistributedMLForecast(models=models, freq=base_ts.freq)
         fcst._base_ts = base_ts
@@ -898,6 +925,7 @@ class DistributedMLForecast:
             partition_results, lazy=False, engine=engine, as_fugue=True
         )
         fcst.models_ = models
+        fcst._train_ends_ = train_ends
         fcst.engine = engine
         fcst.num_partitions = len(paths)
         return fcst
@@ -1041,4 +1069,6 @@ class DistributedMLForecast:
         ts.static_features_ = statics
         ts.transforms.update(combined_core_lag_tfms)
         ts.target_transforms = combined_target_tfms
-        return MLForecast._from_ts(ts, models=self.models_, models_=self.models_)
+        return MLForecast._from_ts(
+            ts, models=self.models_, models_=self.models_, train_ends=self._train_ends_
+        )

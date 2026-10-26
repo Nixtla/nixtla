@@ -155,17 +155,13 @@ def mlforecast_objective(
             else:
                 X_df = None
             if should_fit:
-                new_df = None
+                fcst = mlf
             else:
                 keep_cols = list(train.columns)
                 if weight_col is not None:
                     keep_cols.remove(weight_col)
-                new_df = train[keep_cols]
-            preds = mlf.predict(
-                h=h,
-                X_df=X_df,
-                new_df=new_df,
-            )
+                fcst = mlf._transfer(train[keep_cols], None)
+            preds = fcst.predict(h=h, X_df=X_df)
             result = ufp.join(
                 valid[id_cols],
                 preds,

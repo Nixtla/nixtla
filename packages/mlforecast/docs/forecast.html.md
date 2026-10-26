@@ -17,6 +17,7 @@ title: MLForecast
         - update
         - make_future_dataframe
         - get_missing_future
+        - transfer
         - predict
         - preprocess
         - history_warmup

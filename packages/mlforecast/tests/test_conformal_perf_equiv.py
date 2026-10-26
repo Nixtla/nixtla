@@ -92,22 +92,78 @@ def assert_frames_close(actual, expected, skip=("unique_id", "ds", "cutoff")):
 
 
 # ---------------------------------------------------------------------------
-# 1. _compute_series_scales
+# 1. _raw_series_scales + _floor_series_scales
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("backend", ["pandas", "polars"])
-@pytest.mark.parametrize("method", ["mad", "std"])
-def test_compute_series_scales_equiv(backend, method):
+def make_scales_df(backend, id_dtype, shuffle):
     df = make_series_df()
+    if id_dtype == "int":
+        df["unique_id"] = pd.factorize(df["unique_id"])[0]
+    if shuffle:
+        df = df.sample(frac=1.0, random_state=0)
     if backend == "polars":
         df = pl.from_pandas(df)
+        if id_dtype == "categorical":
+            df = df.with_columns(pl.col("unique_id").cast(pl.Categorical))
+    elif id_dtype == "categorical":
+        df["unique_id"] = df["unique_id"].astype("category")
+    return df
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+@pytest.mark.parametrize("id_dtype", ["str", "categorical", "int"])
+@pytest.mark.parametrize("shuffle", [False, True])
+@pytest.mark.parametrize("method", ["mad", "std"])
+def test_series_scales_equiv(backend, id_dtype, shuffle, method):
+    df = make_scales_df(backend, id_dtype, shuffle)
     expected = ref._compute_series_scales(df, "unique_id", "ds", "y", method=method)
-    actual = cp._compute_series_scales(df, "unique_id", "ds", "y", method=method)
+    raw = cp._raw_series_scales(df, "unique_id", "ds", "y", (method,))
+    actual = cp._floor_series_scales(raw[method], floor_factor=1e-3, stacklevel=2)
     assert set(actual) == set(expected)
     for uid in expected:
         np.testing.assert_allclose(
             actual[uid], expected[uid], rtol=RTOL, err_msg=str(uid)
         )
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+@pytest.mark.parametrize("id_dtype", ["str", "categorical", "int"])
+@pytest.mark.parametrize("shuffle", [False, True])
+def test_raw_series_scales(backend, id_dtype, shuffle):
+    df = make_scales_df(backend, id_dtype, shuffle)
+    raw = cp._raw_series_scales(df, "unique_id", "ds", "y", ("mad", "std"))
+    pdf = df.to_pandas() if backend == "polars" else df
+    expected = {"mad": {}, "std": {}}
+    for uid, g in pdf.groupby("unique_id", observed=True):
+        y = g.sort_values("ds")["y"].to_numpy()
+        dy = np.diff(y)
+        if dy.size == 0:
+            expected["mad"][uid] = expected["std"][uid] = abs(y[0])
+            continue
+        expected["mad"][uid] = np.median(np.abs(dy - np.median(dy)))
+        expected["std"][uid] = abs(dy[0]) if dy.size == 1 else np.std(dy, ddof=1)
+    assert raw.keys() == expected.keys()
+    for method in expected:
+        assert raw[method].keys() == expected[method].keys()
+        for uid, value in expected[method].items():
+            np.testing.assert_allclose(
+                raw[method][uid], value, rtol=RTOL, atol=1e-12, err_msg=str(uid)
+            )
+    single, pair, flat = make_scales_df("pandas", id_dtype, False)["unique_id"].unique()[-3:]
+    assert raw["mad"][single] == raw["std"][single] == 3.5
+    assert raw["std"][pair] == 3.0
+    assert raw["mad"][flat] == raw["std"][flat] == 0.0
+
+
+@pytest.mark.parametrize("backend", ["pandas", "polars"])
+def test_raw_series_scales_large_int_target(backend):
+    rng = np.random.default_rng(0)
+    y = 30_000_000 + rng.integers(0, 7, size=200).cumsum()
+    df = pd.DataFrame({"unique_id": "a", "ds": np.arange(y.size), "y": y})
+    if backend == "polars":
+        df = pl.from_pandas(df)
+    raw = cp._raw_series_scales(df, "unique_id", "ds", "y", ("std",))
+    np.testing.assert_allclose(raw["std"]["a"], np.std(np.diff(y), ddof=1), rtol=RTOL)
 
 
 # ---------------------------------------------------------------------------
@@ -131,90 +187,20 @@ def test_apply_scale_alignment_equiv(backend):
 
 
 # ---------------------------------------------------------------------------
-# 3. weighted quantiles (vectorized vs scalar reference)
+# 3. interval functions (transfer and non-transfer)
 # ---------------------------------------------------------------------------
 
-def test_weighted_quantiles_matches_scalar_reference():
-    rng = np.random.default_rng(2)
-    values = rng.normal(size=200)
-    values[::7] = values[0]  # ties exercise searchsorted side='left' tie-breaking
-    weights = rng.uniform(0.1, 3.0, size=200)
-    alphas = np.array([0.025, 0.05, 0.1, 0.5, 0.9, 0.95, 0.975])
-    got = cp._weighted_quantiles(values, weights, alphas, w_test=1.3)
-    expected = np.array(
-        [ref._weighted_quantile(values, weights, a, w_test=1.3) for a in alphas]
-    )
-    np.testing.assert_array_equal(got, expected)
-
-
-def test_weighted_quantile_wrapper_unchanged():
-    rng = np.random.default_rng(7)
-    values = rng.normal(size=50)
-    weights = rng.uniform(0.1, 2.0, size=50)
-    for alpha in (0.05, 0.5, 0.95):
-        assert cp._weighted_quantile(values, weights, alpha, 0.7) == ref._weighted_quantile(
-            values, weights, alpha, 0.7
-        )
-
-
-# ---------------------------------------------------------------------------
-# 4. interval functions (all four, transfer and non-transfer)
-# ---------------------------------------------------------------------------
-
-WEIGHTED_FNS = [
-    "_add_weighted_conformal_error_intervals",
-    "_add_weighted_conformal_distribution_intervals",
-]
-UNWEIGHTED_FNS = [
+INTERVAL_FNS = [
     "_add_conformal_error_intervals",
     "_add_conformal_distribution_intervals",
 ]
 
 
 @pytest.mark.parametrize("backend", ["pandas", "polars"])
-@pytest.mark.parametrize("fn_name", WEIGHTED_FNS)
-@pytest.mark.parametrize("is_transfer", [False, True])
-@pytest.mark.parametrize("use_weights", [False, True])
-@pytest.mark.parametrize("horizon", [5, 6])  # truncated (h < cs_h) and full (h == cs_h)
-def test_weighted_interval_equiv(backend, fn_name, is_transfer, use_weights, horizon):
-    n_windows, n_series, cs_h = 2, 8, 6
-    models = ["m1", "m2"]
-    level = [80, 95]
-    cs_df = make_cs_df(n_windows, n_series, cs_h, models, backend=backend)
-    n_target = 4 if is_transfer else n_series
-    fcst_df = make_fcst_df(n_target, horizon, models, backend=backend)
-    rng = np.random.default_rng(4)
-    weights = (
-        rng.uniform(0.1, 2.0, size=n_windows * n_series * cs_h)
-        if use_weights
-        else None
-    )
-    target_weights = (
-        rng.uniform(0.1, 2.0, size=n_target * horizon)
-        if (use_weights and is_transfer)
-        else None
-    )
-    kwargs = dict(
-        model_names=models,
-        level=level,
-        cs_n_windows=n_windows,
-        cs_h=cs_h,
-        n_series=n_series,
-        horizon=horizon,
-        weights=weights,
-        is_transfer=is_transfer,
-        target_weights=target_weights,
-    )
-    expected = getattr(ref, fn_name)(fcst_df, cs_df, **kwargs)
-    actual = getattr(cp, fn_name)(fcst_df, cs_df, **kwargs)
-    assert_frames_close(actual, expected)
-
-
-@pytest.mark.parametrize("backend", ["pandas", "polars"])
-@pytest.mark.parametrize("fn_name", UNWEIGHTED_FNS)
+@pytest.mark.parametrize("fn_name", INTERVAL_FNS)
 @pytest.mark.parametrize("is_transfer", [False, True])
 @pytest.mark.parametrize("horizon", [5, 6])  # truncated (h < cs_h) and full (h == cs_h)
-def test_unweighted_interval_equiv(backend, fn_name, is_transfer, horizon):
+def test_interval_equiv(backend, fn_name, is_transfer, horizon):
     n_windows, n_series, cs_h = 2, 8, 6
     models = ["m1", "m2"]
     level = [80, 95]
@@ -228,15 +214,25 @@ def test_unweighted_interval_equiv(backend, fn_name, is_transfer, horizon):
         cs_h=cs_h,
         n_series=n_series,
         horizon=horizon,
-        is_transfer=is_transfer,
     )
-    expected = getattr(ref, fn_name)(fcst_df, cs_df, **kwargs)
-    actual = getattr(cp, fn_name)(fcst_df, cs_df, **kwargs)
+    expected = getattr(ref, fn_name)(fcst_df, cs_df, is_transfer=is_transfer, **kwargs)
+    if is_transfer:
+        actual = cp._add_transfer_intervals(
+            fcst_df,
+            cs_df,
+            model_names=models,
+            level=level,
+            horizon=horizon,
+            cs_h=cs_h,
+            method=fn_name.removeprefix("_add_").removesuffix("_intervals"),
+        )
+    else:
+        actual = getattr(cp, fn_name)(fcst_df, cs_df, **kwargs)
     assert_frames_close(actual, expected)
 
 
 # ---------------------------------------------------------------------------
-# 5. interval rescaling helper (replaces forecast.py triple loop)
+# 4. interval rescaling helper (replaces forecast.py triple loop)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("backend", ["pandas", "polars"])

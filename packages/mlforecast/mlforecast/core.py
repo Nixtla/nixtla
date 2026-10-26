@@ -613,7 +613,7 @@ class TimeSeries:
 
         This is needed when a new ``TimeSeries`` instance is created from historical
         data without running the feature-materialization pass (``history_warmup``
-        or ``predict(new_df=...)``). Local (coreforecast) transforms need a full
+        or ``MLForecast.transfer``). Local (coreforecast) transforms need a full
         ``transform`` pass so stateful transforms like ``ExpandingMean`` can
         initialize their internal buffers before the first ``update(...)`` call.
         Pooled transforms need the same treatment: the accumulator kernels'
@@ -1533,7 +1533,7 @@ class TimeSeries:
                 exogenous columns the models were trained with. When None, any
                 mapping from a previous fit is preserved.
             trim: Apply the `keep_last_n` trim after warming the transform
-                state. `predict(new_df=...)` disables this to keep the full
+                state. `MLForecast.transfer` disables this to keep the full
                 provided history.
         """
         self._fit(

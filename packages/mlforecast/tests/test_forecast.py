@@ -27,6 +27,7 @@ from mlforecast.lgb_cv import LightGBMCV
 from mlforecast.target_transforms import Differences, LocalStandardScaler
 from mlforecast.utils import (
     PredictionIntervals,
+    Recalibration,
     generate_daily_series,
     generate_prices_for_series,
     generate_series,
@@ -231,7 +232,7 @@ def test_recursive_forecast_fitted_values_on_demand_h_matches_slow_baseline():
             if future.iloc[0]["ds"] not in valid_uid_times:
                 continue
             X_df = future[["unique_id", "ds", *dynamic]] if dynamic else None
-            preds = fcst.predict(h=h, new_df=hist, X_df=X_df)
+            preds = fcst.transfer(hist).predict(h=h, X_df=X_df)
             pred_last = preds.iloc[-1]
             rows.append(
                 {
@@ -391,12 +392,12 @@ def test_forecast_fitted_values_positional_level_compat():
     pd.testing.assert_frame_equal(positional, keyword)
 
 
-def test_new_df_argument(fitted_fcst, setup_forecast_data, predictions):
-    """Test that predictions with new_df argument work correctly."""
+def test_transfer_predict(fitted_fcst, setup_forecast_data, predictions):
+    """Test that transfer on the training data reproduces the predictions."""
     df, train, _ = setup_forecast_data
     horizon = 48
     pd.testing.assert_frame_equal(
-        fitted_fcst.predict(horizon, new_df=train), predictions
+        fitted_fcst.transfer(train).predict(horizon), predictions
     )
 
 
@@ -1897,7 +1898,7 @@ def test_horizon_features_transfer_learning_predict(df_engine):
             3: ["bookings_horizon_3"],
         },
     )
-    preds = _to_pandas(fcst.predict(h=H, new_df=transfer_df, X_df=future))
+    preds = _to_pandas(fcst.transfer(transfer_df).predict(h=H, X_df=future))
     assert preds.shape[0] == H
     assert preds["LinearRegression"].notna().all()
 
@@ -2266,8 +2267,7 @@ def test_mlforecast_num_threads_minus_one():
     pd.testing.assert_frame_equal(preds_multi, preds_single)
 
 
-def test_transfer_learning_updates_uids():
-    """Test that predict with new_df updates self.ts to reflect the new dataset."""
+def test_transfer_learning_uids():
     train_a = generate_daily_series(3, min_length=50, max_length=50)
     train_b = generate_daily_series(
         2, min_length=50, max_length=50, n_static_features=0
@@ -2283,18 +2283,39 @@ def test_transfer_learning_updates_uids():
         lags=[1, 2, 3],
     )
     fcst.fit(train_a)
+    original_ts = fcst.ts
     original_uids = set(fcst.ts.uids)
     assert len(original_uids) == 3
 
-    fcst.predict(h=5, new_df=train_b)
-    new_uids = set(fcst.ts.uids)
-    expected_uids = set(train_b["unique_id"].unique())
-    assert new_uids == expected_uids
-    assert new_uids != original_uids
+    tgt = fcst.transfer(train_b)
+    tgt.predict(h=5)
+    assert set(tgt.ts.uids) == set(train_b["unique_id"].unique())
+    assert tgt.models_ is not fcst.models_
+    assert tgt.models_["LinearRegression"] is fcst.models_["LinearRegression"]
+    assert fcst.ts is original_ts
+    assert set(fcst.ts.uids) == original_uids
 
 
-def test_transfer_learning_failed_predict_keeps_original_state():
-    """Test that transfer learning doesn't mutate state if prediction fails."""
+def test_mlflow_wrapper_new_df_keeps_model_state():
+    pytest.importorskip("mlflow")
+    from mlforecast.flavor import _MLForecastModelWrapper
+
+    src = generate_daily_series(3, min_length=50, max_length=50)
+    tgt = generate_daily_series(2, min_length=50, max_length=50, seed=1)
+    src["unique_id"] = src["unique_id"].astype(str)
+    tgt["unique_id"] = "new_" + tgt["unique_id"].astype(str)
+    fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
+    fcst.fit(src[["unique_id", "ds", "y"]])
+    wrapper = _MLForecastModelWrapper(fcst)
+    expected = wrapper.predict(pd.DataFrame([{"h": 3}]))
+    transferred = wrapper.predict(
+        pd.DataFrame([{"h": 3, "new_df": tgt[["unique_id", "ds", "y"]].to_dict()}])
+    )
+    assert set(transferred["unique_id"]) == set(tgt["unique_id"])
+    pd.testing.assert_frame_equal(wrapper.predict(pd.DataFrame([{"h": 3}])), expected)
+
+
+def test_transfer_predict_unseen_ids_raises():
     train_a = generate_daily_series(
         3, min_length=50, max_length=50, n_static_features=0
     )
@@ -2311,18 +2332,15 @@ def test_transfer_learning_failed_predict_keeps_original_state():
         lags=[1, 2, 3],
     )
     fcst.fit(train_a)
-    original_uids = set(fcst.ts.uids)
 
     with pytest.raises(ValueError, match="weren't seen during training"):
-        fcst.predict(h=5, new_df=train_b, ids=["id_0"])
-
-    assert set(fcst.ts.uids) == original_uids
+        fcst.transfer(train_b).predict(h=5, ids=["id_0"])
 
 
-def test_transfer_learning_then_intervals_raises_clear_error():
-    """Test that intervals after transfer learning fail with a clear message."""
+@pytest.mark.parametrize("n_source", [2, 3])
+def test_transfer_without_method_then_intervals_raises(n_source):
     train_a = generate_daily_series(
-        3, min_length=50, max_length=50, n_static_features=0
+        n_source, min_length=50, max_length=50, n_static_features=0
     )
     train_b = generate_daily_series(
         2, min_length=50, max_length=50, n_static_features=0
@@ -2337,34 +2355,13 @@ def test_transfer_learning_then_intervals_raises_clear_error():
         lags=[1, 2, 3],
     )
     fcst.fit(train_a, prediction_intervals=PredictionIntervals(n_windows=2, h=5))
-    fcst.predict(h=5, new_df=train_b)
+    expected = fcst.predict(h=5, level=[90])
+    tgt = fcst.transfer(train_b)
+    tgt.predict(h=5)
 
-    with pytest.raises(ValueError, match="calibrated on a different set of series"):
-        fcst.predict(h=5, level=[90])
-
-
-def test_transfer_learning_then_intervals_raises_with_same_series_count():
-    """Intervals should fail if ids differ, even when the number of series matches."""
-    train_a = generate_daily_series(
-        2, min_length=50, max_length=50, n_static_features=0
-    )
-    train_b = generate_daily_series(
-        2, min_length=50, max_length=50, n_static_features=0
-    )
-    train_b["unique_id"] = train_b["unique_id"].cat.rename_categories(
-        {c: f"new_{c}" for c in train_b["unique_id"].cat.categories}
-    )
-
-    fcst = MLForecast(
-        models=[LinearRegression()],
-        freq="D",
-        lags=[1, 2, 3],
-    )
-    fcst.fit(train_a, prediction_intervals=PredictionIntervals(n_windows=2, h=5))
-    fcst.predict(h=5, new_df=train_b)
-
-    with pytest.raises(ValueError, match="calibrated on a different set of series"):
-        fcst.predict(h=5, level=[90])
+    pd.testing.assert_frame_equal(fcst.predict(h=5, level=[90]), expected)
+    with pytest.raises(ValueError, match="has no prediction intervals for its"):
+        tgt.predict(h=5, level=[90])
 
 
 def test_transfer_learning_subset_predict_keeps_full_transform_state():
@@ -2389,17 +2386,16 @@ def test_transfer_learning_subset_predict_keeps_full_transform_state():
     expected_uids = set(train_b["unique_id"].unique())
     subset_id = [next(iter(expected_uids))]
 
-    # Persist transfer state through a subset forecast first.
-    fcst.predict(h=3, new_df=train_b, ids=subset_id)
-    # A full forecast should still work for all transfer-learning ids.
-    preds = fcst.predict(h=3)
+    tgt = fcst.transfer(train_b)
+    tgt.predict(h=3, ids=subset_id)
+    preds = tgt.predict(h=3)
     assert set(preds["unique_id"].unique()) == expected_uids
 
 
 def test_transfer_learning_with_sparse_horizons():
     """Regression test: _horizons must be propagated to new_ts during transfer learning.
 
-    Previously, predict(new_df=...) created a fresh TimeSeries object without copying
+    Previously, transfer learning created a fresh TimeSeries object without copying
     _horizons, causing a KeyError when sparse horizons (e.g. [3, 10]) were used.
     """
     train_a = generate_daily_series(
@@ -2419,7 +2415,7 @@ def test_transfer_learning_with_sparse_horizons():
     )
     fcst.fit(train_a, horizons=[3, 10])
 
-    preds = fcst.predict(h=10, new_df=train_b)
+    preds = fcst.transfer(train_b).predict(h=10)
 
     n_series = train_b["unique_id"].nunique()
     # Only horizons 3 and 10 should be returned
@@ -2442,9 +2438,9 @@ def test_transfer_learning_intervals():
     fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1, 2, 3])
     fcst.fit(train_ab, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
 
-    saved_cs_df = fcst._cs_df
+    saved_calibration = fcst._calibration_
 
-    preds = fcst.predict(h=5, level=[80, 95], new_df=train_ef)
+    preds = fcst.transfer(train_ef, Recalibration()).predict(h=5, level=[80, 95])
 
     # interval columns exist
     assert "LinearRegression-lo-80" in preds.columns
@@ -2457,33 +2453,19 @@ def test_transfer_learning_intervals():
     assert (pd_preds["LinearRegression-lo-80"] <= pd_preds["LinearRegression"]).all()
     assert (pd_preds["LinearRegression"] <= pd_preds["LinearRegression-hi-80"]).all()
 
-    # _cs_df restored after predict (same object — finally block ran)
-    assert fcst._cs_df is saved_cs_df
-
-    # invalid transfer_conformal raises ValueError
-    with pytest.raises(ValueError, match="TransferConformal.method must be one of"):
-        fcst.predict(h=5, level=[80], new_df=train_ef, transfer_conformal="bogus")
+    # the source state is not adapted in place
+    assert fcst._calibration_ is saved_calibration
+    assert fcst._transfer_ is None
 
 
 def test_transfer_learning_intervals_no_prediction_intervals_raises():
-    """Transfer CP without fitting with PredictionIntervals raises a clear error."""
+    """Recalibrating windows without PredictionIntervals raises a clear error."""
     train_ab = generate_daily_series(
         3, min_length=50, max_length=50, n_static_features=0
     )
-    train_ef = generate_daily_series(
-        2, min_length=50, max_length=50, n_static_features=0
-    )
-    train_ef["unique_id"] = train_ef["unique_id"].cat.rename_categories(
-        {c: f"transfer_{c}" for c in train_ef["unique_id"].cat.categories}
-    )
-
     fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1, 2, 3])
-    fcst.fit(train_ab)
-
-    with pytest.raises(
-        ValueError, match="Transfer-learning prediction intervals require"
-    ):
-        fcst.predict(h=5, level=[80], new_df=train_ef)
+    with pytest.raises(ValueError, match="windows that aren.t refit require"):
+        fcst.cross_validation(train_ab, n_windows=2, h=5, refit=False, level=[80])
 
 
 def test_cross_validation_with_horizon_features(horizon_features_data):
@@ -2833,22 +2815,18 @@ def test_fit_with_intervals_leaves_no_cv_state():
     fcst.fit(df, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
     assert not hasattr(fcst, "cv_models_")
     assert not hasattr(fcst, "cv_fitted_values_")
-    assert fcst._cs_df is not None
+    assert fcst._calibration_ is not None
     assert fcst.models_ is not None
 
 
-def test_predict_new_df_keeps_state_when_intervals_fail():
-    # `new_df` becomes the instance's history only once the whole call
-    # succeeded, including the interval step that runs after the forecast
+def test_transfer_level_out_of_range_raises():
     df = generate_daily_series(3, min_length=30, max_length=30)
     fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
     fcst.fit(df, prediction_intervals=PredictionIntervals(n_windows=2, h=1))
-    original_ts = fcst.ts
+    new_df = fcst.make_future_dataframe(5).assign(y=1.0)
+    new_df = pd.concat([df, new_df]).sort_values(["unique_id", "ds"])
     with pytest.raises(ValueError, match="range"):
-        fcst.predict(1, new_df=df, level=[150])
-    assert fcst.ts is original_ts
-    fcst.predict(1, new_df=df, level=[80])
-    assert fcst.ts is not original_ts
+        fcst.transfer(new_df, Recalibration()).predict(1, level=[150])
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])

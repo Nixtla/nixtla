@@ -1,8 +1,10 @@
 __all__ = [
     "generate_daily_series",
     "generate_prices_for_series",
+    "ErrorScaling",
     "PredictionIntervals",
-    "TransferConformal",
+    "Recalibration",
+    "ScaleAlignment",
 ]
 
 
@@ -15,7 +17,12 @@ from joblib import cpu_count
 from utilsforecast.compat import DataFrame, pl
 from utilsforecast.data import generate_series
 
-from .conformal_prediction import PredictionIntervals, TransferConformal  # noqa: F401
+from .conformal_prediction import (  # noqa: F401
+    ErrorScaling,
+    PredictionIntervals,
+    Recalibration,
+    ScaleAlignment,
+)
 
 
 def _resolve_num_threads(num_threads: int) -> int:
