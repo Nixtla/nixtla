@@ -66,6 +66,9 @@ def _normalize(notebook: nbformat.NotebookNode) -> None:
                     "pytorch_lightning/utilities/_pytree.py",
                     "TPU available:",
                     "`Trainer.fit` stopped: `max_steps=",
+                    # pytorch-lightning >= 2.6 advertises litlogger on every
+                    # trainer setup, even with logger=False.
+                    "try installing [litlogger]",
                 )
             ):
                 continue

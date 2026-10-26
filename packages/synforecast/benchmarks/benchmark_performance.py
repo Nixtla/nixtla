@@ -1,12 +1,13 @@
 """Benchmark backend performance with optional save/compare support.
 
 Measures wall-clock time per generator (every mechanism, including the
-meta-generators that only ``pretraining_pool`` adds), the ``balanced_pool``
+meta-generators that only ``pretraining_pool`` adds, and both periodic
+Gaussian-process samplers), the cost of building one ``pretraining_pool``
+member versus the whole pool, the ``balanced_pool``
 throughput grid, and the per-family cost breakdown of ``pretraining_pool``
-across series lengths. The breakdown shows how the meta-generators, chiefly
-KernelSynth with its O(n^3) Cholesky factorization, come to dominate the cost of
-a long-series corpus. Can save results to JSON for cross-branch or cross-machine
-comparison.
+across series lengths. The breakdown shows which families come to dominate the
+cost of a long-series corpus. Can save results to JSON for cross-branch or
+cross-machine comparison.
 
 Usage:
     # Run and display results
@@ -181,6 +182,14 @@ GENERATORS: dict[str, tuple[type, dict]] = {
         GaussianProcessGenerator,
         {"kernel": "rbf", "length_scale": 20.0, "amplitude": 1.0},
     ),
+    "GP periodic (int)": (
+        GaussianProcessGenerator,
+        {"kernel": "periodic", "period": 24.0, "length_scale": 1.0},
+    ),
+    "GP periodic (frac)": (
+        GaussianProcessGenerator,
+        {"kernel": "periodic", "period": 24.5, "length_scale": 1.0},
+    ),
     "IoTSensor": (
         IoTSensorGenerator,
         {"base_value": 25.0, "measurement_noise": 0.5, "drift_rate": 0.01},
@@ -222,12 +231,6 @@ META_FAMILIES: dict[str, type] = {
     "MAR": MARGenerator,
 }
 BALANCED_LABEL = "balanced_pool"
-
-# Maximum lengths to avoid O(n^2)/O(n^3) blowups
-_MAX_LENGTHS: dict[str, int] = {
-    "FBM (Hosking)": 3_000,
-    "GaussianProcess": 3_000,
-}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -303,6 +306,30 @@ def benchmark_generators():
     print()
     times = list(results.values())
     print(f"  Median: {np.median(times):.3f} ms  |  Mean: {np.mean(times):.3f} ms")
+    print()
+    return results
+
+
+def benchmark_member_build():
+    """Build the whole pretraining_pool versus one ``members=`` entry."""
+    print("=" * 72)
+    print("  POOL MEMBER BUILD  (pretraining_pool, best of 20)")
+    print("=" * 72)
+    kwargs = {"min_length": 512, "max_length": 512, "freq": "h", "seed": 0}
+    member = next(
+        i
+        for i, g in enumerate(pretraining_pool(**kwargs))
+        if isinstance(g, KernelSynthGenerator)
+    )
+    results = {
+        "full_pool_ms": _time_fn(lambda: pretraining_pool(**kwargs), 20) * 1000,
+        "one_member_ms": _time_fn(
+            lambda: pretraining_pool(**kwargs, members=[member]), 20
+        )
+        * 1000,
+    }
+    print(f"  {'Full pool':<25} {results['full_pool_ms']:>10.3f} ms")
+    print(f"  {'One member':<25} {results['one_member_ms']:>10.3f} ms")
     print()
     return results
 
@@ -586,6 +613,7 @@ def main() -> None:
         SERIES_LENGTHS = [128, 256]
 
     gen_results = benchmark_generators()
+    member_build_results = benchmark_member_build()
     grid_results = benchmark_grid()
     breakdown_results = benchmark_pretraining_breakdown()
 
@@ -593,6 +621,7 @@ def main() -> None:
         data = {
             "environment": environment_metadata(),
             "generators": gen_results,
+            "member_build": member_build_results,
             "grid": grid_results,
             "pretraining_breakdown": breakdown_results,
         }

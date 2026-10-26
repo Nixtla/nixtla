@@ -2,7 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use rayon::prelude::*;
 
-use crate::generators::{domain, mar, multivariate, statistical, stochastic, tcm, tsi, volatility};
+use crate::generators::{
+    domain, kernel_synth, mar, multivariate, statistical, stochastic, tcm, tsi, volatility,
+};
 use crate::pattern_injection as pi;
 
 /// Return a cached rayon `ThreadPool` for the given worker count.
@@ -56,6 +58,7 @@ pub const GEN_CLICKSTREAM: i32 = 27;
 pub const GEN_TSI: i32 = 28;
 pub const GEN_TCM: i32 = 29;
 pub const GEN_MAR: i32 = 30;
+pub const GEN_KERNEL_SYNTH: i32 = 31;
 
 /// Per-series result returned from batch generation.
 #[derive(Debug)]
@@ -586,6 +589,12 @@ fn dispatch_generator(
             //                    intercepts, noise_scales]
             check_params!(sp, 12, ap, 0, "mar");
             mar::mar(out, sp, ap, seed)?;
+        }
+        GEN_KERNEL_SYNTH => {
+            // sp: [max_kernels, jitter, standardize]
+            // ap: [kernel_kind_ids, kernel_params]
+            check_params!(sp, 3, ap, 2, "kernel_synth");
+            kernel_synth::kernel_synth(out, sp, &ap[0], &ap[1], seed)?;
         }
         _ => return Err(format!("unknown generator type: {gen_type}")),
     }
@@ -1212,6 +1221,15 @@ mod tests {
                 vec![3.0, 5.0, 0.0, 1.0, 1.0, 0.1, 2.0, 100.0, 0.0, 1.0, 0.0, 0.0],
                 vec![vec![1.0], vec![1.0], vec![0.7], vec![0.0], vec![1.0]],
                 "mar_fixed",
+            ),
+            (
+                GEN_KERNEL_SYNTH,
+                vec![5.0, 1e-6, 1.0],
+                vec![
+                    vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
+                    vec![0.1, 1.0, 24.0, 1.0, 0.1, 1.0],
+                ],
+                "kernel_synth",
             ),
             (
                 GEN_STATE_SPACE,

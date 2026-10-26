@@ -266,7 +266,7 @@ class IoTSensorGenerator(BaseGenerator):
         self,
         n_series: int,
         start_id: int = 0,
-        n_jobs: int = -1,  # noqa: ARG002
+        n_jobs: int = -1,
     ) -> IntoDataFrameT:
         """Generate IoT sensor data.
 
@@ -282,12 +282,20 @@ class IoTSensorGenerator(BaseGenerator):
         Returns:
             DataFrame in long format with columns [id_col, time_col, target_col].
         """
+        return super().generate(n_series, start_id=start_id, n_jobs=n_jobs)
+
+    def _generate_metadata(
+        self,
+        n_series: int,
+        start_id: int,
+        n_jobs: int,  # noqa: ARG002
+    ) -> list[SeriesMetadata]:
+        """Draw independent sensors, or n_sensors correlated sensors per network."""
         all_metadata: list[SeriesMetadata] = []
         series_counter = start_id
 
         for _ in range(n_series):
             length = int(self.rng.integers(self.min_length, self.max_length + 1))
-            timestamps = self._timestamps(length)
 
             if self.n_sensors == 1:
                 samples = self.generate_single_series(length)[:, None]
@@ -304,7 +312,7 @@ class IoTSensorGenerator(BaseGenerator):
                 all_metadata.append(
                     SeriesMetadata(
                         values=values,
-                        timestamps=timestamps,
+                        timestamps=None,
                         series_id=series_counter,
                         length=length,
                         anomaly_indices=anom_indices,
@@ -315,4 +323,4 @@ class IoTSensorGenerator(BaseGenerator):
 
                 series_counter += 1
 
-        return self._build_dataframe(all_metadata)
+        return all_metadata

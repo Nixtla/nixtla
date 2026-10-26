@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import math
+import operator
 import warnings
+from collections.abc import Callable, Iterable
+from functools import partial
 from typing import Any
 
 import pandas as pd
@@ -73,6 +76,20 @@ _CYCLE_STEPS: list[tuple[tuple[type[_offsets.BaseOffset], ...], int]] = [
 
 _DEFAULT_SEASONAL_PERIOD = 12
 
+# An unbuilt pool entry; Callable (not partial) because its return type is covariant.
+_Spec = Callable[[], BaseGenerator]
+
+
+def _build(specs: list[_Spec], members: Iterable[int] | None) -> list[BaseGenerator]:
+    """Instantiate every spec, or only the selected indices in the given order."""
+    if members is None:
+        return [make() for make in specs]
+    chosen = [operator.index(i) for i in members]
+    bad = [i for i in chosen if not 0 <= i < len(specs)]
+    if bad:
+        raise IndexError(f"members {bad} out of range for a pool of {len(specs)}")
+    return [specs[i]() for i in chosen]
+
 
 def _seasonal_period_from_freq(
     freq: str | int, default: int = _DEFAULT_SEASONAL_PERIOD
@@ -108,6 +125,7 @@ def interpretable_pool(
     freq: str | int = "D",
     seed: int | None = 42,
     seasonal_period: int | None = None,
+    members: Iterable[int] | None = None,
     **base_kwargs: Any,
 ) -> list[BaseGenerator]:
     """Create a pool of interpretable single-mechanism generators.
@@ -162,11 +180,20 @@ def interpretable_pool(
             Set to None for random seeds.
         seasonal_period: Seasonal period, in time steps, for the seasonal
             variants. Defaults to None, which derives it from ``freq``.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds all 42. Each selected instance is
+            identical to the same entry of the full pool, and the others are
+            never constructed.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
         **base_kwargs: Additional keyword arguments passed to all generators
             (e.g., engine, id_col, time_col, target_col).
 
     Returns:
-        List of 42 BaseGenerator instances ready for use with SynSet.
+        List of 42 BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
 
     Examples:
         >>> from synforecast import SynSet, interpretable_pool
@@ -175,6 +202,21 @@ def interpretable_pool(
         ... )
         >>> df = dataset.generate(n_series_per_generator=1)
     """
+    specs = _interpretable_specs(
+        min_length, max_length, freq, seed, seasonal_period, base_kwargs
+    )
+    return _build(specs, members)
+
+
+def _interpretable_specs(
+    min_length: int,
+    max_length: int,
+    freq: str | int,
+    seed: int | None,
+    seasonal_period: int | None,
+    base_kwargs: dict[str, Any],
+) -> list[_Spec]:
+    """Unbuilt constructors of :func:`interpretable_pool`, in pool order."""
     base: dict[str, Any] = {
         "min_length": min_length,
         "max_length": max_length,
@@ -203,11 +245,12 @@ def interpretable_pool(
     # as many distinct behaviors as possible. generate_series draws from the
     # front when n_series < len(pool), so the interleaving is what makes a
     # small panel diverse. Seed offsets are fixed per variant at declaration.
-    niches: list[list[BaseGenerator]] = [
+    niches: list[list[_Spec]] = [
         # --- SARIMA: 5 variants covering stationary, integrated, seasonal ---
         [
             # Stationary AR(1)
-            SARIMAGenerator(
+            partial(
+                SARIMAGenerator,
                 **base,
                 seed=_seed(0),
                 p=1,
@@ -219,7 +262,8 @@ def interpretable_pool(
                 seasonal_period=1,
             ),
             # Integrated MA — random walk with smoothing
-            SARIMAGenerator(
+            partial(
+                SARIMAGenerator,
                 **base,
                 seed=_seed(1),
                 p=0,
@@ -231,7 +275,8 @@ def interpretable_pool(
                 seasonal_period=1,
             ),
             # Seasonal AR
-            SARIMAGenerator(
+            partial(
+                SARIMAGenerator,
                 **base,
                 seed=_seed(2),
                 p=1,
@@ -243,7 +288,8 @@ def interpretable_pool(
                 seasonal_period=season,
             ),
             # Airline model — classic seasonal integrated
-            SARIMAGenerator(
+            partial(
+                SARIMAGenerator,
                 **base,
                 seed=_seed(3),
                 p=0,
@@ -255,7 +301,8 @@ def interpretable_pool(
                 seasonal_period=season,
             ),
             # Stationary ARMA(2,2) — complex short-range dynamics
-            SARIMAGenerator(
+            partial(
+                SARIMAGenerator,
                 **base,
                 seed=_seed(4),
                 p=2,
@@ -270,7 +317,8 @@ def interpretable_pool(
         # --- ETS: 4 combos spanning the error/trend/season taxonomy ---
         [
             # Simple exponential smoothing (no trend, no season)
-            ETSGenerator(
+            partial(
+                ETSGenerator,
                 **base,
                 seed=_seed(5),
                 error_type="add",
@@ -278,7 +326,8 @@ def interpretable_pool(
                 seasonal_type=None,
             ),
             # Damped trend, no season
-            ETSGenerator(
+            partial(
+                ETSGenerator,
                 **base,
                 seed=_seed(6),
                 error_type="add",
@@ -287,7 +336,8 @@ def interpretable_pool(
                 damped=True,
             ),
             # Additive Holt-Winters
-            ETSGenerator(
+            partial(
+                ETSGenerator,
                 **base,
                 seed=_seed(7),
                 error_type="add",
@@ -296,7 +346,8 @@ def interpretable_pool(
                 seasonal_period=season,
             ),
             # Multiplicative Holt-Winters
-            ETSGenerator(
+            partial(
+                ETSGenerator,
                 **base,
                 seed=_seed(8),
                 error_type="mul",
@@ -309,23 +360,30 @@ def interpretable_pool(
         # --- Fractional Brownian Motion: 3 Hurst regimes ---
         [
             # Mean-reverting (anti-persistent)
-            FractionalBrownianMotionGenerator(**base, seed=_seed(9), hurst=0.2),
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(9), hurst=0.2
+            ),
             # Standard Brownian motion
-            FractionalBrownianMotionGenerator(**base, seed=_seed(10), hurst=0.5),
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(10), hurst=0.5
+            ),
             # Trending (persistent, long memory)
-            FractionalBrownianMotionGenerator(**base, seed=_seed(11), hurst=0.85),
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(11), hurst=0.85
+            ),
         ],
         # --- Regime Switching: 2 variants ---
         [
             # 2-regime (e.g., expansion/contraction)
-            RegimeSwitchingGenerator(**base, seed=_seed(12), n_regimes=2),
+            partial(RegimeSwitchingGenerator, **base, seed=_seed(12), n_regimes=2),
             # 3-regime with distinct dynamics
-            RegimeSwitchingGenerator(**base, seed=_seed(13), n_regimes=3),
+            partial(RegimeSwitchingGenerator, **base, seed=_seed(13), n_regimes=3),
         ],
         # --- GARCH: 2 persistence levels ---
         [
             # Low persistence — mild volatility clustering
-            GARCHGenerator(
+            partial(
+                GARCHGenerator,
                 **base,
                 seed=_seed(14),
                 omega=0.1,
@@ -333,7 +391,8 @@ def interpretable_pool(
                 beta=[0.3],
             ),
             # High persistence — strong volatility clustering
-            GARCHGenerator(
+            partial(
+                GARCHGenerator,
                 **base,
                 seed=_seed(15),
                 omega=0.01,
@@ -344,7 +403,8 @@ def interpretable_pool(
         # --- Cyclic: 2 regularity levels ---
         [
             # Nearly regular single cycle
-            CyclicGenerator(
+            partial(
+                CyclicGenerator,
                 **base,
                 seed=_seed(16),
                 num_cycles=1,
@@ -352,7 +412,8 @@ def interpretable_pool(
                 cycle_period_std=0.04 * cycle_period,
             ),
             # Highly irregular multi-cycle overlay
-            CyclicGenerator(
+            partial(
+                CyclicGenerator,
                 **base,
                 seed=_seed(17),
                 num_cycles=4,
@@ -362,13 +423,20 @@ def interpretable_pool(
         ],
         # --- Intermittent Demand: 3 sparsity patterns ---
         [
-            IntermittentDemandGenerator(
-                **base, seed=_seed(18), intermittent_pattern="random"
+            partial(
+                IntermittentDemandGenerator,
+                **base,
+                seed=_seed(18),
+                intermittent_pattern="random",
             ),
-            IntermittentDemandGenerator(
-                **base, seed=_seed(19), intermittent_pattern="clustered"
+            partial(
+                IntermittentDemandGenerator,
+                **base,
+                seed=_seed(19),
+                intermittent_pattern="clustered",
             ),
-            IntermittentDemandGenerator(
+            partial(
+                IntermittentDemandGenerator,
                 **base,
                 seed=_seed(20),
                 intermittent_pattern="seasonal",
@@ -377,27 +445,34 @@ def interpretable_pool(
         ],
         # --- Energy Load: 2 consumption profiles ---
         [
-            EnergyLoadGenerator(**base, seed=_seed(21), load_type="residential"),
-            EnergyLoadGenerator(**base, seed=_seed(22), load_type="industrial"),
+            partial(
+                EnergyLoadGenerator, **base, seed=_seed(21), load_type="residential"
+            ),
+            partial(
+                EnergyLoadGenerator, **base, seed=_seed(22), load_type="industrial"
+            ),
         ],
         # --- IoT Sensor: 3 health states ---
         [
             # Healthy sensor
-            IoTSensorGenerator(
+            partial(
+                IoTSensorGenerator,
                 **base,
                 seed=_seed(23),
                 failure_probability=0.0,
                 drift_rate=0.0,
             ),
             # Degrading sensor
-            IoTSensorGenerator(
+            partial(
+                IoTSensorGenerator,
                 **base,
                 seed=_seed(24),
                 drift_rate=0.01,
                 battery_degradation_rate=0.001,
             ),
             # Failing sensor
-            IoTSensorGenerator(
+            partial(
+                IoTSensorGenerator,
                 **base,
                 seed=_seed(25),
                 failure_probability=0.05,
@@ -406,62 +481,83 @@ def interpretable_pool(
         ],
         # --- Vital Signs: 3 patient types ---
         [
-            VitalSignsGenerator(**base, seed=_seed(26), patient_type="healthy"),
-            VitalSignsGenerator(**base, seed=_seed(27), patient_type="cardiac"),
-            VitalSignsGenerator(**base, seed=_seed(28), patient_type="sepsis"),
+            partial(
+                VitalSignsGenerator, **base, seed=_seed(26), patient_type="healthy"
+            ),
+            partial(
+                VitalSignsGenerator, **base, seed=_seed(27), patient_type="cardiac"
+            ),
+            partial(VitalSignsGenerator, **base, seed=_seed(28), patient_type="sepsis"),
         ],
         # --- Gaussian Process: 4 kernel variants ---
         [
             # RBF — infinitely smooth
-            GaussianProcessGenerator(**base, seed=_seed(29), kernel="rbf"),
+            partial(GaussianProcessGenerator, **base, seed=_seed(29), kernel="rbf"),
             # Matern 0.5 — rough (exponential correlation)
-            GaussianProcessGenerator(**base, seed=_seed(30), kernel="matern_0.5"),
+            partial(
+                GaussianProcessGenerator, **base, seed=_seed(30), kernel="matern_0.5"
+            ),
             # Matern 2.5 — moderately smooth
-            GaussianProcessGenerator(**base, seed=_seed(31), kernel="matern_2.5"),
+            partial(
+                GaussianProcessGenerator, **base, seed=_seed(31), kernel="matern_2.5"
+            ),
             # Periodic — smooth exact periodicity
-            GaussianProcessGenerator(
-                **base, seed=_seed(32), kernel="periodic", period=float(season)
+            partial(
+                GaussianProcessGenerator,
+                **base,
+                seed=_seed(32),
+                kernel="periodic",
+                period=float(season),
             ),
         ],
         # --- Chaotic System: 3 deterministic systems ---
         [
-            ChaoticSystemGenerator(**base, seed=_seed(33), system="lorenz"),
-            ChaoticSystemGenerator(**base, seed=_seed(34), system="logistic"),
-            ChaoticSystemGenerator(**base, seed=_seed(35), system="mackey_glass"),
+            partial(ChaoticSystemGenerator, **base, seed=_seed(33), system="lorenz"),
+            partial(ChaoticSystemGenerator, **base, seed=_seed(34), system="logistic"),
+            partial(
+                ChaoticSystemGenerator, **base, seed=_seed(35), system="mackey_glass"
+            ),
         ],
         # --- INAR: 2 innovation types ---
         [
             # Poisson innovations
-            INARGenerator(**base, seed=_seed(36), innovation_type="poisson"),
+            partial(INARGenerator, **base, seed=_seed(36), innovation_type="poisson"),
             # Negative binomial innovations (overdispersed)
-            INARGenerator(**base, seed=_seed(37), innovation_type="negative_binomial"),
+            partial(
+                INARGenerator,
+                **base,
+                seed=_seed(37),
+                innovation_type="negative_binomial",
+            ),
         ],
         # --- Bounded Process: 2 models ---
         [
             # Beta-AR — bounded with mean-reversion
-            BoundedProcessGenerator(**base, seed=_seed(38), model="beta_ar"),
+            partial(BoundedProcessGenerator, **base, seed=_seed(38), model="beta_ar"),
             # Logit-normal — bounded random walk
-            BoundedProcessGenerator(**base, seed=_seed(39), model="logit_normal"),
+            partial(
+                BoundedProcessGenerator, **base, seed=_seed(39), model="logit_normal"
+            ),
         ],
         # --- Levy Process: 2 stability levels ---
         [
             # Moderate heavy tails (alpha=1.5)
-            LevyProcessGenerator(**base, seed=_seed(40), alpha=1.5),
+            partial(LevyProcessGenerator, **base, seed=_seed(40), alpha=1.5),
             # Extreme heavy tails (alpha=1.0, Cauchy-like)
-            LevyProcessGenerator(**base, seed=_seed(41), alpha=1.0),
+            partial(LevyProcessGenerator, **base, seed=_seed(41), alpha=1.0),
         ],
     ]
 
     # Round-robin across niches: first variant of every niche, then second
     # variants, and so on.
-    generators: list[BaseGenerator] = [
+    specs: list[_Spec] = [
         group[variant]
         for variant in range(max(len(group) for group in niches))
         for group in niches
         if variant < len(group)
     ]
 
-    return generators
+    return specs
 
 
 def balanced_pool(*args: Any, **kwargs: Any) -> list[BaseGenerator]:
@@ -491,6 +587,7 @@ def pretraining_pool(
     n_meta_variants: int = 3,
     seasonal_period: int | None = None,
     include_seasonal: bool = False,
+    members: Iterable[int] | None = None,
     **base_kwargs: Any,
 ) -> list[BaseGenerator]:
     """Create a breadth-maximizing pool for foundation-model pretraining.
@@ -537,11 +634,22 @@ def pretraining_pool(
             intermittent monthly data, where displacing pool breadth cost
             about three points. Leave it off for weekly, daily, hourly, and
             intermittent targets. Default False.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds the whole pool. Each selected
+            instance is identical to the same entry of the full pool and the
+            others are never constructed. Order: interpretable entries, then
+            ``n_meta_variants`` each of TSI, TCM, KernelSynth and MAR, then
+            seasonal entries.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
         **base_kwargs: Additional keyword arguments passed to all generators
             (e.g., engine, id_col, time_col, target_col).
 
     Returns:
-        List of BaseGenerator instances ready for use with SynSet.
+        List of BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
 
     Examples:
         >>> from synforecast import SynSet, pretraining_pool
@@ -580,13 +688,13 @@ def pretraining_pool(
     # Meta-generator seeds are offset well past interpretable_pool's 0..41 range so
     # the two sets never collide when combined.
     meta_classes = (TSIGenerator, TCMGenerator, KernelSynthGenerator, MARGenerator)
-    meta: list[BaseGenerator] = [
-        cls(**base, seed=_seed(1000 + 100 * family + variant))
+    meta: list[_Spec] = [
+        partial(cls, **base, seed=_seed(1000 + 100 * family + variant))
         for family, cls in enumerate(meta_classes)
         for variant in range(n_meta_variants)
     ]
 
-    seasonal: list[BaseGenerator] = []
+    seasonal: list[_Spec] = []
     if include_seasonal:
         period = (
             _seasonal_period_from_freq(freq)
@@ -612,27 +720,18 @@ def pretraining_pool(
             )
         else:
             # Seed offsets 2000..2007 sit past both the 0..41 and 1000.. ranges.
-            seasonal = seasonal_pool(
-                min_length=min_length,
-                max_length=max_length,
-                freq=freq,
-                seed=_seed(2000),
-                seasonal_period=period,
-                **base_kwargs,
+            seasonal = _seasonal_specs(
+                min_length, max_length, freq, _seed(2000), period, base_kwargs
             )
 
-    if not include_interpretable:
-        return meta + seasonal
-
-    balanced = interpretable_pool(
-        min_length=min_length,
-        max_length=max_length,
-        freq=freq,
-        seed=seed,
-        seasonal_period=seasonal_period,
-        **base_kwargs,
+    interpretable = (
+        _interpretable_specs(
+            min_length, max_length, freq, seed, seasonal_period, base_kwargs
+        )
+        if include_interpretable
+        else []
     )
-    return balanced + meta + seasonal
+    return _build(interpretable + meta + seasonal, members)
 
 
 def _seasonal_factors(period: int, sharpness: float) -> list[float]:
@@ -651,6 +750,7 @@ def seasonal_pool(
     freq: str | int,
     seed: int | None = 42,
     seasonal_period: int | None = None,
+    members: Iterable[int] | None = None,
     **base_kwargs: Any,
 ) -> list[BaseGenerator]:
     """Create an opt-in pool of strongly seasonal series on a moving level.
@@ -690,18 +790,42 @@ def seasonal_pool(
         seasonal_period: Seasonal period in time steps. Defaults to None,
             which derives it from ``freq`` as in :func:`interpretable_pool`; it
             must be at least 2, so yearly frequencies need an explicit value.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds all 8. Each selected instance is
+            identical to the same entry of the full pool, and the others are
+            never constructed.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
         **base_kwargs: Additional keyword arguments passed to all generators
             (e.g., engine, id_col, time_col, target_col). Keys the pool sets
             per generator, such as ``alias`` or ``level``, raise ValueError.
 
     Returns:
-        List of 8 BaseGenerator instances ready for use with SynSet.
+        List of 8 BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
 
     Examples:
         >>> from synforecast import SynSet, interpretable_pool, seasonal_pool
         >>> pool = interpretable_pool(freq="MS") + seasonal_pool(freq="MS")
         >>> df = SynSet(pool).generate(n_series_per_generator=1)
     """
+    specs = _seasonal_specs(
+        min_length, max_length, freq, seed, seasonal_period, base_kwargs
+    )
+    return _build(specs, members)
+
+
+def _seasonal_specs(
+    min_length: int,
+    max_length: int,
+    freq: str | int,
+    seed: int | None,
+    seasonal_period: int | None,
+    base_kwargs: dict[str, Any],
+) -> list[_Spec]:
+    """Unbuilt constructors of :func:`seasonal_pool`, in pool order."""
     base: dict[str, Any] = {
         "min_length": min_length,
         "max_length": max_length,
@@ -848,4 +972,4 @@ def seasonal_pool(
             f"seasonal_pool sets {clash} per generator; do not pass them as "
             "keyword arguments"
         )
-    return [cls(**base, **settings) for cls, settings in specs]
+    return [partial(cls, **base, **settings) for cls, settings in specs]

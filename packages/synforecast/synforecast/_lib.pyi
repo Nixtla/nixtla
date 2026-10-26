@@ -411,6 +411,14 @@ class multivariate:
         noise_variance: float,
         seed: int,
     ) -> npt.NDArray[np.float64]: ...
+    @staticmethod
+    def kernel_synth(
+        length: int,
+        scalars: npt.NDArray[np.float64],
+        kinds: npt.NDArray[np.float64],
+        params: npt.NDArray[np.float64],
+        seed: int,
+    ) -> npt.NDArray[np.float64]: ...
 
 class domain:
     @staticmethod

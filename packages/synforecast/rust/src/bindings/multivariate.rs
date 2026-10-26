@@ -209,6 +209,28 @@ pub fn gaussian_process(
     Ok(PyArray1::from_vec(py, s).into())
 }
 
+#[pyfunction]
+#[pyo3(signature = (length, scalars, kinds, params, seed))]
+pub fn kernel_synth(
+    py: Python<'_>,
+    length: i32,
+    scalars: PyReadonlyArray1<'_, f64>,
+    kinds: PyReadonlyArray1<'_, f64>,
+    params: PyReadonlyArray1<'_, f64>,
+    seed: u64,
+) -> PyResult<Py<PyArray1<f64>>> {
+    if length <= 0 {
+        return Err(PyValueError::new_err("length must be > 0"));
+    }
+    let sp = scalars.as_slice()?.to_vec();
+    let kinds = kinds.as_slice()?.to_vec();
+    let params = params.as_slice()?.to_vec();
+    let mut s = vec![0.0; length as usize];
+    py.detach(|| crate::generators::kernel_synth::kernel_synth(&mut s, &sp, &kinds, &params, seed))
+        .map_err(PyValueError::new_err)?;
+    Ok(PyArray1::from_vec(py, s).into())
+}
+
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     let m = PyModule::new(parent.py(), "multivariate")?;
     m.add_function(wrap_pyfunction!(copula, &m)?)?;
@@ -216,6 +238,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(state_space, &m)?)?;
     m.add_function(wrap_pyfunction!(fbm, &m)?)?;
     m.add_function(wrap_pyfunction!(gaussian_process, &m)?)?;
+    m.add_function(wrap_pyfunction!(kernel_synth, &m)?)?;
     parent.add_submodule(&m)?;
     parent
         .py()
