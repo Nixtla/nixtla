@@ -351,13 +351,13 @@ class SynAugment:
     ) -> IntoFrameT:
         run = _Run.start(
             df,
-            self.rng,
-            self.seed is not None,
-            self.engine,
-            self.id_col,
-            self.time_col,
-            self.target_col,
-            source_col,
+            rng=self.rng,
+            seeded=self.seed is not None,
+            engine=self.engine,
+            id_col=self.id_col,
+            time_col=self.time_col,
+            target_col=self.target_col,
+            source_col=source_col,
         )
         return run.finish(spec._synthesize(run), include_original)
 

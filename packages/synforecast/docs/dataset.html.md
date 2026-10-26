@@ -8,6 +8,12 @@ description: Dataset composition and augmentation
       members:
         - generate
 
+::: synforecast.augment.BaseAugmenter
+    options:
+      members:
+        - apply
+        - model_copy
+
 ::: synforecast.augment.FitAndSimulate
     options:
       members:

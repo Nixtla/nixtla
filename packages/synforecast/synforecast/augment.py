@@ -11,6 +11,7 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, get_args
 
@@ -26,6 +27,7 @@ from pydantic import (
     TypeAdapter,
     field_validator,
 )
+from typing_extensions import Self
 
 from synforecast._analysis import classify_series, detect_seasonality
 from synforecast._dtw import nearest_dtw_neighbors
@@ -104,7 +106,12 @@ class BaseAugmenter(BaseModel, ABC):
     """Base class for augmentation strategies.
 
     A spec declares a strategy's settings and default ``seed``; ``apply``
-    executes it on a frame without mutating the spec.
+    executes it on a frame without mutating the spec. ``model_copy`` validates
+    its ``update`` like constructor arguments.
+
+    Subclasses implement ``_synthesize`` against the private per-call ``_Run``
+    state. That hook is not a stable extension API yet and may change between
+    minor releases.
 
     Subclasses restating a field (e.g. to change its default) should annotate
     it with ``synforecast.augment.Int``, ``Float`` or ``Seed``, with the same
@@ -125,6 +132,26 @@ class BaseAugmenter(BaseModel, ABC):
     def _seed(self, seed: int | None) -> int | None:
         """Seed for one call: ``seed`` when given (validated), else the spec's."""
         return self.seed if seed is None else _SEED.validate_python(seed)
+
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        """Copy the spec, validating ``update`` like constructor arguments.
+
+        pydantic's ``model_copy`` skips validation, which would store an
+        updated ``generator_override`` as a plain, mutable dict.
+
+        Args:
+            update: Field values to change in the copy.
+            deep: Deep-copy the spec when ``update`` is empty.
+
+        Raises:
+            ValidationError: If ``update`` holds an invalid value or an
+                unknown field.
+        """
+        if not update:
+            return super().model_copy(deep=deep)
+        return self.model_validate({**self.model_dump(), **update})
 
     def apply(
         self,
@@ -163,25 +190,29 @@ class BaseAugmenter(BaseModel, ABC):
         Returns:
             Frame containing generated series and, optionally, original rows.
             The id column is categorical (as before); cast it before
-            concatenating the output with the input.
+            concatenating the output with the input. pandas output has a
+            fresh ``RangeIndex``.
 
         Raises:
             ValidationError: If ``seed`` is not a non-negative integer.
             ValueError: If ``df`` is missing required columns, ``source_col``
-                clashes with an input column, or no series is usable.
+                clashes with an input column, or, for Mixup,
+                MovingBlockBootstrap and DBA, no series is usable.
+                FitAndSimulate returns the original rows alone when ``df``
+                holds no series.
             RuntimeError: If a FitAndSimulate generator fails and
                 ``on_error='raise'`` (the default).
         """
         seed = self._seed(seed)
         run = _Run.start(
             df,
-            np.random.default_rng(seed),
-            seed is not None,
-            engine,
-            id_col,
-            time_col,
-            target_col,
-            source_col,
+            rng=np.random.default_rng(seed),
+            seeded=seed is not None,
+            engine=engine,
+            id_col=id_col,
+            time_col=time_col,
+            target_col=target_col,
+            source_col=source_col,
         )
         return run.finish(self._synthesize(run), include_original)
 
@@ -198,7 +229,8 @@ class FitAndSimulate(BaseAugmenter):
     2. Auto-select the most appropriate generator (or use user override)
     3. Fit generator parameters to match the series' statistical fingerprint
     4. Generate n_augment synthetic series that preserve these properties
-    5. Return combined DataFrame with original and synthetic series
+    5. Return the synthetic series, after the original rows unless
+       ``include_original=False``
 
     Series are processed in order of first appearance in the input, so
     reordering the input rows changes seeded output.
@@ -319,22 +351,20 @@ class FitAndSimulate(BaseAugmenter):
                 seeded=run.seeded,
                 fallbacks=fallbacks,
             )
-            for i, synthetic_values in enumerate(synthetic):
-                generated_id = _reserve_generated_id(
-                    f"{series_id}_aug_{i}", reserved_ids
+            generated_ids = [
+                _reserve_generated_id(f"{series_id}_aug_{i}", reserved_ids)
+                for i in range(len(synthetic))
+            ]
+            synthetic_dfs.append(
+                _copy_reference_frames(
+                    output_sdf,
+                    generated_ids,
+                    synthetic,
+                    run.out_engine,
+                    id_col,
+                    target_col,
                 )
-                synthetic_dfs.append(
-                    nw.maybe_reset_index(
-                        _copy_reference_frames(
-                            output_sdf,
-                            [generated_id],
-                            [synthetic_values],
-                            run.out_engine,
-                            id_col,
-                            target_col,
-                        )
-                    )
-                )
+            )
 
         _warn_fallbacks(fallbacks, len(unique_ids) * self.n_augment)
         return synthetic_dfs
@@ -594,8 +624,9 @@ class Mixup(BaseAugmenter):
             mixup_ids.append(mixup_id)
             reserved_ids.add(mixup_id)
 
-        synthetic_dfs = []
-        for mixup_id in mixup_ids:
+        anchors: list[nw.DataFrame] = []
+        mixed_values: list[np.ndarray] = []
+        for _ in mixup_ids:
             k_max = min(self.max_mix, n_available)
             k = int(rng.integers(1, k_max + 1))
             chosen = rng.choice(n_available, size=k, replace=False)
@@ -615,21 +646,15 @@ class Mixup(BaseAugmenter):
                     # chosen series' window.
                     anchor = run.out_partitions[series_id][start : start + length]
                 mixed += w * _scale_window(window, self.scaling)
+            anchors.append(anchor)
+            mixed_values.append(mixed)
 
-            synthetic_dfs.append(
-                nw.maybe_reset_index(
-                    _copy_reference_frames(
-                        anchor,
-                        [mixup_id],
-                        [mixed],
-                        run.out_engine,
-                        id_col,
-                        target_col,
-                    )
-                )
+        # One backend operation assembles every mixup series.
+        return [
+            _stack_frames(
+                anchors, mixup_ids, mixed_values, run.out_engine, id_col, target_col
             )
-
-        return synthetic_dfs
+        ]
 
 
 class MovingBlockBootstrap(BaseAugmenter):
@@ -1053,6 +1078,7 @@ class _Run:
     def start(
         cls,
         df: IntoFrameT,
+        *,
         rng: np.random.Generator,
         seeded: bool,
         engine: str | None,
@@ -1094,7 +1120,7 @@ class _Run:
             out_partitions=(
                 partitions
                 if engine is None
-                else _partition_series(original, id_col, time_col, reset=True)
+                else _partition_series(original, id_col, time_col)
             ),
             columns=(id_col, time_col, target_col, source_col),
         )
@@ -1109,29 +1135,28 @@ class _Run:
         # Normalize concat-sensitive dtypes across backends. In particular,
         # pandas datetimes commonly convert to Polars at microsecond precision
         # while NumPy timestamps retain nanosecond precision.
-        return _concat_frames(
+        out = _concat_frames(
             frames,
             self.original.schema[time_col],
             id_col,
             time_col,
             target_col,
             source_col,
-        ).to_native()
+        )
+        # pandas slices keep their source row labels; give the output a
+        # fresh index.
+        return nw.maybe_reset_index(out).to_native()
 
 
 def _partition_series(
-    frame: nw.DataFrame, id_col: str, time_col: str, reset: bool = False
+    frame: nw.DataFrame, id_col: str, time_col: str
 ) -> dict[Any, nw.DataFrame]:
-    """Sort once, then take contiguous slices without per-ID panel scans.
-
-    ``reset`` numbers each slice's pandas index from 0.
-    """
+    """Sort once, then take contiguous slices without per-ID panel scans."""
     ordered = frame.sort([id_col, time_col])
     ids = ordered[id_col].to_numpy()
     boundaries = np.r_[0, np.flatnonzero(ids[1:] != ids[:-1]) + 1, len(ids)]
-    take = nw.maybe_reset_index if reset else (lambda part: part)
     return {
-        ids[start]: take(ordered[int(start) : int(stop)])
+        ids[start]: ordered[int(start) : int(stop)]
         for start, stop in zip(boundaries[:-1], boundaries[1:], strict=True)
         if start < stop
     }
@@ -1255,8 +1280,27 @@ def _copy_reference_frames(
     target_col: str,
 ) -> nw.DataFrame:
     """Assemble all copies of one source in a single backend operation."""
-    return nw.concat([reference] * len(ids)).with_columns(
-        nw.new_series(id_col, np.repeat(ids, len(reference)), backend=backend),
+    return _stack_frames(
+        [reference] * len(ids), ids, copies, backend, id_col, target_col
+    )
+
+
+def _stack_frames(
+    frames: list[nw.DataFrame],
+    ids: list[str],
+    copies: list[np.ndarray],
+    backend: Any,
+    id_col: str,
+    target_col: str,
+) -> nw.DataFrame:
+    """Stack one synthetic series per frame in a single backend operation.
+
+    ``frames[i]`` supplies the timestamps and extra columns of series
+    ``ids[i]``, whose values are ``copies[i]``.
+    """
+    lengths = [len(frame) for frame in frames]
+    return nw.concat(frames).with_columns(
+        nw.new_series(id_col, np.repeat(ids, lengths), backend=backend),
         nw.new_series(target_col, np.concatenate(copies), backend=backend),
     )
 

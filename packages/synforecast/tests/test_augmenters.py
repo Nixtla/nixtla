@@ -164,6 +164,19 @@ def test_unknown_override_key_warns(caplog):
     assert sum("nope" in r.getMessage() for r in caplog.records) == 1
 
 
+def test_override_partial_match_warns_and_applies(caplog):
+    sid = str(to_pandas(src)["unique_id"].iloc[0])
+    partial = FitAndSimulate(
+        seed=1, generator_override={sid: "SARIMAGenerator", "nope": "SARIMAGenerator"}
+    )
+    full = FitAndSimulate(seed=1, generator_override={sid: "SARIMAGenerator"})
+    assert_frame_equal(to_pandas(partial.apply(src)), to_pandas(full.apply(src)))
+    warned = [
+        r.getMessage() for r in caplog.records if "generator_override" in r.getMessage()
+    ]
+    assert len(warned) == 1 and warned[0].endswith("['nope']")
+
+
 @pytest.mark.parametrize(
     "key", [1.0, ("a", 1), pd.Timestamp("2020-01-01")], ids=["float", "tuple", "ts"]
 )
@@ -429,8 +442,25 @@ def test_aug_ids_never_collide():
     ).astype({"unique_id": str})
     d = pd.concat([a.assign(unique_id="A"), a.assign(unique_id="A_aug_0")])
     out = to_pandas(FitAndSimulate(seed=1).apply(d))
+    ids = out["unique_id"].astype(str)
     assert not out.duplicated(["unique_id", "ds"]).any()
-    assert out["unique_id"].astype(str).nunique() == 4
+    assert set(ids) == {"A", "A_aug_0", "A_aug_0_1", "A_aug_0_aug_0"}
+    kept = out[ids == "A_aug_0"][["ds", "y"]].reset_index(drop=True)
+    assert_frame_equal(kept, d[d["unique_id"] == "A_aug_0"][["ds", "y"]])
+
+
+def test_input_row_order(aug):
+    expected = _sorted(aug.apply(src_x, source_col="src"))
+    # Rows interleaved by time keep the ids' first-appearance order.
+    interleaved = src_x.sort_values("ds", kind="stable")
+    assert_frame_equal(_sorted(aug.apply(interleaved, source_col="src")), expected)
+    if not isinstance(aug, FitAndSimulate):
+        # The other strategies sort ids, so any row order replays the output.
+        shuffled = src_x.sample(frac=1, random_state=0)
+        assert_frame_equal(_sorted(aug.apply(shuffled, source_col="src")), expected)
+    out = to_pandas(aug.apply(interleaved, include_original=False))
+    by_id = out.groupby("unique_id", observed=True)["ds"]
+    assert by_id.apply(lambda ds: ds.is_monotonic_increasing).all()
 
 
 @pytest.mark.parametrize("nan_target", [False, True])
@@ -438,6 +468,7 @@ def test_rows_come_from_source(aug, nan_target):
     d = src_x.assign(y=src_x["y"].where(src_x.index % 5 != 0)) if nan_target else src_x
     out = to_pandas(aug.apply(d, include_original=False, source_col="src"))
     _assert_rows_from_source(out, d, blended=isinstance(aug, Mixup))
+    assert np.isfinite(out["y"]).all()
 
 
 def test_extra_columns_keep_values_and_dtypes(aug):
@@ -514,15 +545,30 @@ def test_ar1_fallback_rows_carry_extras(monkeypatch, caplog):
 
 
 @pytest.mark.parametrize("include_original", [True, False])
-def test_explicit_engine_keeps_per_series_index(aug, include_original):
+@pytest.mark.parametrize("engine", [None, "pandas"])
+def test_pandas_output_has_fresh_range_index(aug, engine, include_original):
+    d = src_x.set_axis(src_x.index + 1000)  # a non-default input index
+    out = aug.apply(d, include_original=include_original, engine=engine)
+    assert out.index.equals(pd.RangeIndex(len(out)))
     expected = aug.apply(src_x, include_original=include_original)
-    out = aug.apply(src_x, include_original=include_original, engine="pandas")
+    assert_frame_equal(out, expected, check_exact=True)
+
+
+def test_mbb_block_size_is_capped_per_series():
+    d = generate_series(n_series=2, min_length=10, max_length=10, seed=3)
+    capped = to_pandas(MovingBlockBootstrap(seed=1, block_size=50).apply(d))
+    # the cap is max(2, len // 3) == 3
     assert_frame_equal(
-        out.reset_index(drop=True), expected.reset_index(drop=True), check_exact=True
+        capped, to_pandas(MovingBlockBootstrap(seed=1, block_size=3).apply(d))
     )
-    synthetic = out[~out["unique_id"].isin(src_x["unique_id"].astype(str))]
-    per_series = synthetic.groupby("unique_id", observed=True).cumcount()
-    assert synthetic.index.tolist() == per_series.tolist()  # each copy from 0
+
+
+def test_mbb_accepts_four_row_series():
+    d = pd.DataFrame(
+        {"unique_id": "a", "ds": pd.date_range("2020", periods=4), "y": [1.0, 3, 2, 4]}
+    )
+    out = to_pandas(MovingBlockBootstrap(seed=1).apply(d, include_original=False))
+    assert len(out) == 4 and np.isfinite(out["y"]).all()
 
 
 def test_negative_seed_rejected_at_construction():
@@ -582,6 +628,18 @@ def test_generator_override_hash_and_eq():
         generator_override={0: "RandomWalkGenerator", "a": "SARIMAGenerator"}
     )
     assert swapped == ordered and hash(swapped) == hash(ordered)
+
+
+def test_model_copy_update_is_validated():
+    spec = _override_spec()
+    copied = spec.model_copy(update={"generator_override": {"b": "SARIMAGenerator"}})
+    assert copied.generator_override == {"b": "SARIMAGenerator"}
+    assert hash(copied) != hash(spec)
+    with pytest.raises(TypeError):
+        copied.generator_override["c"] = "SARIMAGenerator"
+    for bad in ({"n_augment": 0}, {"nonsense": 1}):
+        with pytest.raises(ValidationError):
+            spec.model_copy(update=bad)
 
 
 def test_generator_override_spec_pickles_and_deep_copies():
