@@ -49,11 +49,7 @@ def test_offline_tests_are_left_alone():
 
 
 def test_marker_is_declared_in_pyproject():
-    """`-m integration` must not warn about an unknown marker.
-
-    Read as text rather than parsed: `tomllib` only exists on 3.11+ and the
-    matrix still covers 3.10, which is exactly the cell this marker gates.
-    """
+    """`-m integration` must not warn about an unknown marker."""
     pyproject = (REPO_ROOT / "pyproject.toml").read_text()
     assert '"integration: mark test as requiring a live Nixtla API"' in pyproject
 
