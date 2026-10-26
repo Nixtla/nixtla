@@ -54,9 +54,11 @@ Bug fixes and features are added through pull requests (PRs).
 
 ## 🛠️ Create the Development Environment
 
+Python 3.11 or newer is required; Python 3.10 is no longer supported.
+
 ```bash
 pip install uv
-uv venv --python 3.10
+uv venv --python 3.11
 source .venv/bin/activate
 
 # Install the library in editable mode for development
