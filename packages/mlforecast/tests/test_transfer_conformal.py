@@ -1,4 +1,3 @@
-import warnings
 from functools import cache
 
 import lightgbm
@@ -6,7 +5,9 @@ import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
+import utilsforecast.processing as ufp
 from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeRegressor
 
 from mlforecast import MLForecast
 from mlforecast.lag_transforms import ExpandingMean, RollingMean
@@ -886,22 +887,137 @@ def test_cross_validation_refit_false_overlapping_windows():
     assert res[f"{LR}-lo-80"].notna().all()
 
 
-def test_cross_validation_refit_false_no_bias_warning():
-    src = generate_daily_series(3, min_length=80, max_length=80, seed=0)
-    shifted = src.groupby("unique_id", observed=True).cumcount() > 65
-    src.loc[shifted, "y"] += 500
-    fcst = MLForecast(models=LinearRegression(), freq="D", lags=[1, 2])
-    with warnings.catch_warnings(record=True) as record:
-        warnings.simplefilter("always")
-        fcst.cross_validation(
+@pytest.mark.parametrize("refit", [False, 2])
+@pytest.mark.parametrize("step_size", [1, 3, 5])
+def test_cross_validation_frozen_windows_use_fit_intervals(refit, step_size):
+    h, n_windows = 3, 4
+    src = generate_daily_series(4, min_length=70, max_length=90, seed=0)
+    pi = PredictionIntervals(n_windows=2, h=h)
+    level = [80, 95]
+    lags = [1, 2]
+    res = MLForecast(models=LinearRegression(), freq="D", lags=lags).cross_validation(
+        src,
+        n_windows=n_windows,
+        h=h,
+        step_size=step_size,
+        refit=refit,
+        level=level,
+        prediction_intervals=pi,
+    )
+    splits = list(
+        ufp.backtest_splits(
             src,
-            n_windows=5,
+            n_windows=n_windows,
+            h=h,
+            id_col="unique_id",
+            time_col="ds",
+            freq="D",
+            step_size=step_size,
+        )
+    )
+    for i, (cutoffs, train, _) in enumerate(splits):
+        if i == 0 or (refit and i % refit == 0):
+            fcst = MLForecast(models=LinearRegression(), freq="D", lags=lags)
+            fcst.fit(train, prediction_intervals=pi)
+            fit_ends = train.groupby("unique_id", observed=True)["ds"].max()
+        else:
+            new = train[train["ds"] > train["unique_id"].map(fit_ends)]
+            fcst.update(new)
+            fit_ends = train.groupby("unique_id", observed=True)["ds"].max()
+        expected = fcst.predict(h, level=level)
+        window = res.merge(cutoffs, on=["unique_id", "cutoff"])
+        pd.testing.assert_frame_equal(
+            window[expected.columns].reset_index(drop=True),
+            expected.reset_index(drop=True),
+        )
+
+
+def test_cross_validation_frozen_window_reuses_fit_intervals():
+    h = 4
+    src = generate_daily_series(5, min_length=100, max_length=100, seed=0)
+    src["y"] += np.random.default_rng(0).normal(0, 3, len(src))
+    fcst = MLForecast(
+        models=DecisionTreeRegressor(random_state=0), freq="D", lags=[1, 2, 7]
+    )
+    res = fcst.cross_validation(
+        src,
+        n_windows=2,
+        h=h,
+        refit=False,
+        level=[80],
+        prediction_intervals=PredictionIntervals(h=h),
+    )
+    model = "DecisionTreeRegressor"
+    res["width"] = res[f"{model}-hi-80"] - res[f"{model}-lo-80"]
+    w0, w1 = (g["width"].to_numpy() for _, g in res.groupby("cutoff"))
+    np.testing.assert_allclose(w1, w0)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize("refit", [False, 2])
+def test_cross_validation_frozen_windows_new_series(engine, refit):
+    old = generate_daily_series(4, min_length=120, max_length=120, seed=0)
+    old["unique_id"] = old["unique_id"].astype(str)
+    new = generate_daily_series(1, min_length=33, max_length=33, seed=1)
+    new["unique_id"] = "new"
+    new["ds"] += old["ds"].max() - new["ds"].max()
+    kwargs = dict(
+        n_windows=4,
+        h=3,
+        step_size=10,
+        refit=refit,
+        level=[80],
+        prediction_intervals=PredictionIntervals(n_windows=2, h=3),
+    )
+
+    def cv(df):
+        if engine == "polars":
+            df = pl.from_pandas(df)
+        fcst = MLForecast(models=LinearRegression(), freq="1d", lags=[1, 2])
+        res = fcst.cross_validation(df, **kwargs)
+        return res.to_pandas() if engine == "polars" else res
+
+    with pytest.warns(UserWarning, match=r"didn't calibrate series \['new'\]"):
+        res = cv(pd.concat([old, new]))
+    window = res["cutoff"].rank(method="dense").astype(int) - 1
+    is_new = res["unique_id"].eq("new")
+    assert not is_new[window == 0].any()
+    # the first fit has no conformity scores for the new series
+    assert res.loc[is_new & (window == 1), f"{LR}-lo-80"].isna().all()
+    assert res.loc[is_new, LR].notna().all()
+    if refit == 2:
+        assert res.loc[is_new & (window >= 2), f"{LR}-lo-80"].notna().all()
+    else:
+        assert res.loc[is_new, f"{LR}-lo-80"].isna().all()
+        pd.testing.assert_frame_equal(
+            res[~is_new].reset_index(drop=True), cv(old).reset_index(drop=True)
+        )
+
+
+def test_cross_validation_frozen_windows_warn_series_after_first_window():
+    old = generate_daily_series(2, min_length=120, max_length=120, seed=0)
+    old["unique_id"] = old["unique_id"].astype(str)
+    late = generate_daily_series(1, min_length=15, max_length=15, seed=1)
+    late["unique_id"] = "late"
+    late["ds"] += old["ds"].max() - late["ds"].max()
+    fcst = MLForecast(models=LinearRegression(), freq="1d", lags=[1, 2])
+    with pytest.warns(UserWarning, match="didn't calibrate") as record:
+        res = fcst.cross_validation(
+            pd.concat([old, late]),
+            n_windows=4,
             h=3,
+            step_size=10,
             refit=False,
             level=[80],
             prediction_intervals=PredictionIntervals(n_windows=2, h=3),
         )
-    assert not [w for w in record if "Recalibration level=" in str(w.message)]
+    messages = [
+        str(w.message) for w in record if "didn't calibrate" in str(w.message)
+    ]
+    assert len(messages) == 1
+    assert "['late']" in messages[0]
+    first_frozen = res["cutoff"].drop_duplicates().nsmallest(2).max()
+    assert not res.loc[res["cutoff"] == first_frozen, "unique_id"].eq("late").any()
 
 
 def test_cross_validation_refit_false_one_step_warning():

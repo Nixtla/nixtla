@@ -2458,14 +2458,14 @@ def test_transfer_learning_intervals():
     assert fcst._transfer_ is None
 
 
-def test_transfer_learning_intervals_no_prediction_intervals_raises():
-    """Recalibrating windows without PredictionIntervals raises a clear error."""
+def test_cv_refit_false_level_without_prediction_intervals_warns_once():
     train_ab = generate_daily_series(
         3, min_length=50, max_length=50, n_static_features=0
     )
     fcst = MLForecast(models=[LinearRegression()], freq="D", lags=[1, 2, 3])
-    with pytest.raises(ValueError, match="windows that aren.t refit require"):
-        fcst.cross_validation(train_ab, n_windows=2, h=5, refit=False, level=[80])
+    with pytest.warns(UserWarning, match="rerun the `fit`") as record:
+        fcst.cross_validation(train_ab, n_windows=3, h=5, refit=False, level=[80])
+    assert sum("rerun the `fit`" in str(w.message) for w in record) == 1
 
 
 def test_cross_validation_with_horizon_features(horizon_features_data):
