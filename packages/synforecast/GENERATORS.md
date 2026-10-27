@@ -51,7 +51,12 @@ below states how far that verification reaches:
 | Simulator (5) | IoTSensor, EnergyLoad, DailyActiveUsers, VitalSigns, Clickstream |
 | Procedural (4) | TSI, TCM, KernelSynth (published Chronos recipe), MAR (GRATIS recipe) |
 
-A note on `SynAugment`: fit-and-simulate outputs match the source series' mean,
+Augmentation strategies are frozen specs (`FitAndSimulate`, `Mixup`,
+`MovingBlockBootstrap`, `DBA`) run with `apply(df, ...)`; `SynAugment` is a
+facade over them. See the [README](README.md#augment-observed-series) for seed
+semantics, extra columns and `source_col`. The note below applies to both.
+
+A note on fit-and-simulate: outputs match the source series' mean,
 standard deviation, and lag-1 autocorrelation **by construction** through a
 rescaling step, so those matches are a property of that method, never evidence
 of fit quality. `mbb` and `dba` deliberately bypass this moment-pinning path:
@@ -63,9 +68,22 @@ Distribution shape and higher-order dependence are not guaranteed.
 
 ## Non-parametric Augmentation Methods
 
-### SynAugment.mbb
+### Applying a spec
 
-`mbb` applies a moving block bootstrap to a classical-decomposition remainder,
+Every augmentation strategy is a frozen pydantic spec: build it once, then
+call `apply(df, ...)`, which never mutates the spec. `apply` takes:
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `seed` | `None` | Seed for this call; `None` uses the spec's `seed` |
+| `include_original` | `True` | Include the input rows in the result |
+| `id_col`, `time_col`, `target_col` | `"unique_id"`, `"ds"`, `"y"` | Column names |
+| `engine` | `None` | Output dataframe library; `None` matches the input |
+| `source_col` | `None` | Name of an added column naming each row's source series |
+
+### MovingBlockBootstrap
+
+`MovingBlockBootstrap` (`SynAugment.mbb`) applies a moving block bootstrap to a classical-decomposition remainder,
 then restores the source trend and seasonal components. It follows Bergmeir,
 Hyndman, and Benitez (2016,
 [doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002))
@@ -77,22 +95,24 @@ reconstructed source components already anchor each generated series and
 re-pinning would distort bootstrap-remainder variability.
 
 ```python
-from synforecast import SynAugment
+from synforecast import MovingBlockBootstrap
 
-augmented = SynAugment(seed=42).mbb(
-    train_df,
-    n_augment=2,
-    seasonal_period=24,
-    block_size=12,
-)
+augmented = MovingBlockBootstrap(
+    seed=42, n_augment=2, seasonal_period=24, block_size=12
+).apply(train_df)
 ```
+
+Spec fields:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `n_augment` | `1` | Synthetic copies generated for every input series |
-| `seasonal_period` | `None` | Fixed period; `None` enables period detection |
-| `block_size` | `None` | Requested remainder-block length; capped per series |
-| `include_original` | `True` | Include the input rows in the result |
+| `n_augment` | `1` | Synthetic copies generated for every input series, 1 to 1000 |
+| `seasonal_period` | `None` | Fixed period (>= 2); `None` enables period detection |
+| `block_size` | `None` | Requested remainder-block length (>= 2); capped per series |
+| `seed` | `None` | Default random seed for `apply`; `None` draws fresh entropy |
+
+`apply(df, ...)` also takes `seed`, `include_original` (`True`), the column
+names, `engine` and `source_col`; see [Applying a spec](#applying-a-spec).
 
 Series without a finite target or with fewer than four observations are
 skipped with a logged warning; at least one series must be usable. Missing
@@ -104,9 +124,9 @@ decomposition and are listed in a warning.
 The moving-average trend takes linear time, and decomposition is reused across
 all requested copies of a source.
 
-### SynAugment.dba
+### DBA
 
-`dba` uses panel-wide DTW nearest neighbours and weighted DTW barycenter
+`DBA` (`SynAugment.dba`) uses panel-wide DTW nearest neighbours and weighted DTW barycenter
 averaging, based on Petitjean, Ketterlin, and Gancarski (2011,
 [doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)),
 Forestier et al. (2017,
@@ -119,24 +139,31 @@ barycenter back to the reference scale, while `scale="none"` averages raw
 values.
 
 ```python
-augmented = SynAugment(seed=42).dba(
-    train_df,
+from synforecast import DBA
+
+augmented = DBA(
+    seed=42,
     n_augment=2,
     n_neighbors=3,
     n_iterations=5,
     window_fraction=0.1,
     scale="reference",
-)
+).apply(train_df)
 ```
+
+Spec fields:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `n_augment` | `1` | Synthetic copies generated around every usable reference |
+| `n_augment` | `1` | Synthetic copies generated around every usable reference, 1 to 1000 |
 | `n_neighbors` | `3` | Nearest panel series included in each barycenter |
 | `n_iterations` | `5` | DBA refinement iterations, from 1 to 1000 |
-| `window_fraction` | `0.1` | DTW band width as a fraction of the longest series |
+| `window_fraction` | `0.1` | DTW band width as a fraction of the longest series, in (0, 1] |
 | `scale` | `"reference"` | Reference normalization or raw-value averaging (`"none"`) |
-| `include_original` | `True` | Include the input rows in the result |
+| `seed` | `None` | Default random seed for `apply`; `None` draws fresh entropy |
+
+`apply(df, ...)` also takes `seed`, `include_original` (`True`), the column
+names, `engine` and `source_col`; see [Applying a spec](#applying-a-spec).
 
 DBA requires at least two usable series. Synthetic rows retain the reference
 timestamps and non-target columns. DTW and barycenter updates execute in native

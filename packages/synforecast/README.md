@@ -79,20 +79,27 @@ for the complete API.
 
 ## Augment observed series
 
-`SynAugment` analyzes each input series, fits a suitable generator, and adds
-synthetic series with matching timestamps and statistical characteristics:
+`FitAndSimulate` analyzes each input series, fits a suitable generator, and
+adds synthetic series with matching timestamps and statistical characteristics:
 
 ```python
-from synforecast import SynAugment
+from synforecast import FitAndSimulate, SynAugment
 
-augmenter = SynAugment(seed=42)
-augmented_train_df = augmenter.augment(train_df, n_augment=2)
+augmented_train_df = FitAndSimulate(seed=42, n_augment=2).apply(train_df)
 ```
+
+`Mixup`, `MovingBlockBootstrap` and `DBA` are specs of the same shape: `apply`
+returns identical output for the same spec, data and seed, and carries extra
+columns through. `apply(df, source_col="source")` names each row's input
+series; for `Mixup` (the anchor) and `DBA` (the reference) other series also
+contribute values, so grouping CV folds by it does not prevent leakage. The
+`SynAugment` facade below keeps one random stream across calls, as before.
 
 For non-parametric augmentation, bootstrap local remainder blocks or construct
 panel-aware DTW barycenters:
 
 ```python
+augmenter = SynAugment(seed=42)
 mbb_train_df = augmenter.mbb(
     train_df,
     n_augment=2,

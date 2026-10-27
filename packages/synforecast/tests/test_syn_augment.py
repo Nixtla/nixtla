@@ -1,13 +1,15 @@
 """Tests for SynAugment class."""
 
 import logging
+from typing import get_args
 
 import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
 
-from synforecast import SynAugment
+from synforecast import SynAugment, augment
+from synforecast.augment import FittableGenerator
 from tests.helpers import series_values
 
 
@@ -555,7 +557,9 @@ class TestSynAugment:
 
         augmenter = SynAugment(seed=42)
 
-        with pytest.raises(ValueError, match="n_augment must be >= 1"):
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be greater than or equal to 1"
+        ):
             augmenter.augment(df, n_augment=0)
 
     def test_custom_column_names(self) -> None:
@@ -897,7 +901,9 @@ class TestSynAugmentValidation:
 
         augmenter = SynAugment(seed=42)
 
-        with pytest.raises(ValueError, match="n_augment must be <= 1000"):
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be less than or equal to 1000"
+        ):
             augmenter.augment(df, n_augment=1001)
 
 
@@ -1020,7 +1026,7 @@ class TestTSMixup:
         ).with_columns(pl.col("ds").cast(good.schema["ds"]))
         frame = pl.concat([good, missing])
 
-        with caplog.at_level("WARNING", logger="synforecast.dataset"):
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
             result = SynAugment(seed=6).mixup(frame, n_series=1, include_original=False)
 
         assert result["unique_id"].n_unique() == 1
@@ -1199,7 +1205,7 @@ class TestMBB:
             }
         ).with_columns(pl.col("ds").cast(good.schema["ds"]))
         frame = pl.concat([good, bad.select(good.columns)])
-        with caplog.at_level("WARNING", logger="synforecast.dataset"):
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
             result = SynAugment(seed=0).mbb(frame, include_original=False)
         ids = set(result["unique_id"].unique().to_list())
         assert ids == {f"{sid}_mbb_0" for sid in good["unique_id"].unique()}
@@ -1348,7 +1354,7 @@ class TestDBA:
             }
         ).with_columns(pl.col("ds").cast(good.schema["ds"]))
         frame = pl.concat([good, bad.select(good.columns)])
-        with caplog.at_level("WARNING", logger="synforecast.dataset"):
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
             result = SynAugment(seed=0).dba(frame, include_original=False)
         ids = set(result["unique_id"].unique().to_list())
         assert ids == {f"{sid}_dba_0" for sid in good["unique_id"].unique()}
@@ -1388,7 +1394,7 @@ class TestDBA:
 
 
 # Every generator SynAugment can select, paired with its fitter through
-# fit_generator_params. Kept in sync with SynAugment._GENERATOR_MAP by
+# fit_generator_params. Kept in sync with augment._generator_map() by
 # test_contract_covers_all_supported_generators.
 AUGMENT_GENERATOR_NAMES = [
     "FractionalBrownianMotionGenerator",
@@ -1413,8 +1419,8 @@ class TestGeneratorParamConversion:
     """
 
     def test_contract_covers_all_supported_generators(self) -> None:
-        augmenter = SynAugment(seed=0)
-        assert sorted(augmenter._GENERATOR_MAP) == AUGMENT_GENERATOR_NAMES
+        assert sorted(augment._generator_map()) == AUGMENT_GENERATOR_NAMES
+        assert sorted(get_args(FittableGenerator)) == AUGMENT_GENERATOR_NAMES
 
     @pytest.mark.parametrize("length", [10, 300])
     @pytest.mark.parametrize("generator_name", AUGMENT_GENERATOR_NAMES)
@@ -1429,11 +1435,10 @@ class TestGeneratorParamConversion:
         series = np.cumsum(rng.normal(0.05, 1.0, length)) + 50.0
         fitted = fit_generator_params(series, generator_name)
 
-        augmenter = SynAugment(seed=0)
-        converted = augmenter._convert_params_for_generator(
+        converted = augment._convert_params_for_generator(
             generator_name, fitted, series
         )
-        generator_class = augmenter._GENERATOR_MAP[generator_name]
+        generator_class = augment._generator_map()[generator_name]
         valid_fields = set(generator_class.model_fields)
         assert set(converted) <= valid_fields, (
             f"unknown {generator_name} params: {sorted(set(converted) - valid_fields)}"
@@ -1526,24 +1531,28 @@ class TestOnErrorPolicy:
     def test_raise_is_default(self) -> None:
         assert SynAugment().on_error == "raise"
 
-    def test_generator_failure_raises_by_default(self) -> None:
+    def test_generator_failure_raises_by_default(self, monkeypatch) -> None:
         augmenter = SynAugment(seed=0)
         # Force every conversion to emit a parameter no generator accepts.
-        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
-            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
         )
         with pytest.raises(RuntimeError, match="Pass on_error='ar1'"):
             augmenter.augment(self._panel(), n_augment=1)
 
     @pytest.mark.allow_ar1_fallback
     def test_ar1_mode_substitutes_with_single_summary_warning(
-        self, caplog: pytest.LogCaptureFixture
+        self, caplog: pytest.LogCaptureFixture, monkeypatch
     ) -> None:
         augmenter = SynAugment(seed=0, on_error="ar1")
-        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
-            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
         )
-        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
             out = augmenter.augment(self._panel(n_series=2), n_augment=2)
 
         warnings_ = [r for r in caplog.records if r.levelname == "WARNING"]
@@ -1559,21 +1568,23 @@ class TestOnErrorPolicy:
     def test_no_warning_when_nothing_falls_back(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
             SynAugment(seed=0, on_error="ar1").augment(self._panel(), n_augment=1)
         assert not [r for r in caplog.records if r.levelname == "WARNING"]
 
     @pytest.mark.allow_ar1_fallback
     def test_single_series_api_reports_ar1_fallback(
-        self, caplog: pytest.LogCaptureFixture
+        self, caplog: pytest.LogCaptureFixture, monkeypatch
     ) -> None:
         augmenter = SynAugment(seed=0, on_error="ar1")
-        augmenter._convert_params_for_generator = (  # type: ignore[method-assign]
-            lambda *_args, **_kwargs: {"bogus_param": 1.0}
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
         )
         panel = self._panel(n_series=1)
 
-        with caplog.at_level(logging.WARNING, logger="synforecast.dataset"):
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
             result = augmenter.augment_single_series(
                 series_id="series_0",
                 values=panel["y"].to_numpy(),
@@ -1589,7 +1600,7 @@ class TestOnErrorPolicy:
         assert all(np.all(np.isfinite(values)) for _, values, _ in result)
 
     def test_unknown_override_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="Unknown generator 'NopeGenerator'"):
+        with pytest.raises(ValueError, match="NopeGenerator"):
             SynAugment(seed=0).augment(
                 self._panel(n_series=1),
                 n_augment=1,

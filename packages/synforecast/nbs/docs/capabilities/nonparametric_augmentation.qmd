@@ -3,9 +3,9 @@ title: "Non-parametric augmentation"
 description: "Augment observed panels with moving-block bootstrap or DTW barycenters."
 ---
 
-`SynAugment.mbb` and `SynAugment.dba` transform observed series directly. They
+`MovingBlockBootstrap` and `DBA` (also `SynAugment.mbb` and `SynAugment.dba`) transform observed series directly. They
 do not fit a parametric generator and deliberately bypass the mean, standard
-deviation, and lag-1 autocorrelation pinning used by `SynAugment.augment`.
+deviation, and lag-1 autocorrelation pinning used by `FitAndSimulate`.
 
 Use only training observations as input. Augmenting from validation or test
 values leaks future information into model training.
@@ -17,16 +17,11 @@ remainder components. It resamples overlapping remainder blocks and combines
 them with the original trend and seasonal components.
 
 ```python
-from synforecast import SynAugment
+from synforecast import MovingBlockBootstrap
 
-augmenter = SynAugment(seed=42)
-mbb_df = augmenter.mbb(
-    train_df,
-    n_augment=2,
-    seasonal_period=24,
-    block_size=12,
-    include_original=True,
-)
+mbb_df = MovingBlockBootstrap(
+    seed=42, n_augment=2, seasonal_period=24, block_size=12
+).apply(train_df, include_original=True)
 ```
 
 When `seasonal_period=None`, SynForecast attempts to detect a period. When
@@ -47,15 +42,16 @@ nearest neighbours with banded dynamic time warping (DTW), randomizes their
 weights, and iteratively computes a weighted barycenter.
 
 ```python
-dba_df = augmenter.dba(
-    train_df,
+from synforecast import DBA
+
+dba_df = DBA(
+    seed=42,
     n_augment=2,
     n_neighbors=3,
     n_iterations=5,
     window_fraction=0.1,
     scale="reference",
-    include_original=True,
-)
+).apply(train_df, include_original=True)
 ```
 
 With `scale="reference"`, series are z-normalized for alignment and each
@@ -84,13 +80,13 @@ Both methods:
 - copy all non-target columns from the source/reference series unchanged;
 - generate collision-safe string IDs such as `store_1_mbb_0` or
   `store_1_dba_0`;
-- are deterministic for a fixed `SynAugment` seed; and
+- are deterministic for a fixed spec seed; and
 - run decomposition, block sampling, DTW, and barycenter updates in native Rust.
 
 `include_original=False` returns only synthetic rows. Always compare augmented
 training against an observed-only baseline over temporal holdouts; neither
 method guarantees better forecast accuracy.
 
-See [SynAugment: data augmentation](./augmentation.html) for fit-and-simulate and
+See [Data augmentation](./augmentation.html) for fit-and-simulate and
 TSMixup workflows, and the [API reference](../../dataset.html) for every
 parameter.

@@ -1,8 +1,11 @@
 """SynForecast: Synthetic Time Series Generation."""
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__: str = version(distribution_name="synforecast")
+try:
+    __version__: str = version(distribution_name="synforecast")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 try:
     from synforecast import _lib as _lib
@@ -13,6 +16,13 @@ except ImportError as exc:
         "from source."
     ) from exc
 
+from synforecast.augment import (
+    DBA,
+    BaseAugmenter,
+    FitAndSimulate,
+    Mixup,
+    MovingBlockBootstrap,
+)
 from synforecast.base import BaseGenerator
 from synforecast.dataset import SynAugment, SynSet
 from synforecast.evaluation import (
@@ -32,9 +42,14 @@ from synforecast.presets import (
 from synforecast.utils import generate_series
 
 __all__ = [
+    "DBA",
+    "BaseAugmenter",
     "BaseGenerator",
     "CoverageDiagnostics",
     "CoverageResult",
+    "FitAndSimulate",
+    "Mixup",
+    "MovingBlockBootstrap",
     "Multivariatizer",
     "SynAugment",
     "SynSet",
