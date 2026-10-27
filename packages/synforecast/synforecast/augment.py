@@ -13,7 +13,7 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Annotated, Any, Literal, get_args
+from typing import Annotated, Any, Literal, Self, get_args
 
 import narwhals.stable.v2 as nw
 import numpy as np
@@ -27,7 +27,6 @@ from pydantic import (
     TypeAdapter,
     field_validator,
 )
-from typing_extensions import Self
 
 from synforecast._analysis import classify_series, detect_seasonality
 from synforecast._dtw import nearest_dtw_neighbors
@@ -1082,6 +1081,33 @@ def _validate_columns(
         )
 
 
+def _to_engine(df: nw.DataFrame, engine: Any) -> nw.DataFrame:
+    """Convert ``df`` to ``engine``'s dataframe library, keeping column dtypes."""
+    target = nw.Implementation.from_backend(engine)
+    if target == df.implementation:
+        return df
+    try:
+        if target.is_polars():
+            return nw.from_native(df.to_polars(), eager_only=True)
+        if target.is_pandas():
+            return nw.from_native(df.to_pandas(), eager_only=True)
+    except ImportError:
+        pass  # pyarrow is needed for some columns; fall back to Python lists
+    # pandas marks missing strings with a float NaN, which would make polars
+    # infer a Float64 column, so every missing value becomes None (as the
+    # native pandas-to-polars conversion does).
+    data = {
+        name: [
+            None if is_missing else value
+            for value, is_missing in zip(
+                series.to_list(), series.is_null().to_list(), strict=True
+            )
+        ]
+        for name, series in df.to_dict(as_series=True).items()
+    }
+    return nw.DataFrame.from_dict(data, backend=engine)
+
+
 @dataclass(frozen=True)
 class _Run:
     """Per-call state shared by every strategy's ``apply``."""
@@ -1124,11 +1150,7 @@ class _Run:
             )
         # Synthetic frames must match the input's dataframe library, or the
         # final concat would mix backends. An explicit engine wins.
-        original = (
-            df_nw
-            if engine is None
-            else nw.DataFrame.from_dict(df_nw.to_dict(as_series=False), backend=engine)
-        )
+        original = df_nw if engine is None else _to_engine(df_nw, engine)
         partitions = _partition_series(df_nw, id_col, time_col)
         return cls(
             rng=rng,
@@ -1140,7 +1162,7 @@ class _Run:
             # Slice the already converted frame so every copy shares one schema.
             out_partitions=(
                 partitions
-                if engine is None
+                if original is df_nw
                 else _partition_series(original, id_col, time_col)
             ),
             columns=(id_col, time_col, target_col, source_col),

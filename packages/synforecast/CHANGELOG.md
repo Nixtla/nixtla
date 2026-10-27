@@ -65,6 +65,10 @@
 - `augment` is reproducible on polars input, `_aug_` ids no longer collide
   with existing ids, and unknown `generator_override` keys warn.
 - `mixup(alpha=nan or inf)` is rejected.
+- An explicit `engine` converts the input natively (pyarrow when available)
+  and skips the conversion when it already matches the input library. pandas 3
+  input with missing values in a string column no longer fails with
+  `engine="polars"`; missing values arrive as nulls.
 - `SynAugment(seed=...)` rejects bools and strings, like spec seeds. It now
   takes only a non-negative int or `None`; `np.random.SeedSequence` and array
   seeds are no longer accepted.
