@@ -47,7 +47,9 @@
   `synforecast.augment`, and the AR(1) summary no longer starts with
   `SynAugment`.
 - `generator_override` keys are stored and matched as `str(key)`, so a spec
-  round-trips through `model_dump`/JSON to an equal spec.
+  round-trips through `model_dump`/JSON to an equal spec. Integral floats are
+  stored as integers, so `1`, `1.0` and `"1"` are one key and still match a
+  `unique_id` upcast to float.
 - A spec's `model_copy(update=...)` validates the update like constructor
   arguments, so an updated `generator_override` stays read-only and hashable.
 - `SynAugment.augment_single_series` validates `n_augment` (1 to 1000) like
@@ -60,7 +62,9 @@
 - `augment` is reproducible on polars input, `_aug_` ids no longer collide
   with existing ids, and unknown `generator_override` keys warn.
 - `mixup(alpha=nan or inf)` is rejected.
-- `SynAugment(seed=...)` rejects bools and strings, like spec seeds.
+- `SynAugment(seed=...)` rejects bools and strings, like spec seeds. It now
+  takes only a non-negative int or `None`; `np.random.SeedSequence` and array
+  seeds are no longer accepted.
 - `analyze` no longer averages an empty list (numpy `RuntimeWarning`) when
   every squared-return autocorrelation is undefined.
 - `synforecast.__version__` falls back to `"0+unknown"` when package metadata

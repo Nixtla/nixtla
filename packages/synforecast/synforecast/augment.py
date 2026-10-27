@@ -72,6 +72,17 @@ def _require_finite(value: float) -> float:
     return value
 
 
+def _override_key(key: Any) -> str:
+    """String form of a ``generator_override`` key or series id.
+
+    Integral floats drop their ``.0``, so the key ``1`` still matches a
+    ``unique_id`` upcast to ``1.0`` (e.g. by a pandas merge), as equality did.
+    """
+    if isinstance(key, float | np.floating) and float(key).is_integer():
+        return str(int(key))
+    return str(key)
+
+
 class _FrozenDict(dict):
     """A read-only, hashable dict that still pickles and dumps as a dict."""
 
@@ -243,8 +254,10 @@ class FitAndSimulate(BaseAugmenter):
         generator_override (dict | None): Optional dict mapping unique_id to
             generator name. Overrides automatic generator selection for
             specified series. Keys may be any hashable and are stored as
-            ``str(key)``; a series matches when ``str(id)`` equals a key, so
-            ``1`` and ``"1"`` are the same key. Stored as a read-only mapping;
+            ``str(key)``, with integral floats written as integers; a series
+            matches when ``str(id)`` or that integer form equals a key, so
+            ``1``, ``1.0`` and ``"1"`` are the same key and match a float
+            ``unique_id`` of ``1.0``. Stored as a read-only mapping;
             ``model_dump`` returns a plain dict. Keys matching no series are
             warned about and ignored, so one spec can be reused on subsets.
             Example: {"series_0": "SARIMAGenerator"}
@@ -270,7 +283,10 @@ class FitAndSimulate(BaseAugmenter):
     )
     generator_override: dict[str, FittableGenerator] | None = Field(
         default=None,
-        description="Generator name per series ID, stored and matched as str(id)",
+        description=(
+            "Generator name per series ID, stored and matched as str(id); "
+            "integral floats match their integer form"
+        ),
     )
     on_error: Literal["raise", "ar1"] = Field(
         default="raise",
@@ -283,7 +299,7 @@ class FitAndSimulate(BaseAugmenter):
         """Store keys as ``str(key)``, rejecting keys that collide as strings."""
         if not isinstance(v, dict):
             return v
-        keys = {str(key): key for key in v}
+        keys = {_override_key(key): key for key in v}
         if len(keys) != len(v):
             raise ValueError(
                 "generator_override has keys that are equal as strings: "
@@ -305,16 +321,21 @@ class FitAndSimulate(BaseAugmenter):
         reserved_ids = {str(series_id) for series_id in unique_ids}
 
         overrides = self.generator_override or {}
-        chosen = {
-            series_id: overrides[str(series_id)]
-            for series_id in unique_ids
-            if str(series_id) in overrides
-        }
-        unknown = [key for key in overrides if key not in reserved_ids]
+        chosen = {}
+        matchable: set[str] = set()
+        for series_id in unique_ids:
+            keys = (_override_key(series_id), str(series_id))
+            matchable.update(keys)
+            key = next((key for key in keys if key in overrides), None)
+            if key is not None:
+                chosen[series_id] = overrides[key]
+        unknown = [key for key in overrides if key not in matchable]
         if unknown:
             logger.warning(
-                "generator_override keys match no series and are ignored: %s",
-                unknown,
+                "%d generator_override keys match no series and are ignored: %s",
+                len(unknown),
+                ", ".join(repr(key) for key in unknown[:10])
+                + (", ..." if len(unknown) > 10 else ""),
             )
         analysis = _analyze_partitions(partitions, unique_ids, target_col)
 
@@ -1299,8 +1320,14 @@ def _stack_frames(
     ``ids[i]``, whose values are ``copies[i]``.
     """
     lengths = [len(frame) for frame in frames]
+    # pandas turns a fixed-width string array into one Python string per row;
+    # an object array repeats references to the few distinct ids instead.
+    if nw.Implementation.from_backend(backend).is_pandas_like():
+        id_values = np.asarray(ids, dtype=object)
+    else:
+        id_values = np.asarray(ids)
     return nw.concat(frames).with_columns(
-        nw.new_series(id_col, np.repeat(ids, lengths), backend=backend),
+        nw.new_series(id_col, np.repeat(id_values, lengths), backend=backend),
         nw.new_series(target_col, np.concatenate(copies), backend=backend),
     )
 

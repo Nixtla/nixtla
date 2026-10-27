@@ -174,17 +174,40 @@ def test_override_partial_match_warns_and_applies(caplog):
     warned = [
         r.getMessage() for r in caplog.records if "generator_override" in r.getMessage()
     ]
-    assert len(warned) == 1 and warned[0].endswith("['nope']")
+    assert len(warned) == 1 and warned[0].endswith(": 'nope'")
+
+
+def test_unknown_override_keys_warning_is_capped(caplog):
+    override = {f"nope{i}": "SARIMAGenerator" for i in range(25)}
+    FitAndSimulate(seed=1, generator_override=override).apply(src)
+    (msg,) = [r.getMessage() for r in caplog.records if "nope" in r.getMessage()]
+    assert msg.startswith("25 ") and "'nope9'" in msg and "'nope10'" not in msg
+    assert msg.endswith(", ...")
 
 
 @pytest.mark.parametrize(
-    "key", [1.0, ("a", 1), pd.Timestamp("2020-01-01")], ids=["float", "tuple", "ts"]
+    ("key", "stored"),
+    [
+        (1.0, "1"),
+        (np.float64(2.0), "2"),
+        (1.5, "1.5"),
+        (("a", 1), "('a', 1)"),
+        (pd.Timestamp("2020-01-01"), "2020-01-01 00:00:00"),
+    ],
+    ids=["float", "np_float", "frac_float", "tuple", "ts"],
 )
-def test_override_stores_str_keys(key):
+def test_override_stores_str_keys(key, stored):
     spec = FitAndSimulate(generator_override={key: "SARIMAGenerator"})
-    assert list(spec.generator_override) == [str(key)]
+    assert list(spec.generator_override) == [stored]
     dumped = spec.model_dump()["generator_override"]
-    assert type(dumped) is dict and list(dumped) == [str(key)]
+    assert type(dumped) is dict and list(dumped) == [stored]
+
+
+def test_override_keys_equal_after_float_normalization_raise():
+    with pytest.raises(ValidationError, match="equal as strings"):
+        FitAndSimulate(
+            generator_override={1.0: "SARIMAGenerator", "1": "SeasonalGenerator"}
+        )
 
 
 def _roundtrips_equal(d, key, caplog):
@@ -215,6 +238,19 @@ def test_override_str_key_matches_int_ids(caplog):
 def test_override_float_key_roundtrips_equal(caplog):
     d = to_pandas(src).astype({"unique_id": int}).astype({"unique_id": float})
     _roundtrips_equal(d, d["unique_id"].iloc[0], caplog)
+
+
+@pytest.mark.parametrize("as_str", [False, True], ids=["int_key", "str_key"])
+def test_override_int_key_matches_float_ids(caplog, as_str):
+    # Ids upcast to float (e.g. by a pandas merge) still match an integer
+    # key, as main's equality lookup did.
+    d = to_pandas(src).astype({"unique_id": int}).astype({"unique_id": float})
+    key = int(d["unique_id"].iloc[0])
+    _roundtrips_equal(d, str(key) if as_str else key, caplog)
+
+
+def test_override_float_key_matches_int_ids(caplog):
+    _roundtrips_equal(src, float(to_pandas(src)["unique_id"].iloc[0]), caplog)
 
 
 def test_override_timestamp_key_roundtrips_equal(caplog):

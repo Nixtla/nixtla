@@ -398,7 +398,9 @@ class SynAugment:
             n_augment: Number of synthetic series to generate per original series
             generator_override: Optional dict mapping unique_id to generator name.
                 Overrides automatic generator selection for specified series.
-                Example: {"series_0": "SARIMAGenerator"}
+                Keys match as in ``FitAndSimulate``: ``1``, ``1.0`` and ``"1"``
+                are the same key; keys matching no series are warned about and
+                ignored. Example: {"series_0": "SARIMAGenerator"}
             preserve_timestamps: Accepted for compatibility and ignored;
                 synthetic series always use the original's timestamps
             source_col: Name of an added column holding each row's source
@@ -408,8 +410,9 @@ class SynAugment:
             Combined DataFrame with original and synthetic series. Synthetic series IDs follow the pattern `"{original_id}_aug_{i}"`
 
         Raises:
-            ValueError: If DataFrame is missing required columns, n_augment < 1,
-                or generator_override names an unsupported generator
+            ValueError: If DataFrame is missing required columns, n_augment is
+                outside 1 to 1000, or generator_override names an unsupported
+                generator
             RuntimeError: If a fitted generator fails for a series and the
                 instance was created with on_error='raise' (the default)
 
