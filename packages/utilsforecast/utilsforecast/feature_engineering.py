@@ -92,12 +92,19 @@ def _fourier(
     k: int,
 ) -> _Features:
     # taken from: https://github.com/tblume1992/TSUtilities/blob/main/TSUtilities/TSFeatures/fourier_seasonality.py
-    x = 2 * np.pi * np.arange(1, k + 1) / season_length
+    orders = np.arange(1, k + 1)
+    x = 2 * np.pi * orders / season_length
     x = x.astype(np.float32)
     t = np.arange(1, sizes.max() + 1 + h, dtype=np.float32)
     x = x * t[:, None]
-    terms = np.hstack([np.sin(x), np.cos(x)])
-    cols = [f"{op}{i + 1}_{season_length}" for op in ("sin", "cos") for i in range(k)]
+    keep_sin = 2 * orders != season_length
+    terms = np.hstack([np.sin(x[:, keep_sin]), np.cos(x)])
+    cols = [
+        f"{op}{i + 1}_{season_length}"
+        for op in ("sin", "cos")
+        for i in range(k)
+        if not (2 * (i + 1) == season_length and op == "sin")
+    ]
     vals, future_vals = _assign_slices(sizes=sizes, feats=terms, h=h)
     return cols, vals, future_vals
 

@@ -462,3 +462,25 @@ def test_pipeline_no_horizon(setup_series, setup_features, engine):
         check_dtype=False,
     )
     assert future.shape == (0, 0)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_fourier_drops_redundant_sine(engine):
+    df = pd.DataFrame(
+        {
+            "unique_id": "a",
+            "ds": pd.date_range("2000-01-01", periods=120, freq="MS"),
+            "y": np.arange(120.0),
+        }
+    )
+    freq = "MS"
+    if engine == "polars":
+        df = pl.from_pandas(df)
+        freq = "1mo"
+    train, future = fourier(df, freq=freq, season_length=12, k=6, h=12)
+    for out in (train, future):
+        assert "sin6_12" not in out.columns
+        assert "cos6_12" in out.columns
+        assert [f"sin{i}_12" for i in range(1, 6)] == [
+            c for c in out.columns if c.startswith("sin")
+        ]
