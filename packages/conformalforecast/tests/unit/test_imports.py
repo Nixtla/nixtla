@@ -36,7 +36,7 @@ def test_array_surface_import_surface() -> None:
     ``fit`` lives on the method; ``interval`` and ``update`` on the fitted
     class each method's ``fit`` returns.
     """
-    from conformalforecast import panel
+    import conformalforecast.panel as panel
     from conformalforecast.methods import (
         ACIForecaster,
         AdaptiveConformalInference,

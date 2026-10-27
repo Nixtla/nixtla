@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pytest
 from numpy.typing import NDArray
@@ -11,7 +13,7 @@ from conformalforecast.quantile_regressors.base import QuantileRegressor
 from conformalforecast.quantile_regressors.qrf import QRFQuantileRegressor, _load_backend
 
 try:
-    import quantile_forest  # type: ignore[import-untyped]  # noqa: F401
+    importlib.import_module("quantile_forest")
 
     _HAS_QF = True
 except ImportError:
@@ -92,7 +94,7 @@ class TestBackendLoadDeferredToFit:
         assert reg._forest is None
 
     def test_fit_surfaces_missing_backend_as_import_error(self, monkeypatch) -> None:
-        import conformalforecast.quantile_regressors.qrf as qrf_module
+        from conformalforecast.quantile_regressors import qrf as qrf_module
 
         def _raise() -> None:
             raise ImportError(

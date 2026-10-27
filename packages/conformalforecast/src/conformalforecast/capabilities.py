@@ -40,7 +40,6 @@ class SupportsRefit(ArrayModel, ABC):
         ----------
         history : Series, shape (n_series, T)
         """
-        ...
 
 
 class SupportsQuantiles(ArrayModel, ABC):
@@ -66,7 +65,6 @@ class SupportsQuantiles(ArrayModel, ABC):
         Forecast, shape (n_series, n_quantiles, horizon)
             Quantile forecasts. Note the middle axis indexes quantiles, not samples.
         """
-        ...
 
 
 class SupportsBootstrap(ArrayModel, ABC):
@@ -94,7 +92,6 @@ class SupportsBootstrap(ArrayModel, ABC):
         -------
         Forecast, shape (n_series, n_bootstraps, horizon)
         """
-        ...
 
 
 class SupportsCrossValidation(ArrayModel, ABC):
@@ -130,7 +127,6 @@ class SupportsCrossValidation(ArrayModel, ABC):
         predictions : Forecast, shape (n_series, n_windows, horizon)
         truths : Forecast, shape (n_series, n_windows, horizon)
         """
-        ...
 
 
 class SupportsCrossValidationQuantiles(ArrayModel, ABC):
@@ -174,4 +170,3 @@ class SupportsCrossValidationQuantiles(ArrayModel, ABC):
             extra transpose in the CQR fast path.
         truths : Forecast, shape (n_series, n_windows, horizon)
         """
-        ...

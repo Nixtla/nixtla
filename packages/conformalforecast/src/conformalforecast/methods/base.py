@@ -162,7 +162,6 @@ class ConformalForecaster(ArrayModel, ABC):
         Interval, shape (n_series, n_samples, horizon, 2)
             Last axis is (lower, upper).
         """
-        ...
 
     def update(self, prediction: Forecast, truth: Forecast, *, X: Exog | None = None) -> None:
         """
@@ -595,7 +594,6 @@ class ConformalMethod(ArrayModel, ABC, Generic[F]):
     @abstractmethod
     def _default_score(self) -> ScoreFunction:
         """Each method declares its default score function."""
-        ...
 
     @abstractmethod
     def fit(
@@ -625,7 +623,6 @@ class ConformalMethod(ArrayModel, ABC, Generic[F]):
         ConformalForecaster
             A new fitted object. The method itself is not modified.
         """
-        ...
 
     def _bind_score(self) -> ScoreFunction:
         """

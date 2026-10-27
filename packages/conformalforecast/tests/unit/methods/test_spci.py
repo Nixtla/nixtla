@@ -4,6 +4,8 @@ offsets, coverage, seed, exogenous X.
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pytest
 from pydantic import ValidationError
@@ -19,7 +21,7 @@ from tests.helpers import ConditionalMockQuantileRegressor
 from tests.helpers import MockQuantileRegressor as _MockBase
 
 try:
-    from quantile_forest import RandomForestQuantileRegressor  # noqa: F401
+    importlib.import_module("quantile_forest")
 
     _HAS_QRF = True
 except ImportError:
@@ -392,18 +394,22 @@ class TestRegressorTypeNarrowing:
 
     def test_duck_typed_regressor_is_rejected(self) -> None:
         class DuckTyped:
-            def fit(self, X, y): ...
+            def fit(self, X, y):
+                return self
 
-            def predict_quantile(self, X, q): ...
+            def predict_quantile(self, X, q):
+                return X
 
         with pytest.raises(ValidationError):
             SequentialPredictiveConformalInference(alpha=0.1, regressor=DuckTyped())
 
     def test_non_qrf_quantile_regressor_subclass_is_rejected(self) -> None:
         class Abstract(QuantileRegressor):
-            def fit(self, X, y): ...
+            def fit(self, X, y):
+                return self
 
-            def predict_quantile(self, X, q): ...
+            def predict_quantile(self, X, q):
+                return X
 
         with pytest.raises(ValidationError):
             SequentialPredictiveConformalInference(alpha=0.1, regressor=Abstract())

@@ -170,7 +170,6 @@ class ForecasterAdapter(ArrayModel, ABC):
             Point forecast over the horizon for each series. The middle axis
             is 1 because this call produces one forecast per series.
         """
-        ...
 
     def predict_batch(self, histories: list[Series], *, X: Exog | None = None) -> Forecast:
         """
@@ -407,7 +406,6 @@ class ScoreFunction(ArrayModel, ABC):
         -------
         scores : NDArray, shape (n_series, n_samples, horizon)
         """
-        ...
 
     @abstractmethod
     def invert(
@@ -429,7 +427,6 @@ class ScoreFunction(ArrayModel, ABC):
         -------
         Interval, shape (n_series, n_samples, horizon, 2)
         """
-        ...
 
     def fit(self, prediction: Forecast, truth: Forecast) -> None:
         """

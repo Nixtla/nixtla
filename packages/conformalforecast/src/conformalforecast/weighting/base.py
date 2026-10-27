@@ -26,11 +26,9 @@ class DensityRatioEstimator(Protocol):
 
     def fit(self, X: NDArray[np.floating], y: NDArray[np.integer]) -> Any:
         """Fit on features ``X`` (n, n_features) and binary labels ``y`` (n,)."""
-        ...
 
     def predict_proba(self, X: NDArray[np.floating]) -> NDArray[np.floating]:
         """Return class probabilities, shape ``(n, 2)``, column 1 = P(y=1|x)."""
-        ...
 
 
 class WeightFunction(ArrayModel, ABC):
@@ -146,7 +144,6 @@ class WeightFunction(ArrayModel, ABC):
         -------
         NDArray, shape (n_series, n_windows, horizon)
         """
-        ...
 
     @abstractmethod
     def test_weights(self, X: Exog | None) -> NDArray[np.floating]:
@@ -162,7 +159,6 @@ class WeightFunction(ArrayModel, ABC):
         -------
         NDArray, shape (n_series, n_samples, horizon)
         """
-        ...
 
 
 class UniformWeights(WeightFunction):

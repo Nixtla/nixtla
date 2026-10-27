@@ -53,21 +53,29 @@ def test_custom_score_with_its_own_kind_round_trips_with_its_fields() -> None:
 
 
 def test_subclass_inheriting_its_parents_kind_fails_at_class_definition() -> None:
-    with pytest.raises(TypeError, match="reuses the score tag 'absolute'"):
-
+    def define() -> type[ScoreFunction]:
         class _Forgetful(AbsoluteResidual):
             pass
 
+        return _Forgetful
+
+    with pytest.raises(TypeError, match="reuses the score tag 'absolute'"):
+        define()
+
 
 def test_concrete_subclass_without_a_kind_fails_at_class_definition() -> None:
-    with pytest.raises(TypeError, match="must declare its own score tag"):
-
+    def define() -> type[ScoreFunction]:
         class _Untagged(ScoreFunction):
             def score(self, prediction, truth):  # type: ignore[no-untyped-def]
                 return truth - prediction
 
             def invert(self, prediction, score_threshold):  # type: ignore[no-untyped-def]
                 return prediction
+
+        return _Untagged
+
+    with pytest.raises(TypeError, match="must declare its own score tag"):
+        define()
 
 
 def test_redefining_the_same_class_replaces_its_registration() -> None:
