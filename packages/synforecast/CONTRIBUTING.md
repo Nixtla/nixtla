@@ -2,7 +2,7 @@
 
 ## Development setup
 
-Requirements: Python 3.10+, [uv](https://github.com/astral-sh/uv), Git, a
+Requirements: Python 3.11+, [uv](https://github.com/astral-sh/uv), Git, a
 [Rust toolchain](https://rustup.rs/), and
 [cargo-about](https://github.com/EmbarkStudios/cargo-about).
 
@@ -159,7 +159,7 @@ Publishing a GitHub Release triggers
 The tag must exactly match the package version, such as `v0.1.0` for
 `version = "0.1.0"`. The workflow verifies that the tagged commit is on the
 protected `main` branch and that its CI, lint, and documentation checks
-succeeded. It then builds and smoke-tests CPython 3.10–3.14 wheels for Linux
+succeeded. It then builds and smoke-tests CPython 3.11–3.15 wheels for Linux
 x86-64 and ARM64, Windows x86-64, and macOS Intel and Apple Silicon, plus the
 source distribution. Successful artifacts are published automatically to PyPI
 through Trusted Publishing. Publishing the release also triggers the production

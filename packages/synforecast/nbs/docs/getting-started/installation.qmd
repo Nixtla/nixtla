@@ -24,7 +24,7 @@ on the supported platforms:
 | macOS | Intel x86-64, Apple Silicon arm64 |
 | Windows | x86-64 |
 
-Wheels are published for CPython 3.10 through 3.14.
+Wheels are published for CPython 3.11 through 3.15.
 
 ## Verify the install
 

@@ -11,7 +11,7 @@ import os
 import platform
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 
@@ -88,7 +88,7 @@ def environment_metadata() -> dict:
             continue
     environment = {
         "command": " ".join(sys.argv),
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
         "machine": platform.machine(),

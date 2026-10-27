@@ -1,13 +1,8 @@
 """Release metadata consistency checks."""
 
 import re
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # Python 3.10 has no stdlib tomllib
-    import tomli as tomllib
 
 ROOT = Path(__file__).parents[1]
 
