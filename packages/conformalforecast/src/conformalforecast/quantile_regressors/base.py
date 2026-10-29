@@ -45,7 +45,6 @@ class QuantileRegressor(ArrayModel, ABC):
         y : NDArray, shape (n_samples,)
             Training targets (the next residual after each window).
         """
-        ...
 
     @abstractmethod
     def predict_quantile(
@@ -65,7 +64,6 @@ class QuantileRegressor(ArrayModel, ABC):
         -------
         NDArray, shape (n_samples,)
         """
-        ...
 
     def predict_quantiles(
         self,

@@ -41,7 +41,7 @@ class _QuantileCallableAdapter(ForecasterAdapter, SupportsQuantiles):
     """Quantile adapter mirroring the const-Gaussian style used in CQR tests."""
 
     def predict(self, history: Series) -> Forecast:
-        history = self._validate_history(history)
+        self._validate_history(history)
         return np.zeros((self.n_series, 1, self.horizon))
 
     def predict_quantiles(
@@ -49,7 +49,7 @@ class _QuantileCallableAdapter(ForecasterAdapter, SupportsQuantiles):
         history: Series,
         quantiles: NDArray[np.floating],
     ) -> Forecast:
-        history = self._validate_history(history)
+        self._validate_history(history)
         z = norm.ppf(quantiles)
         # Centered at 0; quantile = z (broadcast over series & horizon).
         out = np.broadcast_to(

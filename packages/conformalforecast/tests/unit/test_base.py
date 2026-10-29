@@ -267,7 +267,7 @@ class TestExceptionRename:
         assert issubclass(UnsupportedCapability, ConformalForecastError)
 
     def test_old_name_gone(self) -> None:
-        import conformalforecast.base as base
+        from conformalforecast import base
 
         assert not hasattr(base, "ConformalTSError")
 

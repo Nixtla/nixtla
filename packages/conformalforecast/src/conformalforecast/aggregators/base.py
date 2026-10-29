@@ -97,7 +97,6 @@ class OnlineAggregator(ArrayModel, ABC):
         CalibrationError
             If called before :meth:`initialize`.
         """
-        ...
 
     def update(self, losses: NDArray[np.floating]) -> None:
         """

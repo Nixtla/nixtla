@@ -717,7 +717,7 @@ class TestFloatNoiseInAlpha:
     @pytest.mark.parametrize(
         "quantile",
         [
-            lambda s, a: conformal_quantile(s, a),
+            conformal_quantile,
             lambda s, a: weighted_conformal_quantile(s, a, rho=1.0),
             lambda s, a: weighted_quantile_from_weights(s, a, np.ones_like(s)),
             lambda s, a: weighted_quantile_per_test_point(

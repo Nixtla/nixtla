@@ -189,12 +189,10 @@ class SupportsTransfer(ConformalForecaster, ABC):
     @abstractmethod
     def _scale_estimator(self) -> str | None:
         """The configured scale estimator, or None when scale alignment is off."""
-        ...
 
     @abstractmethod
     def _recompute_quantile(self) -> None:
         """Rebuild fitted state from ``scores_``, the current weights and scales."""
-        ...
 
     def adapt(
         self,

@@ -446,13 +446,14 @@ class TestRefit:
             StatsForecastAdapter(sf=sf, train_df=df, horizon=3, freq="D", model_name=model_name)
             for _ in range(2)
         )
-        assert a == b
+        equal_before_refit = a == b
 
         panel_a = a._df_to_panel(nw.from_native(_make_df(n_series=1, t_len=100, seed=1)), "y")
         panel_b = b._df_to_panel(nw.from_native(_make_df(n_series=1, t_len=100, seed=2)), "y")
         a.refit(panel_a)
         b.refit(panel_b)
 
+        assert equal_before_refit
         assert not a.train_df.equals(b.train_df)
         assert a != b
 
