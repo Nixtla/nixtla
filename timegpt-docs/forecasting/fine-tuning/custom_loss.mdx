@@ -17,6 +17,9 @@ functions:
 * `"rmse"`: Root Mean Squared Error
 * `"mape"`: Mean Absolute Percentage Error
 * `"smape"`: Symmetric Mean Absolute Percentage Error
+* `"poisson"`: Poisson loss
+
+`finetune_loss` only applies when `finetune_steps` is greater than 0.
 
 
 ## How to Fine-tune with a Specific Loss Function
@@ -142,6 +145,12 @@ Below is a non-exhaustive guide on which metric to use depending on your use cas
 - Fixes bias of MAPE
 - Equally sensitive to over and under forecasting
 - To be avoided if your data has values close to 0 or equal to 0
+
+**Poisson loss**
+
+- Based on the Poisson distribution, which models counts of events
+- Suited to non-negative count data, such as units sold or number of visits
+- Useful for low-volume or intermittent series with many zeros, where MAPE and sMAPE are not appropriate
 
 With TimeGPT, you can choose your loss function during fine-tuning as to
 maximize the model's performance metric for your particular use case.
