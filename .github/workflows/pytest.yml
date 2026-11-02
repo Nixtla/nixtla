@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-14, ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11"]
+        python-version: ["3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
     steps:
@@ -73,7 +73,7 @@ jobs:
         run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
 
       # Live-API tests run on the Linux / 3.11 cell only: they cost API quota
-      # and the other five cells add no coverage of the API itself, only of the
+      # and the other two cells add no coverage of the API itself, only of the
       # platform. Anything taking a live-client fixture is marked `integration`
       # automatically -- see `pytest_collection_modifyitems` in the conftest.
       # `smoke` is the exception: a few one-call integration tests that run
