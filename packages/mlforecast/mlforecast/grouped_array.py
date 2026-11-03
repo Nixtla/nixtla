@@ -2,7 +2,6 @@ __all__ = ["GroupedArray"]
 
 
 import concurrent.futures
-import warnings
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 import numpy as np
@@ -11,6 +10,7 @@ from utilsforecast.compat import njit
 
 from .compat import shift_array
 from .lag_transforms import _BaseLagTransform
+from ._warnings import _warn
 
 
 def _shift_py(x: np.ndarray, offset: int) -> np.ndarray:
@@ -200,7 +200,7 @@ class GroupedArray:
                 else:
                     results[name] = tfm.transform(core_ga)
         if py_tfms:
-            warnings.warn("Non-numba transforms are computed sequentially")
+            _warn("Non-numba transforms are computed sequentially")
             results.update(self.apply_transforms(py_tfms, updates_only))
         return results
 

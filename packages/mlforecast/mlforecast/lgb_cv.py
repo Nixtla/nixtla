@@ -6,7 +6,6 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
-import warnings
 
 import lightgbm as lgb
 import numpy as np
@@ -23,6 +22,7 @@ from mlforecast.core import (
 )
 from mlforecast.data_validation import _validate_no_null_times
 from mlforecast.utils import _resolve_num_threads
+from mlforecast._warnings import _warn
 
 
 def _mape(y_true, y_pred, ids, _dates, weight_series=None):
@@ -37,9 +37,7 @@ def _mape(y_true, y_pred, ids, _dates, weight_series=None):
 
     weight_sum = w_by_id.sum()
     if weight_sum <= 0:
-        warnings.warn(
-            "Total weight is zero, cannot compute weighted MAPE.", UserWarning
-        )
+        _warn("Total weight is zero, cannot compute weighted MAPE.")
         return float("nan")
 
     return (mape_by_id * w_by_id).sum() / weight_sum
@@ -56,10 +54,7 @@ def _rmse(y_true, y_pred, ids, _dates, weight_series=None):
     weight_sum = w_by_id.sum()
 
     if weight_sum <= 0:
-        warnings.warn(
-            "Warning: Total weight is zero, cannot compute weighted RMSE.",
-            UserWarning,
-        )
+        _warn("Warning: Total weight is zero, cannot compute weighted RMSE.")
         return float("nan")
 
     weighted_mse = (mse_by_id * w_by_id).sum() / weight_sum
@@ -274,7 +269,7 @@ class LightGBMCV:
         self.params = {} if params is None else dict(params)
         ignored = sorted(_CATEGORICAL_FEATURE_ALIASES.intersection(self.params))
         if ignored:
-            warnings.warn(
+            _warn(
                 f"{ignored} in `params` is ignored, use the `categorical_feature` argument instead."
             )
             for k in ignored:

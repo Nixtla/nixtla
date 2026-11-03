@@ -20,7 +20,6 @@ __all__ = [
 ]
 
 
-import warnings
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -44,6 +43,7 @@ from .core import Freq, _get_model_name, _name_models
 from .lag_transforms import ExponentiallyWeightedMean, RollingMean
 from .optimization import _TrialToConfig, mlforecast_objective
 from .utils import PredictionIntervals, _resolve_num_threads
+from ._warnings import _warn
 
 
 def lightgbm_space(trial: optuna.Trial):
@@ -283,7 +283,7 @@ class AutoMLForecast:
         if init_config is not None and not callable(init_config):
             raise ValueError("`init_config` must be a function.")
         if season_length is not None and init_config is not None:
-            warnings.warn("`season_length` is not used when `init_config` is provided.")
+            _warn("`season_length` is not used when `init_config` is provided.")
         self.init_config = init_config
         self.season_length = season_length
         if fit_config is not None:

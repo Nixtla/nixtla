@@ -92,7 +92,14 @@ find = {}
 version = {attr = "mlforecast.__version__"}
 
 [tool.ruff.lint]
-select = ["F", "ARG"]
+select = ["F", "ARG", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"warnings.warn".msg = "Use mlforecast._warnings._warn so the warning points to the user's code."
+
+[tool.ruff.lint.per-file-ignores]
+"!mlforecast/**" = ["TID251"]
+"mlforecast/_warnings.py" = ["TID251"]
 
 [tool.mypy]
 ignore_missing_imports = true

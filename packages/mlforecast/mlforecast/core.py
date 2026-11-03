@@ -4,7 +4,6 @@ __all__ = ["TimeSeries"]
 import copy
 import inspect
 import reprlib
-import warnings
 from collections import Counter, OrderedDict
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
@@ -64,6 +63,7 @@ from .utils import (
     _ShortSeriesException,
     _resolve_num_threads,
 )
+from ._warnings import _warn
 
 date_features_dtypes = {
     "year": np.uint16,
@@ -323,7 +323,7 @@ class TimeSeries:
         self.date_features_as_dummies = date_features_as_dummies
         num_threads = _resolve_num_threads(num_threads)
         if not isinstance(num_threads, int) or num_threads < 1:
-            warnings.warn("Setting num_threads to 1.")
+            _warn("Setting num_threads to 1.")
             num_threads = 1
         self.lags = [] if lags is None else list(lags)
         for lag in self.lags:
@@ -988,9 +988,8 @@ class TimeSeries:
             to_exclude = set(self.drop_auxiliary_columns)
             unknown = [f for f in to_exclude if f not in self.features_order_]
             if unknown:
-                warnings.warn(
-                    f"The following drop_auxiliary_columns were not found in the feature set: {unknown}",
-                    UserWarning,
+                _warn(
+                    f"The following drop_auxiliary_columns were not found in the feature set: {unknown}"
                 )
         self.features_order_ = [f for f in self.features_order_ if f not in to_exclude]
         self._build_pooled_states(df, sorted_df, ga)
@@ -1233,7 +1232,7 @@ class TimeSeries:
             if last_vals_nan.any():
                 self._dropped_series = np.where(last_vals_nan)[0]
                 dropped_ids = reprlib.repr(list(self.uids[self._dropped_series]))
-                warnings.warn(
+                _warn(
                     "The following series were dropped completely "
                     f"due to the transformations and features: {dropped_ids}.\n"
                     "These series won't show up if you use `MLForecast.forecast_fitted_values()`.\n"
@@ -1826,7 +1825,7 @@ class TimeSeries:
                 ]
             new_x = ufp.horizontal_concat([new_x, X_row])
         if cols_with_nulls:
-            warnings.warn(f"Found null values in {', '.join(cols_with_nulls)}.")
+            _warn(f"Found null values in {', '.join(cols_with_nulls)}.")
         self._h += 1
         if list(new_x.columns) != self.features_order_:
             new_x = new_x[self.features_order_]
@@ -2166,13 +2165,11 @@ class TimeSeries:
                 ]
                 common = [c for c in dynamics if c in statics]
                 if common:
-                    warnings.warn(
+                    _warn(
                         "The following columns were provided through X_df but were considered "
                         f"static during fit and will be ignored: {common}. "
                         "If any of these columns should vary over the forecast horizon, refit "
-                        "with static_features=[] or exclude them from static_features.",
-                        UserWarning,
-                        stacklevel=2,
+                        "with static_features=[] or exclude them from static_features."
                     )
                 required_future_cols = set(self._future_input_cols)
                 missing = sorted(required_future_cols - set(dynamics))
@@ -2204,7 +2201,7 @@ class TimeSeries:
                     raise ValueError(msg)
                 # Warn if partial features provided
                 if X_df.shape[0] < expected_rows_X:
-                    warnings.warn(
+                    _warn(
                         f"X_df has {X_df.shape[0]} rows but {expected_rows_X} expected for horizon {horizon}. "
                         "Features will be reused for missing horizon steps. "
                         "Use `make_future_dataframe(h)` or `get_missing_future(h, X_df)` to generate complete features."

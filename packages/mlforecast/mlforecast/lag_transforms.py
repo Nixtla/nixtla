@@ -24,13 +24,14 @@ __all__ = [
 import copy
 import inspect
 import re
-import warnings
 from typing import Any, Callable, List, Optional, Sequence
 
 import coreforecast.lag_transforms as core_tfms
 import numpy as np
 from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 from sklearn.base import BaseEstimator
+
+from ._warnings import _warn
 
 
 def _pascal2camel(pascal_str: str) -> str:
@@ -431,10 +432,9 @@ class _RollingBase(_BaseLagTransform):
             and min_samples == 0
             and (self.global_ or self.groupby or self.partition_by)
         ):
-            warnings.warn(
+            _warn(
                 "min_samples=0 with pooled transforms (global_/groupby/partition_by) "
-                "produces NaN for timestamps with no observations in the window.",
-                stacklevel=2,
+                "produces NaN for timestamps with no observations in the window."
             )
 
     @property
@@ -584,10 +584,9 @@ class _Seasonal_RollingBase(_BaseLagTransform):
             and min_samples == 0
             and (self.global_ or self.groupby or self.partition_by)
         ):
-            warnings.warn(
+            _warn(
                 "min_samples=0 with pooled transforms (global_/groupby/partition_by) "
-                "produces NaN for timestamps with no observations in the window.",
-                stacklevel=2,
+                "produces NaN for timestamps with no observations in the window."
             )
 
     @property
@@ -822,13 +821,12 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
             scope_exempt=("mean",),
         )
         if self.partition_by:
-            warnings.warn(
+            _warn(
                 "Partitioned EWM skips timestamps where the partition bucket "
                 "has no observations and applies decay only across observed "
                 "bucket aggregates. Each observed timestamp contributes its "
                 "aggregate mean once, regardless of how many rows were "
-                "aggregated at that timestamp.",
-                stacklevel=2,
+                "aggregated at that timestamp."
             )
 
     @property
