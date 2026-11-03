@@ -416,19 +416,17 @@ class AutoDifferences:
 
     def _update(self, ga: "GroupedArrayT", season_length: int) -> np.ndarray:
         _validate_scaler_size(self.diffs_, ga)
-        tail_indptr = np.arange(
-            0, season_length * ga.indptr.size, season_length, dtype=_indptr_dtype
-        )
         new_tails = []
         transformed = ga.data.copy()
         for i, tail in enumerate(self.tails_):
             ga = ga._with_data(transformed)
-            tail_ga = GroupedArray(tail, tail_indptr, num_threads=ga.num_threads)
-            combined = tail_ga._append(ga)
-            new_tails.append(combined._tail(season_length))
             ds = np.where(
                 self.diffs_ > i, _indptr_dtype(season_length), _indptr_dtype(0)
             )
+            tails_indptr = _diffs_to_indptr(ds)
+            tail_ga = GroupedArray(tail, tails_indptr, num_threads=ga.num_threads)
+            combined = tail_ga._append(ga)
+            new_tails.append(combined._tails(tails_indptr))
             combined_transformed = combined._diffs(ds)
             transformed = combined._with_data(combined_transformed)._tails(ga.indptr)
         self.tails_ = new_tails
@@ -464,8 +462,8 @@ class AutoDifferences:
         out = copy.deepcopy(scalers[0])
         out.diffs_ = np.hstack([sc.diffs_ for sc in scalers])
         out.tails_ = [
-            np.hstack([sc.tails_[i] for sc in scalers])
-            for i in range(len(scalers[0].tails_))
+            np.hstack([sc.tails_[i] for sc in scalers if i < len(sc.tails_)])
+            for i in range(max(len(sc.tails_) for sc in scalers))
         ]
         return out
 
