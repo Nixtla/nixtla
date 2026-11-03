@@ -1,6 +1,36 @@
 # Changelog
 
-## Unreleased
+## 0.0.20
+
+### Bug fixes
+
+- `AutoDifferences.update` and `AutoSeasonalDifferences.update` raised
+  `ValueError: Last element of indptr must be equal to the size of data`
+  whenever the series had been assigned different numbers of differences.
+  `fit_transform` only keeps the tails of the series that are differenced in
+  each round, but `update` read them as if every series had them. It now uses
+  the same layout (#172).
+- `AutoDifferences.stack` and `AutoSeasonalDifferences.stack` took the number
+  of differencing rounds from the first scaler, so stacking scalers whose
+  largest number of differences wasn't the same raised an `IndexError` or
+  silently dropped the later rounds, and the stacked scaler's
+  `inverse_transform` and `update` were wrong for those series. They now keep
+  every round.
+
+### Build
+
+- Source builds on free-threaded Python for Windows failed to link with
+  `cannot open file 'python314.lib'`: CMake looked up Python through pybind11's
+  legacy module, which ignores the free-threaded ABI. It now uses CMake's
+  `FindPython`. Wheels are published for 3.14t and 3.15t as well. Source builds
+  need CMake 3.31 or later, the first version whose `FindPython` builds for
+  free-threaded Python on Windows; scikit-build-core downloads it if the
+  installed one is older.
+- The extension declares that it can run without the GIL, so importing it on
+  free-threaded Python no longer re-enables it. Building from source needs
+  pybind11 2.13 or later.
+
+## 0.0.19
 
 ### Breaking changes
 
@@ -32,6 +62,8 @@
   representable with 32-bit integers" are now checked like every other offset.
   It is signed rather than unsigned so that arithmetic mixing it with numpy's
   default integer stays integral instead of promoting to float64.
+- Python 3.10 is no longer supported; the minimum is now 3.11. Wheels are
+  published for Python 3.15 (#167).
 
 ### Bug fixes
 
@@ -72,18 +104,6 @@
   uses the length of the series being tested, which is one shorter after each
   difference, so the two disagreed for lengths where `trunc(3 * sqrt(n) / 13)`
   changes (19, 76, 169, ...). The lags are now recomputed for each difference.
-- `AutoDifferences.update` and `AutoSeasonalDifferences.update` raised
-  `ValueError: Last element of indptr must be equal to the size of data`
-  whenever the series had been assigned different numbers of differences.
-  `fit_transform` only keeps the tails of the series that are differenced in
-  each round, but `update` read them as if every series had them. It now uses
-  the same layout (#172).
-- `AutoDifferences.stack` and `AutoSeasonalDifferences.stack` took the number
-  of differencing rounds from the first scaler, so stacking scalers whose
-  largest number of differences wasn't the same raised an `IndexError` or
-  silently dropped the later rounds, and the stacked scaler's
-  `inverse_transform` and `update` were wrong for those series. They now keep
-  every round.
 
 ### Performance
 
@@ -94,9 +114,6 @@
   no such branch. About 3x faster on random data, 2.6 to 3.9 ns per element
   instead of 9.5 on a Neoverse N1, and the same on monotonic data. Results are
   unchanged.
-
-### Performance
-
 - Threads take groups off a shared counter in chunks as they finish instead of
   being handed an equal share of the group count up front, and the chunks go
   out heaviest first so the longest groups are started while there is still
@@ -111,16 +128,6 @@
 
 ### Build
 
-- Source builds on free-threaded Python for Windows failed to link with
-  `cannot open file 'python314.lib'`: CMake looked up Python through pybind11's
-  legacy module, which ignores the free-threaded ABI. It now uses CMake's
-  `FindPython`. Wheels are published for 3.14t and 3.15t as well. Source builds
-  need CMake 3.31 or later, the first version whose `FindPython` builds for
-  free-threaded Python on Windows; scikit-build-core downloads it if the
-  installed one is older.
-- The extension declares that it can run without the GIL, so importing it on
-  free-threaded Python no longer re-enables it. Building from source needs
-  pybind11 2.13 or later.
 - The Eigen submodule is gone; the handful of reductions it backed are plain
   loops now. Source builds no longer need to fetch it. The box-cox lambda
   estimators run about twice as fast because their transform is evaluated once
