@@ -184,6 +184,23 @@ def test_warnings_in_package_thread_pools_point_to_the_package():
     assert filenames == {__file__, os.path.join(package_dir, "lgb_cv.py")}
 
 
+def test_warnings_raised_through_library_callbacks_point_to_the_package(series):
+    """Optuna calls back into the package for each trial; the final refit doesn't."""
+    from mlforecast.auto import AutoMLForecast, AutoModel
+
+    auto = AutoMLForecast(
+        models={"lr": AutoModel(LinearRegression(), lambda _: {})},
+        freq="D",
+        init_config=lambda _: {"lags": [1], "drop_auxiliary_columns": ["missing"]},
+    )
+    with pytest.warns(UserWarning, match="not found") as caught:
+        auto.fit(series, n_windows=1, h=2, num_samples=1)
+    package_dir = os.path.dirname(mlforecast.__file__) + os.sep
+    filenames = {w.filename for w in caught if "not found" in str(w.message)}
+    # trials point to the package function optuna calls back into
+    assert filenames == {__file__, os.path.join(package_dir, "optimization.py")}
+
+
 @pytest.mark.parametrize(
     "make_tfm",
     [

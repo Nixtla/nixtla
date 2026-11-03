@@ -1,9 +1,9 @@
 """Helpers for warnings that should point to the user's call site."""
 
-import concurrent.futures.thread
 import os
+import site
 import sys
-import threading
+import sysconfig
 import warnings
 from pathlib import Path
 from types import FrameType
@@ -11,7 +11,16 @@ from typing import Optional
 
 
 _PACKAGE_DIR = str(Path(__file__).parent) + os.sep
-_THREAD_ENTRY_FILES = {threading.__file__, concurrent.futures.thread.__file__}
+# installed libraries and the stdlib: optuna trials, dask/ray workers, thread pools
+# ponytail: user code installed in site-packages gets the package frame too
+_LIBRARY_DIRS = tuple(
+    os.path.join(d, "")
+    for d in {
+        *site.getsitepackages(),
+        site.getusersitepackages(),
+        sysconfig.get_paths()["stdlib"],
+    }
+)
 
 
 def _user_warning_stacklevel() -> int:
@@ -20,8 +29,8 @@ def _user_warning_stacklevel() -> int:
     while frame is not None and frame.f_code.co_filename.startswith(_PACKAGE_DIR):
         level += 1
         frame = frame.f_back
-    # package thread pool workers have no user frame, so point to the worker
-    if frame is not None and frame.f_code.co_filename in _THREAD_ENTRY_FILES:
+    # called back by a library rather than the user, so point to the package frame
+    if frame is not None and frame.f_code.co_filename.startswith(_LIBRARY_DIRS):
         level -= 1
     return level
 
