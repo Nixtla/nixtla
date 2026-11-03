@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [311, 312, 313, 314, 315]
+        python-version: [311, 312, 313, 314, 314t, 315, 315t]
         os-platform:
           [
             [ubuntu-latest, manylinux_x86_64],
@@ -46,6 +46,42 @@ jobs:
           CIBW_BUILD: cp${{ matrix.python-version }}-${{ matrix.os-platform[1] }}
           CIBW_BEFORE_TEST: uv sync --group dev --active
           CIBW_TEST_COMMAND: uv run pytest {project}/tests -k "not efficiency"
+
+  # The t jobs above run the suite on one thread. This one runs every test from
+  # several threads at once to catch state shared between calls, on arm64 too
+  # since its weaker memory ordering exposes races that x86 hides, with both
+  # gcc and AppleClang because they can compile the same race differently.
+  free_threading:
+    name: Run tests in parallel threads on ${{ matrix.os }} ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        python-version: ["3.14t", "3.15t"]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: "true"
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group dev --python ${{ matrix.python-version }}
+
+      - name: Run tests
+        run: uv run --no-sync pytest tests -k "not efficiency" --parallel-threads=4 -W error::RuntimeWarning
 
   warnings:
     name: Build with -Werror on ${{ matrix.os }}

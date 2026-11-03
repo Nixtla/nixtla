@@ -43,6 +43,11 @@ scaler = LocalStandardScaler().fit(ga)
 standardized = scaler.transform(ga)
 ```
 
+## Multithreading
+Every `GroupedArray` operation can split the groups across threads with `num_threads`, e.g. `GroupedArray(data, indptr, num_threads=4)`. Each call starts its own threads, so calling it from several Python threads at once runs `num_threads` threads per call.
+
+coreforecast also runs without the GIL on free-threaded Python (3.14t and later). A `GroupedArray` can be shared across threads as long as none of them modifies `data` or `indptr` while another one is using it. Setting `num_threads` is safe at any time; calls already running keep the thread count they started with. Transformations and scalers store what they learn in `fit` and `transform`, so give each thread its own instance.
+
 ## Single-array functions
 We've also implemented some functions that work on single arrays, you can refer to the following pages:
 
