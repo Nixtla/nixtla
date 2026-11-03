@@ -310,7 +310,7 @@ def test_get_predictions(serie):
     ts._predict_setup()
     ts._update_features()
     ts._update_y([1.0])
-    preds = ts._get_predictions()
+    preds = ts._get_predictions(ts._get_raw_predictions())
 
     last_ds = serie["ds"].max()
     expected = pd.DataFrame(

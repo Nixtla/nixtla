@@ -157,7 +157,7 @@ def _series_scales(df, method):
     )
 
     raw = _raw_series_scales(df, "unique_id", "ds", "y", (method,))
-    return _floor_series_scales(raw[method], floor_factor=1e-3, stacklevel=2)
+    return _floor_series_scales(raw[method], floor_factor=1e-3)
 
 
 def test_series_scales_mad():

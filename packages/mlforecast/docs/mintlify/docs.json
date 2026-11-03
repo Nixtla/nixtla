@@ -45,6 +45,7 @@
           "docs/how-to-guides/one_model_per_horizon.html",
           "docs/how-to-guides/custom_date_features.html",
           "docs/how-to-guides/predict_callbacks.html",
+          "docs/how-to-guides/profiling.html",
           "docs/how-to-guides/predict_subset.html",
           "docs/how-to-guides/transfer_learning.html"
         ]
@@ -77,7 +78,8 @@
               "lag_transforms.html",
               "date_features.html",
               "feature_engineering.html",
-              "callbacks.html"
+              "callbacks.html",
+              "hooks.html"
             ]
           },
           {

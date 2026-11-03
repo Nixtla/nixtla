@@ -18,6 +18,8 @@ import utilsforecast.processing as ufp
 from coreforecast.grouped_array import GroupedArray as CoreGroupedArray
 from utilsforecast.compat import DFType
 
+from ._warnings import _user_warning_stacklevel
+
 
 def _check_min(obj: Any, field: str, minimum: int) -> None:
     value = getattr(obj, field)
@@ -157,9 +159,7 @@ def _raw_series_scales(
     return {m: dict(zip(uid_list, v.tolist())) for m, v in raw.items()}
 
 
-def _floor_series_scales(
-    raw: Dict, floor_factor: float, stacklevel: int, kind: str = "Series"
-) -> Dict:
+def _floor_series_scales(raw: Dict, floor_factor: float, kind: str = "Series") -> Dict:
     vals = np.array(list(raw.values()), dtype=float)
     global_median = float(np.median(vals)) if len(vals) > 0 else 1.0
     floor = max(floor_factor * global_median, 1e-8)
@@ -171,7 +171,7 @@ def _floor_series_scales(
                 f"{kind} '{uid}' has near-zero scale estimate ({v:.2e}); "
                 f"applying floor {floor:.2e}. Check for flat or constant series.",
                 UserWarning,
-                stacklevel=stacklevel,
+                stacklevel=_user_warning_stacklevel(),
             )
         floored[uid] = effective
     return floored
@@ -338,7 +338,7 @@ def _add_transfer_intervals(
                         "all horizon steps — interval lies entirely below point forecasts. "
                         "The transferred model systematically over-predicts on the target domain.",
                         UserWarning,
-                        stacklevel=4,
+                        stacklevel=_user_warning_stacklevel(),
                     )
                 elif np.all(q_lo_lv > 0):
                     warnings.warn(
@@ -346,7 +346,7 @@ def _add_transfer_intervals(
                         "all horizon steps — interval lies entirely above point forecasts. "
                         "The transferred model systematically under-predicts on the target domain.",
                         UserWarning,
-                        stacklevel=4,
+                        stacklevel=_user_warning_stacklevel(),
                     )
         elif method == "conformal_distribution":
             q_per_horizon = np.quantile(np.vstack([-scores, scores]), all_cuts, axis=0)
@@ -450,13 +450,13 @@ def _robust_scale_ratio(src: np.ndarray, tgt: np.ndarray) -> float:
         warnings.warn(
             "IQR of residuals near zero; falling back to std ratio for scale estimation.",
             UserWarning,
-            stacklevel=5,
+            stacklevel=_user_warning_stacklevel(),
         )
         return std_tgt / max(std_src, 1e-10)
     # Fallback 2: constant
     warnings.warn(
         "Both IQR and std of residuals near zero; scale ratio defaulting to 1.0.",
         UserWarning,
-        stacklevel=5,
+        stacklevel=_user_warning_stacklevel(),
     )
     return 1.0

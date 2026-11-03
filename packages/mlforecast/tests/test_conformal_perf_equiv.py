@@ -118,7 +118,7 @@ def test_series_scales_equiv(backend, id_dtype, shuffle, method):
     df = make_scales_df(backend, id_dtype, shuffle)
     expected = ref._compute_series_scales(df, "unique_id", "ds", "y", method=method)
     raw = cp._raw_series_scales(df, "unique_id", "ds", "y", (method,))
-    actual = cp._floor_series_scales(raw[method], floor_factor=1e-3, stacklevel=2)
+    actual = cp._floor_series_scales(raw[method], floor_factor=1e-3)
     assert set(actual) == set(expected)
     for uid in expected:
         np.testing.assert_allclose(

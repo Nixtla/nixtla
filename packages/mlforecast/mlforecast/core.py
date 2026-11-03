@@ -6,11 +6,12 @@ import inspect
 import reprlib
 import warnings
 from collections import Counter, OrderedDict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import (
     Any,
     Callable,
+    ContextManager,
     Dict,
     Iterable,
     Iterator,
@@ -50,6 +51,7 @@ from .compat import CatBoostRegressor
 from .data_validation import _index_to_series, _validate_no_null_times
 from .date_features import _DUMMY_ALIASES, CalendarFeature
 from .grouped_array import GroupedArray, _gather_idxs
+from .hooks import _SpanResult
 from .lag_transforms import Lag, _BaseLagTransform
 from .pooled import (
     PooledState,
@@ -115,6 +117,10 @@ def _build_transform_name(
     else:
         name = _build_lag_transform_name(tfm, lag)
     return name
+
+
+def _no_model_span(name: str, model: Any) -> ContextManager[_SpanResult]:  # noqa: ARG001
+    return nullcontext(_SpanResult())
 
 
 def _get_model_name(model) -> str:
@@ -1740,7 +1746,7 @@ class TimeSeries:
         repeated = np.repeat(np.asarray(self.uids), h)
         return pd.Series(repeated, name=self.id_col, dtype=self.uids.dtype)
 
-    def _get_predictions(self) -> DataFrame:
+    def _get_predictions(self, raw_preds: np.ndarray) -> DataFrame:
         """Get all the predicted values with their corresponding ids and datestamps."""
         h = len(self.y_pred)
         # native-container boundary — uids/df constructor selected per backend
@@ -1753,7 +1759,7 @@ class TimeSeries:
             {
                 self.id_col: uids,
                 self.time_col: np.array(self.test_dates).ravel("F"),
-                f"{self.target_col}_pred": self._get_raw_predictions(),
+                f"{self.target_col}_pred": raw_preds,
             },
         )
         return df
@@ -1899,10 +1905,11 @@ class TimeSeries:
         before_predict_callback: Optional[Callable] = None,
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[DFType] = None,
+        model_span: Callable[[str, Any], ContextManager[_SpanResult]] = _no_model_span,
     ) -> DFType:
         """Use `model` to predict the next `horizon` timesteps."""
         for i, (name, model) in enumerate(models.items()):
-            with self._backup():
+            with self._backup(), model_span(name, model) as span:
                 self._predict_setup()
                 for _ in range(horizon):
                     new_x = self._get_features_for_next_step(X_df)
@@ -1918,13 +1925,14 @@ class TimeSeries:
                     if after_predict_callback is not None:
                         predictions = after_predict_callback(predictions)
                     self._update_y(predictions)
+                raw_preds = self._get_raw_predictions()
                 if i == 0:
-                    preds = self._get_predictions()
+                    preds = self._get_predictions(raw_preds)
                     rename_dict = {f"{self.target_col}_pred": name}
                     preds = ufp.rename(preds, rename_dict)
                 else:
-                    raw_preds = self._get_raw_predictions()
                     preds = ufp.assign_columns(preds, name, raw_preds)
+                span.result = raw_preds
         return preds
 
     def _predict_multi(
@@ -1933,6 +1941,7 @@ class TimeSeries:
         horizon: int,
         before_predict_callback: Optional[Callable] = None,
         X_df: Optional[DFType] = None,
+        model_span: Callable[[str, Any], ContextManager[_SpanResult]] = _no_model_span,
     ) -> DFType:
         assert self.max_horizon is not None
         if horizon > self.max_horizon:
@@ -2023,7 +2032,7 @@ class TimeSeries:
                 )
 
         for name, model in models.items():
-            with self._backup():
+            with self._backup(), model_span(name, model) as span:
                 self._predict_setup()
                 predictions = np.empty((len(self.uids), output_horizon))
 
@@ -2062,6 +2071,7 @@ class TimeSeries:
 
                 raw_preds = predictions.ravel()
                 result = ufp.assign_columns(result, name, raw_preds)
+                span.result = raw_preds
         return result
 
     def _has_ga_target_tfms(self):
@@ -2113,6 +2123,7 @@ class TimeSeries:
         after_predict_callback: Optional[Callable] = None,
         X_df: Optional[DFType] = None,
         ids: Optional[List[str]] = None,
+        model_span: Callable[[str, Any], ContextManager[_SpanResult]] = _no_model_span,
     ) -> DFType:
         if ids is not None:
             has_nonlocal = any(mode != "local" for mode, _, _ in self._pooled_states)
@@ -2211,6 +2222,7 @@ class TimeSeries:
                     before_predict_callback=before_predict_callback,
                     after_predict_callback=after_predict_callback,
                     X_df=X_df,
+                    model_span=model_span,
                 )
             else:
                 preds = self._predict_multi(
@@ -2218,6 +2230,7 @@ class TimeSeries:
                     horizon=horizon,
                     before_predict_callback=before_predict_callback,
                     X_df=X_df,
+                    model_span=model_span,
                 )
             if self.target_transforms is not None:
                 if self._has_ga_target_tfms():

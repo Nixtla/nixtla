@@ -2092,6 +2092,25 @@ class TestValidateDataWarning:
         with pytest.warns(UserWarning, match="Pooled.*validate_data"):
             fcst.preprocess(df, static_features=["brand"], validate_data=False)
 
+    @pytest.mark.parametrize("method", ["preprocess", "fit"])
+    def test_warning_points_to_caller(self, method):
+        from sklearn.linear_model import LinearRegression
+        from mlforecast import MLForecast
+        from mlforecast.hooks import Profiler
+
+        df = self._make_simple_df().drop(columns="brand")
+        for hooks in (None, [Profiler()]):
+            fcst = MLForecast(
+                models=LinearRegression(),
+                freq=1,
+                lags=[1],
+                lag_transforms={1: [RollingMean(window_size=2, global_=True)]},
+                hooks=hooks,
+            )
+            with pytest.warns(UserWarning, match="Pooled.*validate_data") as caught:
+                getattr(fcst, method)(df, validate_data=False)
+            assert caught[0].filename == __file__
+
     def test_warns_groupby(self):
         fcst = self._make_fcst({1: [RollingMean(window_size=2, groupby=["brand"])]})
         df = self._make_simple_df()
