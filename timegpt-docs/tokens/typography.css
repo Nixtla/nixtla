@@ -1,0 +1,47 @@
+/* ==============================  TYPE SCALE  ============================== */
+
+:root {
+  --fs-xs: 0.75rem;
+  --lh-xs: 1.1875rem;
+  --fs-sm: 0.875rem;
+  --lh-sm: 1.375rem;
+  --fs-base: 1rem;
+  --lh-base: 1.5rem;
+  --fs-lg: 1.125rem;
+  --lh-lg: 1.625rem;
+  --fs-xl: 1.25rem;
+  --lh-xl: 1.75rem;
+  --fs-2xl: 1.625rem;
+  --lh-2xl: 2.125rem;
+  --fs-3xl: 2rem;
+  --lh-3xl: 2.5rem;
+}
+
+@media (width >= 48rem) {
+  :root {
+    --fs-2xl: 2rem;
+    --lh-2xl: 2.5rem;
+    --fs-3xl: 2.5rem;
+    --lh-3xl: 3rem;
+  }
+}
+
+@media (width >= 64rem) {
+  :root {
+    --fs-2xl: 2.4375rem;
+    --lh-2xl: 2.9375rem;
+    --fs-3xl: 3rem;
+    --lh-3xl: 3.5rem;
+  }
+}
+
+/* ==============================  TEXT ROLES  ============================== */
+
+:root {
+  --text-xl--letter-spacing: 0em;
+  --text-2xl--letter-spacing: -0.015em;
+  --text-3xl--letter-spacing: -0.02em;
+  --text-mono-nano: 0.6875rem;
+  --text-mono-mini: 0.875rem;
+  --text-mono-mini--letter-spacing: -0.0714em;
+}

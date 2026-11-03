@@ -1,0 +1,110 @@
+/* =================================  TYPE  ================================= */
+
+:root {
+  --font-weight-regular: 400;
+
+  --fs-h2: var(--fs-2xl);
+  --lh-h2: var(--lh-2xl);
+
+  --leading-label: 92%;
+  --leading-label-relaxed: 110%;
+  --leading-label-loose: 122%;
+  --tracking-label: 0.02em;
+  --underline-offset: 1px;
+}
+
+@media (width >= 64rem) {
+  :root {
+    --fs-h2: 2rem;
+    --lh-h2: 2.5rem;
+  }
+}
+
+html:root {
+  --font-family-body-custom: var(--font-sans);
+  --font-family-headings-custom: var(--font-heading);
+  --font-family-mono-custom: var(--font-code);
+  --font-weight-medium: 400;
+  --font-weight-semibold: 400;
+  --font-weight-body-custom: 400;
+  --font-weight-headings-custom: 400;
+}
+
+/* ===============================  BORDERS  ================================ */
+
+:root {
+  --border-width: 1px;
+  --border-width-rail: 1.5px;
+  --border-width-indicator: 2px;
+  --border-width-callout: 2px;
+}
+
+/* ================================  LAYOUT  ================================ */
+
+:root {
+  --spacing-header-description: var(--space-8);
+  --spacing-content-area: var(--spacing-space-2xl);
+  --spacing-footer-top: var(--spacing-space-md);
+  --spacing-component-top: var(--spacing-space-md);
+  --spacing-mdx-content: var(--spacing-space-md);
+  --spacing-mdx-content-prose-headers: var(--spacing-space-xl);
+  --spacing-mdx-content-prose-headers-small: var(--spacing-space-md);
+  --spacing-mdx-content-prose-li: var(--space-8);
+  --spacing-list-steps-gap: var(--spacing-space-2xl);
+
+  --page-title-max-width: 34rem;
+  --header-description-max-width: 26.25rem;
+  --header-eyebrow-reserve: 11.25rem;
+  --logo-width: 7.5rem;
+}
+
+/* ==============================  COMPONENTS  ============================== */
+
+:root {
+  --button-height: 2.125rem;
+  --image-link-badge-height: 1.75rem;
+  --code-header-height: 2.25rem;
+  --step-line-offset: 2.75rem;
+  --chat-input-reserve: 5rem;
+  --chat-launcher-gap: 4.5rem;
+  --intercom-launcher-size: 3.75rem;
+}
+
+/* ===============================  SURFACES  =============================== */
+
+:root {
+  --primary-hover: color-mix(in oklch, var(--primary) 80%, transparent);
+  --highlight-foreground-muted: color-mix(in oklch, var(--highlight-foreground) 70%, transparent);
+  --table-border: color-mix(in oklch, var(--table-ring) 15%, transparent);
+  --code-hover-overlay: color-mix(in oklch, var(--blog-code-text) 8%, transparent);
+  --code-tab-hover: var(--nixtla-neutral-700);
+  --code-block-radius: var(--radius);
+  --chat-shadow:
+    0 1px 6px 0 color-mix(in oklch, var(--nixtla-neutral-950) 6%, transparent),
+    0 2px 32px 0 color-mix(in oklch, var(--nixtla-neutral-950) 16%, transparent);
+
+  --search-bg: var(--nixtla-neutral-50);
+  --callout-bg: var(--nixtla-neutral-50);
+  --callout-note: var(--foreground);
+  --callout-info: var(--nixtla-water-600);
+  --callout-tip: var(--nixtla-teal-600);
+  --callout-check: var(--nixtla-teal-600);
+  --callout-warning: var(--nixtla-orange-600);
+  --callout-danger: var(--nixtla-red-600);
+}
+
+.dark {
+  --search-bg: var(--nixtla-neutral-900);
+  --callout-bg: var(--nixtla-neutral-900);
+  --callout-info: var(--nixtla-water-300);
+  --callout-tip: var(--nixtla-teal-300);
+  --callout-check: var(--nixtla-teal-300);
+  --callout-warning: var(--nixtla-orange-300);
+  --callout-danger: var(--nixtla-red-300);
+}
+
+/* ================================  MOTION  ================================ */
+
+:root {
+  --transition-hover: background-color var(--duration-base) var(--ease-standard);
+}

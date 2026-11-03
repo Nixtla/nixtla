@@ -1,217 +1,3 @@
-/* ================================  FONTS  ================================= */
-
-@font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Book.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "NeueMontreal";
-  src: url("/fonts/PPNeueMontreal-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Supply";
-  src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-
-/* ============================  TOKENS · LIGHT  ============================ */
-
-:root {
-  --background: #f6f4f0;
-  --primary: #222121;
-  --primary-foreground: #f6f4f0;
-  --primary-muted: #22212195;
-
-  --alt: #222121;
-  --surface: #eae9e6;
-
-  --hover: var(--surface);
-  --hover-alt: #2e2b27;
-  --nav-tint: color-mix(in srgb, var(--primary) 8%, transparent);
-  --toc-rail: color-mix(in srgb, var(--primary) 14%, transparent);
-
-  --secondary: #ececec;
-  --secondary-foreground: #222121;
-  --border: #222121;
-  --accent: #bfd1ff; /* brand accent */
-  --radius: 0rem;
-
-  --code-block-radius: 0;
-
-  --page-title-max-width: 34rem;
-
-  --image-link-badge-height: 28px;
-
-  /* Card */
-  --card-bg: rgba(252, 252, 252, 0.5);
-  --card-border: var(--primary);
-
-  /* Feedback toolbar */
-  --feedback-btn-bg: var(--secondary);
-  --feedback-btn-color: var(--secondary-foreground);
-
-  /* Table — blog parity */
-  --table-bg: #ffffff;
-  --table-header-bg: #e7e7e7;
-  --table-border: var(--border);
-
-  /* Dropdown */
-  --dropdown-bg: #ffffff;
-  --dropdown-text: var(--secondary-foreground);
-  --dropdown-border: var(--card-border);
-  --dropdown-hover: var(--hover);
-
-  /* Accordion surface */
-  --accordion-bg: #ffffff;
-
-  /* Chat assistant */
-  --chat-input-bg: #ffffff;
-  --chat-shadow:
-    0 1px 6px 0 rgba(0, 0, 0, 0.06), 0 2px 32px 0 rgba(0, 0, 0, 0.16);
-  --chat-launcher-gap: 72px; /* mobile: room reserved for the Intercom launcher */
-
-  --code-group-bg: #000000;
-  --code-group-border: var(--blog-code-border);
-
-  /* Code palette (always-dark frame, both themes) */
-  --blog-code-bg: #171614;
-  --blog-code-header-bg: #201f1d;
-  --blog-code-border: rgba(246, 244, 240, 0.22);
-  --blog-code-text: #f4f1ea;
-  --blog-code-muted: rgba(244, 241, 234, 0.62);
-  --code-hover-overlay: rgba(246, 244, 240, 0.08);
-  --code-tab-hover: #2e2b27;
-
-  /* Buttons */
-  --button-height: 34px;
-
-  /* Motion */
-  --ease-standard: ease;
-  --duration-fast: 0.15s;
-  --duration-base: 0.2s;
-  --duration-shift: 220ms;
-  --shift-distance: 115%; /* text/icon hover-shift travel */
-  --duration-slow: 0.4s;
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-hover: background-color var(--duration-base) var(--ease-standard);
-
-  /* FONTS */
-  --font-sans: "NeueMontreal", sans-serif;
-  --font-mono: "Supply", monospace;
-
-  /* FONTS WEIGHT */
-  --font-weight-regular: 400;
-  /* Override medium from mintlify to our own 400 weight instead of changing it in mintlify classes, our DLS only uses 400 weight */
-  --font-weight-medium: 400;
-  --font-weight-semibold: 400;
-
-  /* SPACE TOKENS */
-  --space-2: 0.125rem;
-  --space-4: 0.25rem;
-  --space-6: 0.375rem;
-  --space-8: 0.5rem;
-  --space-10: 0.625rem;
-  --space-12: 0.75rem;
-  --space-14: 0.875rem;
-  --space-16: 1rem;
-  --space-20: 1.25rem;
-  --space-24: 1.5rem;
-  --space-32: 2rem;
-  --space-40: 2.5rem;
-  --space-48: 3rem;
-  --space-56: 3.5rem;
-  --space-64: 4rem;
-
-  /* SPACING LAYOUT */
-  --spacing-header-description: var(--space-8);
-  --spacing-content-area: var(--space-40);
-  --spacing-footer-top: var(--space-20);
-  --spacing-component-top: var(--space-20);
-
-  /* SPACING MDX CONTENT */
-  --spacing-mdx-content: var(--space-20);
-  --spacing-mdx-content-prose-headers: var(--space-32);
-  --spacing-mdx-content-prose-headers-small: var(--space-20);
-  --spacing-mdx-content-prose-li: var(--space-8);
-
-  --spacing-list-steps-gap: var(--space-40);
-}
-
-/* ============================  TOKENS · DARK  ============================= */
-
-html.dark {
-  --background: #222121;
-  --primary: #dedddd;
-  --primary-foreground: #222121;
-  --primary-muted: #dedddd95;
-
-  --alt: #f6f4f0;
-  --surface: #2e2b27;
-
-  --hover: var(--surface);
-  --hover-alt: #eae9e6;
-
-  --secondary: #ececec;
-  --secondary-foreground: #222121;
-  --border: rgba(212, 212, 216, 0.6);
-  --accent: #9187e8;
-
-  /* Card */
-  --card-bg: rgba(255, 255, 255, 0.03);
-  --card-border: var(--primary);
-
-  /* Feedback toolbar */
-  --feedback-btn-bg: rgba(255, 255, 255, 0.1);
-  --feedback-btn-color: var(--primary);
-
-  /* Table — blog parity */
-  --table-bg: #171614;
-  --table-header-bg: #201f1d;
-  --table-border: var(--border);
-
-  /* Dropdown */
-  --dropdown-bg: var(--alt);
-  --dropdown-text: var(--secondary-foreground);
-  --dropdown-border: var(--secondary);
-  --dropdown-hover: var(--hover-alt);
-
-  /* Accordion surface */
-  --accordion-bg: #000000;
-
-  /* Chat assistant */
-  --chat-input-bg: #000000;
-
-  --code-group-bg: #000000;
-  --code-group-border: var(--blog-code-border);
-}
-
-/* =============================  SYSTEM NOTES  ============================= */
-
-/*
-  BREAKPOINTS (viewport px — var() is invalid in @media conditions):
-    640  min   header desktop layout
-    767  max   mobile (eyebrow-sm, banner)
-    991  max / 992 min   copy-page CTA swap (tablet <-> desktop)
-    1023 max   navbar bg on tablet-down
-  Reuse these exact values for new media queries.
-
-  MINTLIFY-COUPLED SELECTORS — re-verify on every Mintlify upgrade (they read
-  Mintlify's DOM shape or Tailwind utility classes, both of which can change):
-    div:has(> div > #navigation-items)           sidebar wrapper
-    [class*="bg-primary"]                         active nav / CTA state
-    #page-context-menu.ml-auto / .mt-3           copy-page CTA variants
-    #header .mt-2.text-lg / .w-full:not(table)   header + card utility hooks
-    #api-playground-2-operation-page .mt-6...    generated id + utility
-  Quick audit before upgrading: grep  :has(   [class*=   #api-playground
-*/
-
 /* =================================  BASE  ================================= */
 
 html,
@@ -225,40 +11,59 @@ html {
   scroll-behavior: smooth;
 }
 
+code,
+kbd,
+samp,
+pre,
+.font-mono {
+  font-family: var(--font-code) !important;
+  font-weight: var(--font-weight-regular) !important;
+}
+
 html.dark > body {
   background-color: var(--background);
 }
 
 #page-title,
 h1 {
-  font-size: 50px;
+  font-family: var(--font-heading) !important;
+  font-size: var(--fs-3xl);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 112%;
-  letter-spacing: -0.5px;
-  color: var(--primary);
+  line-height: var(--lh-3xl);
+  letter-spacing: var(--text-3xl--letter-spacing);
+  color: var(--foreground);
   max-width: var(--page-title-max-width);
 }
 
 h2,
 h2 span {
-  font-size: 30px;
+  font-family: var(--font-heading) !important;
+  font-size: var(--fs-h2);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 95%;
+  line-height: var(--lh-h2);
+  letter-spacing: var(--text-2xl--letter-spacing);
+}
+
+.mdx-content h3,
+.mdx-content h3 span {
+  font-family: var(--font-heading) !important;
+  font-size: var(--fs-xl);
+  font-style: normal;
+  font-weight: var(--font-weight-regular);
+  line-height: var(--lh-xl);
+  letter-spacing: var(--text-xl--letter-spacing);
 }
 
 p {
-  color: var(--primary);
-  font-size: 16px;
+  color: var(--foreground);
+  font-size: var(--fs-base);
   font-style: normal;
   font-weight: var(--font-weight-regular);
-  line-height: 24px;
+  line-height: var(--lh-base);
 }
 
-/* Mono-label recipe — single source for every small uppercase mono label
-   (eyebrows, sidebar/TOC titles, navbar links, banner, copy-page toolbar).
-   Size/leading vary per case via --label-size / --label-leading. */
 .eyebrow,
 .eyebrow-sm,
 #sidebar-title,
@@ -271,27 +76,22 @@ p {
 #page-context-menu-button + button {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: var(--label-size, 12px) !important;
+  font-size: var(--label-size, var(--text-mono-nano)) !important;
   text-transform: uppercase !important;
-  font-stretch: expanded !important;
-  line-height: var(--label-leading, 92%) !important;
+  line-height: var(--label-leading, var(--leading-label)) !important;
 }
 
-/* Copy-page descendants: same face but WITHOUT forcing line-height — the label
-   spans keep Tailwind's text-sm leading (20px), which defines the text-shift
-   travel box; 92% shrinks it and the swap clips/janks. */
 #page-context-menu-button *,
 #page-context-menu-button + button * {
   font-family: var(--font-mono) !important;
-  font-size: var(--label-size, 12px) !important;
+  font-size: var(--label-size, var(--text-mono-nano)) !important;
   text-transform: uppercase !important;
-  font-stretch: expanded !important;
 }
 
 .eyebrow {
-  --label-size: 14px;
-  --label-leading: 110%;
-  color: var(--primary-muted);
+  --label-size: var(--text-mono-mini);
+  --label-leading: var(--leading-label-relaxed);
+  color: var(--muted-foreground);
 }
 
 @media (max-width: 767px) {
@@ -299,7 +99,32 @@ p {
   #sidebar-title,
   #table-of-contents button,
   #table-of-contents button span {
-    --label-leading: 122%;
+    --label-leading: var(--leading-label-loose);
+  }
+}
+
+/* ===========================  MINTLIFY PRIMARY  =========================== */
+
+:where(.text-primary) {
+  color: var(--primary);
+}
+
+:where(.bg-primary) {
+  background-color: var(--primary);
+}
+
+:where(.border-primary) {
+  border-color: var(--primary);
+}
+
+.group\/link:focus [class*="group-focus/link:border-primary"] {
+  border-color: var(--ring);
+}
+
+@layer utilities {
+  :root :focus-visible:focus-visible,
+  :root :focus-visible:focus-visible::before {
+    outline-color: var(--ring) !important;
   }
 }
 
@@ -307,7 +132,7 @@ p {
 
 #navbar img,
 .nav-logo {
-  width: 120px !important;
+  width: var(--logo-width) !important;
   height: auto !important;
 }
 
@@ -315,9 +140,8 @@ p {
   background: var(--background);
 }
 
-/* Mono-label recipe (BASE) at navbar size. */
 #navbar nav a {
-  --label-size: 0.74375rem;
+  --label-size: var(--text-mono-nano);
 }
 
 #navbar nav ul > li:not(:last-child) {
@@ -325,9 +149,6 @@ p {
   margin-inline-end: var(--space-8) !important;
 }
 
-/* ---- Toolbar outline button: shared chrome for every outlined control
-   (navbar links, Ask Assistant, Copy page + More actions, theme toggle).
-   Layout/geometry stay per case. ---- */
 #navbar nav li:not(#topbar-cta-button) a,
 #assistant-entry,
 #page-context-menu-button,
@@ -335,18 +156,15 @@ p {
 #theme-preference-menu-trigger {
   background: var(--background) !important;
   border-color: var(--border) !important;
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
   box-shadow: none !important;
   transition: var(--transition-hover) !important;
 }
 
-/* Standalone controls draw their own full border. The copy-page pair is NOT
-   here on purpose: it only recolors Mintlify's borders (the first button ships
-   border-r-0, so forcing a full border doubles the divider). */
 #navbar nav li:not(#topbar-cta-button) a,
 #assistant-entry,
 #theme-preference-menu-trigger {
-  border: 1px solid var(--border) !important;
+  border: var(--border-width) solid var(--border) !important;
 }
 
 #navbar nav li:not(#topbar-cta-button) a:hover,
@@ -354,8 +172,8 @@ p {
 #page-context-menu-button:hover,
 #page-context-menu button[aria-haspopup="menu"]:hover,
 #theme-preference-menu-trigger:hover {
-  background: var(--hover) !important;
-  color: var(--primary) !important;
+  background: var(--accent) !important;
+  color: var(--foreground) !important;
 }
 
 #navbar nav li:not(#topbar-cta-button) a {
@@ -377,12 +195,12 @@ p {
 }
 
 #topbar-cta-button a span.absolute {
-  background: var(--alt) !important;
+  background: var(--primary) !important;
   transition: var(--transition-hover) !important;
 }
 
 #topbar-cta-button a:hover span.absolute {
-  background: var(--hover-alt) !important;
+  background: var(--primary-hover) !important;
   opacity: 1 !important;
 }
 
@@ -399,308 +217,32 @@ p {
   color: var(--primary-foreground) !important;
 }
 
-#navbar nav li:not(#topbar-cta-button) a {
-  position: relative !important;
-  overflow: hidden !important;
-}
-
-#navbar nav li:not(#topbar-cta-button) a > span {
-  color: transparent;
-}
-
-/* ---- Text-shift hover: ONE machinery for every label that slides out and is
-   replaced by its own copy. Each trigger sets --shift-label (and --shift-color
-   when the host text is transparent) on the element hosting the pseudos; the
-   geometry, motion and hover states live here once. ---- */
-
-#navbar nav li.navbar-link a {
-  --shift-label: "Book a meeting";
-}
-
-#navbar nav li:not(.navbar-link):not(#topbar-cta-button) a {
-  --shift-label: "Get Started";
-}
-
-#navbar nav li:not(#topbar-cta-button) a::before,
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div > span::after,
-#assistant-entry span::before,
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  content: var(--shift-label);
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  color: var(--shift-color, currentColor);
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Resting: visible layer at 0, incoming copy parked below. The topbar arrow
-   pseudos and the copy-page real label ride the same groups. */
-#navbar nav li:not(#topbar-cta-button) a::before,
-#topbar-cta-button a div > span::before,
-#topbar-cta-button a div::before,
-#assistant-entry span::before,
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transform: translateY(0);
-}
-
-#navbar nav li:not(#topbar-cta-button) a::after,
-#topbar-cta-button a div > span::after,
-#topbar-cta-button a div::after,
-#assistant-entry span::after,
-#page-context-menu-button span.grid::after {
-  transform: translateY(var(--shift-distance));
-}
-
-/* Hover/focus: outgoing layer exits up, incoming copy settles at 0. */
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::before,
-#topbar-cta-button a:is(:hover, :focus-visible) div::before,
-#assistant-entry:is(:hover, :focus-visible) span::before,
-#page-context-menu-button:is(:hover, :focus-visible)
-  span.grid
-  > span:not(.invisible) {
-  transform: translateY(calc(-1 * var(--shift-distance)));
-}
-
-#navbar nav li:not(#topbar-cta-button) a:is(:hover, :focus-visible)::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div > span::after,
-#topbar-cta-button a:is(:hover, :focus-visible) div::after,
-#assistant-entry:is(:hover, :focus-visible) span::after,
-#page-context-menu-button:is(:hover, :focus-visible) span.grid::after {
-  transform: translateY(0);
-}
-
-#topbar-cta-button a div > span {
-  --shift-label: "Get Started";
-  --shift-color: var(--primary-foreground);
-  position: relative;
-  overflow: hidden;
-  height: var(--button-height);
-  margin-block: calc(-1 * var(--space-4));
-  box-sizing: border-box;
-  color: transparent !important;
-}
-
-/* Get Started arrow: the inline arrow can't be duplicated via content, so it's
-   reproduced as a mask on the two free pseudos of the content div; the real svg
-   is hidden but keeps its width. Mechanics come from the icon-swap block below;
-   transforms ride the text-shift groups above (same trigger, same travel). */
-#topbar-cta-button a div {
-  position: relative;
-  overflow: hidden;
-}
-
-#topbar-cta-button a div > svg {
-  visibility: hidden;
-}
-
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 0.75rem;
-}
-
-/* ---- Icon hover swap. Same technique + same --duration-shift as the text-shift
-   so text and icon move as one piece. Real icon hidden (or exiting), masked
-   pseudo copies ride the swap. Each case sets --icon-mask (+ --icon-mask-size)
-   and its own geometry; mechanics and transforms are shared here. ---- */
-#topbar-cta-button a div::before,
-#topbar-cta-button a div::after,
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::before,
-#page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
-#assistant-entry::before {
-  content: "";
-  position: absolute;
-  background-color: currentColor;
-  -webkit-mask: var(--icon-mask) center / var(--icon-mask-size, contain)
-    no-repeat;
-  mask: var(--icon-mask) center / var(--icon-mask-size, contain) no-repeat;
-  transition: transform var(--duration-shift) var(--ease-standard);
-  pointer-events: none;
-}
-
-/* Icon-only swaps travel 150%; resting + hover states grouped per layer. */
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu-button div::before {
-  transform: translateY(0);
-}
-
-#page-context-menu button[aria-haspopup="menu"]::after,
-#page-context-menu-button div::after,
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after,
-#assistant-entry::before {
-  transform: translateY(150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::before,
-#page-context-menu-button:hover div::before {
-  transform: translateY(-150%);
-}
-
-#page-context-menu button[aria-haspopup="menu"]:hover::after,
-#page-context-menu-button:hover div::after,
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon]::after,
-#assistant-entry:hover::before {
-  transform: translateY(0);
-}
-
-/* Real icons that exit on hover (their masked copy enters via the rules above). */
-#theme-preference-menu-trigger span[data-theme-preference-icon] > svg,
-#assistant-entry > svg {
-  transition: transform var(--duration-shift) var(--ease-standard);
-}
-
-#theme-preference-menu-trigger:hover span[data-theme-preference-icon] > svg,
-#assistant-entry:hover > svg {
-  transform: translateY(-150%);
-}
-
-/* Copy-page "More actions" chevron (icon-only; rotation baked into the mask so
-   the swap is vertical). */
 #page-context-menu button[aria-haspopup="menu"] {
-  position: relative;
   border-radius: 0 !important;
 }
-#page-context-menu button[aria-haspopup="menu"] > svg {
-  visibility: hidden;
-}
-#page-context-menu button[aria-haspopup="menu"]::before,
-#page-context-menu button[aria-haspopup="menu"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.5 2.75L12.75 9L6.5 15.25' transform='rotate(90 9 9)'/%3E%3C/svg%3E");
-  --icon-mask-size: 0.75rem;
-  inset: 0;
-}
 
-/* Copy-page button copy icon (icon+text; the label shifts via span.grid). */
-#page-context-menu-button {
-  overflow: hidden;
-}
-#page-context-menu-button div {
-  position: relative;
-}
-#page-context-menu-button div > svg {
-  visibility: hidden;
-}
-#page-context-menu-button div::before,
-#page-context-menu-button div::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.25 5.25H7.25C6.14543 5.25 5.25 6.14543 5.25 7.25V14.25C5.25 15.3546 6.14543 16.25 7.25 16.25H14.25C15.3546 16.25 16.25 15.3546 16.25 14.25V7.25C16.25 6.14543 15.3546 5.25 14.25 5.25Z'/%3E%3Cpath d='M2.80103 11.998L1.77203 5.07397C1.61003 3.98097 2.36403 2.96397 3.45603 2.80197L10.38 1.77297C11.313 1.63397 12.19 2.16297 12.528 3.00097'/%3E%3C/svg%3E");
-  left: 0;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
-}
-
-/* Theme toggle (icon-only, 3 dynamic icons): real icon exits, matching masked
-   copy enters. position (not display) keeps the component's display:none hiding
-   of inactive icons; clipped by the button's overflow-hidden. */
-#theme-preference-menu-trigger {
-  position: relative;
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon]::after {
-  --icon-mask-size: 1rem;
-  inset: 0;
-}
-#theme-preference-menu-trigger
-  span[data-theme-preference-icon="system"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 15.5L9 14.5L13.5 15.5'/%3E%3Cpath d='M9 11.75V14.5'/%3E%3Cpath d='M14.25 2.75H3.75C2.64543 2.75 1.75 3.64543 1.75 4.75V9.75C1.75 10.8546 2.64543 11.75 3.75 11.75H14.25C15.3546 11.75 16.25 10.8546 16.25 9.75V4.75C16.25 3.64543 15.3546 2.75 14.25 2.75Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="light"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 1.25V2.25'/%3E%3Cpath d='M14.48 3.52002L13.773 4.22702'/%3E%3Cpath d='M16.75 9H15.75'/%3E%3Cpath d='M14.48 14.4799L13.773 13.7729'/%3E%3Cpath d='M9 16.75V15.75'/%3E%3Cpath d='M3.52 14.4799L4.227 13.7729'/%3E%3Cpath d='M1.25 9H2.25'/%3E%3Cpath d='M3.52 3.52002L4.227 4.22702'/%3E%3Cpath d='M9 13.25C11.3472 13.25 13.25 11.3472 13.25 9C13.25 6.65279 11.3472 4.75 9 4.75C6.65279 4.75 4.75 6.65279 4.75 9C4.75 11.3472 6.65279 13.25 9 13.25Z'/%3E%3C/svg%3E");
-}
-#theme-preference-menu-trigger span[data-theme-preference-icon="dark"]::after {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18' fill='none' stroke='%23000' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M13 11.75C9.548 11.75 6.75 8.95201 6.75 5.50001C6.75 4.14801 7.183 2.90101 7.912 1.87801C4.548 2.50601 2 5.45301 2 9.00001C2 13.004 5.246 16.25 9.25 16.25C12.622 16.25 15.448 13.944 16.259 10.826C15.309 11.409 14.196 11.75 13 11.75Z'/%3E%3C/svg%3E");
-}
-
-/* Assistant sparkle (icon+text; label shifts via its span). ::after is the grain,
-   so the incoming copy uses ::before while the real sparkle exits. */
-#assistant-entry::before {
-  --icon-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 18'%3E%3Cpath d='M5.65799 2.99L4.39499 2.569L3.97399 1.306C3.83699 0.898 3.16199 0.898 3.02499 1.306L2.60399 2.569L1.34099 2.99C1.13699 3.058 0.998993 3.249 0.998993 3.464C0.998993 3.679 1.13699 3.87 1.34099 3.938L2.60399 4.359L3.02499 5.622C3.09299 5.826 3.28499 5.964 3.49999 5.964C3.71499 5.964 3.90599 5.826 3.97499 5.622L4.39599 4.359L5.65899 3.938C5.86299 3.87 6.00099 3.679 6.00099 3.464C6.00099 3.249 5.86199 3.058 5.65799 2.99Z' fill='%23000'/%3E%3Cpath d='M9.5 2.75L11.412 7.587L16.25 9.5L11.412 11.413L9.5 16.25L7.587 11.413L2.75 9.5L7.587 7.587L9.5 2.75Z' fill='none' stroke='%23000' stroke-width='1.5'/%3E%3C/svg%3E");
-  left: 12px;
-  top: 50%;
-  width: 1rem;
-  height: 1rem;
-  margin-top: -0.5rem;
-}
-
-/* "Ask Assistant" — outline chrome from the toolbar-button molecule (NAVBAR);
-   filter reset kills Mintlify's dark:brightness. */
 #assistant-entry {
   filter: none !important;
-  position: relative !important;
-  overflow: hidden !important;
 }
 
 #assistant-entry svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
-/* Label rides the shared text-shift machinery (NAVBAR section). */
-#assistant-entry span {
-  --shift-label: "Ask Assistant";
-  --shift-color: var(--primary);
-  position: relative;
-  overflow: hidden;
-  color: transparent !important;
-}
-
-/* Zeroes every text-shift / icon-swap transition at once — they all read
-   --duration-shift. */
-@media (prefers-reduced-motion: reduce) {
-  :root {
-    --duration-shift: 0s;
-  }
-}
-
-/* Copy page + More actions: outline chrome from the toolbar-button molecule
-   (NAVBAR). */
 #page-context-menu button[aria-haspopup="menu"] svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
-/* Label rides the shared text-shift machinery (NAVBAR section); the real label
-   span needs its own transition since it isn't a pseudo.
-   Travel is 170% here (not the global 115%): the label box is ~20px inside a
-   34px button, and clipping happens at the BUTTON's own overflow:hidden, so the
-   text must travel span-height + button padding to visibly reach the top edge
-   before vanishing — the same read as the navbar buttons. span.grid must NOT
-   clip (no overflow:hidden) or the swap dies at the text's own line box. */
-#page-context-menu-button span.grid {
-  --shift-label: "Copy page";
-  --shift-distance: 170%;
-  position: relative;
-}
-
-#page-context-menu-button span.grid > span:not(.invisible) {
-  transition: transform var(--duration-shift) var(--ease-standard);
-}
-
-/* CTA — secondary */
 a.font-semibold {
   background: var(--background);
-  border: 1px solid var(--primary);
+  border: var(--border-width) solid var(--border);
   font-family: var(--font-mono);
   font-weight: var(--font-weight-regular);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--primary);
+  letter-spacing: var(--tracking-label);
+  color: var(--foreground);
 }
 
-/* CTA — primary (dark) */
 a.font-semibold[class*="bg-primary"],
 a.font-semibold[class*="dark"],
 #hero a.font-semibold:first-child {
@@ -710,18 +252,7 @@ a.font-semibold[class*="dark"],
 }
 
 a.font-semibold svg {
-  background: var(--primary);
-}
-
-html.dark a.font-semibold {
-  background: var(--background);
-  border: 1px solid var(--secondary);
-  outline-color: var(--secondary);
-  color: var(--primary);
-}
-
-html.dark a.font-semibold svg {
-  background: var(--primary);
+  background: var(--foreground);
 }
 
 /* ==============================  NAV ITEMS  =============================== */
@@ -742,7 +273,7 @@ html.dark a.font-semibold svg {
   border: none !important;
   border-bottom: none !important;
   text-decoration: none !important;
-  color: var(--primary) !important;
+  color: var(--sidebar-foreground) !important;
   opacity: 0.7;
   transition:
     opacity var(--duration-base) var(--ease-standard),
@@ -759,20 +290,20 @@ html.dark a.font-semibold svg {
 }
 
 #navigation-items a.nav-anchor:hover svg {
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 #navigation-items a.nav-anchor:hover {
   opacity: 1;
-  background-color: var(--nav-tint) !important;
+  background-color: var(--sidebar-accent) !important;
   text-decoration: none !important;
-  color: var(--primary) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
 /* ===============================  SIDEBAR  ================================ */
 
 div:has(> div > #navigation-items) {
-  background-color: var(--background) !important;
+  background-color: var(--sidebar) !important;
 }
 
 .sidebar-group-header {
@@ -788,38 +319,35 @@ div:has(> div > #navigation-items) {
   padding: var(--space-8) !important;
 }
 
-/* Nav item states */
 #navigation-items .sidebar-group a,
 #navigation-items .sidebar-group button {
-  border-left: 2px solid transparent !important;
-  color: var(--primary-muted) !important;
+  border-left: var(--border-width-indicator) solid transparent !important;
+  color: var(--muted-foreground) !important;
   transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard) !important;
+    background-color var(--duration-quick) var(--ease-standard),
+    border-color var(--duration-quick) var(--ease-standard),
+    color var(--duration-quick) var(--ease-standard) !important;
 }
 
 #navigation-items .sidebar-group a svg {
-  background-color: var(--primary-muted) !important;
+  background-color: var(--muted-foreground) !important;
 }
 
-/* Hover */
 #navigation-items .sidebar-group a:hover,
 #navigation-items .sidebar-group button:hover {
-  background-color: var(--nav-tint) !important;
-  color: var(--primary) !important;
+  background-color: var(--sidebar-accent) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
 #navigation-items .sidebar-group a[class*="bg-primary"] {
-  border-left-color: var(--primary) !important;
-  background-color: var(--nav-tint) !important;
-  color: var(--primary) !important;
+  border-left-color: var(--sidebar-primary) !important;
+  background-color: var(--sidebar-accent) !important;
+  color: var(--sidebar-foreground) !important;
 }
 
-/* Hover/active icons */
 #navigation-items .sidebar-group a:hover svg,
 #navigation-items .sidebar-group a[class*="bg-primary"] svg {
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 ul li a {
@@ -829,6 +357,13 @@ ul li a {
 a.link {
   text-decoration: underline !important;
   border: none !important;
+  transition: color var(--duration-quick) var(--ease-standard);
+}
+
+@layer utilities {
+  a.link:hover {
+    color: var(--muted-foreground) !important;
+  }
 }
 
 .prose
@@ -839,13 +374,8 @@ a.link {
 /* =================================  CODE  ================================= */
 
 :not(pre) > code {
-  --code-bg: #ececec;
-  background-color: var(--code-bg) !important;
-  color: var(--primary) !important;
-}
-
-html.dark :not(pre) > code {
-  --code-bg: rgba(222, 221, 221, 0.1);
+  background-color: var(--secondary) !important;
+  color: var(--foreground) !important;
 }
 
 pre code {
@@ -863,7 +393,7 @@ pre code {
 }
 
 .code-block {
-  border: 1px solid var(--blog-code-border) !important;
+  border: var(--border-width) solid var(--blog-code-border) !important;
   border-radius: 0 !important;
   padding: 0 !important;
   background: var(--blog-code-bg) !important;
@@ -871,12 +401,11 @@ pre code {
   margin-bottom: 0 !important;
 }
 
-/* Title header */
 .code-block [data-component-part="code-block-header"] {
-  min-height: 2.25rem;
-  padding: 0.375rem 0.625rem 0.375rem 1rem;
+  min-height: var(--code-header-height);
+  padding: var(--space-6) var(--space-10) var(--space-6) var(--space-16);
   background-color: var(--blog-code-header-bg) !important;
-  border-bottom: 1px solid var(--blog-code-border) !important;
+  border-bottom: var(--border-width) solid var(--blog-code-border) !important;
   border-radius: 0 !important;
 }
 .code-block [data-component-part="code-block-header-filename"],
@@ -918,22 +447,18 @@ pre code {
   content: var(--lang-label) " - Example";
   display: flex;
   align-items: center;
-  min-height: 2.25rem;
-  padding: 0.375rem 0.625rem 0.375rem 1rem;
-  font-size: 0.875rem;
+  min-height: var(--code-header-height);
+  padding: var(--space-6) var(--space-10) var(--space-6) var(--space-16);
+  font-size: var(--fs-sm);
   color: var(--blog-code-muted);
   background-color: var(--blog-code-header-bg);
-  border-bottom: 1px solid var(--blog-code-border);
+  border-bottom: var(--border-width) solid var(--blog-code-border);
 }
 
 .code-group .code-block::before {
   content: none !important;
 }
 
-/* ---- Shared code palette: applies to BOTH branches — the MDX .code-block and
-   the API-playground code-group (which has no .code-block inside). Same bg as
-   the MDX .code-block (--blog-code-bg #171614), not --code-group-bg (pure
-   #000), so the colors match across both. ---- */
 :is(.code-block, .code-group:not(:has(.code-block)))
   [data-component-part="code-block-root"],
 :is(.code-block, .code-group:not(:has(.code-block))) pre.shiki {
@@ -955,16 +480,13 @@ html:not(.dark)
   color: var(--shiki-dark) !important;
 }
 
-/* The playground renders in light theme with a white fade overlay
-   (--fade-color-light: #FFFFFF) that would show over the forced dark bg. */
 :is(.code-block, .code-group:not(:has(.code-block))) [data-fade-overlay] {
   display: none !important;
 }
 
-/* Copy button (both branches) */
 :is(.code-block, .code-group:not(:has(.code-block)))
   [data-testid="copy-code-button"] {
-  border: 1px solid var(--blog-code-border) !important;
+  border: var(--border-width) solid var(--blog-code-border) !important;
   border-radius: 0 !important;
 }
 :is(.code-block, .code-group:not(:has(.code-block)))
@@ -990,8 +512,8 @@ html:not(.dark)
   [data-floating-buttons] {
   top: 0 !important;
   bottom: auto !important;
-  height: 2.25rem !important;
-  right: 0.625rem !important;
+  height: var(--code-header-height) !important;
+  right: var(--space-10) !important;
   align-items: center !important;
 }
 
@@ -999,7 +521,7 @@ body .code-group {
   border-radius: 0 !important;
   background-color: transparent !important;
   border: none !important;
-  padding: 0px !important;
+  padding: 0 !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   position: relative;
@@ -1007,20 +529,20 @@ body .code-group {
 }
 
 .code-group .code-block {
-  border: 1px solid var(--blog-code-border) !important;
+  border: var(--border-width) solid var(--blog-code-border) !important;
   margin: 0 !important;
 }
 
 .code-group [data-component-part="code-group-tab-bar"] {
   background-color: var(--blog-code-header-bg) !important;
   padding: var(--space-6) 0 !important;
-  border-top: 1px solid var(--blog-code-border) !important;
-  border-right: 1px solid var(--blog-code-border) !important;
-  border-left: 1px solid var(--blog-code-border) !important;
+  border-top: var(--border-width) solid var(--blog-code-border) !important;
+  border-right: var(--border-width) solid var(--blog-code-border) !important;
+  border-left: var(--border-width) solid var(--blog-code-border) !important;
 }
 
 .code-group [data-component-part="code-group-tab-bar"] + div {
-  margin-top: 0px !important;
+  margin-top: 0 !important;
 }
 
 @layer utilities {
@@ -1079,36 +601,20 @@ body .code-group {
   display: none !important;
 }
 
-/* Shiki bg/text, light-mode span colors and the fade overlay for this branch
-   come from the shared code-palette :is(...) rules above. */
-
-/* The API playground code-group has no .code-block inside NOR role=tabpanel
-   on its panels (unlike the MDX one: its panels are
-   <div data-state=... id=radix-…-content-N> without a role). That's why we target
-   the code-block-root DIRECTLY, not via [role=tabpanel] — otherwise border/grain/position
-   never apply. We recreate the frame + grain + square corners to match the look of
-   the .code-block. No @layer and high specificity to beat Tailwind's rounded-xt!,
-   rounded-2xl and rounded-[inherit]. */
 .code-group:not(:has(.code-block)),
 .code-group:not(:has(.code-block)) > [data-component-part="code-group-tab-bar"],
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"] * {
   border-radius: 0 !important;
 }
-/* The panel applies rounded-xt! (=14px, !important) to the code-block-root via
-   [&_[data-component-part=code-block-root]]:rounded-xt!, which lives in
-   @layer utilities. For !important, a rule INSIDE a layer beats one outside a layer,
-   so raising specificity outside isn't enough: we must override INSIDE
-   @layer utilities. Same layer → specificity decides, and (0,4,0) > (0,2,0). */
+
 @layer utilities {
   .code-group:not(:has(.code-block))
     [data-component-part="code-block-root"][data-component-part] {
     border-radius: 0 !important;
   }
 }
-/* position:relative anchors its grain ::after — see the grain list in UTILITIES. */
 .code-group:not(:has(.code-block)) [data-component-part="code-block-root"] {
-  border: 1px solid var(--blog-code-border) !important;
-  position: relative;
+  border: var(--border-width) solid var(--blog-code-border) !important;
 }
 
 .code-group:not(:has(.code-block))
@@ -1117,22 +623,17 @@ body .code-group {
   color: var(--blog-code-text) !important;
 }
 
-/* Playground tab-bar = .code-block-header style header: padding with real L/R
-   (6px 10px 6px 16px, the left aligns with the code at 16px) and min-height
-   2.25rem. The general rule uses `var(--space-6) 0` (L/R = 0), which works for the
-   MDX tab-bar (its tabs bring their own ml-2.5 inset), but leaves the playground
-   header stuck to the edge. Scoped to the API branch. */
 .code-group:not(:has(.code-block))
   > [data-component-part="code-group-tab-bar"] {
-  padding: 0.375rem 0.625rem 0.375rem 1rem !important;
-  min-height: 2.25rem !important;
+  padding: var(--space-6) var(--space-10) var(--space-6) var(--space-16) !important;
+  min-height: var(--code-header-height) !important;
   position: relative;
 }
 .code-group
   [data-component-part="code-group-tab-bar"]
   button[aria-haspopup="menu"]
   > div {
-  border: 1px solid var(--blog-code-border) !important;
+  border: var(--border-width) solid var(--blog-code-border) !important;
   border-radius: 0 !important;
   background-color: transparent !important;
 }
@@ -1145,20 +646,7 @@ body .code-group {
   button[aria-haspopup="menu"]
   > div
   * {
-  color: var(--primary-foreground) !important;
-}
-html.dark
-  .code-group
-  [data-component-part="code-group-tab-bar"]
-  button[aria-haspopup="menu"]
-  > div,
-html.dark
-  .code-group
-  [data-component-part="code-group-tab-bar"]
-  button[aria-haspopup="menu"]
-  > div
-  * {
-  color: var(--primary) !important;
+  color: var(--blog-code-text) !important;
 }
 .code-group
   [data-component-part="code-group-tab-bar"]
@@ -1168,8 +656,6 @@ html.dark
   color: var(--blog-code-text) !important;
 }
 
-/* Chrome comes from the shared copy-button rules above; only display needs
-   forcing here (the MDX branch hides its tab-bar copy button). */
 .code-group:not(:has(.code-block))
   > [data-component-part="code-group-tab-bar"]
   [data-testid="copy-code-button"] {
@@ -1184,8 +670,8 @@ html.dark
 
 #table-of-contents-content a,
 .toc a {
-  color: var(--primary-muted) !important;
-  transition: color var(--duration-fast) var(--ease-standard);
+  color: var(--muted-foreground) !important;
+  transition: color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content a:hover,
@@ -1193,7 +679,7 @@ html.dark
 #table-of-contents-content .toc-item[data-active="true"] > a,
 #table-of-contents-content a[aria-current="location"],
 .toc a[aria-current="location"] {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
 #table-of-contents-content .toc-item > ul {
@@ -1202,20 +688,20 @@ html.dark
 }
 
 #table-of-contents-content .toc-item[data-depth="0"] > a {
-  border-left: 1.5px solid var(--toc-rail);
-  padding-left: 1rem;
-  transition: border-color var(--duration-fast) var(--ease-standard);
+  border-left: var(--border-width-rail) solid var(--rule);
+  padding-left: var(--space-16);
+  transition: border-color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content .toc-item:not([data-depth="0"]) {
-  border-left: 1.5px solid var(--toc-rail);
-  padding-left: 1rem;
-  transition: border-color var(--duration-fast) var(--ease-standard);
+  border-left: var(--border-width-rail) solid var(--rule);
+  padding-left: var(--space-16);
+  transition: border-color var(--duration-quick) var(--ease-standard);
 }
 
 #table-of-contents-content .toc-item[data-depth="0"][data-active="true"] > a,
 #table-of-contents-content .toc-item[data-active="true"]:not([data-depth="0"]) {
-  border-left-color: var(--primary);
+  border-left-color: var(--foreground);
 }
 
 #table-of-contents-content .toc-item[data-active="true"] > a,
@@ -1284,16 +770,16 @@ html.dark
   margin-bottom: 0 !important;
 }
 
-/* Table styling (prose + [data-table-wrapper]) lives in the TABLES section. */
-
 .prose
   :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   position: relative;
   margin: 0 !important;
-  padding: var(--space-32) !important;
-  background-color: var(--surface);
+  padding: var(--space-14) var(--space-20) !important;
+  background-color: var(--callout-bg);
   border: none !important;
-  color: var(--primary) !important;
+  border-left: var(--border-width-callout) solid
+    var(--callout-accent, var(--callout-note)) !important;
+  color: var(--foreground) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
   overflow: hidden;
@@ -1318,7 +804,7 @@ html.dark
 .prose
   :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *))
   :where(p) {
-  line-height: 1.6 !important;
+  line-height: var(--lh-lg) !important;
 }
 
 .prose
@@ -1404,7 +890,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 }
 
 [role="listitem"].step {
-  padding-bottom: 0px !important;
+  padding-bottom: 0 !important;
 }
 
 [data-component-part="accordion-content"] {
@@ -1431,6 +917,132 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
   margin-block: 0 !important;
 }
 
+/* Mintlify's <Note>/<Info>/<Tip>/<Check>/<Warning>/<Danger>/<Callout> all
+   render one element tagged with data-callout-type. Each variant sets an
+   accent (left rule + mono caps label) and a label; only Warning keeps its
+   icon, so it reads as a caution before it is read. */
+[data-callout-type] {
+  --callout-accent: var(--callout-note);
+  --callout-label: none;
+  position: relative;
+  gap: 0 !important;
+  padding: var(--space-14) var(--space-20) !important;
+  border-radius: var(--radius) !important;
+  background-color: var(--callout-bg) !important;
+  border: none !important;
+  border-left: var(--border-width-callout) solid var(--callout-accent) !important;
+}
+
+[data-callout-type="note"] {
+  --callout-label: "Note";
+}
+
+[data-callout-type="info"],
+[data-blockquote-variant="info"] {
+  --callout-accent: var(--callout-info);
+  --callout-label: "Info";
+}
+
+[data-callout-type="tip"],
+[data-blockquote-variant="tip"] {
+  --callout-accent: var(--callout-tip);
+  --callout-label: "Tip";
+}
+
+[data-callout-type="check"] {
+  --callout-accent: var(--callout-check);
+  --callout-label: "Success";
+}
+
+[data-callout-type="warning"],
+[data-blockquote-variant="warning"] {
+  --callout-accent: var(--callout-warning);
+  --callout-label: "Warning";
+}
+
+[data-callout-type="danger"],
+[data-blockquote-variant="danger"] {
+  --callout-accent: var(--callout-danger);
+  --callout-label: "Danger";
+}
+
+[data-callout-type] [data-component-part="callout-icon"] {
+  display: none !important;
+}
+
+[data-callout-type="warning"] [data-component-part="callout-icon"] {
+  display: flex !important;
+  position: absolute;
+  top: var(--space-14);
+  left: var(--space-20);
+  width: var(--space-12) !important;
+  height: var(--space-16);
+  margin: 0 !important;
+  align-items: center;
+}
+
+[data-callout-type="warning"] [data-component-part="callout-icon"] svg {
+  width: var(--space-12) !important;
+  height: var(--space-12) !important;
+  color: var(--callout-accent) !important;
+}
+
+[data-callout-type] [data-component-part="callout-content"] {
+  color: var(--foreground) !important;
+  font-size: var(--fs-base) !important;
+  line-height: var(--lh-lg) !important;
+}
+
+[data-callout-type] [data-component-part="callout-content"]::before {
+  content: var(--callout-label);
+  display: block;
+  margin-bottom: var(--space-6);
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-nano);
+  line-height: var(--space-16);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--callout-accent);
+}
+
+[data-callout-type="warning"] [data-component-part="callout-content"]::before {
+  padding-left: calc(var(--space-12) + var(--space-8));
+}
+
+/* nbdev/Quarto callouts arrive as `> **Warning**` blockquotes; see
+   blockquote-callouts.js, which tags the variant and the title paragraph. */
+.prose blockquote [data-blockquote-label] {
+  display: flex !important;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-6) !important;
+  font-family: var(--font-mono);
+  font-size: var(--text-mono-nano) !important;
+  line-height: var(--space-16) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--callout-accent, var(--callout-note)) !important;
+}
+
+.prose blockquote [data-blockquote-label] strong {
+  font-weight: var(--font-weight-regular) !important;
+  color: inherit !important;
+}
+
+.prose blockquote [data-blockquote-label] + * {
+  margin-top: 0 !important;
+}
+
+[data-blockquote-variant="warning"] [data-blockquote-label]::before {
+  content: "" !important;
+  flex: none;
+  width: var(--space-12);
+  height: var(--space-12);
+  background-color: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
 .accordion-group {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
@@ -1450,7 +1062,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 
 [data-component-part="tab-button"] {
   margin-top: 0 !important;
-  margin-bottom: -1px !important;
+  margin-bottom: calc(-1 * var(--border-width)) !important;
   padding-top: 0 !important;
   padding-bottom: var(--space-4) !important;
 }
@@ -1458,17 +1070,18 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 #header {
   display: flex;
   flex-direction: column;
-  gap: 0px;
+  gap: 0;
   position: relative;
 }
 
 #header p {
-  max-width: 420px;
+  max-width: var(--header-description-max-width);
+  color: var(--muted-foreground);
 }
 
 @media (min-width: 640px) {
   #header > div > .eyebrow {
-    padding-right: 180px;
+    padding-right: var(--header-eyebrow-reserve);
     height: var(--spacing-header-description);
     display: flex;
     align-items: center;
@@ -1478,7 +1091,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
     flex-direction: column !important;
     align-items: flex-start !important;
     position: static !important;
-    margin-top: 0px !important;
+    margin-top: 0 !important;
   }
 
   #page-title {
@@ -1510,7 +1123,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
   #header #page-context-menu.ml-auto {
     display: flex !important;
     position: absolute !important;
-    top: 0px !important;
+    top: 0 !important;
     right: 0 !important;
     margin-top: 0 !important;
     align-items: center !important;
@@ -1523,7 +1136,7 @@ span[data-as="p"]:has(img[alt="Open In Colab"]) {
 }
 
 #content-side-layout a.font-medium {
-  color: var(--primary);
+  color: var(--foreground);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -1533,8 +1146,8 @@ a.card,
 div.card {
   margin: 0 !important;
   padding: 0 !important;
-  background: var(--card-bg) !important;
-  border: 1px solid var(--card-border) !important;
+  background: var(--card) !important;
+  border: var(--border-width) solid var(--border) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   outline: none !important;
@@ -1546,8 +1159,8 @@ div.card {
 
 .card-group {
   gap: 0 !important;
-  border-top: 1px solid var(--card-border);
-  border-left: 1px solid var(--card-border);
+  border-top: var(--border-width) solid var(--border);
+  border-left: var(--border-width) solid var(--border);
 }
 
 .card-group a.card,
@@ -1558,7 +1171,7 @@ div.card {
 
 a.card:hover,
 div.card:hover {
-  background: var(--hover) !important;
+  background: var(--accent) !important;
   box-shadow: none !important;
   outline: none !important;
   --tw-ring-offset-shadow: 0 0 0 0 transparent !important;
@@ -1566,12 +1179,17 @@ div.card:hover {
   --tw-ring-color: transparent !important;
 }
 
-html.dark a.card svg,
-html.dark div.card svg {
-  background: var(--primary);
+@layer utilities {
+  html :is(a, div).card.card:hover {
+    border-color: var(--border) !important;
+  }
 }
 
-/* Content container */
+html.dark a.card svg,
+html.dark div.card svg {
+  background: var(--foreground);
+}
+
 [data-component-part="card-content-container"] {
   padding: var(--space-32) !important;
   display: flex !important;
@@ -1579,7 +1197,6 @@ html.dark div.card svg {
   gap: var(--space-24) !important;
 }
 
-/* Icon */
 [data-component-part="card-icon"] {
   width: var(--space-24) !important;
   height: var(--space-24) !important;
@@ -1589,7 +1206,7 @@ html.dark div.card svg {
 [data-component-part="card-icon"] svg {
   width: var(--space-24) !important;
   height: var(--space-24) !important;
-  background-color: var(--primary) !important;
+  background-color: var(--foreground) !important;
 }
 
 [data-component-part="card-content-container"] .w-full:not(table) {
@@ -1598,14 +1215,14 @@ html.dark div.card svg {
   gap: var(--space-16) !important;
 }
 
-/* Title */
 [data-component-part="card-title"] {
-  font-size: 26px !important;
+  font-size: var(--fs-xl) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
+  line-height: var(--lh-xl) !important;
+  letter-spacing: var(--text-xl--letter-spacing) !important;
   font-family: var(--font-sans) !important;
-  color: var(--primary) !important;
+  color: var(--card-foreground) !important;
   margin: 0 !important;
 }
 
@@ -1613,13 +1230,12 @@ html.dark div.card svg {
   display: none !important;
 }
 
-/* Description */
 [data-component-part="card-content"] {
-  font-size: 16px !important;
+  font-size: var(--fs-base) !important;
   font-style: normal !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 24px !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-base) !important;
+  color: var(--card-foreground) !important;
   margin: 0 !important;
   opacity: 0.7;
   display: flex;
@@ -1644,15 +1260,15 @@ details.accordion {
 
 html:not(.dark) details.accordion,
 html.dark details.accordion {
-  background-color: var(--accordion-bg) !important;
+  background-color: var(--card) !important;
 }
 
 details.accordion summary:hover {
-  background-color: var(--hover) !important;
+  background-color: var(--accent) !important;
 }
 
 [data-component-part="accordion-button"] {
-  border-bottom: 1px solid transparent;
+  border-bottom: var(--border-width) solid transparent;
 }
 
 [data-component-part="accordion-button"][aria-expanded="true"] {
@@ -1663,10 +1279,6 @@ details.accordion {
   border-color: var(--border) !important;
 }
 
-/* Open/close animation. ::details-content is the generated wrapper around the
-   non-summary content; interpolate-size lets its height:auto animate. overflow
-   hidden clips during the slide and prevents the content margins collapsing out.
-   Degrades to an instant toggle where ::details-content isn't supported. */
 details.accordion {
   interpolate-size: allow-keywords;
 }
@@ -1675,8 +1287,8 @@ details.accordion::details-content {
   height: 0;
   overflow: hidden;
   transition:
-    height var(--duration-slow) var(--ease-in-out),
-    content-visibility var(--duration-slow) var(--ease-in-out) allow-discrete;
+    height var(--duration-slow) var(--ease-standard),
+    content-visibility var(--duration-slow) var(--ease-standard) allow-discrete;
 }
 
 details.accordion[open]::details-content {
@@ -1702,21 +1314,21 @@ details.expandable .expandable-content {
 
 html:not(.dark) details.expandable,
 html.dark details.expandable {
-  background-color: var(--accordion-bg) !important;
+  background-color: var(--card) !important;
   border-color: var(--border) !important;
 }
 
 details.expandable > summary {
-  color: var(--primary-muted) !important;
+  color: var(--muted-foreground) !important;
 }
 
 details.expandable > summary:hover {
-  background-color: var(--hover) !important;
-  color: var(--primary) !important;
+  background-color: var(--accent) !important;
+  color: var(--foreground) !important;
 }
 
 details.expandable > summary svg[data-component-part="icon-svg"] {
-  background-color: var(--primary-muted) !important;
+  background-color: var(--muted-foreground) !important;
 }
 
 details.expandable .expandable-content {
@@ -1751,32 +1363,27 @@ details.expandable .primitive-param-field {
 }
 
 [data-component-part="step-line"] {
-  top: 2.75rem !important;
+  top: var(--step-line-offset) !important;
   bottom: auto !important;
   height: 100% !important;
 }
 
 /* ================================  TABLES  ================================ */
 
-/* Two entry points, one look: plain prose tables and [data-table-wrapper]
-   (tables inside Cards render outside .mdx-content, so they can't rely on the
-   prose selectors). The frame lives on the table itself in prose and on the
-   wrapper otherwise; all cell chrome is shared below. */
-
 .prose :where(table):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   width: 100%;
-  border: 1px solid var(--table-border) !important;
+  border: var(--border-width) solid var(--table-border) !important;
   background-color: var(--table-bg) !important;
 }
 
 [data-table-wrapper] {
   width: 100% !important;
   max-width: 100% !important;
-  margin: 0rem 0 !important;
+  margin: 0 !important;
   padding: 0 !important;
-  border: 1px solid var(--table-border);
+  border: var(--border-width) solid var(--table-border);
   background-color: var(--table-bg);
 }
 
@@ -1793,8 +1400,8 @@ details.expandable .primitive-param-field {
 .prose :where(table):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table {
   border-collapse: collapse;
-  font-size: 0.875rem;
-  color: var(--primary);
+  font-size: var(--fs-sm);
+  color: var(--foreground);
 }
 
 [data-table-wrapper] table thead,
@@ -1809,14 +1416,14 @@ details.expandable .primitive-param-field {
   :where(table td):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 [data-table-wrapper] table th,
 [data-table-wrapper] table td {
-  padding: 0.875rem 1rem;
-  border-right: 1px solid var(--table-border) !important;
-  border-bottom: 1px solid var(--table-border) !important;
+  padding: var(--space-14) var(--space-16);
+  border-right: var(--border-width) solid var(--table-border) !important;
+  border-bottom: var(--border-width) solid var(--table-border) !important;
   text-align: left;
   vertical-align: middle;
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
   font-weight: var(--font-weight-regular);
-  color: var(--primary);
+  color: var(--foreground);
   background-color: transparent !important;
 }
 
@@ -1848,7 +1455,6 @@ details.expandable .primitive-param-field {
   border-bottom: 0 !important;
 }
 
-/* Wrapper-only: first column stays centered. */
 [data-table-wrapper] table th:first-child,
 [data-table-wrapper] table td:first-child {
   text-align: center;
@@ -1856,7 +1462,6 @@ details.expandable .primitive-param-field {
 
 /* ================================  FRAME  ================================= */
 
-/* Strip <Frame> chrome */
 .frame {
   background: transparent !important;
   padding: 0 !important;
@@ -1867,7 +1472,6 @@ details.expandable .primitive-param-field {
   display: none !important;
 }
 
-/* Caption: no rounding */
 .frame [data-component-part="frame-caption"] {
   border-radius: 0 !important;
 }
@@ -1875,8 +1479,8 @@ details.expandable .primitive-param-field {
 /* ================================  BANNER  ================================ */
 
 #banner {
-  border-bottom: 1px solid rgb(var(--gray-300) / 0.06) !important;
   height: auto !important;
+  min-height: var(--space-32) !important;
   max-height: none !important;
 }
 
@@ -1890,72 +1494,73 @@ details.expandable .primitive-param-field {
 @layer utilities {
   #banner,
   #banner * {
-    color: var(--primary) !important;
+    color: var(--highlight-foreground) !important;
   }
 }
 
 #banner a:hover {
   opacity: 0.8;
-  color: var(--primary) !important;
-  text-decoration-color: var(--primary) !important;
+  color: var(--highlight-foreground) !important;
+  text-decoration-color: var(--highlight-foreground) !important;
 }
 
 #banner p,
 #banner p a {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: 14px !important;
+  font-size: var(--text-mono-mini) !important;
+  letter-spacing: var(--text-mono-mini--letter-spacing) !important;
   text-transform: uppercase !important;
-  font-stretch: expanded !important;
-  line-height: 92% !important;
+  line-height: var(--leading-label) !important;
 }
 
 #banner p a {
   text-decoration: underline !important;
-  text-decoration-color: var(--primary) !important;
-  text-underline-offset: 1px !important;
+  text-decoration-color: var(--highlight-foreground) !important;
+  text-underline-offset: var(--underline-offset) !important;
 }
 
 #banner svg path {
-  color: var(--primary) !important;
+  color: var(--highlight-foreground) !important;
 }
 
-/* Banner dismiss button: no background change (overrides Tailwind's
-   hover:bg-gray-800); only the icon changes, from --primary-muted (rest) to --primary
-   (hover) for a visible intensity change. Both tokens are theme-aware. */
 #banner button[aria-label="Dismiss banner"]:hover {
   background-color: transparent !important;
 }
-#banner button[aria-label="Dismiss banner"] svg,
-#banner button[aria-label="Dismiss banner"] svg path {
-  color: var(--primary-muted) !important;
-}
-#banner button[aria-label="Dismiss banner"]:hover svg,
-#banner button[aria-label="Dismiss banner"]:hover svg path {
-  color: var(--primary) !important;
+
+@layer utilities {
+  #banner button[aria-label="Dismiss banner"] svg,
+  #banner button[aria-label="Dismiss banner"] svg path {
+    color: var(--highlight-foreground-muted) !important;
+  }
+  #banner button[aria-label="Dismiss banner"]:hover svg,
+  #banner button[aria-label="Dismiss banner"]:hover svg path {
+    color: var(--highlight-foreground) !important;
+  }
 }
 
 /* ==============================  PAGINATION  ============================== */
 
 #pagination {
   font-family: var(--font-sans) !important;
-  font-size: 28px !important;
+  font-size: var(--fs-xl) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 100% !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-xl) !important;
+  letter-spacing: var(--text-xl--letter-spacing) !important;
+  color: var(--foreground) !important;
 }
 
 #pagination a span {
-  font-size: 20px !important;
+  font-size: var(--fs-lg) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 120% !important;
-  color: var(--primary) !important;
+  line-height: var(--lh-lg) !important;
+  color: var(--foreground) !important;
 }
 
 #pagination svg {
   height: var(--space-10) !important;
   width: var(--space-10) !important;
-  stroke: var(--primary) !important;
+  stroke: var(--foreground) !important;
 }
 
 #pagination svg path {
@@ -1963,7 +1568,7 @@ details.expandable .primitive-param-field {
 }
 
 #pagination a {
-  transition: opacity var(--duration-slow) var(--ease-in-out);
+  transition: opacity var(--duration-slow) var(--ease-standard);
 }
 
 #pagination {
@@ -1984,23 +1589,22 @@ details.expandable .primitive-param-field {
 
 /* ===========================  FEEDBACK TOOLBAR  =========================== */
 
-/* Drop Mintlify's pb-16 (64px) below the toolbar. */
 .feedback-toolbar {
-  padding-bottom: 0px !important;
+  padding-bottom: 0 !important;
 }
 
 .feedback-toolbar p {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
   font-family: var(--font-sans) !important;
-  font-size: 12px !important;
+  font-size: var(--fs-xs) !important;
   font-weight: var(--font-weight-regular) !important;
-  line-height: 16px !important;
+  line-height: var(--lh-xs) !important;
 }
 
 .feedback-toolbar button,
 .feedback-toolbar a {
-  background: var(--feedback-btn-bg) !important;
-  color: var(--feedback-btn-color) !important;
+  background: var(--secondary) !important;
+  color: var(--secondary-foreground) !important;
   padding: var(--space-2) var(--space-6) !important;
   border-radius: var(--radius) !important;
   border: none !important;
@@ -2012,10 +1616,10 @@ details.expandable .primitive-param-field {
 .feedback-toolbar a * {
   font-family: var(--font-mono) !important;
   font-weight: var(--font-weight-regular) !important;
-  font-size: 10px !important;
+  font-size: var(--text-mono-nano) !important;
   text-transform: uppercase !important;
-  line-height: 22px !important;
-  color: var(--feedback-btn-color) !important;
+  line-height: var(--lh-sm) !important;
+  color: var(--secondary-foreground) !important;
 }
 
 .feedback-toolbar button svg,
@@ -2024,21 +1628,17 @@ details.expandable .primitive-param-field {
 }
 
 [role="menu"][data-orientation="vertical"] {
-  background-color: var(--dropdown-bg) !important;
+  background-color: var(--popover) !important;
   border-radius: 0 !important;
-  border-color: var(--dropdown-border) !important;
+  border-color: var(--border) !important;
 }
 
-/* Covers menuitem (normal menus) and menuitemradio (code-group language
-   selector). Without this, menuitemradio keeps `dark:text-primary-light`
-   (= #FFF via docs.json light:#FFF) and ends up white text over the cream background
-   that --dropdown-bg forces in dark mode → looks "all white". */
 [role="menu"][data-orientation="vertical"] [role="menuitem"],
 [role="menu"][data-orientation="vertical"] [role="menuitem"] *,
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"],
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"] * {
   border-radius: 0 !important;
-  color: var(--dropdown-text) !important;
+  color: var(--popover-foreground) !important;
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
@@ -2046,15 +1646,9 @@ details.expandable .primitive-param-field {
 
 [role="menu"][data-orientation="vertical"] [role="menuitem"]:hover,
 [role="menu"][data-orientation="vertical"] [role="menuitemradio"]:hover {
-  background-color: var(--dropdown-hover) !important;
+  background-color: var(--popover-accent) !important;
 }
 
-/* Check indicator: only the active item shows it. Mintlify hides inactive checks
-   with text-primary/0, but that utility doesn't resolve to transparent here, so the
-   check inherits the item's gray text and all three appear checked. Force the check
-   transparent on non-active items (data-active marks the active one). Targets the
-   stable .theme-preference-menu-item class — this base-ui menu has no
-   data-orientation, so [data-orientation] selectors don't match it. */
 .theme-preference-menu-item:not([data-active="true"]) > svg[aria-hidden="true"],
 .theme-preference-menu-item:not([data-active="true"])
   > svg[aria-hidden="true"]
@@ -2062,8 +1656,6 @@ details.expandable .primitive-param-field {
   color: transparent !important;
 }
 
-/* Font recipe + outline chrome come from the BASE mono-label rule and the
-   toolbar-button molecule (NAVBAR). */
 #page-context-menu-button,
 #page-context-menu-button + button {
   border-radius: 0 !important;
@@ -2075,25 +1667,20 @@ details.expandable .primitive-param-field {
 /* =================================  TABS  ================================= */
 
 [data-component-part="tab-button"][data-active="true"] svg {
-  color: var(--primary) !important;
-  background-color: var(--primary) !important;
+  color: var(--foreground) !important;
+  background-color: var(--foreground) !important;
 }
 
 /* ============================  CHAT ASSISTANT  ============================ */
 
 #content-area > div:has(.chat-assistant-floating-input) {
-  margin-top: -80px !important;
-  margin-bottom: -80px !important;
+  margin-top: calc(-1 * var(--chat-input-reserve)) !important;
+  margin-bottom: calc(-1 * var(--chat-input-reserve)) !important;
 }
 
-/* Desktop assistant panel: solid #fff / #000 surface (the mobile drawer —
-   [role="dialog"] — keeps its default background). Covers both the inner sheet
-   and its outer sticky wrapper so no cream shows behind it. The #id selector is
-   needed to outrank the global html:not(.dark) .bg-background-light rule (0,2,1),
-   which otherwise repaints the sheet with --background (cream). */
 #chat-assistant-sheet:not([role="dialog"]),
 div:has(> #chat-assistant-sheet) {
-  background-color: var(--chat-input-bg) !important;
+  background-color: var(--card) !important;
 }
 
 .chat-assistant-floating-input::before {
@@ -2105,52 +1692,36 @@ div:has(> #chat-assistant-sheet) {
   pointer-events: none !important;
 }
 
-/* Chat input box (the rounded container wrapping the textarea): solid tokenized
-   bg (#fff / #000), pill radius + the Intercom launcher shadow so it reads as
-   part of the same control family. Targeted via the textarea's box ancestor. */
 div:has(> div > #chat-assistant-textarea) {
-  background-color: var(--chat-input-bg) !important;
-  border-radius: 0px !important;
+  background-color: var(--input-background-focus) !important;
+  border-radius: var(--radius) !important;
   box-shadow: var(--chat-shadow) !important;
 }
 
-/* Textarea itself stays transparent over the box bg. */
 .chat-assistant-input {
   background-color: transparent !important;
 }
 
-/* The sticky wrapper around the chat input has overflow:hidden, which clips the
-   pill's box-shadow into a rectangle. Let it overflow so the rounded shadow
-   renders fully. */
 div:has(> .chat-assistant-floating-input) {
   overflow: visible !important;
 }
 
-/* Intercom launcher: we only force the size (60px). The icon's background and color
-   keep Intercom's default — no override. Target the stable class
-   .intercom-launcher (the hashed intercom-… ones change per build). */
 .intercom-launcher {
-  width: 60px !important;
-  height: 60px !important;
+  width: var(--intercom-launcher-size) !important;
+  height: var(--intercom-launcher-size) !important;
 }
 
-/* Send button: --alt surface with --primary-foreground icon (beats the inline
-   background:black and the bg-primary utility). */
 .chat-assistant-send-button {
-  background: var(--alt) !important;
+  background: var(--primary) !important;
 }
 
 .chat-assistant-send-button svg {
   color: var(--primary-foreground) !important;
 }
 
-/* Mobile: place the input and the Intercom launcher on one row — input fills the
-   width minus the launcher's reserved space on the right (~80/20). NOTE: the
-   Intercom launcher is a separate fixed widget that only renders in the live
-   env; fine-tune --chat-launcher-gap there. */
 @media (max-width: 767px) {
   div:has(> div > #chat-assistant-textarea) {
-    width: auto !important; /* override w-full so margin-right actually reserves space */
+    width: auto !important;
     max-width: none !important;
     margin-left: 0 !important;
     margin-right: var(--chat-launcher-gap) !important;
@@ -2161,7 +1732,7 @@ div:has(> .chat-assistant-floating-input) {
 
 a {
   border-radius: var(--radius) !important;
-  border: 1px solid transparent;
+  border: var(--border-width) solid transparent;
 }
 
 .bg-gradient-to-b,
@@ -2177,7 +1748,7 @@ a {
 
 .rounded-2xl,
 .rounded-search {
-  border-radius: calc(var(--radius) + 0.125rem) !important;
+  border-radius: calc(var(--radius) + var(--space-2)) !important;
 }
 
 #background-color,
@@ -2216,121 +1787,30 @@ html.dark .bg-background-dark,
   }
 }
 
-:root {
-  --grain-opacity: 0.08;
-  --grain-size: 160px;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-.grain-layer {
-  position: relative;
-}
-
-/* Search button: --border outline (no ring/shadow); position:relative so its
-   grain ::after anchors to it. */
 #search-bar-entry {
-  position: relative;
-  border: 1px solid var(--border) !important;
+  background-color: var(--search-bg) !important;
+  border: var(--border-width) solid var(--border) !important;
   box-shadow: none !important;
+  filter: none !important;
 }
 
-/* Theme toggle: outline chrome from the toolbar-button molecule (NAVBAR). */
 #theme-preference-menu-trigger {
   height: 100% !important;
   border-radius: 0 !important;
 }
 
 #theme-preference-menu-trigger svg {
-  color: var(--primary) !important;
+  color: var(--foreground) !important;
 }
 
-/* space-x-4 containers: 8px inline gap between children. */
 :where(.space-x-4 > :not(:last-child)) {
   margin-inline-end: var(--space-8) !important;
 }
 
-/* Search modal needs position:relative so its grain ::after anchors to it. */
-[data-component-part="search-modal"] {
-  position: relative;
-}
-
-.grain-layer::after,
-#navbar::after,
-#banner::after,
-#sidebar::after,
-#mobile-nav::after,
-#search-bar-entry::after,
-#assistant-entry::after,
-.chat-assistant-sheet::after,
-[data-component-part="search-modal"]::after,
-[data-component-part="search-input-container"]::after,
-[data-radix-menu-content]::after,
-[data-component-part="theme-preference-menu-content"]::after,
-[role="dialog"]:has(> nav[aria-label="Mobile menu"])::after,
-.code-group:not(:has(.code-block))
-  [data-component-part="code-block-root"]::after,
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background-image: url("/tex_noise.png"), url("/docs/tex_noise.png");
-  background-repeat: repeat;
-  background-size: var(--grain-size);
-  filter: grayscale(1) contrast(1.5);
-  opacity: var(--grain-opacity);
-}
-
-#sidebar::after {
-  z-index: 11;
-}
-
-/* Playground header: grain below its children so the language dropdown and copy
-   button render clean on top. */
-.code-group:not(:has(.code-block))
-  > [data-component-part="code-group-tab-bar"]::after {
-  z-index: 0;
-}
-
-/* Grain follows the input's rounded-2xl so it doesn't poke past the corners. */
-[data-component-part="search-input-container"]::after {
-  border-radius: inherit;
-}
-
-/* Every grain layer reads its opacity from this token, so zeroing it here kills
-   all of them (body, chrome, code-group) without repeating the selector list. */
-@media (prefers-contrast: more) {
-  :root {
-    --grain-opacity: 0;
-  }
-}
-
-/* Deliberate 0px on desktop: kills the `.space-y-4` (16px) spacing between the
-   operation sections. Below lg it becomes --space-20 (see the media query). */
 #api-playground-2-operation-page :where(.mt-6.space-y-4) > * + * {
-  margin-top: 0px !important;
+  margin-top: 0 !important;
 }
 
-/* Below lg, the playground's right column (request + response) stacks.
-   The `mt-8 lg:mt-0` container has a single child: a grid with the 2 code-groups.
-   Separation via margin-top (--space-20 = 20px) on the 2nd code-group; the grid's
-   `gap-6` is cancelled so it doesn't add up. Same treatment for the .mt-6.space-y-4
-   sections. Scoped to the playground's generated id and the lg breakpoint
-   (1023px max, same as the file). */
 @media (max-width: 1023px) {
   #api-playground-2-operation-page :where(.mt-8.lg\:mt-0) > * {
     gap: 0 !important;
