@@ -37,7 +37,7 @@ from mlforecast.utils import (
     generate_daily_series,
     generate_prices_for_series,
 )
-from .conftest import make_groupby_df
+from .conftest import make_brand_df
 
 
 @pytest.fixture
@@ -276,7 +276,7 @@ def test_update_y(serie):
 # _update_features
 def test_update_features(flow_config, serie):
     ts = TimeSeries(**flow_config)
-    ts.fit_transform(serie, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(serie, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     ts._predict_setup()
     updates = ts._update_features()
 
@@ -342,7 +342,7 @@ def flow_config2():
 
 def test_ts_fit_transform(flow_config2, series):
     ts = TimeSeries(**flow_config2)
-    _ = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    _ = ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     np.testing.assert_equal(
         ts.ga.data,
         series.groupby("unique_id", observed=True).tail(ts.keep_last_n)["y"],
@@ -384,6 +384,7 @@ def test_keep_last_n(flow_config2, series):
         time_col="ds",
         target_col="y",
         keep_last_n=keep_last_n,
+        static_features=["static_0", "static_1"],
     )
     ts._predict_setup()
 
@@ -513,7 +514,7 @@ def test_ts_predict(flow_config2, series):
     horizon = 7
     model = DummyModel()
     ts = TimeSeries(**flow_config2)
-    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     predictions = ts.predict({"DummyModel": model}, horizon)
 
     grouped_series = series.groupby("unique_id", observed=True)
@@ -536,14 +537,14 @@ def test_ts_with_diff_conf(flow_config2, series):
     flow_config_int_ds["freq"] = 1
     model = DummyModel()
     ts = TimeSeries(**flow_config2)
-    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     predictions = ts.predict({"DummyModel": model}, horizon=horizon)
     ts = TimeSeries(**flow_config_int_ds)
 
     int_ds_series = series.copy()
     int_ds_series["ds"] = int_ds_series["ds"].astype("int64")
 
-    ts.fit_transform(int_ds_series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(int_ds_series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     int_ds_predictions = ts.predict({"DummyModel": model}, horizon=horizon)
     pd.testing.assert_frame_equal(
         predictions.drop(columns="ds"), int_ds_predictions.drop(columns="ds")
@@ -613,6 +614,7 @@ def test_ts_update(series):
         id_col="unique_id",
         time_col="ds",
         target_col="y",
+        static_features=["static_0", "static_1"],
     )
     last_vals_two_series = two_series.groupby("unique_id", observed=True).tail(1)
     last_val_id0 = last_vals_two_series[lambda x: x["unique_id"].eq("id_00")].copy()
@@ -658,7 +660,7 @@ def test_ts_update(series):
         lags=[7],
         target_transforms=[Differences([1, 2]), LocalStandardScaler()],
     )
-    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     new_values = two_series.groupby("unique_id", observed=True).tail(7).copy()
     new_values["ds"] += 7 * pd.offsets.Day()
     orig_last7 = ts.ga.take_from_groups(slice(-7, None)).data
@@ -714,7 +716,7 @@ def test_global_lag_transform(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_lag_transform(engine):
-    df = make_groupby_df(
+    df = make_brand_df(
         engine,
         [
             ("a", [1, 2, 3, 4], "x"),
@@ -722,7 +724,7 @@ def test_group_lag_transform(engine):
             ("b", [10, 20, 30, 40], "y"),
         ],
     )
-    tfm = RollingMean(2, groupby=["brand"])
+    tfm = RollingMean(2, partition_by=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
         df,
@@ -821,7 +823,7 @@ def test_group_lag_transform_requires_aligned_ends(engine):
                 "brand": ["x", "x", "x", "y", "y", "y", "y"],
             }
         )
-    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, groupby=["brand"])]})
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, partition_by=["brand"])]})
     with pytest.raises(
         ValueError,
         match="Pooled lag transforms require all series to end at the same timestamp",
@@ -837,7 +839,7 @@ def test_group_lag_transform_requires_aligned_ends(engine):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-def test_local_partition_lag_transform_requires_aligned_ends(engine):
+def test_id_key_lag_transform_requires_aligned_ends(engine):
     if engine == "polars":
         df = pl.DataFrame(
             {
@@ -857,7 +859,7 @@ def test_local_partition_lag_transform_requires_aligned_ends(engine):
             }
         )
     ts = TimeSeries(
-        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["unique_id", "promo"])]}
     )
     with pytest.raises(
         ValueError,
@@ -934,7 +936,7 @@ def test_pooled_update_with_no_new_rows_is_a_noop(engine):
     tfm = ExpandingMean(global_=True)
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     ts.fit_transform(df, id_col="unique_id", time_col="ds", target_col="y")
-    state = ts._pooled_states[("global", (), ())]
+    state = ts._pooled_states[()]
     before = (state.n_ordinals, state.width)
     ts.update(df.head(0))
     assert (state.n_ordinals, state.width) == before
@@ -979,7 +981,7 @@ def test_group_update_requires_complete_timestamps(engine):
                 "brand": ["x"],
             }
         )
-    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, groupby=["brand"])]})
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(2, partition_by=["brand"])]})
     ts.fit_transform(
         df,
         id_col="unique_id",
@@ -996,7 +998,7 @@ def test_group_update_requires_complete_timestamps(engine):
 
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
-def test_local_partition_update_requires_complete_timestamps(engine):
+def test_id_key_update_requires_complete_timestamps(engine):
     if engine == "polars":
         df = pl.DataFrame(
             {
@@ -1032,7 +1034,7 @@ def test_local_partition_update_requires_complete_timestamps(engine):
             }
         )
     ts = TimeSeries(
-        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["promo"])]}
+        freq=1, lag_transforms={1: [RollingMean(2, partition_by=["unique_id", "promo"])]}
     )
     ts.fit_transform(
         df,
@@ -1084,7 +1086,7 @@ def test_group_update_new_group_order(engine):
                 "brand": ["b", "b", "a"],
             }
         )
-    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(1, groupby=["brand"])]})
+    ts = TimeSeries(freq=1, lag_transforms={1: [RollingMean(1, partition_by=["brand"])]})
     ts.fit_transform(
         df,
         id_col="unique_id",
@@ -1097,7 +1099,7 @@ def test_group_update_new_group_order(engine):
     ts.update(update_df)
     from mlforecast.pooled import lookup
 
-    state = ts._pooled_states[("groupby", ("brand",), ())]
+    state = ts._pooled_states[("brand",)]
     full_df = ufp.vertical_concat([df, update_df])
     # every observation must land in its brand's bucket: aggregate the expected
     # rows the same way the state does and compare the per-bucket totals
@@ -1113,14 +1115,14 @@ def test_group_update_new_group_order(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_lag_transform_uses_transformed_target(engine):
-    df = make_groupby_df(
+    df = make_brand_df(
         engine,
         [
             ("a", [1, 2, 3], "x"),
             ("b", [10, 20, 30], "x"),
         ],
     )
-    tfm = RollingMean(1, groupby=["brand"])
+    tfm = RollingMean(1, partition_by=["brand"])
     ts = TimeSeries(
         freq=1,
         lag_transforms={1: [tfm]},
@@ -1175,7 +1177,7 @@ def test_lookup_lag_partition_by_uses_previous_matching_occurrence(engine):
     if engine == "polars":
         df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
 
-    tfm = LookupLag(partition_by=["holiday_name"])
+    tfm = LookupLag(partition_by=["unique_id", "holiday_name"])
     freq = "1d" if engine == "polars" else "D"
     ts = TimeSeries(freq=freq, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
@@ -1208,7 +1210,7 @@ def test_lookup_lag_partition_by_uses_transformed_target(engine):
     if engine == "polars":
         df = pl.from_pandas(df).with_columns(pl.col("unique_id").cast(pl.Categorical))
 
-    tfm = LookupLag(partition_by=["event"])
+    tfm = LookupLag(partition_by=["unique_id", "event"])
     ts = TimeSeries(
         freq=1,
         lag_transforms={1: [tfm]},
@@ -1252,7 +1254,7 @@ def test_global_update_y_appends_observations():
     )
     ts._predict_setup()
     ts._update_features()
-    global_state = ts._pooled_states[("global", (), ())]
+    global_state = ts._pooled_states[()]
     orig_ordinals = global_state.n_ordinals
     n_series = len(ts.uids)
     ts._update_y(np.zeros(n_series))
@@ -1383,7 +1385,7 @@ def test_global_rolling_quantile(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_rolling_std(engine):
-    df = make_groupby_df(
+    df = make_brand_df(
         engine,
         [
             ("a", [1, 1, 1, 1], "x"),
@@ -1391,7 +1393,7 @@ def test_group_rolling_std(engine):
             ("b", [4, 4, 4, 4], "y"),
         ],
     )
-    tfm = RollingStd(2, groupby=["brand"])
+    tfm = RollingStd(2, partition_by=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
         df,
@@ -1439,7 +1441,7 @@ def test_group_rolling_std(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_expanding_mean(engine):
-    df = make_groupby_df(
+    df = make_brand_df(
         engine,
         [
             ("a", [1, 2, 3, 4], "x"),
@@ -1447,7 +1449,7 @@ def test_group_expanding_mean(engine):
             ("b", [10, 20, 30, 40], "y"),
         ],
     )
-    tfm = ExpandingMean(groupby=["brand"])
+    tfm = ExpandingMean(partition_by=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
         df,
@@ -1494,7 +1496,7 @@ def test_group_expanding_mean(engine):
 
 @pytest.mark.parametrize("engine", ["pandas", "polars"])
 def test_group_rolling_quantile(engine):
-    df = make_groupby_df(
+    df = make_brand_df(
         engine,
         [
             ("a", [1, 3, 5, 7, 9], "x"),
@@ -1502,7 +1504,7 @@ def test_group_rolling_quantile(engine):
             ("b", [2, 4, 6, 8, 10], "y"),
         ],
     )
-    tfm = RollingQuantile(p=0.5, window_size=3, groupby=["brand"])
+    tfm = RollingQuantile(p=0.5, window_size=3, partition_by=["brand"])
     ts = TimeSeries(freq=1, lag_transforms={1: [tfm]})
     prep = ts.fit_transform(
         df,
@@ -1970,6 +1972,7 @@ def test_ts_polars():
         id_col="unique_id",
         time_col="ds",
         target_col="y",
+        static_features=["static_0", "static_1"],
     )
     last_vals_two_series = two_series.join(
         two_series.group_by("unique_id").agg(pl.col("ds").max()), on=["unique_id", "ds"]
@@ -2026,7 +2029,7 @@ def test_ts_polars():
         lags=[7],
         target_transforms=[Differences([1, 2]), LocalStandardScaler()],
     )
-    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(two_series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"])
     new_values = two_series.group_by("unique_id").tail(7)
     new_values = new_values.with_columns(pl.col("ds").dt.offset_by("7d"))
     orig_last7 = ts.ga.take_from_groups(slice(-7, None)).data
@@ -2044,7 +2047,7 @@ def test_ts_polars():
 def test_target_transform_with_keep_last_n(series):
     ts = TimeSeries(freq="D", lags=[1], target_transforms=[LocalStandardScaler()])
     ts.fit_transform(
-        series, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10
+        series, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10, static_features=["static_0", "static_1"]
     )
     preds = ts.predict({"y": NaiveModel()}, 1)
     expected = (
@@ -2062,7 +2065,7 @@ def test_omit_static_features(series):
     train = series.drop(valid.index)
     ts = TimeSeries(freq="D", lags=[1], target_transforms=[LocalStandardScaler()])
     ts.fit_transform(
-        train, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10
+        train, id_col="unique_id", time_col="ds", target_col="y", keep_last_n=10, static_features=["static_0", "static_1"]
     )
     with pytest.warns(UserWarning, match="static during fit and will be ignored"):
         ts.predict({"y": NaiveModel()}, 1, X_df=valid.drop(columns=["y"]))
@@ -2091,12 +2094,12 @@ def test_pd_vs_pl():
     )
     feats_pl = SaveFeatures()
     ts_pl = TimeSeries(freq="1d", **cfg)
-    prep_pl = ts_pl.fit_transform(series_pl, "unique_id", "ds", "y")
+    prep_pl = ts_pl.fit_transform(series_pl, "unique_id", "ds", "y", static_features=[f"static_{i}" for i in range(5)])
     fcst_pl = ts_pl.predict({"y": NaiveModel()}, 2, before_predict_callback=feats_pl)
 
     feats_pd = SaveFeatures()
     ts_pd = TimeSeries(freq="1D", **cfg)
-    prep_pd = ts_pd.fit_transform(series_pd, "unique_id", "ds", "y")
+    prep_pd = ts_pd.fit_transform(series_pd, "unique_id", "ds", "y", static_features=[f"static_{i}" for i in range(5)])
     fcst_pd = ts_pd.predict({"y": NaiveModel()}, 2, before_predict_callback=feats_pd)
 
     prep_pd = prep_pd.reset_index(drop=True)
@@ -2155,7 +2158,7 @@ def test_lag_predict(series):
         else:
             mod1 = [Lag1PlusOneModel() for _ in range(max_horizon)]
             mod2 = [Lag1PlusOneModel() for _ in range(max_horizon)]
-        ts.fit_transform(train, "unique_id", "ds", "y", max_horizon=max_horizon)
+        ts.fit_transform(train, "unique_id", "ds", "y", max_horizon=max_horizon, static_features=["static_0", "static_1"])
         # each model gets the correct historic values
         preds = ts.predict(models={"mod1": mod1, "mod2": mod2}, horizon=2)
         np.testing.assert_allclose(preds["mod1"], preds["mod2"])
@@ -2175,7 +2178,7 @@ def test_save_and_load():
         lag_transforms={1: [RollingMean(1)]},
         target_transforms=[Differences([20])],
     )
-    ts.fit_transform(series, "unique_id", "ds", "y")
+    ts.fit_transform(series, "unique_id", "ds", "y", static_features=["static_0", "static_1"])
     with tempfile.TemporaryDirectory() as tmpdir:
         fname = Path(tmpdir) / "hi"
         ts.save(fname)
@@ -2343,7 +2346,7 @@ def test_date_feature_dummies_predict(series):
         date_features=["dayofweek", "month"],
         date_features_as_dummies=True,
     )
-    fcst.fit(series)
+    fcst.fit(series, static_features=["static_0", "static_1"])
     preds = fcst.predict(7)
     assert preds.shape[0] == series["unique_id"].nunique() * 7
     assert "ridge" in preds.columns
@@ -2419,7 +2422,7 @@ def test_non_jitted_tfms(series):
     expected_warning = "Non-numba transforms are computed sequentially"
     with pytest.warns(UserWarning, match=expected_warning):
         result = ts.fit_transform(
-            series, id_col="unique_id", time_col="ds", target_col="y"
+            series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0", "static_1"]
         )
     assert_same_as_native(result)
 
@@ -2442,7 +2445,7 @@ def test_predict_date_features_per_series(engine, equal_ends):
     )
     freq = "1d" if engine == "polars" else "D"
     ts = TimeSeries(freq=freq, lags=[1], date_features=["day"])
-    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0"])
     cbk = SaveFeatures()
     ts.predict({"Naive": NaiveModel()}, horizon, before_predict_callback=cbk)
     feats = cbk.get_features()
@@ -2482,7 +2485,7 @@ def test_predict_warns_on_null_statics(engine):
         series.loc[series["unique_id"] == first_uid, "static_0"] = np.nan
         freq = "D"
     ts = TimeSeries(freq=freq, lags=[1])
-    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y")
+    ts.fit_transform(series, id_col="unique_id", time_col="ds", target_col="y", static_features=["static_0"])
     with pytest.warns(UserWarning, match="Found null values in static_0"):
         ts.predict({"Naive": NaiveModel()}, 2)
 
@@ -2714,7 +2717,7 @@ def test_update_failing_after_target_transforms_mutates_nothing(monkeypatch, new
                 1: [
                     ExpandingMean(),
                     ExpandingMean(global_=True),
-                    RollingMean(2, min_samples=1, groupby=["promo"]),
+                    RollingMean(2, min_samples=1, partition_by=["promo"]),
                 ]
             },
             target_transforms=None if "promo" in new else [Differences([1])],
@@ -2858,7 +2861,7 @@ def test_update_target_transform_returning_only_target_with_partition():
     ts = TimeSeries(
         freq=1,
         lag_transforms={
-            1: [RollingMean(2, min_samples=1, global_=True, partition_by=["price"])]
+            1: [RollingMean(2, min_samples=1, partition_by=["price"])]
         },
         target_transforms=[OnlyTarget()],
     )

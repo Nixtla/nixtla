@@ -6,8 +6,8 @@ pre-cleanup baseline. Because two models are fitted, ``TimeSeries._backup``
 runs between them, so this also guards that the cheaper snapshot/restore
 backup is behavior-identical to the original deepcopy.
 
-The fit spans all five pooled modes (global / groupby / local-partition /
-global+partition / groupby+partition) and every aggregate field
+The fit spans every kind of pooled key (global / static / id + dynamic /
+dynamic / static + dynamic) and every aggregate field
 (mean/std/min/max/expanding/EWM), so a regression in any pooled append or
 aggregate path moves a prediction and fails here.
 """
@@ -82,11 +82,11 @@ def _build_fcst():
         lag_transforms={
             1: [
                 RollingMean(2, global_=True),
-                RollingMean(2, groupby=["brand"]),
+                RollingMean(2, partition_by=["brand"]),
+                RollingMean(2, min_samples=1, partition_by=["unique_id", "promo"]),
                 RollingMean(2, min_samples=1, partition_by=["promo"]),
-                RollingMean(2, min_samples=1, global_=True, partition_by=["promo"]),
                 RollingMean(
-                    2, min_samples=1, groupby=["brand"], partition_by=["promo"]
+                    2, min_samples=1, partition_by=["brand", "promo"]
                 ),
                 RollingStd(3, min_samples=2, global_=True),
                 RollingMin(3, global_=True),
@@ -180,7 +180,7 @@ def test_snapshot_restore_after_dynamic_new_bucket():
         lags=[1],
         lag_transforms={
             1: [
-                RollingMean(2, min_samples=1, groupby=["brand"], partition_by=["promo"])
+                RollingMean(2, min_samples=1, partition_by=["brand", "promo"])
             ]
         },
     )
@@ -191,7 +191,7 @@ def test_snapshot_restore_after_dynamic_new_bucket():
         target_col="y",
         static_features=["brand"],
     )
-    key = ("nonlocal", ("brand",), ("promo",))
+    key = ("brand", "promo")
     state = fcst.ts._pooled_states[key]
     ref = copy.deepcopy(state)
     snap = state.snapshot()

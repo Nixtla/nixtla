@@ -43,7 +43,7 @@ def evaluate_on_valid(preds, valid):
 def test_lightgbm_cv_pipeline(m4_data, use_weight_col, metric):
     train, valid, horizon = m4_data
     if use_weight_col:
-        train["weight_col"] = 1
+        train = train.assign(weight_col=1)
     static_fit_config = dict(
         n_windows=2,
         h=horizon,
@@ -207,7 +207,13 @@ def test_lightgbmcv_categorical_feature(tmp_path):
         n_static_features=1,
         static_as_categorical=True,
     )
-    fit_kwargs = dict(n_windows=2, h=7, params={"verbosity": -1}, verbose_eval=False)
+    fit_kwargs = dict(
+        n_windows=2,
+        h=7,
+        params={"verbosity": -1},
+        verbose_eval=False,
+        static_features=["static_0"],
+    )
 
     cv = LightGBMCV(freq="D", lags=[7], date_features=["dayofweek"])
     cv.fit(series, **fit_kwargs)
@@ -227,7 +233,7 @@ def test_lightgbmcv_categorical_feature(tmp_path):
     assert "categorical_feature" not in model.get_params()
     assert model.categorical_feature is not cv.categorical_feature
     assert clone(model).categorical_feature == ["dayofweek"]
-    fcst.fit(series)
+    fcst.fit(series, static_features=["static_0"])
     assert _categories(fcst.models_["LGBMRegressor"].booster_, "dayofweek") != []
     assert fcst.models_["LGBMRegressor"].n_estimators == cv.best_iteration_
     fcst = pickle.loads(pickle.dumps(fcst))
@@ -273,7 +279,7 @@ def test_lightgbmcv_trains_on_features_order():
     )
     static_features = ["unique_id", "static_0"]
     cv = LightGBMCV(
-        freq="D", lags=[7], lag_transforms={7: [RollingMean(7, groupby=["static_0"])]}
+        freq="D", lags=[7], lag_transforms={7: [RollingMean(7, partition_by=["static_0"])]}
     )
     cv.fit(
         series,

@@ -98,10 +98,10 @@ def _finite_lag_transforms():
     return {
         1: [
             RollingMean(4, global_=True),
-            RollingMean(4, groupby=["brand"]),
+            RollingMean(4, partition_by=["brand"]),
+            RollingMean(3, min_samples=1, partition_by=["unique_id", "promo"]),
             RollingMean(3, min_samples=1, partition_by=["promo"]),
-            RollingMean(3, min_samples=1, global_=True, partition_by=["promo"]),
-            RollingMean(3, min_samples=1, groupby=["brand"], partition_by=["promo"]),
+            RollingMean(3, min_samples=1, partition_by=["brand", "promo"]),
             RollingStd(4, min_samples=2, global_=True),
             RollingMin(4, global_=True),
             RollingMax(4, global_=True),
@@ -194,11 +194,11 @@ def _accumulator_lag_transforms():
     return {
         1: [
             ExpandingMean(global_=True),
-            ExpandingMean(groupby=["brand"]),
+            ExpandingMean(partition_by=["brand"]),
             ExpandingMin(global_=True),
             ExpandingMax(global_=True),
             ExponentiallyWeightedMean(alpha=0.5, global_=True),
-            ExponentiallyWeightedMean(alpha=0.5, groupby=["brand"]),
+            ExponentiallyWeightedMean(alpha=0.5, partition_by=["brand"]),
             SeasonalRollingMean(season_length=3, window_size=2, global_=True),
         ]
     }
@@ -259,14 +259,14 @@ def test_g2_1_trimmed_predictions_match_untrimmed(keep_last_n, transforms):
 # where "trimmed == fresh fit on the tail" holds. G2.2b covers the other case.
 _MODES = {
     "global": {1: [RollingMean(4, global_=True)]},
-    "groupby": {1: [RollingMean(4, groupby=["brand"])]},
-    "global+partition": {
-        1: [RollingMean(3, min_samples=1, global_=True, partition_by=["promo"])]
+    "static_key": {1: [RollingMean(4, partition_by=["brand"])]},
+    "dynamic_key": {
+        1: [RollingMean(3, min_samples=1, partition_by=["promo"])]
     },
-    "groupby+partition": {
-        1: [RollingMean(3, min_samples=1, groupby=["brand"], partition_by=["promo"])]
+    "static_dynamic_key": {
+        1: [RollingMean(3, min_samples=1, partition_by=["brand", "promo"])]
     },
-    "local+partition": {1: [RollingMean(3, min_samples=1, partition_by=["promo"])]},
+    "id_key": {1: [RollingMean(3, min_samples=1, partition_by=["unique_id", "promo"])]},
 }
 
 
@@ -316,7 +316,7 @@ def test_g2_2_trim_then_update_matches_fresh_then_update(name):
     a state freshly fit on the retained tail (exercises the rebuilt _ts_aggs and
     both append conventions). Uses preprocess + TimeSeries.update so no model is
     trained -- the contract is purely about state, and a bare static string
-    feature would otherwise trip the regressor in the global/local-only modes."""
+    feature would otherwise trip the regressor in the global and id-key modes."""
     lag_transforms = _MODES[name]
     T = 20
     df = _make_panel(T)
@@ -374,10 +374,10 @@ def test_g2_2b_accumulator_state_differs_from_fit_on_slice():
     T = 20
     df = _make_panel(T)
     df_slice = df[df[TIME] > T - _R].reset_index(drop=True)
-    # groupby rather than global_ so `brand` is auto-dropped as an auxiliary
+    # partition_by rather than global_ so `brand` is auto-dropped as an auxiliary
     # column and never reaches the model as a string feature
-    lag_transforms = {1: [ExpandingMean(groupby=["brand"])]}
-    key = ("groupby", ("brand",), ())
+    lag_transforms = {1: [ExpandingMean(partition_by=["brand"])]}
+    key = ("brand",)
 
     trim_leaf, trim_states = _leaf_and_states(df, _R, lag_transforms)
     fresh_leaf, fresh_states = _leaf_and_states(df_slice, _NO_TRIM, lag_transforms)
@@ -401,7 +401,7 @@ def test_g2_2b_accumulator_state_differs_from_fit_on_slice():
         ("full", df, _NO_TRIM),
         ("slice", df_slice, _NO_TRIM),
     ]:
-        fcst = _build_fcst({1: [ExpandingMean(groupby=["brand"])]})
+        fcst = _build_fcst({1: [ExpandingMean(partition_by=["brand"])]})
         fcst.fit(data, keep_last_n=kln, **args)
         preds[tag] = _sorted_preds(fcst.predict(h=h, X_df=X_df))
     np.testing.assert_allclose(preds["trimmed"], preds["full"], rtol=1e-9, atol=1e-9)
@@ -419,7 +419,7 @@ def test_g2_3_suffix_invariant_global():
     untrimmed = _preprocess_states(df, _NO_TRIM, lag_transforms)
     trimmed = _preprocess_states(df, _R, lag_transforms)
 
-    key = ("global", (), ())
+    key = ()
     u_base = untrimmed[key].base
     t_base = trimmed[key].base
 
@@ -460,7 +460,7 @@ def test_g2_3_retention_is_the_declared_tail(make_tfm, retention):
     """
     T = 20
     df = _make_panel(T)
-    key = ("global", (), ())
+    key = ()
     states = _preprocess_states(df, 1, {1: [make_tfm()]})  # keep_last_n under floor
     assert states[key].width == retention
     assert states[key].n_ordinals == T
@@ -478,7 +478,7 @@ def test_g2_4a_row_gathering_states_keep_full_history():
     T = 20
     df = _make_panel(T)
     states = _preprocess_states(df, 3, {1: [ExpandingQuantile(p=0.5, global_=True)]})
-    state = states[("global", (), ())]
+    state = states[()]
     assert state.width == T
     assert state._rows.ordinal.min() == 0
 
@@ -497,7 +497,7 @@ def test_g2_4b_mixed_key_trims_the_block_and_keeps_the_rows():
         ]
     }
     states = _preprocess_states(df, 3, lag_transforms)
-    state = states[("global", (), ())]  # both transforms share this key
+    state = states[()]  # both transforms share this key
     assert state.width == 3
     assert state.base["count"].shape[1] == 3
     assert state._rows.ordinal.min() == 0
@@ -529,13 +529,13 @@ def test_g2_4c_accumulator_states_are_trimmed():
     lag_transforms = {
         1: [
             ExpandingMean(global_=True),
-            ExponentiallyWeightedMean(alpha=0.5, groupby=["brand"]),
+            ExponentiallyWeightedMean(alpha=0.5, partition_by=["brand"]),
         ]
     }
     full = _preprocess_states(df, _NO_TRIM, lag_transforms)
     states = _preprocess_states(df, 3, lag_transforms)  # tiny keep_last_n
 
-    for key in [("global", (), ()), ("groupby", ("brand",), ())]:
+    for key in [(), ("brand",)]:
         assert full[key].width == T
         assert states[key].width == 3  # max(keep_last_n=3, retention=1)
         assert states[key].n_ordinals == T
@@ -547,7 +547,7 @@ def test_g2_4c_one_accumulator_leaf_no_longer_pins_the_shared_state():
     T = 20
     df = _make_panel(T)
     lag_transforms = {1: [RollingMean(3, global_=True), ExpandingMean(global_=True)]}
-    state = _preprocess_states(df, 1, lag_transforms)[("global", (), ())]
+    state = _preprocess_states(df, 1, lag_transforms)[()]
     assert state.width == 3  # RollingMean's retention (lag-1 + window), not T
 
 
@@ -559,7 +559,7 @@ def test_g2_4_offset_and_combine_respect_inner_transform():
     df = _make_panel(T)
 
     finite = {1: [Offset(RollingMean(3, global_=True), 1)]}
-    state = _preprocess_states(df, _R, finite)[("global", (), ())]
+    state = _preprocess_states(df, _R, finite)[()]
     assert state.width == _R  # trimmed
 
     unbounded = {
@@ -571,7 +571,7 @@ def test_g2_4_offset_and_combine_respect_inner_transform():
             )
         ]
     }
-    state = _preprocess_states(df, 3, unbounded)[("global", (), ())]
+    state = _preprocess_states(df, 3, unbounded)[()]
     assert state.width == 3  # the block, for the rolling leaf
     assert state._rows.ordinal.min() == 0  # the rows, for the quantile leaf
 
@@ -610,7 +610,7 @@ def test_g2_5_transform_on_trimmed_state_raises():
     """
     df = _make_panel(20)
     leaf, states = _leaf_and_states(df, _R, {1: [RollingMean(4, global_=True)]})
-    state = states[("global", (), ())]
+    state = states[()]
     assert state.ordinal_offset > 0
     with pytest.raises(RuntimeError, match="trimmed state"):
         state.transform(leaf._pooled_kernel, leaf._pooled_inner)
@@ -652,7 +652,7 @@ def test_g2_5_stateless_leaves_are_not_reprimed_at_all():
     `transform` on this path, rather than being handed one and rejecting it.
     """
     fcst = _preprocessed_then_trimmed({1: [RollingMean(4, global_=True)]})
-    state = fcst.ts._pooled_states[("global", (), ())]
+    state = fcst.ts._pooled_states[()]
     assert state.ordinal_offset > 0
     fcst.ts._initialize_lag_transform_states()  # must not raise
 
@@ -670,7 +670,7 @@ def test_g2_6_ewm_below_retention_fails_loudly():
     leaf, states = _leaf_and_states(
         df, _NO_TRIM, {3: [ExponentiallyWeightedMean(alpha=0.5, global_=True)]}
     )
-    state = states[("global", (), ())]
+    state = states[()]
     state.trim_to_last(1)  # lag=3 needs 3
     with pytest.raises(RuntimeError, match="trimmed below its retention"):
         state.update(leaf._pooled_kernel, leaf._pooled_inner)
@@ -682,12 +682,12 @@ def test_g2_6_ewm_below_retention_fails_loudly():
 @pytest.mark.parametrize(
     "make_tfm, reach",
     [
-        # groupby, not global_, so `brand` is auto-dropped as auxiliary rather
+        # partition_by, not global_, so `brand` is auto-dropped as auxiliary rather
         # than reaching the model as a string feature
-        (lambda: RollingQuantile(p=0.5, window_size=4, groupby=["brand"]), 4),
+        (lambda: RollingQuantile(p=0.5, window_size=4, partition_by=["brand"]), 4),
         (
             lambda: SeasonalRollingQuantile(
-                p=0.5, season_length=3, window_size=2, groupby=["brand"]
+                p=0.5, season_length=3, window_size=2, partition_by=["brand"]
             ),
             4,
         ),
@@ -708,7 +708,7 @@ def test_g2_7_bounded_row_kernels_trim_to_their_gather_reach(make_tfm, reach):
     X_df = _future_X(h)
 
     assert make_tfm()._set_core_tfm(1)._pooled_retention == reach
-    state = _preprocess_states(df, 1, {1: [make_tfm()]})[("groupby", ("brand",), ())]
+    state = _preprocess_states(df, 1, {1: [make_tfm()]})[("brand",)]
     assert state.width == reach  # keep_last_n=1 is below it; the floor holds
 
     preds = {}

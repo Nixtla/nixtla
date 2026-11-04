@@ -207,9 +207,8 @@ def test_warnings_raised_through_library_callbacks_point_to_the_package(series):
         lambda: RollingQuantile(0.5, 3, min_samples=0, global_=True),
         lambda: SeasonalRollingQuantile(0.5, 7, 3, min_samples=0, global_=True),
         lambda: RollingMean(3, min_samples=0, global_=True),
-        lambda: ExponentiallyWeightedMean(0.5, partition_by=["static_0"]),
     ],
-    ids=["rolling_quantile", "seasonal_rolling_quantile", "rolling_mean", "ewm"],
+    ids=["rolling_quantile", "seasonal_rolling_quantile", "rolling_mean"],
 )
 def test_lag_transform_warnings_point_to_the_caller(make_tfm):
     with pytest.warns(UserWarning) as caught:
@@ -222,6 +221,21 @@ def static_series():
     return generate_daily_series(
         2, min_length=20, max_length=30, n_static_features=1, equal_ends=True
     )
+
+
+def test_partitioned_ewm_warning_points_to_the_caller(static_series):
+    fcst = MLForecast(
+        models=[],
+        freq="D",
+        lag_transforms={
+            1: [ExponentiallyWeightedMean(0.5, partition_by=["unique_id", "static_0"])]
+        },
+    )
+    with pytest.warns(UserWarning, match="Partitioned EWM") as caught:
+        fcst.preprocess(static_series)
+    assert {w.filename for w in caught if "Partitioned EWM" in str(w.message)} == {
+        __file__
+    }
 
 
 @pytest.mark.parametrize("with_hooks", [False, True])
@@ -239,24 +253,6 @@ def test_static_columns_in_X_df_warning_points_to_the_caller(static_series, with
     with pytest.warns(UserWarning, match="considered static") as caught:
         fcst.predict(2, X_df=X_df)
     (warning,) = [w for w in caught if "considered static" in str(w.message)]
-    assert warning.filename == __file__
-
-
-@pytest.mark.parametrize("with_hooks", [False, True])
-def test_partial_X_df_warning_points_to_the_caller(static_series, with_hooks):
-    fcst = MLForecast(
-        models=LinearRegression(),
-        freq="D",
-        lags=[1],
-        hooks=[Profiler()] if with_hooks else None,
-    )
-    fcst.fit(static_series, static_features=[])
-    X_df = fcst.make_future_dataframe(h=2).merge(
-        static_series[["unique_id", "static_0"]].drop_duplicates()
-    )
-    with pytest.warns(UserWarning, match="rows but") as caught:
-        fcst.predict(3, X_df=X_df)
-    (warning,) = [w for w in caught if "rows but" in str(w.message)]
     assert warning.filename == __file__
 
 

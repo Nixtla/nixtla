@@ -801,6 +801,8 @@ class _PooledKernel:
     #: re-gather from the raw observations; only the accumulator-carrying
     #: kernels (Expanding*, EWM) need priming at all.
     primes_state: bool = True
+    #: whether the bucket key holds the id column; set when the state is built.
+    id_in_key: bool = False
 
     def __init__(self, tfm):
         self.tfm = tfm
@@ -833,9 +835,9 @@ class _PooledKernel:
         ms = getattr(self.tfm, "min_samples", None)
         if ms is not None:
             return float(ms)
-        # a local partition bucket holds a single series, so requiring a full
+        # a bucket keyed by the id holds a single series, so requiring a full
         # window of observations would blank out most of the partition
-        if self.tfm._pooled_mode == "local":
+        if self.id_in_key:
             return 1.0
         return float(getattr(self.tfm, "window_size", 1))
 
@@ -1465,8 +1467,7 @@ def get_kernel(tfm) -> _PooledKernel:
             return kernel_cls(tfm)
     raise NotImplementedError(
         f"{type(tfm).__name__!r} does not support pooled "
-        "(global_/groupby/partition_by) computation. Supported: "
-        + ", ".join(sorted(_KERNELS))
+        "(global_/partition_by) computation. Supported: " + ", ".join(sorted(_KERNELS))
     )
 
 
@@ -1474,7 +1475,7 @@ def get_kernel(tfm) -> _PooledKernel:
 class PooledState:
     """Per-bucket aggregate store shared by every leaf with the same bucket key.
 
-    The key is ``(mode, group_cols, partition_cols)`` -- deliberately *not*
+    The key is the sorted tuple of bucket columns -- deliberately *not*
     including ``time_agg``. ``time_agg`` doesn't change which rows land in a
     bucket, only how they are summarised, so it is a *view* over the same store
     rather than a separate one. That keeps the expensive part (one ``bincount``
@@ -1494,9 +1495,7 @@ class PooledState:
 
     def __init__(
         self,
-        mode: str,
-        group_cols: List[str],
-        partition_cols: List[str],
+        key_cols: List[str],
         n_buckets: int,
         n_ordinals: int,
         base: Optional[Dict[str, np.ndarray]],
@@ -1504,9 +1503,7 @@ class PooledState:
         bucket_uniques: Optional[np.ndarray] = None,
         store: Optional[_CellStore] = None,
     ):
-        self.mode = mode
-        self.group_cols = group_cols
-        self.partition_cols = partition_cols
+        self.key_cols = key_cols
         self.n_buckets = n_buckets
         self.n_ordinals = n_ordinals
         #: fit-time cell store; dropped by `finish_fit` once the features exist
@@ -1535,9 +1532,7 @@ class PooledState:
     def build(
         cls,
         *,
-        mode: str,
-        group_cols: List[str],
-        partition_cols: List[str],
+        key_cols: List[str],
         bucket_id_by_row: np.ndarray,
         ordinal_by_row: np.ndarray,
         y: np.ndarray,
@@ -1552,9 +1547,7 @@ class PooledState:
             bucket_id_by_row, ordinal_by_row, y, n_buckets, n_ordinals, sorted(needed)
         )
         obj = cls(
-            mode=mode,
-            group_cols=group_cols,
-            partition_cols=partition_cols,
+            key_cols=key_cols,
             n_buckets=n_buckets,
             n_ordinals=n_ordinals,
             base=None,
@@ -1864,6 +1857,6 @@ class PooledState:
 
     def __repr__(self) -> str:
         return (
-            f"PooledState(mode={self.mode}, n_buckets={self.n_buckets}, "
+            f"PooledState(key_cols={self.key_cols}, n_buckets={self.n_buckets}, "
             f"width={self.width}, n_ordinals={self.n_ordinals})"
         )

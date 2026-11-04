@@ -197,17 +197,17 @@ def _assert_equivalent(a, b, name):
 
 _MODES = [
     {"global_": True},
-    {"groupby": ["brand"]},
+    {"partition_by": ["brand"]},
+    {"partition_by": ["unique_id", "promo"]},
     {"partition_by": ["promo"]},
-    {"global_": True, "partition_by": ["promo"]},
-    {"groupby": ["brand"], "partition_by": ["promo"]},
+    {"partition_by": ["brand", "promo"]},
 ]
 _MODE_IDS = [
     "global",
-    "groupby",
-    "local_partition",
-    "global_partition",
-    "groupby_partition",
+    "static_key",
+    "id_key",
+    "dynamic_key",
+    "static_dynamic_key",
 ]
 
 
@@ -229,9 +229,9 @@ def test_g4_1_time_agg_views_collapse_per_cell(time_agg):
     """`_collapse` is elementwise, so collapsing the occupied cells must equal
     the occupied cells of the collapsed dense view."""
     df = _panel()
-    tfm = L.RollingMean(window_size=5, groupby=["brand"], time_agg=time_agg)
+    tfm = L.RollingMean(window_size=5, partition_by=["brand"], time_agg=time_agg)
     ref, col = _feature(df, tfm, dense=True)
-    tfm = L.RollingMean(window_size=5, groupby=["brand"], time_agg=time_agg)
+    tfm = L.RollingMean(window_size=5, partition_by=["brand"], time_agg=time_agg)
     got, _ = _feature(df, tfm)
     _assert_equivalent(ref[col].to_numpy(), got[col].to_numpy(), "rolling_mean")
 
@@ -241,7 +241,7 @@ def test_g4_1_min_samples_gating_is_unaffected(min_samples):
     """The window count is an exact integer sum on the store, so the gate must
     agree with the dense path's `k * mean(count)` at every cell."""
     df = _panel()
-    kw = dict(window_size=5, groupby=["brand"], min_samples=min_samples)
+    kw = dict(window_size=5, partition_by=["brand"], min_samples=min_samples)
     ref, col = _feature(df, L.RollingMean(**kw), dense=True)
     got, _ = _feature(df, L.RollingMean(**kw))
     np.testing.assert_array_equal(
@@ -253,10 +253,10 @@ def test_g4_1_wrappers_follow_their_leaves():
     """`Offset`/`Combine` resolve to pooled leaves and must follow them."""
     df = _panel()
     for tfm_factory in (
-        lambda: L.Offset(L.RollingMean(window_size=5, groupby=["brand"]), 2),
+        lambda: L.Offset(L.RollingMean(window_size=5, partition_by=["brand"]), 2),
         lambda: L.Combine(
-            L.RollingMean(window_size=5, groupby=["brand"]),
-            L.RollingMean(window_size=3, groupby=["brand"]),
+            L.RollingMean(window_size=5, partition_by=["brand"]),
+            L.RollingMean(window_size=3, partition_by=["brand"]),
             operator.truediv,
         ),
     ):
@@ -276,8 +276,8 @@ def test_g4_2_dropna_keeps_identical_rows(name, make):
     change the training set, which no tolerance on the values would catch.
     """
     df = _panel()
-    ref, _ = _feature(df, make(groupby=["brand"]), dense=True, dropna=True)
-    got, _ = _feature(df, make(groupby=["brand"]), dropna=True)
+    ref, _ = _feature(df, make(partition_by=["brand"]), dense=True, dropna=True)
+    got, _ = _feature(df, make(partition_by=["brand"]), dropna=True)
     assert len(ref) == len(got), name
     np.testing.assert_array_equal(ref[ID].to_numpy(), got[ID].to_numpy())
     np.testing.assert_array_equal(ref[TIME].to_numpy(), got[TIME].to_numpy())
@@ -321,7 +321,7 @@ def _all_kernel_specs():
                 p=0.5, season_length=3, window_size=2, global_=True
             ),
         ),
-        ("LookupLag", L.LookupLag(partition_by=["promo"])),
+        ("LookupLag", L.LookupLag(partition_by=["unique_id", "promo"])),
     ]
 
 
@@ -332,9 +332,7 @@ def _state_for(kernel, tfm, n_buckets=5, width=16):
     rng = np.random.default_rng(0)
     n = 200
     return PooledState.build(
-        mode="global",
-        group_cols=[],
-        partition_cols=[],
+        key_cols=[],
         bucket_id_by_row=rng.integers(0, n_buckets, n),
         ordinal_by_row=rng.integers(0, width, n),
         y=rng.normal(10, 1, n),
@@ -391,9 +389,7 @@ def _state_with_late_bucket(kernel, tfm, width=8):
     bid = np.array([0] * width + [1])
     ordi = np.array(list(range(width)) + [width - 1])
     return PooledState.build(
-        mode="global",
-        group_cols=[],
-        partition_cols=[],
+        key_cols=[],
         bucket_id_by_row=bid,
         ordinal_by_row=ordi,
         y=np.arange(1.0, bid.size + 1),
@@ -467,8 +463,8 @@ def test_g4_4_shared_key_splits_by_leaf():
     and both must agree with the dense block."""
     df = _panel()
     make = lambda: [  # noqa: E731
-        L.RollingMean(window_size=5, groupby=["brand"]),
-        L.ExpandingMean(groupby=["brand"]),
+        L.RollingMean(window_size=5, partition_by=["brand"]),
+        L.ExpandingMean(partition_by=["brand"]),
     ]
     ref, cols = _feature(df, make(), dense=True)
     got, _ = _feature(df, make())
@@ -484,7 +480,7 @@ def test_g4_4_shared_key_splits_by_leaf():
 def test_g4_5_window_around_and_beyond_the_calendar(window_size):
     """A window reaching before the calendar starts is simply shorter."""
     df = _panel(length=40)
-    kw = dict(window_size=window_size, groupby=["brand"], min_samples=1)
+    kw = dict(window_size=window_size, partition_by=["brand"], min_samples=1)
     ref, col = _feature(df, L.RollingMean(**kw), dense=True)
     got, _ = _feature(df, L.RollingMean(**kw))
     _assert_equivalent(ref[col].to_numpy(), got[col].to_numpy(), "rolling_mean")
@@ -495,7 +491,7 @@ def test_g4_5_lag_up_to_and_past_the_end(lag):
     """A source ordinal before the calendar gives an empty window, never a
     cell from the previous bucket."""
     df = _panel(length=40)
-    kw = dict(window_size=5, partition_by=["promo"], min_samples=1)
+    kw = dict(window_size=5, partition_by=["unique_id", "promo"], min_samples=1)
     ref, col = _feature(df, L.RollingMean(**kw), dense=True, lag=lag)
     got, _ = _feature(df, L.RollingMean(**kw), lag=lag)
     _assert_equivalent(ref[col].to_numpy(), got[col].to_numpy(), "rolling_mean")
@@ -513,7 +509,7 @@ def test_g4_5_seasonal_windows_on_every_phase(season_length, window_size, lag):
     kw = dict(
         season_length=season_length,
         window_size=window_size,
-        groupby=["brand"],
+        partition_by=["brand"],
         min_samples=1,
     )
     ref, col = _feature(df, L.SeasonalRollingMean(**kw), dense=True, lag=lag)
@@ -534,7 +530,7 @@ def test_g4_5_sparse_buckets():
             ("s1", _D + pd.Timedelta(days=t), float(t * 2), "g1", "0"),
         ]
     df = pd.DataFrame(rows, columns=[ID, TIME, TARGET, "brand", "promo"])
-    kw = dict(window_size=3, groupby=["brand"], min_samples=1)
+    kw = dict(window_size=3, partition_by=["brand"], min_samples=1)
     ref, col = _feature(df, L.RollingMean(**kw), dense=True)
     got, _ = _feature(df, L.RollingMean(**kw))
     _assert_equivalent(ref[col].to_numpy(), got[col].to_numpy(), "rolling_mean")
@@ -571,9 +567,7 @@ def test_g4_6_fit_transient_is_bounded_by_the_store(kernel_name):
 
     def build():
         return PooledState.build(
-            mode="global",
-            group_cols=[],
-            partition_cols=[],
+            key_cols=[],
             bucket_id_by_row=bid,
             ordinal_by_row=ordi,
             y=y,

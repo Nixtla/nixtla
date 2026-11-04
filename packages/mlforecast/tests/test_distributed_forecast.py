@@ -194,7 +194,7 @@ def test_dask_distributed_preprocess_weight_col_is_not_a_feature(
         assert "weight" not in ts.static_features_.columns
 
 
-def test_dask_distributed_preprocess_undeclared_weights_become_static(
+def test_dask_distributed_preprocess_undeclared_weights_become_features(
     small_ordered_series,
 ):
     """Counterpart to the test above: this is what the weight_col argument avoids."""
@@ -203,8 +203,9 @@ def test_dask_distributed_preprocess_undeclared_weights_become_static(
     partitioned = _make_partitioned_series(weighted, npartitions=2)
     fcst = DistributedMLForecast(models=[], freq="D", lags=[1])
 
-    with pytest.raises(ValueError, match="declared as a static feature"):
-        fcst.preprocess(partitioned).compute()
+    assert "weight" in fcst.preprocess(partitioned).compute().columns
+    for pickled_ts in fa.as_pandas(fcst._partition_results)["ts"]:
+        assert "weight" in cloudpickle.loads(pickled_ts).features_order_
 
 
 def test_dask_distributed_forecast_with_x_df():
@@ -328,8 +329,8 @@ def test_dask_cross_validation_drops_fitted_models(tmp_path, refit):
     "pooled_kwargs",
     [
         {"global_": True},
-        {"groupby": ["brand"]},
-        {"partition_by": ["promo"]},
+        {"partition_by": ["brand"]},
+        {"partition_by": ["unique_id", "promo"]},
     ],
 )
 def test_distributed_rejects_pooled_transforms(pooled_kwargs):

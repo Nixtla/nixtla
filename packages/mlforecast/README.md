@@ -199,7 +199,7 @@ To compute the features and train the models call `fit` on your
 `Forecast` object.
 
 ``` python
-fcst.fit(series)
+fcst.fit(series, static_features=['static_0'])
 ```
 
 ```

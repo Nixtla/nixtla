@@ -60,7 +60,7 @@ def _config(kind, engine="pandas"):
                 1: [
                     RollingMean(7),
                     RollingMean(7, global_=True),
-                    RollingMean(7, groupby=["static_0"]),
+                    RollingMean(7, partition_by=["static_0"]),
                     ExpandingMean(global_=True),
                 ]
             },
@@ -92,13 +92,17 @@ def _assert_preds_equal(p1, p2):
 @pytest.mark.parametrize("kind", ["local", "pooled", "target_tfms"])
 def test_history_warmup_predict_parity(engine, kind):
     n_statics = 1 if kind == "pooled" else 0
+    statics = [f"static_{i}" for i in range(n_statics)]
     fitted = _new_fcst(kind, engine)
-    fitted.fit(_gen(engine, n_statics))
+    fitted.fit(_gen(engine, n_statics), static_features=statics)
     expected = fitted.predict(H)
 
     warmed = _new_fcst(kind, engine)
     warmed.models_ = fitted.models_
-    assert warmed.history_warmup(_gen(engine, n_statics)) is warmed
+    assert (
+        warmed.history_warmup(_gen(engine, n_statics), static_features=statics)
+        is warmed
+    )
     _assert_preds_equal(expected, warmed.predict(H))
 
 
@@ -106,17 +110,18 @@ def test_history_warmup_predict_parity(engine, kind):
 @pytest.mark.parametrize("kind", ["local", "pooled", "target_tfms"])
 def test_history_warmup_update_predict_parity(engine, kind):
     n_statics = 1 if kind == "pooled" else 0
+    statics = [f"static_{i}" for i in range(n_statics)]
     train, tail = _split_last(_gen(engine, n_statics), engine, days=3)
 
     fitted = _new_fcst(kind, engine)
-    fitted.fit(train)
+    fitted.fit(train, static_features=statics)
     fitted.update(tail)
     expected = fitted.predict(H)
 
     train, tail = _split_last(_gen(engine, n_statics), engine, days=3)
     warmed = _new_fcst(kind, engine)
     warmed.models_ = fitted.models_
-    warmed.history_warmup(train)
+    warmed.history_warmup(train, static_features=statics)
     warmed.update(tail)
     _assert_preds_equal(expected, warmed.predict(H))
 
@@ -131,7 +136,7 @@ def test_history_warmup_partition_by():
             models=[LinearRegression()],
             freq="D",
             lags=[1],
-            lag_transforms={1: [RollingMean(3, partition_by=["promo"])]},
+            lag_transforms={1: [RollingMean(3, partition_by=["unique_id", "promo"])]},
         )
 
     fitted = new_fcst()

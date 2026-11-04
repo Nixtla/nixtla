@@ -125,21 +125,18 @@ class DistributedMLForecast:
             lag_transforms_namer=lag_transforms_namer,
             date_features_as_dummies=date_features_as_dummies,
         )
-        pooled_tfms = self._base_ts._get_pooled_tfms()
-        if pooled_tfms:
-            pooled_names = sorted(
-                name for tfms in pooled_tfms.values() for name in tfms
-            )
+        pooled_names = sorted(self._base_ts._get_pooled_features())
+        if pooled_names:
             raise NotImplementedError(
-                "Pooled lag transforms (those configured with `global_`, "
-                "`groupby` or `partition_by`) are not supported by "
+                "Pooled lag transforms (those configured with `global_` or "
+                "`partition_by`) are not supported by "
                 "DistributedMLForecast. The distributed engines shard the data "
                 "by the id column and compute features independently on each "
                 "partition, so a transform that aggregates across series (the "
-                "whole dataset for `global_`, a group for `groupby`) would only "
-                "see the series in its own partition and silently produce "
-                "incorrect results. Partition-based transforms rely on the same "
-                "cross-series parent-calendar machinery, which assumes a single "
+                "whole dataset for `global_`, a brand for `partition_by=['brand']`) "
+                "would only see the series in its own partition and silently "
+                "produce incorrect results. Keys that include the id rely on the "
+                "same cross-series calendar machinery, which assumes a single "
                 f"TimeSeries owns every series. Offending feature(s): "
                 f"{pooled_names}. Use the local (non-distributed) MLForecast for "
                 "these transforms."
@@ -360,10 +357,10 @@ class DistributedMLForecast:
             id_col (str): Column that identifies each serie. Defaults to 'unique_id'.
             time_col (str): Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'.
             target_col (str): Column that contains the target. Defaults to 'y'.
-            static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
-                Defaults to None.
+            static_features (list of str, optional): Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting.
+                Defaults to None (no static features).
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
@@ -491,10 +488,10 @@ class DistributedMLForecast:
             id_col (str): Column that identifies each serie. Defaults to 'unique_id'.
             time_col (str): Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'.
             target_col (str): Column that contains the target. Defaults to 'y'.
-            static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
-                Defaults to None.
+            static_features (list of str, optional): Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting.
+                Defaults to None (no static features).
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
             weight_col (str, optional): Column that contains the sample weights. Defaults to None.
 
@@ -784,10 +781,10 @@ class DistributedMLForecast:
             target_col (str): Column that contains the target. Defaults to 'y'.
             step_size (int, optional): Step size between each cross validation window. If None it will be equal to `h`.
                 Defaults to None.
-            static_features (list of str, optional): Names of the features that are static and will be repeated when forecasting.
-                Defaults to None.
+            static_features (list of str, optional): Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting.
+                Defaults to None (no static features).
             dropna (bool): Drop rows with missing values produced by the transformations. Defaults to True.
-            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/groupby/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
+            keep_last_n (int, optional): Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it.
                 Defaults to None.
             refit (bool): Retrain model for each cross validation window.
                 If False, the models are trained at the beginning and then used to predict each window. Defaults to True.

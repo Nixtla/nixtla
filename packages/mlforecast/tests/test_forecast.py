@@ -287,7 +287,7 @@ def test_recursive_forecast_fitted_values_on_demand_h_rejects_global_group_tfms(
     fcst.fit(df, fitted=True, static_features=[])
 
     with pytest.raises(
-        ValueError, match="not supported.*global or grouped lag transforms"
+        ValueError, match="not supported.*partition_by doesn't include"
     ):
         fcst.forecast_fitted_values(h=2)
 
@@ -666,7 +666,7 @@ def test_cv_refit_false_with_grouped_expanding_mean(
         models=[LinearRegression()],
         freq="D",
         lags=[1],
-        lag_transforms={1: [ExpandingMean(groupby=["cat_code"])]},
+        lag_transforms={1: [ExpandingMean(partition_by=["cat_code"])]},
     )
 
     cv = fcst.cross_validation(
@@ -825,11 +825,15 @@ def test_preds_day():
     )
     fcst = MLForecast(freq=1, **flow_params)
     non_std_preds = fcst.fit(
-        non_std_series, id_col="some_id", time_col="time", target_col="value"
+        non_std_series,
+        id_col="some_id",
+        time_col="time",
+        target_col="value",
+        static_features=["static_0", "static_1"],
     ).predict(7)
     non_std_preds = non_std_preds.rename(columns={"some_id": "unique_id"})
     fcst = MLForecast(freq="D", **flow_params)
-    preds = fcst.fit(series).predict(7)
+    preds = fcst.fit(series, static_features=["static_0", "static_1"]).predict(7)
     pd.testing.assert_frame_equal(
         preds.drop(columns="ds"), non_std_preds.drop(columns="time")
     )
@@ -1132,63 +1136,18 @@ def test_save_load():
     pd.testing.assert_frame_equal(preds, preds2)
 
 
-# direct approach requires only one timestamp and produces same results for two models
-def test_direct_approach_single_timestamp():
-    """Test direct approach works with partial X_df (backward compatibility)."""
+def test_direct_approach_partial_x_df_raises():
     series = generate_daily_series(5)
     h = 5
     freq = "D"
     train, future = time_features(series, freq=freq, features=["day"], h=h)
-    models = [LinearRegression(), lgb.LGBMRegressor(n_estimators=5)]
-
-    # Test 1: Full features work correctly
-    fcst1 = MLForecast(models=models, freq=freq, date_features=["dayofweek"])
-    fcst1.fit(train, max_horizon=h, static_features=[])
-    preds1 = fcst1.predict(h=h, X_df=future)  # full timestamps
-
-    # Test 2: Partial features work (backward compatibility)
-    fcst2 = MLForecast(models=models[::-1], freq=freq, date_features=["dayofweek"])
-    fcst2.fit(train, max_horizon=h, static_features=[])
+    fcst = MLForecast(models=[LinearRegression()], freq=freq)
+    fcst.fit(train, max_horizon=h, static_features=[])
+    preds = fcst.predict(h=h, X_df=future)
+    assert preds.shape[0] == len(series["unique_id"].unique()) * h
     X_df_one = future.groupby("unique_id", observed=True).head(1)
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        preds2 = fcst2.predict(h=h, X_df=X_df_one)  # single timestamp (reused)
-        # Verify warning was raised
-        assert len(w) == 1
-        assert "missing horizon steps" in str(w[0].message)
-
-    # Shape validation
-    assert preds1.shape[0] == len(series["unique_id"].unique()) * h
-    assert preds2.shape[0] == len(series["unique_id"].unique()) * h
-
-    # Sanity checks for partial-feature predictions (preds2)
-    model_cols = [col for col in preds2.columns if col not in ["unique_id", "ds"]]
-    for col in model_cols:
-        # 1. No NaN/Inf values
-        assert not preds2[col].isna().any(), f"{col} contains NaN values"
-        assert not np.isinf(preds2[col]).any(), f"{col} contains Inf values"
-
-        # 2. Values within reasonable bounds (based on training data statistics)
-        lower_bound = train["y"].min()
-        upper_bound = train["y"].max()
-        assert preds2[col].min() >= lower_bound, (
-            f"{col} has values below training data bound: {preds2[col].min()} < {lower_bound}"
-        )
-        assert preds2[col].max() <= upper_bound, (
-            f"{col} has values above training data bound: {preds2[col].max()} > {upper_bound}"
-        )
-
-    # First period predictions should be identical (same features used)
-    first_preds1 = preds1.groupby("unique_id", observed=True).head(1)
-    first_preds2 = preds2.groupby("unique_id", observed=True).head(1)
-    pd.testing.assert_frame_equal(first_preds1, first_preds2[first_preds1.columns])
-
-    # Full predictions should be highly correlated
-    for col in model_cols:
-        correlation = np.corrcoef(preds1[col], preds2[col])[0, 1]
-        assert correlation > 0.95, (
-            f"{col} predictions have low correlation: {correlation:.3f}"
-        )
+    with pytest.raises(ValueError, match="Found missing inputs in X_df"):
+        fcst.predict(h=h, X_df=X_df_one)
 
 
 def test_direct_forecasting_exogenous_alignment():
@@ -2685,7 +2644,7 @@ def test_drop_auxiliary_columns_default_drops_groupby(aux_cols_series):
         models=LinearRegression(),
         freq="D",
         lags=[1],
-        lag_transforms={1: [RollingMean(7, groupby=[groupby_col])]},
+        lag_transforms={1: [RollingMean(7, partition_by=[groupby_col])]},
     )
     fcst.fit(aux_cols_series, static_features=statics)
 
@@ -2705,7 +2664,7 @@ def test_drop_auxiliary_columns_false_keeps_groupby(aux_cols_series):
         models=LinearRegression(),
         freq="D",
         lags=[1],
-        lag_transforms={1: [RollingMean(7, groupby=[groupby_col])]},
+        lag_transforms={1: [RollingMean(7, partition_by=[groupby_col])]},
         drop_auxiliary_columns=False,
     )
     fcst.fit(aux_cols_series, static_features=statics)
@@ -2751,7 +2710,7 @@ def test_drop_auxiliary_columns_predict_excludes_column(aux_cols_series):
         models={"rec": FeatureRecorder()},
         freq="D",
         lags=[1],
-        lag_transforms={1: [RollingMean(7, groupby=[groupby_col])]},
+        lag_transforms={1: [RollingMean(7, partition_by=[groupby_col])]},
     )
     fcst.fit(aux_cols_series, static_features=statics)
     fcst.predict(3)
@@ -2782,7 +2741,7 @@ def test_drop_auxiliary_columns_cross_validation(aux_cols_series):
         models={"rec": FeatureRecorder()},
         freq="D",
         lags=[1, 7],
-        lag_transforms={1: [RollingMean(7, groupby=[groupby_col])]},
+        lag_transforms={1: [RollingMean(7, partition_by=[groupby_col])]},
     )
     cv_result = fcst.cross_validation(aux_cols_series, n_windows=2, h=7, static_features=statics)
     assert cv_result is not None

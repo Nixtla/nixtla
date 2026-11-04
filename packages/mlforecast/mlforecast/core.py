@@ -207,6 +207,14 @@ def _validate_horizon_params(
     return None, None
 
 
+def _sort_partition_by(tfm: _BaseLagTransform) -> _BaseLagTransform:
+    tfm = copy.deepcopy(tfm)
+    for leaf in tfm._pooled_leaves():
+        if leaf.partition_by:
+            leaf.partition_by = sorted(leaf.partition_by)
+    return tfm
+
+
 def _parse_transforms(
     lags: Lags,
     lag_transforms: LagTransforms,
@@ -217,11 +225,23 @@ def _parse_transforms(
         namer = _build_transform_name
     for lag in lags:
         transforms[f"lag{lag}"] = Lag(lag)
+    seen_keys: Dict[str, Tuple[str, str]] = {}
     for lag in lag_transforms.keys():
         for tfm in lag_transforms[lag]:
             if isinstance(tfm, _BaseLagTransform):
                 tfm_name = namer(tfm, lag)
                 transforms[tfm_name] = copy.deepcopy(tfm)._set_core_tfm(lag)
+                default_name = _build_transform_name(tfm, lag)
+                prev_name, prev_default = seen_keys.setdefault(
+                    _build_transform_name(_sort_partition_by(tfm), lag),
+                    (tfm_name, default_name),
+                )
+                if prev_default != default_name:
+                    _warn(
+                        f"The lag transforms {prev_name} and {tfm_name} compute the "
+                        "same feature, since their partition_by only differ in "
+                        "column order. Please keep only one of them."
+                    )
             else:
                 tfm, *args = _as_tuple(tfm)
                 assert callable(tfm)
@@ -230,14 +250,30 @@ def _parse_transforms(
     return transforms
 
 
+def _resolve_static_features(
+    static_features: Optional[List[str]],
+    df_columns: Sequence[str],
+    id_col: str,
+    weight_col: Optional[str],
+) -> List[str]:
+    """The id followed by the listed static features."""
+    static_features = list(static_features or [])
+    missing = [c for c in static_features if c not in df_columns]
+    if missing:
+        raise ValueError(f"The static features {missing} are not in the data.")
+    if weight_col is not None and weight_col in static_features:
+        raise ValueError(f"The weight column '{weight_col}' can't be a static feature.")
+    return _dedupe_preserve_order([id_col, *static_features])
+
+
 def _static_feature_changes_over_time(start_series, end_series) -> bool:
     """Whether a static feature differs between each series' start and end.
 
     Backend-agnostic (narwhals) and null-safe: two missing values count as equal
-    (so an all-null static feature, e.g. a null groupby key, is not flagged as
-    changing), while a missing-vs-present pair counts as a change. Mirrors the
-    dtype-aware "missing" rule used for pooled bucket keys (null, plus NaN for
-    float dtypes).
+    (so an all-null static feature, e.g. a null partition_by key, is not flagged
+    as changing), while a missing-vs-present pair counts as a change. Mirrors
+    the dtype-aware "missing" rule used for pooled bucket keys (null, plus NaN
+    for float dtypes).
     """
     a = nw.from_native(start_series, series_only=True)
     b = nw.from_native(end_series, series_only=True)
@@ -372,45 +408,41 @@ class TimeSeries:
             if isinstance(tfm, _BaseLagTransform) and tfm._pooled_leaves()
         }
 
-    def _get_pooled_tfms(self) -> Dict[Tuple, List[_BaseLagTransform]]:
-        """Group every pooled leaf by its bucket definition.
+    def _get_pooled_tfms(self) -> Dict[Tuple[str, ...], List[_BaseLagTransform]]:
+        """Group every pooled leaf by its bucket columns.
 
-        Key structure: ``(mode, group_cols, partition_cols)``::
+        The key is the sorted tuple of bucket columns, e.g.::
 
-            ("global", (), ())                    -- pure global
-            ("groupby", ("brand",), ())           -- pure groupby
-            ("local", (), ("promo",))             -- local partition
-            ("nonlocal", (), ("promo",))          -- global+partition
-            ("nonlocal", ("brand",), ("promo",))  -- groupby+partition
+            ()                        -- global
+            ("brand",)                -- pooled within each brand
+            ("promo", "unique_id")    -- per series and promo
 
         ``time_agg`` is not part of it: it changes how a bucket's rows are
         summarised, not which rows are in it, so it is a view over the state.
         Leaves sharing a key share one `PooledState`, so the panel is
         aggregated once however many transforms read it.
         """
-        pooled: Dict[Tuple, List[_BaseLagTransform]] = {}
+        pooled: Dict[Tuple[str, ...], List[_BaseLagTransform]] = {}
         for tfm in self._get_pooled_features().values():
             for leaf in tfm._pooled_leaves():
-                pooled.setdefault(leaf._pooled_key, []).append(leaf)
+                pooled.setdefault(leaf._bucket_cols(), []).append(leaf)
         return pooled
 
-    def _leaf_cols(self, attr: str) -> List[str]:
-        cols: List[str] = []
-        for leaves in self._get_pooled_tfms().values():
-            for leaf in leaves:
-                for c in getattr(leaf, attr):
-                    if c not in cols:
-                        cols.append(c)
-        return cols
+    @property
+    def _key_cols(self) -> List[str]:
+        """Columns used by some pooled key, other than the id."""
+        return _dedupe_preserve_order(
+            c
+            for leaves in self._get_pooled_tfms().values()
+            for leaf in leaves
+            for c in leaf.partition_by or ()
+            if c != self.id_col
+        )
 
     @property
-    def _partition_cols(self) -> List[str]:
-        return self._leaf_cols("_pt_cols")
-
-    @property
-    def _pooled_aux_cols(self) -> List[str]:
-        group = self._leaf_cols("_gb_cols")
-        return group + [c for c in self._leaf_cols("_pt_cols") if c not in group]
+    def _pools_across_series(self) -> bool:
+        """Whether some pooled key mixes the rows of several series."""
+        return any(self.id_col not in key for key in self._pooled_states)
 
     @property
     def _future_input_cols(self) -> List[str]:
@@ -426,17 +458,8 @@ class TimeSeries:
     def _dynamic_key_cols(self) -> List[str]:
         statics = self.static_features_.columns
         return _dedupe_preserve_order(
-            c
-            for key in getattr(self, "_pooled_states", {})
-            for c in self._bucket_cols(key)
-            if c not in statics
+            c for key in self._pooled_states for c in key if c not in statics
         )
-
-    def _bucket_cols(self, key) -> List[str]:
-        """Columns whose values identify a bucket of the pooled `key`."""
-        mode, gcols, pcols = key
-        id_cols = [self.id_col] if mode == "local" else []
-        return [*id_cols, *gcols, *pcols]
 
     def _key_values(self, cols, frame, reps=None) -> List[np.ndarray]:
         """Values of pooled key columns: statics broadcast by `reps`, else `frame`'s."""
@@ -467,7 +490,7 @@ class TimeSeries:
         """
 
         def eval_leaf(leaf):
-            state = self._pooled_states[leaf._pooled_key]
+            state = self._pooled_states[leaf._bucket_cols()]
             if updates_only:
                 vals = state.update(leaf._pooled_kernel, leaf._pooled_inner)
                 return state.broadcast(vals)
@@ -556,10 +579,9 @@ class TimeSeries:
         for key, state in states.items():
             leaves = leaves_by_key.get(key, ())
             accumulators = [leaf for leaf in leaves if leaf._pooled_kernel.primes_state]
-            cols = self._bucket_cols(key)
             keys = [
                 k.reshape(n_series, n_new)
-                for k in self._key_values(cols, df, reps=np.full(n_series, n_new))
+                for k in self._key_values(key, df, reps=np.full(n_series, n_new))
             ]
             bids = np.zeros(n_series, dtype=np.int64)
             for j in range(n_new):
@@ -634,7 +656,7 @@ class TimeSeries:
                     # and the row kernels re-gather from the raw observations,
                     # so there is nothing to prime
                     continue
-                state = self._pooled_states[leaf._pooled_key]
+                state = self._pooled_states[leaf._bucket_cols()]
                 state.prime(kernel, leaf._pooled_inner)
         core_tfms = self._get_core_lag_tfms()
         if core_tfms:
@@ -891,6 +913,16 @@ class TimeSeries:
         self.weight_col = weight_col
         self.keep_last_n = keep_last_n
         self.static_features = static_features
+        if static_features is not None and id_col in static_features:
+            to_drop = [time_col, target_col]
+        else:
+            to_drop = [id_col, time_col, target_col]
+        if weight_col is not None:
+            to_drop.append(weight_col)
+        static_features = _resolve_static_features(
+            static_features, list(df.columns), id_col, weight_col
+        )
+        self._validate_pooled_keys(static_features)
         sorted_df = df[[id_col, time_col, target_col]]
         sorted_df = ufp.copy_if_pandas(sorted_df, deep=False)
         uids, times, data, indptr, self._sort_idxs = ufp.process_df(
@@ -929,23 +961,6 @@ class TimeSeries:
                     tfm.set_column_names(id_col, time_col, target_col)
                     sorted_df = tfm.fit_transform(sorted_df)
                     ga.data = sorted_df[target_col].to_numpy()
-        to_drop = [id_col, time_col, target_col]
-        if static_features is None:
-            partition_cols = self._partition_cols
-            static_features = [
-                c
-                for c in df.columns
-                if c not in [time_col, target_col]
-                and (c == id_col or c not in partition_cols)
-            ]
-        else:
-            if id_col not in static_features:
-                static_features = [id_col, *static_features]
-            else:
-                to_drop = [time_col, target_col]
-        if weight_col is not None:
-            to_drop.append(weight_col)
-            static_features = [f for f in static_features if f != weight_col]
         self.ga = ga
         series_starts = ga.indptr[:-1]
         series_ends = ga.indptr[1:] - 1
@@ -964,9 +979,7 @@ class TimeSeries:
             ):
                 raise ValueError(
                     f"{feat} is declared as a static feature but its values change "
-                    "over time. Please set the `static_features` argument to "
-                    "indicate which features are static.\nIf all of your features "
-                    "are dynamic please set `static_features=[]`."
+                    "over time. Please remove it from `static_features`."
                 )
         self.static_features_ = statics_on_ends
         raw_date_sources = self._dummy_date_sources
@@ -974,14 +987,7 @@ class TimeSeries:
             c for c in df.columns if c not in to_drop and c not in raw_date_sources
         ] + [f for f in self.features if f not in df.columns]
         if self.drop_auxiliary_columns is True:
-            to_exclude = set()
-            for lag_tfm in self.transforms.values():
-                if not isinstance(lag_tfm, _BaseLagTransform):
-                    continue
-                for col in getattr(lag_tfm, "groupby", None) or []:
-                    to_exclude.add(col)
-                for col in getattr(lag_tfm, "partition_by", None) or []:
-                    to_exclude.add(col)
+            to_exclude = set(self._key_cols)
         elif self.drop_auxiliary_columns is False:
             to_exclude = set()
         else:
@@ -995,11 +1001,49 @@ class TimeSeries:
         self._build_pooled_states(df, sorted_df, ga)
         return self
 
+    def _validate_pooled_keys(self, static_cols: List[str]) -> None:
+        """Checks on the pooled keys that need the id and the static columns."""
+        id_col = self.id_col
+        for name, tfm in self._get_pooled_features().items():
+            for leaf in tfm._pooled_leaves():
+                key = leaf._bucket_cols()
+                if id_col not in key:
+                    if leaf._requires_id_in_key:
+                        raise ValueError(
+                            f"{type(leaf).__name__}'s partition_by must include "
+                            f"'{id_col}'. Found in: {name}."
+                        )
+                    continue
+                if all(c in static_cols for c in key):
+                    raise ValueError(
+                        f"partition_by={leaf.partition_by} holds '{id_col}' and only "
+                        "static columns, so each bucket is a single series. Please "
+                        f"use {leaf._per_series_hint()} instead. Found in: {name}."
+                    )
+                if (
+                    leaf.time_agg is not None
+                    and leaf.time_agg not in leaf._per_series_time_aggs
+                ):
+                    raise ValueError(
+                        f"time_agg requires a partition_by without '{id_col}', "
+                        "since each (bucket, timestamp) has a single row. "
+                        f"Found in: {name}."
+                    )
+        for key, leaves in self._get_pooled_tfms().items():
+            if all(c in static_cols for c in key):
+                continue
+            for msg in _dedupe_preserve_order(
+                leaf._dynamic_key_warning
+                for leaf in leaves
+                if leaf._dynamic_key_warning is not None
+            ):
+                _warn(msg)
+
     def _build_pooled_states(self, df, sorted_df, ga) -> None:
         """Aggregate the panel into per-bucket channels, one state per key.
 
         Runs after the target transforms so the channels see the transformed
-        target, and after ``static_features_`` so ``groupby`` keys resolve.
+        target, and after ``static_features_`` so static key columns resolve.
         """
         self._pooled_states = {}
         pooled = self._get_pooled_tfms()
@@ -1019,9 +1063,7 @@ class TimeSeries:
         n_ordinals = int(row_ord.max()) + 1
         statics = self.static_features_
         row_cols = [
-            c
-            for c in self._pooled_aux_cols
-            if c in df.columns and c not in statics.columns
+            c for c in self._key_cols if c in df.columns and c not in statics.columns
         ]
         key_df = None
         if row_cols:
@@ -1030,29 +1072,17 @@ class TimeSeries:
                 key_df = ufp.take_rows(key_df, self._sort_idxs)
 
         for key, leaves in pooled.items():
-            mode, gcols, pcols = key
-            cols = self._bucket_cols(key)
-            if not pcols:
-                # a pure groupby bucket is broadcast from the statics at predict,
-                # so its key has to be static; with partition_by its dynamic
-                # columns are read per row from the frame
-                missing_static = [c for c in gcols if c not in statics.columns]
-                if missing_static:
-                    raise ValueError(
-                        "Groupby columns must be static features. "
-                        f"Missing from static_features: {missing_static}."
-                    )
             uniques = None
-            if all(c in statics.columns for c in cols):
-                if cols:
-                    series_bid, uniques = factorize(self._key_values(cols, None))
+            if all(c in statics.columns for c in key):
+                if key:
+                    series_bid, uniques = factorize(self._key_values(key, None))
                     n_buckets = len(uniques)
                 else:
                     series_bid = np.zeros(len(lens), dtype=np.int64)
                     n_buckets = 1
                 row_bid = np.repeat(series_bid, lens)
             else:
-                row_bid, uniques = factorize(self._key_values(cols, key_df, reps=lens))
+                row_bid, uniques = factorize(self._key_values(key, key_df, reps=lens))
                 n_buckets = len(uniques)
                 # seed with each series' assignment at its last observed
                 # timestamp; predict re-buckets every step
@@ -1061,6 +1091,7 @@ class TimeSeries:
             needs_rows = False
             for leaf in leaves:
                 leaf._pooled_kernel = get_kernel(leaf)
+                leaf._pooled_kernel.id_in_key = self.id_col in key
                 leaf._pooled_inner = leaf._pooled_kernel.make_inner()
                 if leaf._pooled_kernel.needs_rows:
                     # gathers the raw rows; a state of only these keeps no block
@@ -1070,9 +1101,7 @@ class TimeSeries:
                         base_channels(leaf._pooled_kernel.channels, leaf.time_agg)
                     )
             state = PooledState.build(
-                mode=mode,
-                group_cols=list(gcols),
-                partition_cols=list(pcols),
+                key_cols=list(key),
                 bucket_id_by_row=row_bid,
                 ordinal_by_row=row_ord,
                 y=y,
@@ -1462,7 +1491,7 @@ class TimeSeries:
     ) -> Union[DFType, Tuple[DFType, np.ndarray]]:
         """Add the features to `data` and save the required information for the predictions step.
 
-        If not all features are static, specify which ones are in `static_features`.
+        Features that are constant for each serie must be listed in `static_features`, the rest are dynamic.
         If you don't want to drop rows with null values after the transformations set `dropna=False`
         If `keep_last_n` is not None then that number of observations is kept across all series for updates.
 
@@ -1522,7 +1551,8 @@ class TimeSeries:
             id_col: Column that identifies each serie.
             time_col: Column that identifies each timestep.
             target_col: Column that contains the target.
-            static_features: Names of the features that are static.
+            static_features: Names of the features that are constant for each
+                serie. Other columns are dynamic.
             keep_last_n: Keep only these many records from each serie. When
                 None it's inferred from the transforms, like in `fit_transform`.
             weight_col: Column that contains the sample weights.
@@ -1767,25 +1797,24 @@ class TimeSeries:
         """One row per series from ``X_df`` for the current horizon step (``self._h``)."""
         n_series = len(self.uids)
         h = X_df.shape[0] // n_series
-        row_offset = min(self._h, h - 1)
-        rows = np.arange(row_offset, X_df.shape[0], h)
+        rows = np.arange(self._h, X_df.shape[0], h)
         return ufp.drop_index_if_pandas(ufp.take_rows(X_df, rows))
 
     def _update_partition_assignments(self, X_df):
-        """Re-bucket every series for the current step from its partitioned keys.
+        """Re-bucket every series for the current step from its dynamic keys.
 
         Returns the sliced ``X_row`` (one row per series for this step) so
         ``_get_features_for_next_step`` can reuse it, or ``None`` when no key
         was read from it.
         """
         X_row = None
-        for key, state in getattr(self, "_pooled_states", {}).items():
-            _, _, pcols = key
-            if not pcols:
+        statics = self.static_features_.columns
+        for key, state in self._pooled_states.items():
+            if all(c in statics for c in key):
                 continue
             if X_row is None and X_df is not None:
                 X_row = self._current_step_rows(X_df)
-            keys = self._key_values(self._bucket_cols(key), X_row)
+            keys = self._key_values(key, X_row)
             assert state.bucket_uniques is not None
             state.set_series_bucket_id(lookup(keys, state.bucket_uniques))
         return X_row
@@ -2124,13 +2153,12 @@ class TimeSeries:
         ids: Optional[List[str]] = None,
         model_span: Callable[[str, Any], ContextManager[_SpanResult]] = _no_model_span,
     ) -> DFType:
-        if ids is not None:
-            has_nonlocal = any(mode != "local" for mode, _, _ in self._pooled_states)
-            if has_nonlocal:
-                raise ValueError(
-                    "Cannot use `ids` with global, group, or nonlocal partition lag transforms. "
-                    "These transforms require forecasting all series together."
-                )
+        if ids is not None and self._pools_across_series:
+            raise ValueError(
+                "Cannot use `ids` with pooled lag transforms whose partition_by "
+                f"doesn't include '{self.id_col}'. These transforms require "
+                "forecasting all series together."
+            )
         self._check_aligned_ends()
         if ids is not None:
             unseen = set(ids) - set(self.uids)
@@ -2147,7 +2175,9 @@ class TimeSeries:
                 raise ValueError(
                     "X_df is required for prediction because future values are needed "
                     "for feature generation or model inputs used during training: "
-                    f"{sorted(required_future_cols)}."
+                    f"{sorted(required_future_cols)}. If some of these columns are "
+                    "constant for each series, list them in `static_features` when "
+                    "fitting."
                 )
         with self._maybe_subset(idxs):
             # invalidate the per-predict statics cache in _predict_setup
@@ -2169,7 +2199,7 @@ class TimeSeries:
                         "The following columns were provided through X_df but were considered "
                         f"static during fit and will be ignored: {common}. "
                         "If any of these columns should vary over the forecast horizon, refit "
-                        "with static_features=[] or exclude them from static_features."
+                        "without them in static_features."
                     )
                 required_future_cols = set(self._future_input_cols)
                 missing = sorted(required_future_cols - set(dynamics))
@@ -2191,20 +2221,13 @@ class TimeSeries:
                 X_df = ufp.join(X_df, dates_validation, on=self.id_col)
                 mask = ufp.between(X_df[self.time_col], X_df["_start"], X_df["_end"])
                 X_df = ufp.filter_with_mask(X_df, mask)
-                if X_df.shape[0] < len(self.uids):
-                    msg = (
-                        "Found missing inputs in X_df. "
-                        "It should have at least one row per id.\n"
+                if X_df.shape[0] < expected_rows_X:
+                    raise ValueError(
+                        f"Found missing inputs in X_df. It has {X_df.shape[0]} rows "
+                        f"but {expected_rows_X} are expected for horizon {horizon}, "
+                        "one per id and timestamp.\n"
                         "You can get the expected structure by running `MLForecast.make_future_dataframe(h)` "
                         "or get the missing combinations in your current `X_df` by running `MLForecast.get_missing_future(h, X_df)`."
-                    )
-                    raise ValueError(msg)
-                # Warn if partial features provided
-                if X_df.shape[0] < expected_rows_X:
-                    _warn(
-                        f"X_df has {X_df.shape[0]} rows but {expected_rows_X} expected for horizon {horizon}. "
-                        "Features will be reused for missing horizon steps. "
-                        "Use `make_future_dataframe(h)` or `get_missing_future(h, X_df)` to generate complete features."
                     )
                 drop_cols = [self.id_col, self.time_col, "_start", "_end"] + common
                 X_df = ufp.sort(X_df, [self.id_col, self.time_col])

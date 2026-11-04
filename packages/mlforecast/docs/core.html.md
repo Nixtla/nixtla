@@ -26,8 +26,8 @@ columns:
 * `ds` with the datestamp and a column
 * `y` with the values of theserie
 
-Every other column is considered a static feature unless stated
-otherwise in `TimeSeries.fit`
+Extra columns are dynamic features unless they're listed in the
+`static_features` argument of `TimeSeries.fit_transform`.
 
 ```python
 series = generate_daily_series(20, n_static_features=2)
@@ -152,7 +152,7 @@ flow_config = dict(
 )
 
 ts = TimeSeries(**flow_config)
-_ = ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y')
+_ = ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y', static_features=['static_0', 'static_1'])
 ```
 
 The series values are stored as a GroupedArray in an attribute `ga`. If
@@ -180,19 +180,10 @@ predictions start from the last date + the frequency.
 test_eq(ts.last_dates, series.groupby('unique_id', observed=True)['ds'].max().values)
 ```
 
-The last row of every serie without the `y` and `ds` columns are taken
-as static features.
-
-```python
-pd.testing.assert_frame_equal(
-    ts.static_features_,
-    series.groupby('unique_id', observed=True).tail(1).drop(columns=['ds', 'y']).reset_index(drop=True),
-)
-```
-
-If you pass `static_features` to
+The columns passed in `static_features` to
 [`TimeSeries.fit_transform`](https://Nixtla.github.io/mlforecast/core.html#timeseries.fit_transform)
-then only these are kept.
+are taken from the last row of every serie and repeated when predicting.
+Every other column is dynamic.
 
 ```python
 ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y', static_features=['static_0'])
@@ -222,7 +213,7 @@ the lag 1 and so on.
 keep_last_n = 15
 
 ts = TimeSeries(**flow_config)
-df = ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y', keep_last_n=keep_last_n)
+df = ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y', keep_last_n=keep_last_n, static_features=['static_0', 'static_1'])
 ts._predict_setup()
 
 expected_lags = ['lag7', 'lag14']
@@ -263,7 +254,7 @@ class DummyModel:
 horizon = 7
 model = DummyModel()
 ts = TimeSeries(**flow_config)
-ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y')
+ts.fit_transform(series, id_col='unique_id', time_col='ds', target_col='y', static_features=['static_0', 'static_1'])
 predictions = ts.predict({'DummyModel': model}, horizon)
 
 grouped_series = series.groupby('unique_id', observed=True)

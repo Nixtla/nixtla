@@ -54,52 +54,58 @@ For a worked walkthrough of all of the above, including the `Combine` /
 the [Lag transformations](./docs/how-to-guides/lag_transforms_guide.html)
 how-to guide.
 
-## Pooled mode: `global_`, `groupby`, and `partition_by`
+## Pooled mode: `global_` and `partition_by`
 
 Every built-in rolling, expanding, seasonal-rolling, and exponentially weighted
-transform accepts three pooling parameters that let you compute the statistic
-across **multiple series at once**:
+transform, as well as `LookupLag`, accepts two parameters that let you compute
+the statistic across **multiple series at once**:
 
 - **`global_: bool`** — when `True`, the statistic is computed across **all
   series** aggregated by timestamp. Every series receives the same feature
   value at each timestamp.
-- **`groupby: Sequence[str]`** — column names to group by before computing the
-  statistic. Columns must be declared as static features when calling
-  `fit` / `preprocess`, unless the transform also sets `partition_by` and the
-  column is left out of an explicit `static_features`; such columns may vary
-  over time and must be supplied via `X_df` and in `update`. Series in the same group share the feature value at
-  each timestamp; series in different groups get different values.
-- **`partition_by: Sequence[str]`** — column names to partition further along
-  a **dynamic** (time-varying) key, such as `promo` or `regime`. Each unique
-  combination of partition values gets its own bucket. Composes with `global_`
-  (cross-series aggregates within each partition), with `groupby` (group
-  aggregates within each partition), or stands alone (per-(id, partition)
-  buckets — *local* mode). Dynamic partition columns must be supplied via
-  `X_df` at prediction and in `update`; static ones are taken from the static features.
+- **`partition_by: Sequence[str]`** — the columns whose values define the
+  buckets the statistic is computed over. The id column is written out when
+  the buckets should stay within each series:
+  - `partition_by=["brand"]` pools the series of each brand, so series of the
+    same brand share the feature value at each timestamp.
+  - `partition_by=["unique_id", "promo"]` splits each series by `promo`, e.g.
+    the mean of the last promo days of that series.
+  - `partition_by=["brand", "promo"]` pools the series of each brand
+    separately for each `promo` value.
 
-`global_` and `groupby` are **mutually exclusive** on the same transform.
-`partition_by` composes with either one or stands alone. All pooled modes
-require every series to **end at the same timestamp**, including local
-`partition_by`.
+  The order of the columns doesn't matter. Columns not listed in
+  `static_features` may vary over time and must be supplied via `X_df` at
+  prediction and in `update`; static ones are taken from the static features.
+
+`global_` and `partition_by` can't be used together, `global_=True` is the
+empty key. A few keys are rejected when fitting: `partition_by=["unique_id"]`
+alone and the id together with only static columns, since both are the
+per-series transform, and a `LookupLag` key without the id. `time_agg` requires
+a key without the id. All pooled modes require every series to **end at the
+same timestamp**.
 
 **RANGE semantics.** Pooled transforms use SQL-style
 `RANGE BETWEEN ... PRECEDING` windows over actual timestamps, not row
 positions. Series with staggered starts simply do not contribute to the window
 until they have observations — no synthetic zeros are injected. Pooled mode
 assumes a **continuous, gap-free time grid** within each series; combining
-`validate_data=False` with a pooled transform raises a `UserWarning`. For
-`partition_by`, ordinals come from the **parent calendar** (global or group
-scope for nonlocal modes, per-id for local mode), so a partition bucket with
-gaps still preserves RANGE window semantics across those gaps rather than
-collapsing to row-based behavior.
+`validate_data=False` with a pooled transform raises a `UserWarning`. Ordinals
+come from the shared calendar of all series, so a bucket with gaps still
+preserves RANGE window semantics across those gaps rather than collapsing to
+row-based behavior.
 
-**`min_samples` divergence.** In local (per-series) mode, `min_samples` is
-capped at `window_size` by `coreforecast`. In pooled mode, `min_samples`
-counts **total non-NaN observations across all series** in the bucket within
-the rolling window, with no capping. This makes it useful as a coverage
-threshold: `RollingMean(window_size=1, min_samples=2, groupby=["brand"])`
-produces a non-null value only at timestamps where at least two series in the
-brand contribute observations.
+**`min_samples` divergence.** Per series, `min_samples` is capped at
+`window_size` by `coreforecast`. In pooled mode, `min_samples` counts **total
+non-NaN observations across all series** in the bucket within the rolling
+window, with no capping. This makes it useful as a coverage threshold:
+`RollingMean(window_size=1, min_samples=2, partition_by=["brand"])` produces a
+non-null value only at timestamps where at least two series in the brand
+contribute observations. When the id is in `partition_by`, `min_samples`
+defaults to 1 instead of `window_size`, since a bucket then holds the
+observations of a single series. This also applies to keys like
+`["unique_id", "store"]` where `store` is constant but not listed in
+`static_features`: the key is treated as dynamic and re-bucketed every step,
+which gives the same values.
 
 See the [Pooled lag transforms](./docs/how-to-guides/pooled_lag_transforms.html)
 how-to guide for end-to-end examples.

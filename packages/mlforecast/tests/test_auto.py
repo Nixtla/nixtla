@@ -107,7 +107,7 @@ def test_automlforecast_weight_col(weekly_data):
     h = info.horizon
     season_length = info.seasonality
 
-    train['weights'] = 1
+    train = train.assign(weights=1)
 
     auto_ridge = AutoModel(
         Ridge(),
@@ -336,7 +336,7 @@ def test_automlforecast_refit_false_with_grouped_expanding_mean(grouped_expandin
     def init_config(trial):  # noqa: ARG001
         return {
             "lags": [1],
-            "lag_transforms": {1: [ExpandingMean(groupby=["cat_code"])]},
+            "lag_transforms": {1: [ExpandingMean(partition_by=["cat_code"])]},
         }
 
     def fit_config(trial):  # noqa: ARG001

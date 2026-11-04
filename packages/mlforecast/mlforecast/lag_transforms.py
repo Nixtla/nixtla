@@ -24,7 +24,7 @@ __all__ = [
 import copy
 import inspect
 import re
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence, Tuple
 
 import coreforecast.lag_transforms as core_tfms
 import numpy as np
@@ -62,36 +62,9 @@ def _normalize_columns(columns):
 
 
 # Allowed per-timestamp aggregations for the pooled ``time_agg`` option. Defined
-# here (not in pooled.py) so ``_validate_time_agg`` can run at construction time
-# without importing pooled.py, which imports this module (avoids a cycle).
+# here (not in pooled.py) so they can be validated at construction time without
+# importing pooled.py, which imports this module (avoids a cycle).
 _TIME_AGGS = ("sum", "count", "mean", "min", "max")
-
-
-def _validate_time_agg(time_agg, global_, groupby, *, allow_none=True, scope_exempt=()):
-    """Validate a ``time_agg`` value at construction time.
-
-    ``allow_none`` and ``scope_exempt`` encode per-transform policy:
-    ``ExponentiallyWeightedMean`` rejects ``None`` (its update rule is
-    inherently a per-timestamp bucket-mean pass) and exempts ``"mean"`` from
-    the pooled-scope requirement.
-    """
-    if time_agg is None:
-        if allow_none:
-            return
-        raise ValueError(
-            "This transform does not accept time_agg=None; use "
-            'time_agg="mean" for its bucket-mean update rule.'
-        )
-    if time_agg not in _TIME_AGGS:
-        allowed = f"one of {_TIME_AGGS}" + (" or None" if allow_none else "")
-        raise ValueError(f"time_agg must be {allowed}; got {time_agg!r}.")
-    if time_agg not in scope_exempt and not (global_ or groupby):
-        raise ValueError(
-            "time_agg requires a pooled aggregation scope: set global_=True or "
-            "groupby=[...] (optionally combined with partition_by). In local or "
-            "partition_by-only mode each (bucket, timestamp) has a single row, so "
-            "time_agg would be a no-op."
-        )
 
 
 class _BaseLagTransform(BaseEstimator):
@@ -101,9 +74,61 @@ class _BaseLagTransform(BaseEstimator):
     # wrappers (Offset/Combine), so the pooled properties are always safe to
     # read.
     global_: bool = False
-    groupby: Optional[Sequence[str]] = None
-    partition_by: Optional[Sequence[str]] = None
+    partition_by: Optional[List[str]] = None
     time_agg: Optional[str] = None
+    # time_agg values allowed when the key holds a single series per bucket
+    _per_series_time_aggs: Tuple[str, ...] = ()
+    _requires_id_in_key: bool = False
+    # warned at fit when the key has a dynamic column
+    _dynamic_key_warning: Optional[str] = None
+
+    def _per_series_hint(self) -> str:
+        """The transform to use instead of a key with the id and only statics."""
+        if getattr(self, "min_samples", 0) is None:
+            return "the transform with min_samples=1 and without partition_by"
+        return "the transform without partition_by"
+
+    def _init_pooled_scope(
+        self,
+        global_: bool,
+        partition_by: Optional[Sequence[str]],
+        time_agg: Optional[str],
+        min_samples: Optional[int] = None,
+        allow_none: bool = True,
+    ) -> None:
+        self.global_ = global_
+        self.partition_by = _normalize_columns(partition_by)
+        self.time_agg = time_agg
+        if partition_by is not None and self.partition_by is None:
+            raise ValueError(
+                "partition_by can't be empty. Please use `global_=True` to pool "
+                "all the series."
+            )
+        if self.global_ and self.partition_by:
+            raise ValueError(
+                "`global_` and `partition_by` can't be used together; "
+                "`global_=True` is the empty key."
+            )
+        if time_agg is None:
+            if not allow_none:
+                raise ValueError(
+                    "This transform does not accept time_agg=None; use "
+                    'time_agg="mean" for its bucket-mean update rule.'
+                )
+        else:
+            if time_agg not in _TIME_AGGS:
+                allowed = f"one of {_TIME_AGGS}" + (" or None" if allow_none else "")
+                raise ValueError(f"time_agg must be {allowed}; got {time_agg!r}.")
+            if time_agg not in self._per_series_time_aggs and not self._is_pooled:
+                raise ValueError(
+                    "time_agg requires a pooled scope: set global_=True or "
+                    "partition_by=[...]."
+                )
+        if min_samples == 0 and self._is_pooled:
+            _warn(
+                "min_samples=0 with pooled transforms (global_/partition_by) "
+                "produces NaN for timestamps with no observations in the window."
+            )
 
     def _get_init_signature(self):
         return {
@@ -117,8 +142,6 @@ class _BaseLagTransform(BaseEstimator):
     def _set_core_tfm(self, lag: int) -> "_BaseLagTransform":
         init_args = {k: getattr(self, k) for k in self._get_init_signature()}
         init_args.pop("global_", None)
-        init_args.pop("global", None)
-        init_args.pop("groupby", None)
         init_args.pop("partition_by", None)
         init_args.pop("time_agg", None)
         # resolved along the class hierarchy, so a subclass keeps its parent's
@@ -136,55 +159,40 @@ class _BaseLagTransform(BaseEstimator):
 
     def _get_name(self, lag: int) -> str:
         init_params = self._get_init_signature()
-        prefix = ""
-        groupby = getattr(self, "groupby", None)
-        partition_by = getattr(self, "partition_by", None)
-        if getattr(self, "global_", False):
-            prefix = "global_"
-        elif groupby:
-            group_str = "__".join(groupby)
-            prefix = f"groupby_{group_str}_"
-        if partition_by:
-            part_str = "__".join(partition_by)
-            prefix += f"partby_{part_str}_"
-        result = f"{prefix}{_pascal2camel(self.__class__.__name__)}_lag{lag}"
+        result = (
+            f"{self._scope_prefix}{_pascal2camel(self.__class__.__name__)}_lag{lag}"
+        )
         changed_params = [
             f"{name}{getattr(self, name)}"
             for name, arg in init_params.items()
             if arg.default != getattr(self, name)
-            and name not in {"global_", "groupby", "partition_by"}
+            and name not in {"global_", "partition_by"}
         ]
         if changed_params:
             result += "_" + "_".join(changed_params)
         return result
 
     @property
-    def _gb_cols(self) -> List[str]:
-        return list(self.groupby or [])
-
-    @property
-    def _pt_cols(self) -> List[str]:
-        return list(self.partition_by or [])
+    def _scope_prefix(self) -> str:
+        if self.global_:
+            return "global_"
+        if self.partition_by:
+            return f"partby_{'__'.join(self.partition_by)}_"
+        return ""
 
     @property
     def _is_pooled(self) -> bool:
-        return bool(self.global_ or self._gb_cols or self._pt_cols)
+        return bool(self.global_ or self.partition_by)
 
-    @property
-    def _pooled_mode(self) -> str:
-        if self._pt_cols:
-            return "local" if not (self.global_ or self._gb_cols) else "nonlocal"
-        return "global" if self.global_ else "groupby"
+    def _bucket_cols(self) -> Tuple[str, ...]:
+        """Columns identifying a bucket, sorted so the order doesn't matter.
 
-    @property
-    def _pooled_key(self):
-        """Leaves sharing this key share one `PooledState`.
-
+        Leaves with the same bucket columns share one `PooledState`.
         `time_agg` is deliberately absent: it changes how a bucket's rows are
         summarised, not which rows are in it, so it is a cached view over the
         same store rather than a separate one.
         """
-        return (self._pooled_mode, tuple(self._gb_cols), tuple(self._pt_cols))
+        return tuple(sorted(self.partition_by or ()))
 
     def _pooled_leaves(self) -> List["_BaseLagTransform"]:
         """The pooled transforms this one is built from (itself, if pooled)."""
@@ -295,19 +303,18 @@ class LookupLag(_BaseLagTransform):
     """Look up the target from a previous matching occurrence.
 
     The lag value is provided by the ``lag_transforms`` dictionary key. For
-    example, ``lag_transforms={1: [LookupLag(partition_by=["holiday_name"])]}``
+    example,
+    ``lag_transforms={1: [LookupLag(partition_by=["unique_id", "holiday_name"])]}``
     returns the previous target value observed within each
     ``(unique_id, holiday_name)`` bucket.
 
-    ``partition_by`` is required: it defines the matching buckets and is what
-    makes this a lookup rather than a plain :class:`Lag`. Like other pooled
-    transforms, the partition columns may vary over time; dynamic ones must be supplied
-    via ``X_df`` at prediction and in ``update``.
-
     Args:
-        partition_by (Sequence[str]): Column names used to define the
-            matching buckets within each series. Required.
+        partition_by (Sequence[str]): Columns that define the matching buckets.
+            Must include the id column. Columns not listed in ``static_features``
+            must be supplied via ``X_df`` at prediction and in ``update``.
     """
+
+    _requires_id_in_key = True
 
     def __init__(
         self,
@@ -321,16 +328,15 @@ class LookupLag(_BaseLagTransform):
             )
         self._core_tfm = None
 
+    def _per_series_hint(self) -> str:
+        return "`Lag`"
+
     def _set_core_tfm(self, lag: int) -> "LookupLag":
         self._core_tfm = core_tfms.Lag(lag=lag)
         return self
 
     def _get_name(self, lag: int) -> str:
-        prefix = ""
-        if self.partition_by:
-            part_str = "__".join(self.partition_by)
-            prefix = f"partby_{part_str}_"
-        return f"{prefix}lookup_lag{lag}"
+        return f"{self._scope_prefix}lookup_lag{lag}"
 
     @property
     def update_samples(self) -> int:
@@ -357,85 +363,38 @@ class _RollingBase(_BaseLagTransform):
         window_size: int,
         min_samples: Optional[int] = None,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
         """
         Args:
             window_size (int): Number of samples in the window.
             min_samples (int, optional): Minimum samples required to output the statistic.
-                If `None`, will be set to `window_size`, except in local partition mode
-                (``partition_by`` without ``global_``/``groupby``), where it will be set
-                to 1. Defaults to None.
-                In local (per-series) mode, ``min_samples`` is capped at ``window_size``
-                by coreforecast.  In pooled mode (``global_=True``, ``groupby`` or
-                ``partition_by``), ``min_samples`` counts total non-NaN observations
-                across **all series** in the bucket within the rolling window, with no
-                capping.  For example, ``RollingMean(window_size=1, min_samples=2,
-                groupby=["brand"])`` produces a non-null result at timestamps where at
-                least 2 series in the brand group contribute observations.
-                With ``partition_by``, the window spans ``window_size`` parent-calendar
-                steps while only same-partition observations count toward
-                ``min_samples``, so requiring a full window is rarely attainable in
-                local partition mode; its default of 1 matches SQL RANGE-window
-                semantics (NULL only for empty windows). When ``partition_by`` is
-                combined with ``global_`` or ``groupby``, the default remains
-                ``window_size``, counted across all series in the (group, partition)
-                bucket.
-                When ``time_agg`` is set, ``min_samples`` instead counts observed
-                **timestamps** in the window (each contributes at most one aggregated
-                value), not rows.
+                If `None`, will be set to 1 when the id column is in ``partition_by`` and
+                to `window_size` otherwise. Defaults to None.
+                Per series, ``min_samples`` is capped at ``window_size`` by coreforecast.
+                In pooled transforms it counts the non-NaN observations of **all series**
+                in the bucket within the window, with no capping. When ``time_agg`` is
+                set, it counts observed **timestamps** in the window instead.
             global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
                 Requires all series to end at the same timestamp. Defaults to False.
-            groupby (Sequence[str], optional): Column names to group by before computing the statistic.
-                Columns must be static features unless ``partition_by`` is set, in which case columns left
-                out of an explicit ``static_features`` may vary over time and must be supplied via ``X_df``
-                at prediction and in ``update``. Mutually exclusive with `global_`. Defaults to None.
-            partition_by (Sequence[str], optional): Column names to partition by.
-                Each unique combination of partition values creates a separate bucket.
-                Unlike ``groupby``, partition columns may vary over time; dynamic ones must be
-                supplied via ``X_df`` at prediction and in ``update``. Composes with ``global_`` (cross-series
-                aggregates within each partition), ``groupby`` (group aggregates within each
-                partition), or stands alone (per-(id, partition) buckets, *local* mode).
-                See the Pooled lag transforms guide for details. Defaults to None.
-            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within
-                each bucket into a single value before applying the transform, e.g.
-                ``RollingMean(window_size=7, groupby=["category"], time_agg="sum")`` is a
+            partition_by (Sequence[str], optional): Columns whose values define the buckets the
+                statistic is computed over, e.g. ``["brand"]`` pools the series of each brand
+                and ``["unique_id", "promo"]`` splits each series by promo. Columns not listed
+                in ``static_features`` may vary over time and must be supplied via ``X_df`` at
+                prediction and in ``update``. Can't be combined with ``global_``. See the
+                Pooled lag transforms guide for details. Defaults to None.
+            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within each
+                bucket into a single value before applying the transform, e.g.
+                ``RollingMean(window_size=7, partition_by=["category"], time_agg="sum")`` is a
                 rolling mean of the category's daily sums. One of ``"sum"``, ``"count"``,
-                ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or ``groupby``
-                (raises ``ValueError`` otherwise, since local/partition-only modes have a
-                single row per (bucket, timestamp) and the aggregation would be an
-                identity). Defaults to None, which treats each row as an individual
-                pooled sample.
+                ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or a ``partition_by``
+                without the id column. Defaults to None, which treats each row as an
+                individual pooled sample.
         """
-        if "global" in kwargs:
-            global_ = kwargs.pop("global")
-        if "groupby" in kwargs:
-            groupby = kwargs.pop("groupby")
-        if "partition_by" in kwargs:
-            partition_by = kwargs.pop("partition_by")
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.window_size = window_size
         self.min_samples = min_samples
-        self.global_ = global_
-        self.groupby = _normalize_columns(groupby)
-        self.partition_by = _normalize_columns(partition_by)
-        self.time_agg = time_agg
-        if self.global_ and self.groupby:
-            raise ValueError("`global_` and `groupby` can't be used together.")
-        _validate_time_agg(time_agg, self.global_, self.groupby)
-        if (
-            min_samples is not None
-            and min_samples == 0
-            and (self.global_ or self.groupby or self.partition_by)
-        ):
-            _warn(
-                "min_samples=0 with pooled transforms (global_/groupby/partition_by) "
-                "produces NaN for timestamps with no observations in the window."
-            )
+        self._init_pooled_scope(global_, partition_by, time_agg, min_samples)
 
     @property
     def update_samples(self) -> int:
@@ -464,7 +423,7 @@ class RollingQuantile(_RollingBase):
     """Rolling quantile.
 
     Note:
-        In pooled modes (``global_``/``groupby``/``partition_by``) this
+        In pooled modes (``global_``/``partition_by``) this
         transform has no aggregate-cache fast path: it falls back to a
         row-level pass whose cost grows with ``unique timestamps x bucket
         rows`` at fit, and aggregates are rebuilt at every recursive
@@ -477,19 +436,15 @@ class RollingQuantile(_RollingBase):
         window_size: int,
         min_samples: Optional[int] = None,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
         super().__init__(
             window_size=window_size,
             min_samples=min_samples,
             global_=global_,
-            groupby=groupby,
             partition_by=partition_by,
             time_agg=time_agg,
-            **kwargs,
         )
         self.p = p
 
@@ -512,82 +467,40 @@ class _Seasonal_RollingBase(_BaseLagTransform):
         window_size: int,
         min_samples: Optional[int] = None,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
         """
         Args:
             season_length (int): Periodicity of the seasonal period.
             window_size (int): Number of samples in the window.
             min_samples (int, optional): Minimum samples required to output the statistic.
-                If `None`, will be set to `window_size`, except in local partition mode
-                (``partition_by`` without ``global_``/``groupby``), where it will be set
-                to 1. Defaults to None.
-                In local (per-series) mode, ``min_samples`` is capped at ``window_size``
-                by coreforecast.  In pooled mode (``global_=True``, ``groupby`` or
-                ``partition_by``), ``min_samples`` counts total non-NaN observations
-                across **all series** in the bucket within the rolling window, with no
-                capping.  For example, ``SeasonalRollingMean(season_length=7,
-                window_size=1, min_samples=2, groupby=["brand"])`` produces a non-null
-                result at the target seasonal timestamp when at least 2 series in the
-                brand group contribute observations.
-                With ``partition_by``, the window targets ``window_size`` seasonal
-                steps of the parent calendar while only same-partition observations
-                count toward ``min_samples``, so requiring a full window is rarely
-                attainable in local partition mode; its default of 1 matches SQL
-                RANGE-window semantics (NULL only for empty windows). When
-                ``partition_by`` is combined with ``global_`` or ``groupby``, the
-                default remains ``window_size``, counted across all series in the
-                (group, partition) bucket.
-                When ``time_agg`` is set, ``min_samples`` instead counts observed
-                **timestamps** in the window, not rows.
+                If `None`, will be set to 1 when the id column is in ``partition_by`` and
+                to `window_size` otherwise. Defaults to None.
+                Per series, ``min_samples`` is capped at ``window_size`` by coreforecast.
+                In pooled transforms it counts the non-NaN observations of **all series**
+                in the bucket within the window, with no capping. When ``time_agg`` is
+                set, it counts observed **timestamps** in the window instead.
             global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
                 Requires all series to end at the same timestamp. Defaults to False.
-            groupby (Sequence[str], optional): Column names to group by before computing the statistic.
-                Columns must be static features unless ``partition_by`` is set, in which case columns left
-                out of an explicit ``static_features`` may vary over time and must be supplied via ``X_df``
-                at prediction and in ``update``. Mutually exclusive with `global_`. Defaults to None.
-            partition_by (Sequence[str], optional): Column names to partition by.
-                Each unique combination of partition values creates a separate bucket.
-                Unlike ``groupby``, partition columns may vary over time; dynamic ones must be
-                supplied via ``X_df`` at prediction and in ``update``. Composes with ``global_`` (cross-series
-                aggregates within each partition), ``groupby`` (group aggregates within each
-                partition), or stands alone (per-(id, partition) buckets, *local* mode).
-                See the Pooled lag transforms guide for details. Defaults to None.
-            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within
-                each bucket into a single value before applying the transform. One of
-                ``"sum"``, ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Requires
-                ``global_`` or ``groupby``. Defaults to None.
+            partition_by (Sequence[str], optional): Columns whose values define the buckets the
+                statistic is computed over, e.g. ``["brand"]`` pools the series of each brand
+                and ``["unique_id", "promo"]`` splits each series by promo. Columns not listed
+                in ``static_features`` may vary over time and must be supplied via ``X_df`` at
+                prediction and in ``update``. Can't be combined with ``global_``. See the
+                Pooled lag transforms guide for details. Defaults to None.
+            time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within each
+                bucket into a single value before applying the transform, e.g.
+                ``RollingMean(window_size=7, partition_by=["category"], time_agg="sum")`` is a
+                rolling mean of the category's daily sums. One of ``"sum"``, ``"count"``,
+                ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or a ``partition_by``
+                without the id column. Defaults to None, which treats each row as an
+                individual pooled sample.
         """
-        if "global" in kwargs:
-            global_ = kwargs.pop("global")
-        if "groupby" in kwargs:
-            groupby = kwargs.pop("groupby")
-        if "partition_by" in kwargs:
-            partition_by = kwargs.pop("partition_by")
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.season_length = season_length
         self.window_size = window_size
         self.min_samples = min_samples
-        self.global_ = global_
-        self.groupby = _normalize_columns(groupby)
-        self.partition_by = _normalize_columns(partition_by)
-        self.time_agg = time_agg
-        if self.global_ and self.groupby:
-            raise ValueError("`global_` and `groupby` can't be used together.")
-        _validate_time_agg(time_agg, self.global_, self.groupby)
-        if (
-            min_samples is not None
-            and min_samples == 0
-            and (self.global_ or self.groupby or self.partition_by)
-        ):
-            _warn(
-                "min_samples=0 with pooled transforms (global_/groupby/partition_by) "
-                "produces NaN for timestamps with no observations in the window."
-            )
+        self._init_pooled_scope(global_, partition_by, time_agg, min_samples)
 
     @property
     def update_samples(self) -> int:
@@ -616,7 +529,7 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
     """Seasonal rolling quantile.
 
     Note:
-        In pooled modes (``global_``/``groupby``/``partition_by``) this
+        In pooled modes (``global_``/``partition_by``) this
         transform has no aggregate-cache fast path: a quantile can't be
         recovered from the cached channels, so it falls back to a row-level
         pass whose cost grows with ``unique timestamps x bucket rows``. Can be
@@ -630,20 +543,16 @@ class SeasonalRollingQuantile(_Seasonal_RollingBase):
         window_size: int,
         min_samples: Optional[int] = None,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
         super().__init__(
             season_length=season_length,
             window_size=window_size,
             min_samples=min_samples,
             global_=global_,
-            groupby=groupby,
             partition_by=partition_by,
             time_agg=time_agg,
-            **kwargs,
         )
         self.p = p
 
@@ -654,46 +563,28 @@ class _ExpandingBase(_BaseLagTransform):
     Args:
         global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
             Requires all series to end at the same timestamp. Defaults to False.
-        groupby (Sequence[str], optional): Column names to group by before computing the statistic.
-            Columns must be static features unless ``partition_by`` is set, in which case columns left
-            out of an explicit ``static_features`` may vary over time and must be supplied via ``X_df``
-            at prediction and in ``update``. Mutually exclusive with `global_`. Defaults to None.
-        partition_by (Sequence[str], optional): Column names to partition by.
-            Each unique combination of partition values creates a separate bucket.
-            Unlike ``groupby``, partition columns may vary over time; dynamic ones must be
-            supplied via ``X_df`` at prediction and in ``update``. Composes with ``global_`` (cross-series
-            aggregates within each partition), ``groupby`` (group aggregates within each
-            partition), or stands alone (per-(id, partition) buckets, *local* mode).
-            See the Pooled lag transforms guide for details. Defaults to None.
+        partition_by (Sequence[str], optional): Columns whose values define the buckets the
+            statistic is computed over, e.g. ``["brand"]`` pools the series of each brand
+            and ``["unique_id", "promo"]`` splits each series by promo. Columns not listed
+            in ``static_features`` may vary over time and must be supplied via ``X_df`` at
+            prediction and in ``update``. Can't be combined with ``global_``. See the
+            Pooled lag transforms guide for details. Defaults to None.
         time_agg (str, optional): Pre-aggregate all rows sharing a timestamp within each
-            bucket into a single value before applying the transform. One of ``"sum"``,
-            ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or
-            ``groupby``. Defaults to None.
+            bucket into a single value before applying the transform, e.g.
+            ``RollingMean(window_size=7, partition_by=["category"], time_agg="sum")`` is a
+            rolling mean of the category's daily sums. One of ``"sum"``, ``"count"``,
+            ``"mean"``, ``"min"``, ``"max"``. Requires ``global_`` or a ``partition_by``
+            without the id column. Defaults to None, which treats each row as an
+            individual pooled sample.
     """
 
     def __init__(
         self,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
-        if "global" in kwargs:
-            global_ = kwargs.pop("global")
-        if "groupby" in kwargs:
-            groupby = kwargs.pop("groupby")
-        if "partition_by" in kwargs:
-            partition_by = kwargs.pop("partition_by")
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
-        self.global_ = global_
-        self.groupby = _normalize_columns(groupby)
-        self.partition_by = _normalize_columns(partition_by)
-        self.time_agg = time_agg
-        if self.global_ and self.groupby:
-            raise ValueError("`global_` and `groupby` can't be used together.")
-        _validate_time_agg(time_agg, self.global_, self.groupby)
+        self._init_pooled_scope(global_, partition_by, time_agg)
 
     @property
     def update_samples(self) -> int:
@@ -726,7 +617,7 @@ class ExpandingQuantile(_ExpandingBase):
     """Expanding quantile.
 
     Note:
-        In pooled modes (``global_``/``groupby``/``partition_by``) this
+        In pooled modes (``global_``/``partition_by``) this
         transform has no aggregate-cache fast path: it falls back to a
         row-level pass whose cost grows with ``unique timestamps x bucket
         rows`` at fit, and aggregates are rebuilt at every recursive
@@ -737,17 +628,13 @@ class ExpandingQuantile(_ExpandingBase):
         self,
         p: float,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: Optional[str] = None,
-        **kwargs,
     ):
         super().__init__(
             global_=global_,
-            groupby=groupby,
             partition_by=partition_by,
             time_agg=time_agg,
-            **kwargs,
         )
         self.p = p
 
@@ -769,65 +656,38 @@ class ExponentiallyWeightedMean(_BaseLagTransform):
         alpha (float): Smoothing factor.
         global_ (bool): If True, compute the statistic across all series aggregated by timestamp.
             Requires all series to end at the same timestamp. Defaults to False.
-        groupby (Sequence[str], optional): Column names to group by before computing the statistic.
-            Columns must be static features unless ``partition_by`` is set, in which case columns left
-            out of an explicit ``static_features`` may vary over time and must be supplied via ``X_df``
-            at prediction and in ``update``. Mutually exclusive with `global_`. Defaults to None.
-        partition_by (Sequence[str], optional): Column names to partition by.
-            Each unique combination of partition values creates a separate bucket.
-            Unlike ``groupby``, partition columns may vary over time; dynamic ones must be
-            supplied via ``X_df`` at prediction and in ``update``. Composes with ``global_`` (cross-series
-            aggregates within each partition), ``groupby`` (group aggregates within each
-            partition), or stands alone (per-(id, partition) buckets, *local* mode).
-            See the Pooled lag transforms guide for details. Defaults to None.
+        partition_by (Sequence[str], optional): Columns whose values define the buckets the
+            statistic is computed over, e.g. ``["brand"]`` pools the series of each brand
+            and ``["unique_id", "promo"]`` splits each series by promo. Columns not listed
+            in ``static_features`` may vary over time and must be supplied via ``X_df`` at
+            prediction and in ``update``. Can't be combined with ``global_``. See the
+            Pooled lag transforms guide for details. Defaults to None.
         time_agg (str): Pre-aggregate all rows sharing a timestamp within each
             bucket into a single value before applying the transform. One of ``"sum"``,
             ``"count"``, ``"mean"``, ``"min"``, ``"max"``. Values other than
-            ``"mean"`` require ``global_`` or ``groupby``. Defaults to ``"mean"``,
-            which matches EWM's bucket-mean update rule: each timestamp contributes
-            its bucket aggregate mean exactly once, regardless of how many rows
-            aggregated there. ``None`` is not accepted.
+            ``"mean"`` require ``global_`` or a ``partition_by`` without the id column.
+            Defaults to ``"mean"``, which matches EWM's bucket-mean update rule: each
+            timestamp contributes its bucket aggregate mean exactly once, regardless
+            of how many rows aggregated there. ``None`` is not accepted.
     """
+
+    _per_series_time_aggs = ("mean",)
+    _dynamic_key_warning = (
+        "Partitioned EWM skips timestamps where the partition bucket has no "
+        "observations and applies decay only across observed bucket aggregates. "
+        "Each observed timestamp contributes its aggregate mean once, regardless "
+        "of how many rows were aggregated at that timestamp."
+    )
 
     def __init__(
         self,
         alpha: float,
         global_: bool = False,
-        groupby: Optional[Sequence[str]] = None,
         partition_by: Optional[Sequence[str]] = None,
         time_agg: str = "mean",
-        **kwargs,
     ):
-        if "global" in kwargs:
-            global_ = kwargs.pop("global")
-        if "groupby" in kwargs:
-            groupby = kwargs.pop("groupby")
-        if "partition_by" in kwargs:
-            partition_by = kwargs.pop("partition_by")
-        if kwargs:
-            raise TypeError(f"Unexpected keyword arguments: {list(kwargs)}")
         self.alpha = alpha
-        self.global_ = global_
-        self.groupby = _normalize_columns(groupby)
-        self.partition_by = _normalize_columns(partition_by)
-        self.time_agg = time_agg
-        if self.global_ and self.groupby:
-            raise ValueError("`global_` and `groupby` can't be used together.")
-        _validate_time_agg(
-            time_agg,
-            self.global_,
-            self.groupby,
-            allow_none=False,
-            scope_exempt=("mean",),
-        )
-        if self.partition_by:
-            _warn(
-                "Partitioned EWM skips timestamps where the partition bucket "
-                "has no observations and applies decay only across observed "
-                "bucket aggregates. Each observed timestamp contributes its "
-                "aggregate mean once, regardless of how many rows were "
-                "aggregated at that timestamp."
-            )
+        self._init_pooled_scope(global_, partition_by, time_agg, allow_none=False)
 
     @property
     def update_samples(self) -> int:
@@ -853,10 +713,9 @@ class Offset(_BaseLagTransform):
     def __init__(self, tfm: _BaseLagTransform, n: int):
         self.tfm = tfm
         self.n = n
-        self.global_ = getattr(tfm, "global_", False)
-        self.groupby = getattr(tfm, "groupby", None)
-        self.partition_by = getattr(tfm, "partition_by", None)
-        # time_agg is intentionally not mirrored (unlike the mode attributes
+        self.global_ = tfm.global_
+        self.partition_by = tfm.partition_by
+        # time_agg is intentionally not mirrored (unlike the scope attributes
         # above, nothing reads it on the wrapper): the delegated hooks apply
         # the inner transform's own re-aggregation.
 
@@ -913,28 +772,16 @@ class Combine(_BaseLagTransform):
         self.tfm1 = tfm1
         self.tfm2 = tfm2
         self.operator = operator
-        global_1 = getattr(tfm1, "global_", False)
-        global_2 = getattr(tfm2, "global_", False)
-        groupby_1 = getattr(tfm1, "groupby", None)
-        groupby_2 = getattr(tfm2, "groupby", None)
-        if global_1 != global_2:
+        if (tfm1._is_pooled, tfm1._bucket_cols()) != (
+            tfm2._is_pooled,
+            tfm2._bucket_cols(),
+        ):
             raise ValueError(
-                "Can't combine transforms with different global_ settings."
+                "Can't combine transforms with different global_/partition_by settings."
             )
-        if (groupby_1 or groupby_2) and groupby_1 != groupby_2:
-            raise ValueError(
-                "Can't combine transforms with different groupby settings."
-            )
-        self.global_ = global_1
-        self.groupby = groupby_1
-        partition_by_1 = getattr(tfm1, "partition_by", None)
-        partition_by_2 = getattr(tfm2, "partition_by", None)
-        if (partition_by_1 or partition_by_2) and partition_by_1 != partition_by_2:
-            raise ValueError(
-                "Can't combine transforms with different partition_by settings."
-            )
-        self.partition_by = partition_by_1
-        # time_agg needs no reconciliation: it doesn't affect the pooled mode key,
+        self.global_ = tfm1.global_
+        self.partition_by = tfm1.partition_by
+        # time_agg needs no reconciliation: it doesn't affect the bucket key,
         # and each inner transform applies its own re-aggregation at hook entry, so
         # mixing (e.g. rolling mean of sums / rolling mean of means) is intentional.
 
