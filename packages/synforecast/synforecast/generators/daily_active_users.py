@@ -175,6 +175,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
     ) -> list[SeriesMetadata]:
         """Draw independent DAU series with their event indicators."""
         all_metadata: list[SeriesMetadata] = []
+        plan = self._overlay_plan(self.max_length)
 
         for i in range(n_series):
             length = self.rng.integers(self.min_length, self.max_length + 1)
@@ -185,7 +186,7 @@ class DailyActiveUsersGenerator(BaseGenerator):
 
             pi_seeds = self._draw_pi_seeds(1)[0]
             values, cp_indices, anom_indices, miss_indices = (
-                self._apply_pattern_injection(values, pi_seeds)
+                self._apply_pattern_injection(values, pi_seeds, plan)
             )
 
             all_metadata.append(

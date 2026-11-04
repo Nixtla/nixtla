@@ -203,39 +203,146 @@ Defined on `BaseGenerator` (`synforecast/base.py`) and accepted by every generat
 | `innovation_params` | `None` | Distribution parameters, e.g. `{"df": 5}` for `t` (df > 2), `{"alpha": 5}` for `skew_normal` |
 | `exogenous` | `None` | `ExogenousConfig` for exogenous variable generation (pattern flags, datetime features, correlated columns) |
 
-### Missing data injection
+### Overlays
 
-| Parameter | Default | Description |
+`overlays` takes an `OverlayConfig` (from `synforecast` or `synforecast.overlays`) with one optional spec per stage; `None` switches a stage off. Stages run on every series in a fixed order, inside the native kernel on every generation path (native batch, per-series Python path, `SynSet`, and generators with their own generation scheme):
+
+base weight → calendar → waveform → changepoints → anomalies → observation → missing
+
+- Relative magnitudes (`scale="relative"`) are in standard deviations of the untouched base series, measured once before any stage.
+- Each stage draws from its own stream of the series' seeds, so switching one stage on never moves another, and no stage advances the generator's own random stream. With every stage off, draws are those of the generator alone.
+- Multiplicative calendar and waveform stages need a non-negative series (zeros stay zero); `fallback` decides what happens on series with negative values.
+- `generate_with_states` applies every stage to the observations and leaves the states clean. `Multivariatizer(apply_overlays=True)` draws the wrapped generator's overlays on each coupled channel.
+
+```python
+from synforecast import Anomalies, Calendar, CalendarCycle, Missing, OverlayConfig
+from synforecast.generators import RandomWalkGenerator
+
+gen = RandomWalkGenerator(
+    min_length=24 * 28, max_length=24 * 28, freq="h", seed=1,
+    overlays=OverlayConfig(
+        calendar=Calendar(cycles=[
+            CalendarCycle(phase="day", harmonics=3),
+            CalendarCycle(phase="week", profile="levels", weight=0.5),
+        ], amplitude=3.0),
+        anomalies=Anomalies(types=["spike"], fraction=0.01, scale="relative"),
+        missing=Missing(rate=0.05),
+    ),
+)
+```
+
+| `OverlayConfig` field | Default | Description |
 |-----------|---------|-------------|
-| `missing_data` | `False` | Enable missing data patterns |
-| `missing_pattern` | `"random"` | Pattern: `random`, `block`, `seasonal` |
-| `missing_rate` | `0.1` | Proportion of missing values (0-1) |
-| `missing_block_size` | `3` | Size of missing blocks for `block` pattern |
-| `missing_seasonal_period` | `7` | Period for `seasonal` pattern |
+| `base_weight` | `1.0` | Weight of the base series around its mean before any other stage; small values let a calendar or waveform dominate, 0 leaves them exact |
+| `calendar` | `None` | `Calendar`: timestamp-aligned periodic profiles |
+| `waveform` | `None` | `Waveform`: a sharp-edged template with its period in steps |
+| `changepoints` | `None` | `Changepoints`: structural breaks |
+| `anomalies` | `None` | `Anomalies`: spikes, dips and level shifts |
+| `observation` | `None` | `Observation`: saturation, quantization, sample-and-hold, frozen readings |
+| `missing` | `None` | `Missing`: missing values as NaN |
 
-### Anomaly injection
+#### Calendar cycles
 
-| Parameter | Default | Description |
+`Calendar(cycles=[...])` combines one or more `CalendarCycle`s as their weighted mean (each normalized to peak 1). Phases follow the timestamps the generator emits (UTC for an offset-aware start). A cycle needs at least two steps per period.
+
+| `Calendar` field | Default | Description |
 |-----------|---------|-------------|
-| `anomalies` | `False` | Enable anomaly injection |
-| `anomaly_fraction` | `0.05` | Fraction of points that are anomalies |
-| `anomaly_types` | `["spike", "dip"]` | Types: `spike`, `dip`, `level_shift` |
-| `spike_magnitude` | `10.0` | Magnitude of spikes |
-| `dip_magnitude` | `-10.0` | Magnitude of dips |
-| `level_shift_magnitude` | `20.0` | Magnitude of level shifts |
-| `level_shift_duration` | `10` | Duration of level shifts in time steps |
+| `cycles` | required | One or more `CalendarCycle` |
+| `mode` | `"additive"` | `additive` adds `amplitude` times the profile; `multiplicative` scales a non-negative series by `1 + swing * profile` |
+| `amplitude` | `1.0` | Additive peak (standard deviations of the base series with `scale="relative"`) |
+| `swing` | `0.3` | Multiplicative peak as a fraction of the level, below 1 |
+| `scale` | `"relative"` | Units of `amplitude` |
+| `fallback` | `"additive"` | Multiplicative on a series with negative values: `additive` or `none` (unchanged) |
+| `on_unsupported` | `"warn"` | A cycle that cannot show at `freq`: `warn` or `skip` drops it, `raise` fails |
 
-### Changepoint injection
-
-| Parameter | Default | Description |
+| `CalendarCycle` field | Default | Description |
 |-----------|---------|-------------|
-| `changepoints` | `False` | Enable changepoint injection |
-| `num_changepoints` | `2` | Number of changepoints |
-| `changepoint_type` | `"level"` | Type: `level`, `trend`, `variance`, `mixed` |
-| `changepoint_level_changes` | `None` | Size of level changes (random when `None`) |
-| `changepoint_trend_changes` | `None` | Size of trend changes (random when `None`) |
-| `changepoint_variance_changes` | `None` | Size of variance changes (random when `None`) |
-| `changepoint_locations` | `None` | Relative positions 0-1 (random when `None`) |
+| `phase` | required | `day` (time of day, needs a step under 12 hours), `week` (day and time of week, needs a step of at most 3.5 days; real weekdays, so `B` works), `year` (month and time of year, aligned to calendar months; works at `D`, `W`, `MS`, `QS`), `step` (every `period` steps; works with integer `freq`) |
+| `profile` | `"fourier"` | `fourier` (smooth, `harmonics` harmonics) or `levels` (one level per bin) |
+| `harmonics` | `3` | Harmonics of a Fourier profile (1-12) |
+| `bins` | `None` | Bins of a levels profile; defaults to 24 (day), 7 (week), 12 (year) or `period` (step) |
+| `period` | `None` | Cycle length in steps, for `phase="step"` only |
+| `values` | `None` | Fixed profile: `2 * harmonics` Fourier coefficients (cosines, then sines) or one value per bin. Random profiles draw coefficients N(0, 1/k) or levels N(0, 1) per series |
+| `jitter` | `0.0` | Per-series normal noise added to fixed `values` |
+| `weight` | `1.0` | Weight in the calendar's weighted mean |
+
+#### Waveform
+
+| `Waveform` field | Default | Description |
+|-----------|---------|-------------|
+| `shape` | `"pulse"` | `pulse`, `spike`, `sawtooth`, `trapezoid`, `levels` (jump to a random other level each cycle) or `staircase` (a one-level step in a persistent direction each cycle) |
+| `period` | `96` | Cycle length in steps; mean dwell for `levels` and `staircase` |
+| `duty` | `0.1` | On-fraction of a cycle for `pulse` and `trapezoid` |
+| `width` | `1` | Spike width in steps |
+| `ramp` | `0.25` | Trapezoid ramp per side, as a fraction of the on-time |
+| `levels` | `4` | Number of levels for `levels` and `staircase` |
+| `timing` | `"periodic"` | `periodic` (random phase), `jitter` (each start moved by N(0, `jitter` × period)), `renewal` (on and off durations drawn from `renewal`) |
+| `jitter` | `0.05` | Cycle-start jitter as a fraction of the period |
+| `renewal` | `"gamma"` | `gamma` or `lognormal` renewal durations |
+| `cv` | `0.5` | Coefficient of variation of renewal durations |
+| `direction` | `"peak"` | `peak` or `dip` |
+| `mode` | `"additive"` | `additive` or `multiplicative` (non-negative series) |
+| `amplitude` | `3.0` | Additive peak (standard deviations of the base series with `scale="relative"`) |
+| `swing` | `0.5` | Multiplicative peak; at most 1 for dips |
+| `scale` | `"relative"` | Units of `amplitude` |
+| `fallback` | `"additive"` | As for `Calendar` |
+
+#### Changepoints, anomalies and missing data
+
+| `Changepoints` field | Default | Description |
+|-----------|---------|-------------|
+| `count` | `2` | Number of breaks |
+| `kind` | `"level"` | `level`, `trend`, `variance`, `mixed` |
+| `locations` | `None` | Relative positions 0-1 (U(0.1, 0.9) when `None`) |
+| `level_changes` | `None` | Level jumps (U(-20, 20), or U(-3, 3) standard deviations when relative) |
+| `trend_changes` | `None` | Slope changes (U(-0.5, 0.5); when relative, a total drift of U(-3, 3) standard deviations over the rest of the series) |
+| `variance_changes` | `None` | Positive factors on the deviation from a rolling mean (U(0.5, 2)) |
+| `scale` | `"absolute"` | `absolute` or `relative` |
+
+| `Anomalies` field | Default | Description |
+|-----------|---------|-------------|
+| `types` | `["spike", "dip"]` | Non-empty subset of `spike`, `dip`, `level_shift` |
+| `fraction` | `0.05` | Share of steps that start an anomaly |
+| `spike_magnitude` | `10.0` | Size of a spike |
+| `dip_magnitude` | `-10.0` | Size of a dip |
+| `level_shift_magnitude` | `20.0` | Size of a level shift |
+| `level_shift_duration` | `10` | Steps a level shift lasts |
+| `scale` | `"absolute"` | `absolute` or `relative` |
+
+| `Missing` field | Default | Description |
+|-----------|---------|-------------|
+| `pattern` | `"random"` | `random`, `block`, `seasonal` |
+| `rate` | `0.1` | Share of missing steps |
+| `block_size` | `3` | Run length for `block` |
+| `seasonal_period` | `7` | Period for `seasonal` |
+
+#### Observation
+
+Missing values stay missing and never spread.
+
+| `Observation` field | Default | Description |
+|-----------|---------|-------------|
+| `floor` | `None` | Saturation floor, as a fraction of the way from the series' minimum (0) to its maximum (1) |
+| `cap` | `None` | Saturation cap on the same scale; above `floor` |
+| `quantum` | `0.0` | Value-grid step in standard deviations of the series entering this stage; 0 disables it |
+| `hold` | `1` | Sample-and-hold block in steps; 1 disables it |
+| `stuck_fraction` | `0.0` | Share of steps inside windows where the reading freezes |
+| `stuck_length` | `20` | Mean frozen-window length in steps |
+
+#### Deprecated flat arguments
+
+The released flat arguments still work, warn with a `DeprecationWarning`, and draw exactly what the matching `OverlayConfig` draws. Reading them from a generator also warns.
+
+| Flat argument | `OverlayConfig` equivalent |
+|-----------|---------|
+| `missing_data=True`, `missing_pattern`, `missing_rate`, `missing_block_size`, `missing_seasonal_period` | `missing=Missing(pattern, rate, block_size, seasonal_period)` |
+| `anomalies=True`, `anomaly_types`, `anomaly_fraction`, `spike_magnitude`, `dip_magnitude`, `level_shift_magnitude`, `level_shift_duration` | `anomalies=Anomalies(types, fraction, spike_magnitude, dip_magnitude, level_shift_magnitude, level_shift_duration)` |
+| `changepoints=True`, `num_changepoints`, `changepoint_type`, `changepoint_locations`, `changepoint_level_changes`, `changepoint_trend_changes`, `changepoint_variance_changes` | `changepoints=Changepoints(count, kind, locations, level_changes, trend_changes, variance_changes)` |
+| `overlay_scale` | `scale=` on `Changepoints` and `Anomalies` |
+
+#### Pretraining priors
+
+`pretraining_overlays(rng)` draws heavy-tailed innovations and relative changepoints, anomalies and missing data; `calendar_overlays(rng)` a calendar (time of day with 1-5 harmonics, and a weekday profile with weekend contrast in 70% of draws); `observability_overlays(rng)` a waveform and observation configuration (clean, mild or layered). `pretraining_pool(overlay_seed=..., calendar_rate=..., observability_rate=...)` applies them per built entry, each from its own `(overlay_seed, index)` stream, so `members=` stays consistent and rates of 0 leave pools unchanged.
 
 Per-generator sections below list only generator-specific parameters.
 

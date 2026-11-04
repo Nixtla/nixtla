@@ -1,6 +1,7 @@
 """Base classes for time series generators."""
 
 import os
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -19,8 +20,8 @@ from pydantic import (
     model_validator,
 )
 
-from ._core import _add_anomalies, _add_changepoints, _add_missingness
 from ._lib import batch as _rs_batch
+from ._lib import overlays as _rs_ov
 from .exogenous import (
     ExogenousConfig,
     SeriesMetadata,
@@ -28,10 +29,24 @@ from .exogenous import (
     extract_datetime_features,
     generate_correlated_exog,
 )
+from .overlays import (
+    LEGACY_DEFAULTS,
+    OverlayConfig,
+    absorb_legacy_kwargs,
+    cycle_phase,
+    cycle_supported,
+    legacy_value,
+)
 
 # Match Rayon's own default: all logical cores.
 # Override with RAYON_NUM_THREADS (e.g. when running inside multiprocessing.Pool).
 _default_n_workers: int = int(os.environ.get("RAYON_NUM_THREADS", os.cpu_count() or 1))
+
+# The native batch kernels take a plan even when no overlay is on.
+_NO_OVERLAYS = _rs_ov.OverlayPlan({"base_weight": 1.0})
+
+# Sentinel: build the overlay plan inside _apply_pattern_injection.
+_PLAN_PER_CALL: Any = object()
 
 # Mapping from generator class names to Rust batch type IDs.
 # Must match the constants in rust/src/batch.rs.
@@ -160,32 +175,12 @@ class BaseGenerator(BaseModel, ABC):
         exogenous (ExogenousConfig | None): Configuration for exogenous variable
             generation. None = no exogenous columns (default: None)
 
-        Missingness parameters:
-        missing_data (bool): Enable missing data patterns (default: False)
-        missing_pattern (str): Pattern: 'random', 'block', 'seasonal' (default: 'random')
-        missing_rate (float): Proportion of missing values 0-1 (default: 0.1)
-        missing_block_size (int): Size of missing blocks for 'block' pattern (default: 3)
-        missing_seasonal_period (int): Period for 'seasonal' pattern (default: 7)
-
-        Anomaly parameters:
-        anomalies (bool): Enable anomaly injection (default: False)
-        anomaly_fraction (float): Fraction of points that are anomalies (default: 0.05)
-        anomaly_types (list[str]): Types: 'spike', 'dip', 'level_shift'
-            (default: ['spike', 'dip'])
-        spike_magnitude (float): Magnitude of spikes (default: 10.0)
-        dip_magnitude (float): Magnitude of dips (default: -10.0)
-        level_shift_magnitude (float): Magnitude of level shifts (default: 20.0)
-        level_shift_duration (int): Duration of level shifts in time steps (default: 10)
-
-        Changepoint parameters:
-        changepoints (bool): Enable changepoint injection (default: False)
-        num_changepoints (int): Number of changepoints (default: 2)
-        changepoint_type (str): Type: 'level', 'trend', 'variance', 'mixed' (default: 'level')
-        changepoint_level_changes (list[float] | None): Size of level changes (default: random)
-        changepoint_trend_changes (list[float] | None): Size of trend changes (default: random)
-        changepoint_variance_changes (list[float] | None): Size of variance changes
-            (default: random)
-        changepoint_locations (list[float] | None): Relative positions 0-1 (default: random)
+        Overlay parameters:
+        overlays (OverlayConfig): Calendar cycles, waveforms, changepoints,
+            anomalies, observation effects and missing data drawn on every
+            series, in that order (default: none). The flat missing_*,
+            anomaly_*, changepoint_* and overlay_scale arguments still work
+            but are deprecated.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
@@ -241,59 +236,13 @@ class BaseGenerator(BaseModel, ABC):
         description="Configuration for exogenous variable generation",
     )
 
-    # Missingness parameters
-    missing_data: bool = Field(
-        default=False, description="Enable missing data patterns"
-    )
-    missing_pattern: Literal["random", "block", "seasonal"] = Field(
-        default="random", description="Missing data pattern"
-    )
-    missing_rate: float = Field(
-        default=0.1, ge=0, le=1, description="Proportion of missing values"
-    )
-    missing_block_size: int = Field(
-        default=3, ge=1, description="Size of missing blocks for 'block' pattern"
-    )
-    missing_seasonal_period: int = Field(
-        default=7, ge=1, description="Period for 'seasonal' pattern"
-    )
-
-    # Anomaly parameters
-    anomalies: bool = Field(default=False, description="Enable anomaly injection")
-    anomaly_fraction: float = Field(
-        default=0.05, ge=0, le=1, description="Fraction of points that are anomalies"
-    )
-    anomaly_types: list[str] = Field(
-        default=["spike", "dip"], description="Types of anomalies to inject"
-    )
-    spike_magnitude: float = Field(default=10.0, description="Magnitude of spikes")
-    dip_magnitude: float = Field(default=-10.0, description="Magnitude of dips")
-    level_shift_magnitude: float = Field(
-        default=20.0, description="Magnitude of level shifts"
-    )
-    level_shift_duration: int = Field(
-        default=10, ge=1, description="Duration of level shifts in time steps"
-    )
-
-    # Changepoint parameters
-    changepoints: bool = Field(
-        default=False, description="Enable changepoint injection"
-    )
-    num_changepoints: int = Field(default=2, ge=0, description="Number of changepoints")
-    changepoint_type: Literal["level", "trend", "variance", "mixed"] = Field(
-        default="level", description="Type of changepoint"
-    )
-    changepoint_level_changes: list[float] | None = Field(
-        default=None, description="Size of level changes"
-    )
-    changepoint_trend_changes: list[float] | None = Field(
-        default=None, description="Size of trend changes"
-    )
-    changepoint_variance_changes: list[float] | None = Field(
-        default=None, description="Size of variance changes"
-    )
-    changepoint_locations: list[float] | None = Field(
-        default=None, description="Relative positions 0-1"
+    # Overlays drawn on every series
+    overlays: OverlayConfig = Field(
+        default_factory=OverlayConfig,
+        description=(
+            "Calendar cycles, waveforms, changepoints, anomalies, observation "
+            "effects and missing data, applied in that order"
+        ),
     )
 
     # Runtime state is private: it is not configuration and must not appear in
@@ -329,17 +278,11 @@ class BaseGenerator(BaseModel, ABC):
             ) from e
         return v
 
-    @field_validator("anomaly_types")
+    @model_validator(mode="before")
     @classmethod
-    def validate_anomaly_types(cls, v: list[str]) -> list[str]:
-        """Validate anomaly types."""
-        valid_anomaly_types = {"spike", "dip", "level_shift"}
-        for anomaly_type in v:
-            if anomaly_type not in valid_anomaly_types:
-                raise ValueError(
-                    f"anomaly_type must be one of {valid_anomaly_types}, got '{anomaly_type}'"
-                )
-        return v
+    def _absorb_legacy_overlays(cls, data: Any) -> Any:
+        """Move deprecated flat overlay arguments into ``overlays``."""
+        return absorb_legacy_kwargs(data, stacklevel=4)
 
     @model_validator(mode="after")
     def validate_and_compute_fields(self) -> "BaseGenerator":
@@ -373,17 +316,6 @@ class BaseGenerator(BaseModel, ABC):
             if not df > 2:
                 raise ValueError("innovation_params['df'] must be > 2")
 
-        if self.changepoint_locations is not None and any(
-            not np.isfinite(location) or not 0.0 <= location <= 1.0
-            for location in self.changepoint_locations
-        ):
-            raise ValueError("changepoint_locations must contain values in [0, 1]")
-        if self.changepoint_variance_changes is not None and any(
-            not np.isfinite(change) or change <= 0
-            for change in self.changepoint_variance_changes
-        ):
-            raise ValueError("changepoint_variance_changes must be positive")
-
         if self.exogenous is not None:
             reserved = set(columns)
             if self.exogenous.anomaly_flags:
@@ -403,6 +335,23 @@ class BaseGenerator(BaseModel, ABC):
 
         self._start_datetime = pd.Timestamp(self.start_datetime_str)
         self._rng = np.random.default_rng(self.seed)
+
+        calendar = self.overlays.calendar
+        if calendar is not None:
+            unsupported = [
+                cycle.phase
+                for cycle in calendar.cycles
+                if not cycle_supported(cycle, self.freq, self._start_datetime)
+            ]
+            if unsupported:
+                message = (
+                    f"calendar cycles {unsupported} cannot show at freq "
+                    f"{self.freq!r} (a cycle needs two steps per period) and are skipped"
+                )
+                if calendar.on_unsupported == "raise":
+                    raise ValueError(message)
+                if calendar.on_unsupported == "warn":
+                    warnings.warn(message, UserWarning, stacklevel=3)
 
         if self.alias is None:
             object.__setattr__(self, "alias", self.__class__.__name__)
@@ -538,173 +487,132 @@ class BaseGenerator(BaseModel, ABC):
         """
         return None
 
-    def _build_pi_config_dict(self) -> dict:
-        """Build pattern injection config dict for Rust batch functions."""
-        cfg: dict = {
-            "changepoints": self.changepoints,
-            "num_changepoints": self.num_changepoints,
-            "changepoint_type": self.changepoint_type,
-            "anomalies": self.anomalies,
-            "anomaly_types": self.anomaly_types,
-            "anomaly_fraction": self.anomaly_fraction,
-            "spike_magnitude": self.spike_magnitude,
-            "dip_magnitude": self.dip_magnitude,
-            "level_shift_magnitude": self.level_shift_magnitude,
-            "level_shift_duration": self.level_shift_duration,
-            "missing_data": self.missing_data,
-            "missing_pattern": self.missing_pattern,
-            "missing_rate": self.missing_rate,
-            "missing_block_size": self.missing_block_size,
-            "missing_seasonal_period": self.missing_seasonal_period,
-        }
-        if self.changepoint_locations is not None:
-            cfg["changepoint_locations"] = self.changepoint_locations
-        if self.changepoint_level_changes is not None:
-            cfg["changepoint_level_changes"] = self.changepoint_level_changes
-        if self.changepoint_trend_changes is not None:
-            cfg["changepoint_trend_changes"] = self.changepoint_trend_changes
-        if self.changepoint_variance_changes is not None:
-            cfg["changepoint_variance_changes"] = self.changepoint_variance_changes
-        return cfg
+    def _overlay_plan_dict(self, length: int) -> dict | None:
+        """Overlay plan for the native executor covering series up to ``length`` steps, or None with every stage off."""
+        config = self.overlays
+        if not config.active:
+            return None
+        plan: dict[str, Any] = {"base_weight": config.base_weight}
+        cp = config.changepoints
+        # Zero breaks draw nothing, as before.
+        if cp is not None and cp.count > 0:
+            plan["changepoints"] = {
+                "count": cp.count,
+                "kind": cp.kind,
+                "locations": cp.locations or [],
+                "level_changes": cp.level_changes or [],
+                "trend_changes": cp.trend_changes or [],
+                "variance_changes": cp.variance_changes or [],
+                "relative": cp.scale == "relative",
+            }
+        an = config.anomalies
+        if an is not None:
+            plan["anomalies"] = {
+                "types": list(an.types),
+                "fraction": an.fraction,
+                "spike_magnitude": an.spike_magnitude,
+                "dip_magnitude": an.dip_magnitude,
+                "level_shift_magnitude": an.level_shift_magnitude,
+                "level_shift_duration": an.level_shift_duration,
+                "relative": an.scale == "relative",
+            }
+        miss = config.missing
+        if miss is not None:
+            plan["missing"] = {
+                "pattern": miss.pattern,
+                "rate": miss.rate,
+                "block_size": miss.block_size,
+                "seasonal_period": miss.seasonal_period,
+            }
+        calendar = config.calendar
+        if calendar is not None:
+            cycles = [
+                cycle
+                for cycle in calendar.cycles
+                if cycle_supported(cycle, self.freq, self.start_datetime)
+            ]
+            if cycles:
+                timestamps = (
+                    None
+                    if all(cycle.phase == "step" for cycle in cycles)
+                    else self._timestamps(length)
+                )
+                plan["calendar"] = {
+                    "cycles": [
+                        {
+                            "profile": cycle.profile,
+                            "harmonics": cycle.harmonics,
+                            "bins": cycle.n_bins,
+                            "values": cycle.values,
+                            "jitter": cycle.jitter,
+                            "weight": cycle.weight,
+                            "phase": cycle_phase(cycle, timestamps, length),
+                        }
+                        for cycle in cycles
+                    ],
+                    "mode": calendar.mode,
+                    "amplitude": calendar.amplitude,
+                    "swing": calendar.swing,
+                    "relative": calendar.scale == "relative",
+                    "fallback_additive": calendar.fallback == "additive",
+                }
+        wave = config.waveform
+        if wave is not None:
+            plan["waveform"] = {
+                **wave.model_dump(exclude={"scale", "fallback"}),
+                "relative": wave.scale == "relative",
+                "fallback_additive": wave.fallback == "additive",
+            }
+        if config.observation is not None:
+            plan["observation"] = config.observation.model_dump()
+        return plan
 
-    def _add_missingness(
-        self, values: np.ndarray, rng: np.random.Generator | None = None
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Add missing data patterns to a time series.
-
-        Args:
-            values: Array of time series values
-            rng: Stream for the missingness draws. Defaults to ``self.rng``.
-
-        Returns:
-            Tuple of (modified values, missing indices or None)
-        """
-        if not self.missing_data:
-            return values, None
-
-        values, metadata = _add_missingness(
-            values=values,
-            rng=self.rng if rng is None else rng,
-            missing_pattern=self.missing_pattern,
-            missing_rate=self.missing_rate,
-            missing_block_size=self.missing_block_size,
-            missing_seasonal_period=self.missing_seasonal_period,
-        )
-
-        if self.exogenous and self.exogenous.missing_flags:
-            return values, metadata["missing_indices"]
-        return values, None
-
-    def _add_anomalies(
-        self, values: np.ndarray, rng: np.random.Generator | None = None
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Add anomalies to a time series.
-
-        Args:
-            values: Array of time series values
-            rng: Stream for the anomaly draws. Defaults to ``self.rng``.
-
-        Returns:
-            Tuple of (modified values, anomaly indices or None)
-        """
-        if not self.anomalies:
-            return values, None
-
-        values, metadata = _add_anomalies(
-            values=values,
-            rng=self.rng if rng is None else rng,
-            anomaly_types=self.anomaly_types,
-            anomaly_fraction=self.anomaly_fraction,
-            spike_magnitude=self.spike_magnitude,
-            dip_magnitude=self.dip_magnitude,
-            level_shift_magnitude=self.level_shift_magnitude,
-            level_shift_duration=self.level_shift_duration,
-        )
-
-        if self.exogenous and self.exogenous.anomaly_flags:
-            return values, metadata["anomaly_indices"]
-        return values, None
-
-    def _add_changepoints(
-        self, values: np.ndarray, rng: np.random.Generator | None = None
-    ) -> tuple[np.ndarray, np.ndarray | None]:
-        """Add changepoints (structural breaks) to a time series.
-
-        Args:
-            values: Array of time series values
-            rng: Stream for the changepoint draws. Defaults to ``self.rng``.
-
-        Returns:
-            Tuple of (modified values, changepoint indices or None)
-        """
-        if not self.changepoints or self.num_changepoints == 0:
-            return values, None
-
-        changepoint_locations = (
-            np.array(self.changepoint_locations)
-            if self.changepoint_locations is not None
-            else np.array([])
-        )
-        changepoint_level_changes = (
-            np.array(self.changepoint_level_changes)
-            if self.changepoint_level_changes is not None
-            else np.array([])
-        )
-        changepoint_trend_changes = (
-            np.array(self.changepoint_trend_changes)
-            if self.changepoint_trend_changes is not None
-            else np.array([])
-        )
-        changepoint_variance_changes = (
-            np.array(self.changepoint_variance_changes)
-            if self.changepoint_variance_changes is not None
-            else np.array([])
-        )
-
-        values, metadata = _add_changepoints(
-            values=values,
-            rng=self.rng if rng is None else rng,
-            num_changepoints=self.num_changepoints,
-            changepoint_locations=changepoint_locations,
-            changepoint_type=self.changepoint_type,
-            changepoint_level_changes=changepoint_level_changes,
-            changepoint_trend_changes=changepoint_trend_changes,
-            changepoint_variance_changes=changepoint_variance_changes,
-        )
-
-        if self.exogenous and self.exogenous.changepoint_flags:
-            return values, metadata["changepoint_indices"]
-        return values, None
+    def _overlay_plan(self, length: int) -> Any:
+        """Parsed native overlay plan for series up to ``length`` steps, or None with every stage off."""
+        plan = self._overlay_plan_dict(length)
+        return None if plan is None else _rs_ov.OverlayPlan(plan)
 
     def _draw_pi_seeds(self, n_series: int) -> np.ndarray:
-        """Draw (changepoint, anomaly, missingness) seeds per series, as in the Rust batch path."""
+        """Draw the three overlay seeds per series, as in the Rust batch path."""
         return self.rng.integers(0, 2**63, size=(n_series, 3), dtype=np.uint64)
 
     def _apply_pattern_injection(
-        self, values: np.ndarray, pi_seeds: Sequence[int] | np.ndarray
+        self,
+        values: np.ndarray,
+        pi_seeds: Sequence[int] | np.ndarray,
+        plan: Any = _PLAN_PER_CALL,
     ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
-        """Apply the full pattern injection pipeline.
+        """Run the overlay pipeline on one series outside the batch kernels.
 
-        Runs changepoints → anomalies → missingness in order, each on its own stream.
+        The released stages draw from NumPy redraws of the seeds, as this path
+        always has; the newer stages derive their streams from the seeds
+        themselves, as on the batch path, so both paths agree on them.
 
         Args:
             values: Array of time series values
             pi_seeds: One row of :meth:`_draw_pi_seeds`.
+            plan: Result of :meth:`_overlay_plan`, to build it once for many
+                series; built here by default.
 
         Returns:
             Tuple of (values, changepoint_indices, anomaly_indices, missing_indices). Index arrays are None when the corresponding flag is not requested.
         """
-        cp_seed, anom_seed, miss_seed = (int(s) for s in pi_seeds)
-        values, cp_indices = self._add_changepoints(
-            values, np.random.default_rng(cp_seed)
+        if plan is _PLAN_PER_CALL:
+            plan = self._overlay_plan(len(values))
+        if plan is None:
+            return values, None, None, None
+        raw = tuple(int(s) for s in pi_seeds)
+        legacy = tuple(int(np.random.default_rng(s).integers(0, 2**63)) for s in raw)
+        values, cp_idx, anom_idx, miss_idx = _rs_ov.apply_overlays(
+            np.asarray(values, dtype=np.float64), plan, raw, legacy
         )
-        values, anom_indices = self._add_anomalies(
-            values, np.random.default_rng(anom_seed)
+        flags = self.exogenous
+        return (
+            values,
+            cp_idx if flags is not None and flags.changepoint_flags else None,
+            anom_idx if flags is not None and flags.anomaly_flags else None,
+            miss_idx if flags is not None and flags.missing_flags else None,
         )
-        values, miss_indices = self._add_missingness(
-            values, np.random.default_rng(miss_seed)
-        )
-        return values, cp_indices, anom_indices, miss_indices
 
     def _build_dataframe(
         self,
@@ -798,6 +706,7 @@ class BaseGenerator(BaseModel, ABC):
         series_id: int,
         gen_seed: int,
         pi_seeds: Sequence[int] | np.ndarray,
+        plan: Any = _PLAN_PER_CALL,
     ) -> SeriesMetadata:
         """Generate a single series with timestamps and pattern injection.
 
@@ -806,6 +715,7 @@ class BaseGenerator(BaseModel, ABC):
             series_id: ID for this series
             gen_seed: Seed for the series' generation stream.
             pi_seeds: One row of :meth:`_draw_pi_seeds`.
+            plan: Overlay plan shared by the batch (see :meth:`_overlay_plan`).
 
         Returns:
             SeriesMetadata for the generated series, without timestamps.
@@ -815,7 +725,7 @@ class BaseGenerator(BaseModel, ABC):
         values = local_copy.generate_single_series(length=length)
 
         values, cp_indices, anom_indices, miss_indices = self._apply_pattern_injection(
-            values, pi_seeds
+            values, pi_seeds, plan
         )
 
         return SeriesMetadata(
@@ -928,7 +838,7 @@ class BaseGenerator(BaseModel, ABC):
         # 3 PI seeds per series: changepoint, anomaly, missingness
         pi_seeds = self._draw_pi_seeds(n_series).ravel()
 
-        pi_config = self._build_pi_config_dict()
+        plan = self._overlay_plan(int(lengths.max())) or _NO_OVERLAYS
 
         results = _rs_batch.generate_batch(
             gen_type,
@@ -937,7 +847,7 @@ class BaseGenerator(BaseModel, ABC):
             lengths,
             gen_seeds,
             pi_seeds,
-            pi_config,
+            plan,
             n_workers=n_jobs,
         )
 
@@ -961,6 +871,7 @@ class BaseGenerator(BaseModel, ABC):
         ]
         gen_seeds = [int(self.rng.integers(0, 2**63)) for _ in range(n_series)]
         pi_seeds = self._draw_pi_seeds(n_series)
+        plan = self._overlay_plan(max(lengths))
 
         workers = max(1, min(n_series, n_jobs))
 
@@ -970,6 +881,7 @@ class BaseGenerator(BaseModel, ABC):
                 series_id=start_id + i,
                 gen_seed=gen_seeds[i],
                 pi_seeds=pi_seeds[i],
+                plan=plan,
             )
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -988,3 +900,22 @@ class BaseGenerator(BaseModel, ABC):
             Array of time series values
         """
         pass
+
+
+def _legacy_property(name: str) -> property:
+    def getter(self: BaseGenerator) -> Any:
+        warnings.warn(
+            f"{name} is deprecated; read it from the generator's overlays",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return legacy_value(self.overlays, name)
+
+    return property(
+        getter,
+        doc=f"Deprecated: the released ``{name}`` setting, read from ``overlays``.",
+    )
+
+
+for _name in LEGACY_DEFAULTS:
+    setattr(BaseGenerator, _name, _legacy_property(_name))

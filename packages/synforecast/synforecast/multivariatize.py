@@ -78,6 +78,9 @@ class Multivariatizer(BaseModel):
         noise_scale_range (tuple[float, float]): Range for the lead-lag
             perturbation noise std, relative to the unit-variance
             standardized channels (default: (0.02, 0.2)).
+        apply_overlays (bool): Draw the wrapped generator's ``overlays`` on
+            each coupled channel, after the level and scale restore (default:
+            False, which keeps channels free of overlays as before).
         seed (int | None): Random seed for reproducibility (default: None).
 
     Example:
@@ -101,6 +104,10 @@ class Multivariatizer(BaseModel):
     )
     noise_scale_range: tuple[float, float] = Field(
         default=(0.02, 0.2), description="Range for lead-lag noise std"
+    )
+    apply_overlays: bool = Field(
+        default=False,
+        description="Draw the wrapped generator's overlays on each coupled channel",
     )
     seed: int | None = Field(
         default=None, description="Random seed for reproducibility"
@@ -265,12 +272,26 @@ class Multivariatizer(BaseModel):
         self._last_recipe = recipe
 
         timestamps = gen._timestamps(length)
+        channels = [z[:, i] * scales[i] + levels[i] for i in range(n_series)]
+        indices: list[tuple] = [(None, None, None)] * n_series
+        if self.apply_overlays:
+            # Seeds come from the reseeded copy after every base draw, so the coupling is unchanged.
+            seeds = gen._draw_pi_seeds(n_series)
+            plan = gen._overlay_plan(length)
+            for i in range(n_series):
+                channels[i], *found = gen._apply_pattern_injection(
+                    channels[i], seeds[i], plan
+                )
+                indices[i] = tuple(found)
         all_metadata = [
             SeriesMetadata(
-                values=z[:, i] * scales[i] + levels[i],
+                values=channels[i],
                 timestamps=timestamps,
                 series_id=start_id + i,
                 length=length,
+                changepoint_indices=indices[i][0],
+                anomaly_indices=indices[i][1],
+                missing_indices=indices[i][2],
             )
             for i in range(n_series)
         ]

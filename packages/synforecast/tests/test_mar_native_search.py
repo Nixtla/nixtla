@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from synforecast._lib import augmentation
+from synforecast.base import _NO_OVERLAYS
 from synforecast.generators import MARGenerator
 
 
@@ -228,7 +229,7 @@ def test_native_feature_batch_matches_batch_generation():
         np.array(lengths, dtype=np.int32),
         np.array(seeds, dtype=np.uint64),
         np.zeros(6, dtype=np.uint64),
-        generator._build_pi_config_dict(),
+        generator._overlay_plan(max(lengths)) or _NO_OVERLAYS,
         n_workers=1,
     )
     for got, draw in zip(actual, draws, strict=True):

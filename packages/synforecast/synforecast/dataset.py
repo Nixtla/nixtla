@@ -20,6 +20,7 @@ from synforecast.augment import (
     analyze,
 )
 from synforecast.base import (
+    _NO_OVERLAYS,
     BaseGenerator,
     _batch_results_to_metadata,
     _categorize_ids,
@@ -139,7 +140,8 @@ class SynSet:
                 Results are seed-deterministic and do not depend on n_jobs.
 
         Returns:
-            DataFrame containing all generated time series from all generators, in long format with columns [id_col, time_col, target_col].
+            DataFrame containing all generated time series from all generators, in long format with columns [id_col, time_col, target_col],
+            plus any extra column a generator adds (exogenous, flag or event columns), null for series from generators without it.
 
         Notes:
             Series IDs are unique across all generators. With 2 generators and
@@ -153,7 +155,13 @@ class SynSet:
             df.with_columns(nw.col(self.id_col).cast(nw.String()).cast(nw.Int64()))
             for df in all_series
         ]
-        result = _categorize_ids(nw.concat(as_int), self.id_col)
+        # Generators may add their own columns (exogenous, flags, the event
+        # indicator of DailyActiveUsers); a diagonal concat keeps them, null
+        # for the other generators' series. Matching frames stay vertical.
+        how = (
+            "vertical" if len({tuple(df.columns) for df in as_int}) == 1 else "diagonal"
+        )
+        result = _categorize_ids(nw.concat(as_int, how=how), self.id_col)
 
         return result.to_native()
 
@@ -205,7 +213,7 @@ class SynSet:
                     "lengths": lengths,
                     "gen_seeds": gen_seeds,
                     "pi_seeds": pi_seeds,
-                    "pi_config": gen._build_pi_config_dict(),
+                    "plan": gen._overlay_plan(int(lengths.max())) or _NO_OVERLAYS,
                 }
             )
             batch_gen_indices.append(gi)

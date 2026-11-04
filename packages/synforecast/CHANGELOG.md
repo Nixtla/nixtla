@@ -4,6 +4,45 @@
 
 ### Added
 
+- `overlays=OverlayConfig(...)` on every generator: one optional spec per
+  stage (`Calendar`, `Waveform`, `Changepoints`, `Anomalies`, `Observation`,
+  `Missing`, plus `base_weight`), all exported from `synforecast`. Stages run
+  in a fixed order (base weight, calendar, waveform, changepoints, anomalies,
+  observation, missing) inside one native executor on every generation path:
+  the Rust batch kernels (in parallel), the per-series path, `SynSet`, and
+  generators with their own generation scheme. Each stage draws from its own
+  stream of the series' seeds, so switching one on never moves another and
+  no stage advances the generator's own random stream.
+  - `scale="relative"` on `Changepoints`, `Anomalies`, `Calendar` and
+    `Waveform`: magnitudes in standard deviations of the untouched base
+    series, measured once.
+  - `Calendar`: one or more `CalendarCycle`s (time of day, day of week,
+    month of year, or every `period` steps), Fourier or per-bin levels,
+    random per series or fixed with per-series jitter, additive or
+    multiplicative. Phases follow the emitted timestamps, so business days
+    and calendar months line up; cycles a frequency cannot show warn, skip
+    or raise (`on_unsupported`).
+  - `Waveform`: pulse, spike, sawtooth, trapezoid, level-switching and
+    staircase templates with their period in steps, timed periodically,
+    with per-cycle jitter, or as a gamma or lognormal renewal process.
+  - `Observation`: saturation at a floor or cap, quantization,
+    sample-and-hold and frozen windows; missing values never spread.
+  - Multiplicative calendar and waveform stages keep zeros in count series;
+    `fallback` decides what happens on series with negative values.
+- `pretraining_overlays(rng)`: a documented random overlay prior
+  (heavy-tailed innovations, relative changepoints and anomalies, missing
+  data), and `pretraining_pool(overlay_seed=...)` applying one draw per built
+  entry, keyed by `(overlay_seed, index)` so `members=` stays consistent.
+- `calendar_overlays(rng)` and `observability_overlays(rng)`: documented
+  calendar and waveform/observation priors, applied to a share of
+  `pretraining_pool` entries by `calendar_rate` and `observability_rate`,
+  each from its own `(overlay_seed, index)` stream so pools at rate 0 are
+  unchanged.
+- `Multivariatizer(apply_overlays=True)`: draws the wrapped generator's
+  overlays on each coupled channel; off by default, as before.
+- `pretraining_pool(include_extended=True)`: appends one default instance of
+  each of the 11 univariate generators outside the interpretable and meta
+  pools, after all existing entries.
 - `FitAndSimulate`, `Mixup`, `MovingBlockBootstrap` and `DBA`: frozen
   augmentation specs run with `apply()`, plus `analyze` in
   `synforecast.augment`. `source_col` records provenance (`Mixup`: anchor,
@@ -27,6 +66,18 @@
 
 ### Changed
 
+- The flat overlay arguments (`missing_data`, `missing_*`, `anomalies`,
+  `anomaly_*`, `spike_magnitude`, `dip_magnitude`, `level_shift_*`,
+  `changepoints`, `num_changepoints`, `changepoint_*`) are deprecated in
+  favour of `overlays=OverlayConfig(...)`. They still work, warn with a
+  `DeprecationWarning`, and draw exactly what the matching config draws;
+  reading them from a generator also warns. See GENERATORS.md for the
+  mapping.
+- `StateSpaceGenerator.generate_with_states` applies every overlay to the
+  observations, as `ETSGenerator.generate_with_states` and `generate()` do;
+  it used to apply only missing data. The states are unchanged.
+- The native batch functions take a parsed overlay plan instead of a dict,
+  and malformed plans raise instead of falling back to defaults.
 - `KernelSynthGenerator` writes each composition as a polynomial in `x x'`
   with stationary coefficients, `K = sum_d (x x')^d T_d(x - x')`, and samples
   it exactly as `sum_d x^d * f_d` from independent O(n^2) Durbin-Levinson
@@ -62,6 +113,14 @@
 
 ### Fixed
 
+- Variance changepoints skip missing values in their rolling mean and leave
+  them missing, instead of spreading NaN through the rest of the series
+  (seen on IoTSensor series, whose failures leave gaps).
+- `SynSet.generate` keeps a column that only some generators add (such as
+  the `event` indicator of `DailyActiveUsersGenerator`, or exogenous
+  columns), null for the other generators' series, instead of failing to
+  concatenate. This made `SynSet(pretraining_pool(include_extended=True))`
+  fail.
 - `augment` is reproducible on polars input, `_aug_` ids no longer collide
   with existing ids, and unknown `generator_override` keys warn.
 - `mixup(alpha=nan or inf)` is rejected.
@@ -92,6 +151,11 @@
   the same seeds as 0.2.0; only their KernelSynth and periodic
   `GaussianProcessGenerator` entries produce different output. Every other
   generator is bit-identical to 0.2.0.
+- The released overlays (changepoints, anomalies, missing data) draw exactly
+  as in 0.2.0 on every generation path, whether set through `overlays` or
+  the deprecated flat arguments; `tests/test_overlay_parity.py` pins them.
+  The exception is `StateSpaceGenerator.generate_with_states` with
+  changepoints or anomalies on (see Changed).
 
 ## 0.2.0 - 2026-10-12
 

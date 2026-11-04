@@ -33,9 +33,22 @@ from synforecast.evaluation import (
     feature_coverage,
 )
 from synforecast.multivariatize import Multivariatizer
+from synforecast.overlays import (
+    Anomalies,
+    Calendar,
+    CalendarCycle,
+    Changepoints,
+    Missing,
+    Observation,
+    OverlayConfig,
+    Waveform,
+)
 from synforecast.presets import (
     balanced_pool,
+    calendar_overlays,
     interpretable_pool,
+    observability_overlays,
+    pretraining_overlays,
     pretraining_pool,
     seasonal_pool,
 )
@@ -43,22 +56,33 @@ from synforecast.utils import generate_series
 
 __all__ = [
     "DBA",
+    "Anomalies",
     "BaseAugmenter",
     "BaseGenerator",
+    "Calendar",
+    "CalendarCycle",
+    "Changepoints",
     "CoverageDiagnostics",
     "CoverageResult",
     "FitAndSimulate",
+    "Missing",
     "Mixup",
     "MovingBlockBootstrap",
     "Multivariatizer",
+    "Observation",
+    "OverlayConfig",
     "SynAugment",
     "SynSet",
+    "Waveform",
     "balanced_pool",
+    "calendar_overlays",
     "compare_feature_coverage",
     "compute_features",
     "feature_coverage",
     "generate_series",
     "interpretable_pool",
+    "observability_overlays",
+    "pretraining_overlays",
     "pretraining_pool",
     "seasonal_pool",
 ]

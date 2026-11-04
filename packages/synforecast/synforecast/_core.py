@@ -14,6 +14,8 @@ def _add_changepoints(
     changepoint_level_changes: np.ndarray,
     changepoint_trend_changes: np.ndarray,
     changepoint_variance_changes: np.ndarray,
+    relative: bool = False,
+    scale: float = 1.0,
 ) -> tuple[np.ndarray, dict]:
     """Add structural breaks to a time series."""
     seed = int(rng.integers(0, 2**63))
@@ -26,6 +28,8 @@ def _add_changepoints(
         changepoint_level_changes,
         changepoint_trend_changes,
         changepoint_variance_changes,
+        relative,
+        scale,
     )
 
 
@@ -58,6 +62,7 @@ def _add_anomalies(
     dip_magnitude: float,
     level_shift_magnitude: float,
     level_shift_duration: int,
+    scale: float = 1.0,
 ) -> tuple[np.ndarray, dict]:
     """Add anomalies to a time series."""
     seed = int(rng.integers(0, 2**63))
@@ -70,4 +75,10 @@ def _add_anomalies(
         dip_magnitude,
         level_shift_magnitude,
         level_shift_duration,
+        scale,
     )
+
+
+def _overlay_scale(values: np.ndarray) -> float:
+    """Overlay unit for relative magnitudes, computed natively so both generation paths agree exactly."""
+    return float(_rs_pi.overlay_scale(np.ascontiguousarray(values, dtype=np.float64)))

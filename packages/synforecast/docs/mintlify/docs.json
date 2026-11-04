@@ -145,6 +145,7 @@
           "composition.html",
           "core.html",
           "exogenous.html",
+          "overlays.html",
           "dataset.html",
           "evaluation.html",
           "generators_statistical.html",

@@ -76,6 +76,12 @@ impl SfRng {
         d.sample(&mut self.gen)
     }
 
+    /// Uniform integer in [0, n) for ranges beyond i32; requires n > 0.
+    pub fn below(&mut self, n: u64) -> u64 {
+        let d = Uniform::new(0u64, n).expect("invalid range: requires n > 0");
+        d.sample(&mut self.gen)
+    }
+
     pub fn exponential(&mut self, lambda: f64) -> f64 {
         let d = Exp::new(lambda).expect("invalid exponential param: lambda must be > 0 and finite");
         d.sample(&mut self.gen)

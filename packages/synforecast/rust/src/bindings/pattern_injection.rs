@@ -22,7 +22,7 @@ fn copy_back(values: &Bound<'_, PyArray1<f64>>, buf: &[f64]) -> PyResult<()> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (values, seed, num_changepoints, locations, changepoint_type, level_changes, trend_changes, variance_changes))]
+#[pyo3(signature = (values, seed, num_changepoints, locations, changepoint_type, level_changes, trend_changes, variance_changes, relative=false, scale=1.0))]
 pub fn add_changepoints<'py>(
     py: Python<'py>,
     values: Bound<'py, PyArray1<f64>>,
@@ -33,6 +33,8 @@ pub fn add_changepoints<'py>(
     level_changes: PyReadonlyArray1<'py, f64>,
     trend_changes: PyReadonlyArray1<'py, f64>,
     variance_changes: PyReadonlyArray1<'py, f64>,
+    relative: bool,
+    scale: f64,
 ) -> PyResult<Py<PyAny>> {
     let mut vals = copy_out(&values)?;
     let locs = locations.as_slice()?.to_vec();
@@ -50,6 +52,8 @@ pub fn add_changepoints<'py>(
             &lc,
             &tc,
             &vc,
+            relative,
+            scale,
         )
     });
     copy_back(&values, &vals)?;
@@ -103,8 +107,14 @@ pub fn add_missingness<'py>(
     Ok(tuple.into())
 }
 
+/// Overlay unit for relative magnitudes (population std of the finite values, else 1.0), shared by both generation paths.
 #[pyfunction]
-#[pyo3(signature = (values, seed, anomaly_types, anomaly_fraction, spike_magnitude, dip_magnitude, level_shift_magnitude, level_shift_duration))]
+pub fn overlay_scale(values: PyReadonlyArray1<'_, f64>) -> PyResult<f64> {
+    Ok(pi::overlay_scale(values.as_slice()?))
+}
+
+#[pyfunction]
+#[pyo3(signature = (values, seed, anomaly_types, anomaly_fraction, spike_magnitude, dip_magnitude, level_shift_magnitude, level_shift_duration, scale=1.0))]
 pub fn add_anomalies<'py>(
     py: Python<'py>,
     values: Bound<'py, PyArray1<f64>>,
@@ -115,6 +125,7 @@ pub fn add_anomalies<'py>(
     dip_magnitude: f64,
     level_shift_magnitude: f64,
     level_shift_duration: i32,
+    scale: f64,
 ) -> PyResult<Py<PyAny>> {
     let mut vals = copy_out(&values)?;
 
@@ -128,6 +139,7 @@ pub fn add_anomalies<'py>(
             dip_magnitude,
             level_shift_magnitude,
             level_shift_duration,
+            scale,
         )
     });
     copy_back(&values, &vals)?;
@@ -144,6 +156,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(add_changepoints, &m)?)?;
     m.add_function(wrap_pyfunction!(add_missingness, &m)?)?;
     m.add_function(wrap_pyfunction!(add_anomalies, &m)?)?;
+    m.add_function(wrap_pyfunction!(overlay_scale, &m)?)?;
     parent.add_submodule(&m)?;
     parent
         .py()

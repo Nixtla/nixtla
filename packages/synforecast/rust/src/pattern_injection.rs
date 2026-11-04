@@ -1,6 +1,22 @@
 use crate::rng::SfRng;
 use std::f64::consts::PI;
 
+/// Overlay unit for relative magnitudes: population std of the finite values, or 1.0 if fewer than two or zero spread.
+pub fn overlay_scale(values: &[f64]) -> f64 {
+    let finite: Vec<f64> = values.iter().copied().filter(|v| v.is_finite()).collect();
+    if finite.len() < 2 {
+        return 1.0;
+    }
+    let mean = finite.iter().sum::<f64>() / finite.len() as f64;
+    let var = finite.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / finite.len() as f64;
+    let std = var.sqrt();
+    if std.is_finite() && std > 0.0 {
+        std
+    } else {
+        1.0
+    }
+}
+
 pub struct ChangePointResult {
     pub changepoint_indices: Vec<i64>,
 }
@@ -14,6 +30,8 @@ pub fn add_changepoints(
     level_changes_in: &[f64],
     trend_changes_in: &[f64],
     variance_changes_in: &[f64],
+    relative: bool,
+    scale: f64,
 ) -> ChangePointResult {
     let length = values.len() as i32;
     let mut rng = SfRng::new(seed);
@@ -57,6 +75,8 @@ pub fn add_changepoints(
         for (i, lc) in level_changes.iter_mut().enumerate() {
             *lc = if i < level_changes_in.len() {
                 level_changes_in[i]
+            } else if relative {
+                rng.uniform(-3.0, 3.0)
             } else {
                 rng.uniform(-20.0, 20.0)
             };
@@ -66,6 +86,8 @@ pub fn add_changepoints(
         for (i, tc) in trend_changes.iter_mut().enumerate() {
             *tc = if i < trend_changes_in.len() {
                 trend_changes_in[i]
+            } else if relative {
+                rng.uniform(-3.0, 3.0)
             } else {
                 rng.uniform(-0.5, 0.5)
             };
@@ -85,14 +107,25 @@ pub fn add_changepoints(
     for cp in 0..n_cp {
         let pos = cp_indices[cp] as usize;
 
+        // Relative mode: level changes are in units of `scale`; trend changes are the total drift, in units of `scale`, over the rest of the series.
+        let (level, slope) = if relative {
+            let remaining = (values.len() - pos).max(1) as f64;
+            (
+                level_changes[cp] * scale,
+                trend_changes[cp] * scale / remaining,
+            )
+        } else {
+            (level_changes[cp], trend_changes[cp])
+        };
+
         // Level change
         for v in &mut values[pos..] {
-            *v += level_changes[cp];
+            *v += level;
         }
 
         // Trend change
         for (i, v) in values[pos..].iter_mut().enumerate() {
-            *v += trend_changes[cp] * i as f64;
+            *v += slope * i as f64;
         }
 
         // Variance change: scale each point's deviation from the rolling
@@ -103,9 +136,16 @@ pub fn add_changepoints(
         if variance_changes[cp] != 1.0 {
             const WINDOW: usize = 10;
             for t in pos..values.len() {
+                // Missing points stay missing and are left out of the window mean, so gaps cannot spread NaN downstream.
+                if !values[t].is_finite() {
+                    continue;
+                }
                 let win_start = t.saturating_sub(WINDOW);
-                let window = &values[win_start..=t];
-                let mean_val = window.iter().sum::<f64>() / window.len() as f64;
+                let (sum, count) = values[win_start..=t]
+                    .iter()
+                    .filter(|v| v.is_finite())
+                    .fold((0.0_f64, 0_usize), |(s, n), v| (s + v, n + 1));
+                let mean_val = sum / count as f64;
                 let deviation = values[t] - mean_val;
                 values[t] = mean_val + deviation * variance_changes[cp];
             }
@@ -224,6 +264,7 @@ pub fn add_anomalies(
     dip_magnitude: f64,
     level_shift_magnitude: f64,
     level_shift_duration: i32,
+    scale: f64,
 ) -> AnomalyResult {
     let length = values.len() as i32;
     let mut rng = SfRng::new(seed);
@@ -248,15 +289,15 @@ pub fn add_anomalies(
 
             match atype.as_str() {
                 "spike" => {
-                    values[loc] += spike_magnitude;
+                    values[loc] += spike_magnitude * scale;
                 }
                 "dip" => {
-                    values[loc] += dip_magnitude;
+                    values[loc] += dip_magnitude * scale;
                 }
                 "level_shift" => {
                     let end = ((loc as i32 + level_shift_duration) as usize).min(values.len());
                     for v in &mut values[loc..end] {
-                        *v += level_shift_magnitude;
+                        *v += level_shift_magnitude * scale;
                     }
                 }
                 _ => {}
@@ -274,6 +315,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_variance_changepoint_keeps_gaps_local() {
+        let mut values: Vec<f64> = (0..120)
+            .map(|i| (i as f64 * 0.3).sin() * 5.0 + 20.0)
+            .collect();
+        for i in [0usize, 1, 2, 40, 41, 70, 119] {
+            values[i] = f64::NAN;
+        }
+        let before = values.clone();
+        add_changepoints(
+            &mut values,
+            3,
+            2,
+            &[0.1, 0.5],
+            "variance",
+            &[],
+            &[],
+            &[1.8, 0.6],
+            false,
+            1.0,
+        );
+        for (i, (a, b)) in before.iter().zip(values.iter()).enumerate() {
+            assert_eq!(a.is_nan(), b.is_nan(), "index {i}: missingness changed");
+        }
+        assert_eq!(values.iter().filter(|v| v.is_finite()).count(), 113);
+    }
+
+    #[test]
     fn test_add_changepoints_level() {
         let mut values = vec![0.0; 100];
         let locs = [0.5]; // changepoint at index 50
@@ -289,6 +357,8 @@ mod tests {
             &level,
             &trend,
             &variance,
+            false,
+            1.0,
         );
         assert_eq!(result.changepoint_indices.len(), 1);
         // Before changepoint: values should be 0
@@ -315,6 +385,8 @@ mod tests {
             &level,
             &trend,
             &variance,
+            false,
+            1.0,
         );
         // Before changepoint: all zeros
         assert!((values[0]).abs() < 1e-10);
@@ -326,7 +398,7 @@ mod tests {
     #[test]
     fn test_add_changepoints_random_locations() {
         let mut values = vec![0.0; 200];
-        let result = add_changepoints(&mut values, 42, 3, &[], "level", &[], &[], &[]);
+        let result = add_changepoints(&mut values, 42, 3, &[], "level", &[], &[], &[], false, 1.0);
         assert_eq!(result.changepoint_indices.len(), 3);
         // All indices should be within bounds
         for &idx in &result.changepoint_indices {
@@ -341,7 +413,18 @@ mod tests {
         let mut values: Vec<f64> = (0..1000).map(|i| (i as f64 * 0.1).sin()).collect();
         let locs = [0.2];
         let variance = [2.0];
-        add_changepoints(&mut values, 42, 1, &locs, "variance", &[], &[], &variance);
+        add_changepoints(
+            &mut values,
+            42,
+            1,
+            &locs,
+            "variance",
+            &[],
+            &[],
+            &variance,
+            false,
+            1.0,
+        );
         for (i, v) in values.iter().enumerate() {
             assert!(v.abs() < 100.0, "variance changepoint diverged at {i}: {v}");
         }
@@ -352,7 +435,18 @@ mod tests {
         let mut values = vec![0.0; 100];
         let locs = [1.0];
         let level = [10.0];
-        let result = add_changepoints(&mut values, 42, 1, &locs, "level", &level, &[], &[]);
+        let result = add_changepoints(
+            &mut values,
+            42,
+            1,
+            &locs,
+            "level",
+            &level,
+            &[],
+            &[],
+            false,
+            1.0,
+        );
         assert_eq!(result.changepoint_indices[0], 99);
         assert!((values[99] - 10.0).abs() < 1e-10);
         assert!(values[98].abs() < 1e-10);
@@ -428,7 +522,7 @@ mod tests {
     fn test_add_anomalies_spike() {
         let mut values = vec![0.0; 100];
         let types = vec!["spike".to_string()];
-        let result = add_anomalies(&mut values, 42, &types, 0.1, 100.0, -100.0, 50.0, 10);
+        let result = add_anomalies(&mut values, 42, &types, 0.1, 100.0, -100.0, 50.0, 10, 1.0);
         // Should have ~10 anomalies
         assert!(!result.anomaly_indices.is_empty());
         // At least one value should be non-zero (spiked)
@@ -439,7 +533,7 @@ mod tests {
     fn test_add_anomalies_level_shift() {
         let mut values = vec![0.0; 100];
         let types = vec!["level_shift".to_string()];
-        let result = add_anomalies(&mut values, 42, &types, 0.05, 100.0, -100.0, 50.0, 10);
+        let result = add_anomalies(&mut values, 42, &types, 0.05, 100.0, -100.0, 50.0, 10, 1.0);
         assert!(!result.anomaly_indices.is_empty());
         // Level shifts affect consecutive values
         let nonzero_count = values.iter().filter(|&&v| v != 0.0).count();
@@ -453,7 +547,7 @@ mod tests {
     fn test_add_anomalies_zero_fraction() {
         let mut values = vec![1.0; 50];
         let types = vec!["spike".to_string()];
-        let result = add_anomalies(&mut values, 42, &types, 0.0, 100.0, -100.0, 50.0, 10);
+        let result = add_anomalies(&mut values, 42, &types, 0.0, 100.0, -100.0, 50.0, 10, 1.0);
         assert!(result.anomaly_indices.is_empty());
         // All values should remain 1.0
         for v in &values {

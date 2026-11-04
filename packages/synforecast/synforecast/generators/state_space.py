@@ -339,13 +339,17 @@ class StateSpaceGenerator(BaseGenerator):
 
         all_metadata: list[SeriesMetadata] = []
         all_states: list[np.ndarray] = []
+        plan = self._overlay_plan(length)
 
         for i in range(n_series):
             observations, states = self._simulate(length)
-            miss_seed = int(self._draw_pi_seeds(1)[0, 2])
-            values, miss_indices = self._add_missingness(
-                np.ascontiguousarray(observations[:, 0]),
-                np.random.default_rng(miss_seed),
+            # Every overlay changes the observations, as in generate(); the states stay the clean latent process.
+            values, cp_indices, anom_indices, miss_indices = (
+                self._apply_pattern_injection(
+                    np.ascontiguousarray(observations[:, 0]),
+                    self._draw_pi_seeds(1)[0],
+                    plan,
+                )
             )
             all_metadata.append(
                 SeriesMetadata(
@@ -353,6 +357,8 @@ class StateSpaceGenerator(BaseGenerator):
                     timestamps=timestamps,
                     series_id=start_id + i,
                     length=length,
+                    anomaly_indices=anom_indices,
+                    changepoint_indices=cp_indices,
                     missing_indices=miss_indices,
                 )
             )

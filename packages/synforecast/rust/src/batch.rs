@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use crate::generators::{
     domain, kernel_synth, mar, multivariate, statistical, stochastic, tcm, tsi, volatility,
 };
-use crate::pattern_injection as pi;
+use crate::overlays::{apply_overlays, OverlayPlan};
 
 /// Return a cached rayon `ThreadPool` for the given worker count.
 ///
@@ -69,36 +69,7 @@ pub struct SeriesResult {
     pub miss_indices: Vec<i64>,
 }
 
-/// Configuration for pattern injection, shared across all series in a batch.
-///
-/// String fields accept: `changepoint_type` ("level" | "trend" | "variance"),
-/// `missing_pattern` ("random" | "block" | "seasonal"),
-/// `anomaly_types` (subset of "spike", "dip", "level_shift").
-#[derive(Debug, Clone)]
-pub struct PatternInjectionConfig {
-    pub changepoints: bool,
-    pub num_changepoints: i32,
-    pub changepoint_type: String,
-    pub changepoint_locations: Vec<f64>,
-    pub changepoint_level_changes: Vec<f64>,
-    pub changepoint_trend_changes: Vec<f64>,
-    pub changepoint_variance_changes: Vec<f64>,
-    pub anomalies: bool,
-    pub anomaly_types: Vec<String>,
-    pub anomaly_fraction: f64,
-    pub spike_magnitude: f64,
-    pub dip_magnitude: f64,
-    pub level_shift_magnitude: f64,
-    pub level_shift_duration: i32,
-    pub missing_data: bool,
-    pub missing_pattern: String,
-    pub missing_rate: f64,
-    pub missing_block_size: i32,
-    pub missing_seasonal_period: i32,
-}
-
 /// Specification for one generator in a multi-batch call.
-#[derive(Debug)]
 pub struct GeneratorSpec {
     pub gen_type: i32,
     pub scalar_params: Vec<f64>,
@@ -106,7 +77,7 @@ pub struct GeneratorSpec {
     pub lengths: Vec<i32>,
     pub gen_seeds: Vec<u64>,
     pub pi_seeds: Vec<u64>,
-    pub pi_config: PatternInjectionConfig,
+    pub plan: Arc<OverlayPlan>,
 }
 
 /// Validate that `sp` and `ap` have the required minimum lengths for a generator.
@@ -601,62 +572,16 @@ fn dispatch_generator(
     Ok(())
 }
 
-/// Apply pattern injection (changepoints, anomalies, missingness) to a single series.
+/// Run the overlay pipeline on a freshly drawn series; the batch path feeds its raw seeds to every stage.
 #[inline]
-fn apply_pattern_injection(
-    values: &mut [f64],
-    pi_config: &PatternInjectionConfig,
-    cp_seed: u64,
-    anom_seed: u64,
-    miss_seed: u64,
-) -> (Vec<i64>, Vec<i64>, Vec<i64>) {
-    let cp_indices = if pi_config.changepoints {
-        let r = pi::add_changepoints(
-            values,
-            cp_seed,
-            pi_config.num_changepoints,
-            &pi_config.changepoint_locations,
-            &pi_config.changepoint_type,
-            &pi_config.changepoint_level_changes,
-            &pi_config.changepoint_trend_changes,
-            &pi_config.changepoint_variance_changes,
-        );
-        r.changepoint_indices
-    } else {
-        vec![]
-    };
-
-    let anom_indices = if pi_config.anomalies {
-        let r = pi::add_anomalies(
-            values,
-            anom_seed,
-            &pi_config.anomaly_types,
-            pi_config.anomaly_fraction,
-            pi_config.spike_magnitude,
-            pi_config.dip_magnitude,
-            pi_config.level_shift_magnitude,
-            pi_config.level_shift_duration,
-        );
-        r.anomaly_indices
-    } else {
-        vec![]
-    };
-
-    let miss_indices = if pi_config.missing_data {
-        let r = pi::add_missingness(
-            values,
-            miss_seed,
-            &pi_config.missing_pattern,
-            pi_config.missing_rate,
-            pi_config.missing_block_size,
-            pi_config.missing_seasonal_period,
-        );
-        r.missing_indices
-    } else {
-        vec![]
-    };
-
-    (cp_indices, anom_indices, miss_indices)
+fn finish_series(mut values: Vec<f64>, plan: &OverlayPlan, seeds: [u64; 3]) -> SeriesResult {
+    let indices = apply_overlays(&mut values, plan, seeds, seeds);
+    SeriesResult {
+        values,
+        cp_indices: indices.changepoints,
+        anom_indices: indices.anomalies,
+        miss_indices: indices.missing,
+    }
 }
 
 /// Generate multiple series of a single generator type in parallel via rayon.
@@ -681,7 +606,7 @@ pub fn generate_batch(
     lengths: &[i32],
     gen_seeds: &[u64],
     pi_seeds: &[u64],
-    pi_config: &PatternInjectionConfig,
+    plan: &OverlayPlan,
     n_workers: usize,
 ) -> Result<Vec<SeriesResult>, String> {
     let n_series = lengths.len();
@@ -691,6 +616,9 @@ pub fn generate_batch(
             pi_seeds.len(),
             n_series * 3,
         ));
+    }
+    if let Some(&longest) = lengths.iter().max() {
+        plan.check_length(longest.max(0) as usize)?;
     }
 
     let work = || {
@@ -703,21 +631,11 @@ pub fn generate_batch(
                 let mut values = vec![0.0f64; l];
 
                 dispatch_generator(gen_type, &mut values, scalar_params, array_params, gen_seed)?;
-
-                let (cp_indices, anom_indices, miss_indices) = apply_pattern_injection(
-                    &mut values,
-                    pi_config,
-                    pi_chunk[0],
-                    pi_chunk[1],
-                    pi_chunk[2],
-                );
-
-                Ok(SeriesResult {
+                Ok(finish_series(
                     values,
-                    cp_indices,
-                    anom_indices,
-                    miss_indices,
-                })
+                    plan,
+                    [pi_chunk[0], pi_chunk[1], pi_chunk[2]],
+                ))
             })
             .collect()
     };
@@ -747,6 +665,11 @@ pub fn generate_multi_batch(
     n_workers: usize,
 ) -> Result<Vec<Vec<SeriesResult>>, String> {
     // Build flat task list: (spec_index, series_index)
+    for spec in specs {
+        if let Some(&longest) = spec.lengths.iter().max() {
+            spec.plan.check_length(longest.max(0) as usize)?;
+        }
+    }
     let total_tasks: usize = specs.iter().map(|s| s.lengths.len()).sum();
     let mut tasks: Vec<(usize, usize)> = Vec::with_capacity(total_tasks);
     for (gi, spec) in specs.iter().enumerate() {
@@ -771,24 +694,12 @@ pub fn generate_multi_batch(
                     spec.gen_seeds[si],
                 )?;
 
-                let (cp_indices, anom_indices, miss_indices) = apply_pattern_injection(
-                    &mut values,
-                    &spec.pi_config,
+                let seeds = [
                     spec.pi_seeds[si * 3],
                     spec.pi_seeds[si * 3 + 1],
                     spec.pi_seeds[si * 3 + 2],
-                );
-
-                Ok((
-                    gi,
-                    si,
-                    SeriesResult {
-                        values,
-                        cp_indices,
-                        anom_indices,
-                        miss_indices,
-                    },
-                ))
+                ];
+                Ok((gi, si, finish_series(values, &spec.plan, seeds)))
             })
             .collect::<Result<Vec<_>, String>>()
     };
@@ -820,30 +731,7 @@ pub fn generate_multi_batch(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn default_pi_config() -> PatternInjectionConfig {
-        PatternInjectionConfig {
-            changepoints: false,
-            num_changepoints: 0,
-            changepoint_type: "level".to_string(),
-            changepoint_locations: vec![],
-            changepoint_level_changes: vec![],
-            changepoint_trend_changes: vec![],
-            changepoint_variance_changes: vec![],
-            anomalies: false,
-            anomaly_types: vec![],
-            anomaly_fraction: 0.0,
-            spike_magnitude: 0.0,
-            dip_magnitude: 0.0,
-            level_shift_magnitude: 0.0,
-            level_shift_duration: 0,
-            missing_data: false,
-            missing_pattern: "random".to_string(),
-            missing_rate: 0.0,
-            missing_block_size: 1,
-            missing_seasonal_period: 1,
-        }
-    }
+    use crate::overlays::{AnomalyPlan, ChangepointPlan, MissingPlan};
 
     #[test]
     fn test_generate_batch_random_walk() {
@@ -851,7 +739,7 @@ mod tests {
         let lengths = vec![100, 100, 100];
         let gen_seeds = vec![42, 43, 44];
         let pi_seeds = vec![0; 9];
-        let pi = default_pi_config();
+        let pi = OverlayPlan::default();
 
         let results = generate_batch(
             GEN_RANDOM_WALK,
@@ -877,7 +765,7 @@ mod tests {
         let lengths = vec![50, 50];
         let gen_seeds = vec![42, 43];
         let pi_seeds = vec![0; 6];
-        let pi = default_pi_config();
+        let pi = OverlayPlan::default();
 
         let r1 = generate_batch(
             GEN_RANDOM_WALK,
@@ -911,18 +799,32 @@ mod tests {
         let lengths = vec![100];
         let gen_seeds = vec![42];
         let pi_seeds = vec![100, 200, 300];
-        let pi = PatternInjectionConfig {
-            changepoints: true,
-            num_changepoints: 2,
-            changepoint_type: "level".to_string(),
-            anomalies: true,
-            anomaly_types: vec!["spike".to_string()],
-            anomaly_fraction: 0.05,
-            spike_magnitude: 10.0,
-            missing_data: true,
-            missing_pattern: "random".to_string(),
-            missing_rate: 0.1,
-            ..default_pi_config()
+        let pi = OverlayPlan {
+            changepoints: Some(ChangepointPlan {
+                count: 2,
+                kind: "level".to_string(),
+                locations: vec![],
+                level_changes: vec![],
+                trend_changes: vec![],
+                variance_changes: vec![],
+                relative: false,
+            }),
+            anomalies: Some(AnomalyPlan {
+                types: vec!["spike".to_string()],
+                fraction: 0.05,
+                spike_magnitude: 10.0,
+                dip_magnitude: 0.0,
+                level_shift_magnitude: 0.0,
+                level_shift_duration: 0,
+                relative: false,
+            }),
+            missing: Some(MissingPlan {
+                pattern: "random".to_string(),
+                rate: 0.1,
+                block_size: 1,
+                seasonal_period: 1,
+            }),
+            ..OverlayPlan::default()
         };
 
         let results = generate_batch(
@@ -948,7 +850,7 @@ mod tests {
         let lengths = vec![50, 100, 200];
         let gen_seeds = vec![42, 43, 44];
         let pi_seeds = vec![0; 9];
-        let pi = default_pi_config();
+        let pi = OverlayPlan::default();
 
         let results = generate_batch(
             GEN_RANDOM_WALK,
@@ -976,7 +878,7 @@ mod tests {
             lengths: vec![50, 50],
             gen_seeds: vec![42, 43],
             pi_seeds: vec![0; 6],
-            pi_config: default_pi_config(),
+            plan: Arc::new(OverlayPlan::default()),
         };
         let spec2 = GeneratorSpec {
             gen_type: GEN_SEASONAL,
@@ -985,7 +887,7 @@ mod tests {
             lengths: vec![100, 100, 100],
             gen_seeds: vec![44, 45, 46],
             pi_seeds: vec![0; 9],
-            pi_config: default_pi_config(),
+            plan: Arc::new(OverlayPlan::default()),
         };
 
         let results = generate_multi_batch(&[spec1, spec2], 0).unwrap();
@@ -1259,7 +1161,7 @@ mod tests {
 
     #[test]
     fn test_generate_batch_returns_error_on_bad_type() {
-        let pi = default_pi_config();
+        let pi = OverlayPlan::default();
         let result = generate_batch(999, &[], &[], &[100], &[42], &[0, 0, 0], &pi, 0);
         assert!(result.is_err());
     }
@@ -1273,7 +1175,7 @@ mod tests {
             lengths: vec![100],
             gen_seeds: vec![42],
             pi_seeds: vec![0; 3],
-            pi_config: default_pi_config(),
+            plan: Arc::new(OverlayPlan::default()),
         };
         let result = generate_multi_batch(&[spec], 0);
         assert!(result.is_err());
@@ -1285,7 +1187,7 @@ mod tests {
         let lengths = vec![100, 100, 100, 100];
         let gen_seeds = vec![42, 43, 44, 45];
         let pi_seeds = vec![0; 12];
-        let pi = default_pi_config();
+        let pi = OverlayPlan::default();
 
         // n_workers=2: use a custom 2-thread pool
         let results = generate_batch(
@@ -1327,7 +1229,7 @@ mod tests {
             lengths: vec![50, 50],
             gen_seeds: vec![42, 43],
             pi_seeds: vec![0; 6],
-            pi_config: default_pi_config(),
+            plan: Arc::new(OverlayPlan::default()),
         };
 
         let results = generate_multi_batch(&[spec], 2).unwrap();

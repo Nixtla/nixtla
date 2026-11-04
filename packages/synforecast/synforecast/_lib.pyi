@@ -1,5 +1,7 @@
 """Type stubs for the Rust _lib extension module (PyO3/maturin)."""
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
@@ -99,6 +101,8 @@ class pattern_injection:
         level_changes: npt.NDArray[np.float64],
         trend_changes: npt.NDArray[np.float64],
         variance_changes: npt.NDArray[np.float64],
+        relative: bool = False,
+        scale: float = 1.0,
     ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.int64]]]: ...
     @staticmethod
     def add_missingness(
@@ -119,7 +123,29 @@ class pattern_injection:
         dip_magnitude: float,
         level_shift_magnitude: float,
         level_shift_duration: int,
+        scale: float = 1.0,
     ) -> tuple[npt.NDArray[np.float64], dict[str, npt.NDArray[np.int64]]]: ...
+    @staticmethod
+    def overlay_scale(values: npt.NDArray[np.float64]) -> float: ...
+
+class overlays:
+    class OverlayPlan:
+        """Parsed overlay plan, built once per draw (see BaseGenerator._overlay_plan_dict)."""
+
+        def __init__(self, plan: dict[str, Any]) -> None: ...
+
+    @staticmethod
+    def apply_overlays(
+        values: npt.NDArray[np.float64],
+        plan: overlays.OverlayPlan,
+        raw_seeds: tuple[int, int, int],
+        legacy_seeds: tuple[int, int, int],
+    ) -> tuple[
+        npt.NDArray[np.float64],
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+    ]: ...
 
 class statistical:
     @staticmethod
@@ -538,7 +564,7 @@ class batch:
         lengths: npt.NDArray[np.int32],
         gen_seeds: npt.NDArray[np.uint64],
         pi_seeds: npt.NDArray[np.uint64],
-        pi_config_dict: dict,
+        plan: overlays.OverlayPlan,
         n_workers: int = 0,
     ) -> list[dict[str, npt.NDArray]]: ...
     @staticmethod

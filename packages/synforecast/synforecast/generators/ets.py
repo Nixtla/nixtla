@@ -398,6 +398,7 @@ class ETSGenerator(BaseGenerator):
         all_ids = []
         all_timestamps = []
         all_states_data = []
+        plan = self._overlay_plan(self.max_length)
 
         for i in range(n_series):
             series_id = start_id + i
@@ -463,7 +464,7 @@ class ETSGenerator(BaseGenerator):
 
             # Apply pattern injection
             series, _, _, _ = self._apply_pattern_injection(
-                series, self._draw_pi_seeds(1)[0]
+                series, self._draw_pi_seeds(1)[0], plan
             )
 
             all_values.append(series)

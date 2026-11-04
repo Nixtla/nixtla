@@ -58,6 +58,7 @@ jobs:
           synforecast/evaluation.py
           synforecast/utils.py
           synforecast/presets.py
+          synforecast/overlays.py
 
       - name: Check Rust formatting
         run: cargo fmt --manifest-path rust/Cargo.toml --check

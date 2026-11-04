@@ -161,6 +161,29 @@ class TestSynSet:
         # Check that custom column names are used
         assert set(df.columns) == {"series_id", "timestamp", "value"}
 
+    @pytest.mark.parametrize("engine", ["pandas", "polars", "pyarrow"])
+    def test_generator_specific_columns_are_kept(self, engine: str) -> None:
+        """A column only some generators add is kept, null for the others."""
+        import narwhals as nw
+
+        from synforecast.generators import DailyActiveUsersGenerator
+
+        params = {"min_length": 30, "max_length": 30, "freq": "D", "engine": engine}
+        rw_gen = RandomWalkGenerator(**params, seed=1)
+        dau_gen = DailyActiveUsersGenerator(**params, seed=2)
+        df = nw.from_native(
+            SynSet([rw_gen, dau_gen]).generate(n_series_per_generator=2)
+        )
+        alone = nw.from_native(
+            DailyActiveUsersGenerator(**params, seed=2).generate(n_series=2)
+        )
+
+        assert df.columns == ["unique_id", "ds", "y", "event"]
+        ids = df["unique_id"].cast(nw.String()).cast(nw.Int64()).to_numpy()
+        events = df["event"].to_numpy().astype(float)
+        assert pd.isna(events[ids < 2]).all()
+        assert (events[ids >= 2] == alone["event"].to_numpy()).all()
+
     def test_empty_generators_list(self) -> None:
         """Test that empty generators list raises error."""
         with pytest.raises(ValueError, match="generators list cannot be empty"):

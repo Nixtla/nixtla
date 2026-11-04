@@ -15,6 +15,7 @@ pub mod distributions;
 pub mod fft;
 pub mod generators;
 pub mod linalg;
+pub mod overlays;
 pub mod pattern_injection;
 pub mod rng;
 
@@ -23,6 +24,7 @@ fn _lib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "SynForecast Rust accelerated generators")?;
     bindings::augmentation::register(m)?;
     bindings::pattern_injection::register(m)?;
+    bindings::overlays::register(m)?;
     bindings::distributions::register(m)?;
     bindings::statistical::register(m)?;
     bindings::stochastic::register(m)?;
