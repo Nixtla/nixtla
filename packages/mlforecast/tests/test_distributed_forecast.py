@@ -297,6 +297,33 @@ def test_dask_to_local_transfer_checks_in_sample_windows(tmp_path):
         model.to_local().transfer(series, method).predict(3, level=[80])
 
 
+@pytest.mark.parametrize("refit", [True, False])
+def test_dask_cross_validation_drops_fitted_models(tmp_path, refit):
+    series = generate_daily_series(5, equal_ends=True, min_length=50, max_length=50)
+    fcst = DistributedMLForecast(
+        models=[DaskLGBMForecast(verbosity=-1, random_state=0, n_estimators=5)],
+        freq="D",
+        lags=[1, 2],
+    )
+    partitioned = _make_partitioned_series(series, npartitions=2)
+    fcst.fit(partitioned, static_features=[])
+    fcst.cross_validation(
+        partitioned,
+        n_windows=2,
+        h=3,
+        static_features=[],
+        refit=refit,
+    ).compute()
+    assert len(fcst.cv_models_) == (2 if refit else 1)
+    msg = "No fitted models found"
+    with pytest.raises(ValueError, match=msg):
+        fcst.predict(3)
+    with pytest.raises(ValueError, match=msg):
+        fcst.save(str(tmp_path))
+    with pytest.raises(ValueError, match=msg):
+        fcst.to_local()
+
+
 @pytest.mark.parametrize(
     "pooled_kwargs",
     [
