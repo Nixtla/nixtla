@@ -39,7 +39,7 @@
           "/introduction/introduction",
           "/introduction/why_timegpt",
           "/introduction/about_timegpt",
-          "/introduction/timegpt_subscription_plans",
+          "/introduction/ways_to_get_access",
           "/introduction/faq"
         ]
       },
@@ -367,6 +367,10 @@
     {
       "source": "/forecasting/evaluation/forecasting/evaluation/evaluation_metrics",
       "destination": "/forecasting/evaluation/evaluation_metrics"
+    },
+    {
+      "source": "/introduction/timegpt_subscription_plans",
+      "destination": "/introduction/ways_to_get_access"
     }
   ],
   "contextual": {
