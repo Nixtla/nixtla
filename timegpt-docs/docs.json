@@ -190,19 +190,19 @@
     "global": {
       "anchors": [
         {
+          "anchor": "Free enterprise trial",
+          "href": "https://www.nixtla.io/book-a-free-trial?utm_source=docs&utm_campaign=docs_mobile_menu",
+          "icon": "rocket"
+        },
+        {
           "anchor": "Home",
           "href": "https://www.nixtla.io",
-          "icon": "book-open"
+          "icon": "external-link"
         },
         {
           "anchor": "Get in touch",
-          "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
+          "href": "https://www.nixtla.io/contact?utm_source=docs&utm_campaign=docs_sidebar",
           "icon": "mail"
-        },
-        {
-          "anchor": "Meet with us",
-          "href": "https://www.nixtla.io/book-a-call?utm_source=nixtla.io&utm_campaign=/docs/timegpt/getting-started",
-          "icon": "calendar"
         }
       ]
     }
@@ -212,16 +212,10 @@
     "dark": "/logo/dark.svg"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Book a meeting",
-        "href": "https://www.nixtla.io/book-a-call?utm_source=docs&utm_campaign=docs_nav"
-      }
-    ],
     "primary": {
       "type": "button",
-      "label": "Get Started",
-      "href": "https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/docs"
+      "label": "Free enterprise trial",
+      "href": "https://www.nixtla.io/book-a-free-trial?utm_source=docs&utm_campaign=docs_nav"
     }
   },
   "footer": {

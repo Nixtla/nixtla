@@ -1820,3 +1820,12 @@ html.dark .bg-background-dark,
     margin-top: var(--space-20) !important;
   }
 }
+
+/* The navbar's "Free enterprise trial" button is hidden on mobile, so the same
+   link is added as a sidebar anchor (docs.json) and shown only in the mobile menu. */
+@media (min-width: 1024px) {
+  li:has(> a[href*="utm_campaign=docs_mobile_menu"]),
+  a[href*="utm_campaign=docs_mobile_menu"] {
+    display: none !important;
+  }
+}
