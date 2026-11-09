@@ -368,10 +368,7 @@ def prepare_cross_validation(
 
     sorted_df_cat: dict[str, np.ndarray] = {}
     if categorical_exog_list:
-        for c, vals in df_cat_vals.items():
-            sorted_df_cat[c] = (
-                vals[processed.sort_idxs] if processed.sort_idxs is not None else vals
-            )
+        sorted_df_cat = _sort_categorical_values(df_cat_vals, processed.sort_idxs)
 
     standard_freq = _standardize_freq(freq, processed)
     model_input_size, model_horizon = client._get_model_params(model, standard_freq)
