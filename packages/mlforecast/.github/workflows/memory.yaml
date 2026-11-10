@@ -1,0 +1,93 @@
+name: memory
+
+# On request only: add the `memory-profile` label to a PR to compare its peak memory
+# against main.
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pooled-memory:
+    if: contains(github.event.pull_request.labels.*.name, 'memory-profile')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # the base commit has to be reachable for the comparison below
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # 7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      # peak RSS per pooled config, one spawned process each; reported, never asserted
+      - name: Measure this PR
+        run: MLF_MEM_JSON=mem_pr.json uv run pytest tests/mem_pooled.py --no-cov -s
+
+      # mlforecast is installed editable, so swapping the package source swaps the
+      # library under an unchanged harness -- which is what makes the two runs
+      # comparable, and works even when the base has no tests/mem_pooled.py
+      - name: Measure main
+        run: |
+          base=$(git merge-base ${{ github.event.pull_request.base.sha }} HEAD)
+          echo "comparing against $base"
+          # a base too old for this harness must not fail the run, so both the
+          # checkout and the measurement are guarded; the PR tree is restored either way
+          if git checkout "$base" -- mlforecast/; then
+            # `checkout <sha> -- path` rewrites the files the base has but leaves the
+            # ones the PR adds, which would put PR code in the base measurement
+            git diff --no-renames --name-only --diff-filter=A "$base" HEAD -- mlforecast/ \
+              | xargs -r rm -f
+            MLF_MEM_JSON=mem_base.json uv run pytest tests/mem_pooled.py --no-cov -s || true
+          else
+            echo "::warning::mlforecast/ is not restorable from $base, skipping the base run"
+          fi
+          git checkout HEAD -- mlforecast/
+
+      - name: Compare
+        run: uv run python tests/mem_compare.py mem_base.json mem_pr.json > report.md
+
+      # a fork PR's token is read-only, so this step is allowed to fail; the
+      # report is in the job summary either way
+      - name: Post the report
+        continue-on-error: true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('report.md', 'utf8');
+            const marker = '<!-- pooled-memory-report -->';
+            const {owner, repo} = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(
+              github.rest.issues.listComments, {owner, repo, issue_number}
+            );
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment(
+                {owner, repo, comment_id: existing.id, body}
+              );
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body});
+            }
