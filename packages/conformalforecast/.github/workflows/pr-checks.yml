@@ -1,0 +1,92 @@
+name: PR checks
+
+# Metadata gates on the pull request itself: where it targets, what it is
+# called, and how it will appear in the release notes. Deliberately unfiltered
+# by base branch -- `ci.yml` triggers only on PRs targeting `main`, so it
+# cannot see a stacked PR at all, and a required check that never runs leaves
+# the PR pending with no explanation.
+#
+# `edited` catches a title fixed after opening; `labeled`/`unlabeled` catch a
+# changelog label added after opening. Without them the check would stay red
+# until an unrelated push re-triggered the workflow.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  base-is-main:
+    name: PR targets main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject stacked PRs
+        if: github.base_ref != 'main'
+        run: |
+          echo "::error::This PR targets '${{ github.base_ref }}', not 'main'."
+          echo "Every PR must branch from and target 'main'. To fix:"
+          echo "  git rebase --onto main ${{ github.base_ref }} ${{ github.head_ref }}"
+          echo "  git push --force-with-lease"
+          echo "then retarget the PR to 'main' with the 'Edit' button next to its title."
+          echo "If the work genuinely depends on an unmerged PR, wait for that one"
+          echo "to merge, or fold both changes into a single PR."
+          exit 1
+
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title is a conventional commit
+        env:
+          # Via env, not inline `${{ }}`: a title is attacker-controlled text
+          # and must never be interpolated into the shell.
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|test|refactor|perf|ci|build|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if printf '%s' "$TITLE" | grep -qE "$pattern"; then
+            echo "ok: $TITLE"
+            exit 0
+          fi
+          echo "::error::PR title is not a conventional commit: '$TITLE'"
+          echo "Merge commits take their subject from the PR title, so the title"
+          echo "becomes permanent history. Use:"
+          echo "  <type>[optional scope][!]: <description>"
+          echo "Types: feat fix docs test refactor perf ci build chore revert"
+          echo "Examples:"
+          echo "  fix: propagate NaN through the weighted quantile"
+          echo "  test(cqr): cover asymmetric levels"
+          echo "  refactor!: drop the ConformalTSError alias"
+          exit 1
+
+  changelog-label:
+    name: Changelog label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a label the release notes can file this under
+        env:
+          # Comma-joined so a label containing spaces ("breaking change")
+          # survives the membership test below.
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          # Keep in step with the categories in .github/release.yml. Matching is
+          # case-sensitive and these are the exact label names in the repo.
+          valid='breaking change,enhancement,bug,documentation,maintenance,dependencies,skip-changelog'
+          IFS=','
+          for label in $valid; do
+            case ",$LABELS," in
+              *",$label,"*)
+                echo "ok: $label"
+                exit 0
+                ;;
+            esac
+          done
+          echo "::error::This PR carries no changelog label."
+          echo "Release notes are generated from labels, not titles, so an"
+          echo "unlabelled PR lands in 'Other Changes'. Add one of:"
+          echo "  breaking change | enhancement | bug | documentation |"
+          echo "  maintenance | dependencies"
+          echo "or 'skip-changelog' if it should not appear in the notes at all."
+          echo "Roughly: enhancement for feat, bug for fix, maintenance for"
+          echo "ci/test/refactor/chore, documentation for docs."
+          exit 1
