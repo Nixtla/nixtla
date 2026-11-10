@@ -1,0 +1,17 @@
+fail_fast: true
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        files: python/coreforecast
+        args: [--fix]
+      - id: ruff-format
+        files: python/coreforecast
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v19.1.1
+    hooks:
+      - id: clang-format
+        files: ^(include|src)/
