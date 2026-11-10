@@ -1,0 +1,52 @@
+format:
+  mintlify-md:
+    code-fold: true
+metadata-files:
+- nbdev.yml
+- sidebar.yml
+project:
+  type: mintlify
+website:
+  body-footer: 'Give us a ⭐ on [Github](https://github.com/nixtla/neuralforecast)
+
+    '
+  favicon: favicon_png.png
+  google-analytics: G-NXJNCVR18L
+  navbar:
+    background: primary
+    collapse-below: lg
+    left:
+    - href: docs/getting-started/02_quickstart.ipynb
+      text: Get Started
+    - menu:
+      - href: https://github.com/nixtla/mlforecast
+        text: MLForecast 🤖
+      - href: https://github.com/nixtla/statsforecast
+        text: StatsForecast ⚡️
+      - href: https://github.com/nixtla/hierarchicalforecast
+        text: HierarchicalForecast 👑
+      text: NixtlaVerse
+    - menu:
+      - href: https://github.com/nixtla/neuralforecast/issues/new/choose
+        icon: bug
+        text: Report an Issue
+      - href: https://join.slack.com/t/nixtlaworkspace/shared_invite/zt-135dssye9-fWTzMpv2WBthq8NK0Yvu6A
+        icon: chat-right-text
+        text: Join our Slack
+      text: Help
+    right:
+    - href: https://github.com/nixtla/neuralforecast
+      icon: github
+    - aria-label: Nixtla Twitter
+      href: https://twitter.com/nixtlainc
+      icon: twitter
+    search: true
+  open-graph:
+    image: https://github.com/Nixtla/styles/blob/2abf51612584169874c90cd7c4d347e3917eaf73/images/Banner%20Github.png
+  repo-actions:
+  - issue
+  sidebar:
+    style: floating
+  twitter-card:
+    image: https://farm6.staticflickr.com/5510/14338202952_93595258ff_z.jpg
+    site: '@Nixtlainc'
