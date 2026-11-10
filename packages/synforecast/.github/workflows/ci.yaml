@@ -168,7 +168,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build wheels
-        uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1
+        uses: PyO3/maturin-action@2e6429cdbcfb68a5450668dcab09d445af5704e8 # v1
         with:
           args: --release --out dist --find-interpreter
           manylinux: auto
@@ -198,7 +198,7 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
 
       - name: Build sdist
-        uses: PyO3/maturin-action@0629f00e5704e5295af04df4238c070808aa1e96 # v1
+        uses: PyO3/maturin-action@2e6429cdbcfb68a5450668dcab09d445af5704e8 # v1
         with:
           command: sdist
           args: --out dist
