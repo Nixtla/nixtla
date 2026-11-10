@@ -1,0 +1,150 @@
+{
+  "dataset": "M3 Monthly (last 18 months held out)",
+  "model": "NHITS via NeuralForecast, per-series standardization",
+  "metric": "seasonal MASE (season length 12)",
+  "seeds": 10,
+  "n_series": 300,
+  "pretrain_steps": 1000,
+  "finetune_steps": 300,
+  "finetune_lr": 0.0001,
+  "environment": {
+    "command": "benchmarks/benchmark_pretraining.py --seeds 10 --save-summary benchmarks/data/pretraining_summary.json",
+    "timestamp_utc": "2026-07-24T13:41:26+00:00",
+    "python": "3.10.12",
+    "platform": "Linux-5.15.153.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "cpu_count": 20,
+    "package_versions": {
+      "synforecast": "0.1.0",
+      "numpy": "2.2.6",
+      "pandas": "2.3.3",
+      "polars": "1.35.2",
+      "scipy": "1.15.3",
+      "scikit-learn": "1.7.2",
+      "statsforecast": "2.1.1",
+      "mlforecast": "1.1.0",
+      "neuralforecast": "3.2.0",
+      "utilsforecast": "0.2.15",
+      "datasetsforecast": "1.0.1",
+      "torch": "2.11.0+cu128"
+    }
+  },
+  "by_hist_len": [
+    {
+      "hist_len": 48,
+      "n_pairs": 3000,
+      "n_seeds": 10,
+      "from_scratch_mase": 1.6322056642994955,
+      "from_scratch_ci": [
+        1.5801682019127123,
+        1.6842231223730535
+      ],
+      "from_scratch_smape": 0.1073255678754412,
+      "zero_shot_mase": 1.3003741320683777,
+      "zero_shot_ci": [
+        1.2612369591821282,
+        1.3412473276085457
+      ],
+      "zero_shot_smape": 0.08409390475254644,
+      "pretrain_ft_mase": 1.6209674265861085,
+      "pretrain_ft_ci": [
+        1.571791301118294,
+        1.670957561550267
+      ],
+      "pretrain_ft_smape": 0.10590319635054715,
+      "zero_shot_win_rate": 1.0,
+      "zero_shot_mean_improve_pct": 20.298377690409573,
+      "zero_shot_wilcoxon_p": 0.001953125,
+      "pretrain_ft_win_rate": 0.6,
+      "pretrain_ft_mean_improve_pct": 0.6768160593252226,
+      "pretrain_ft_wilcoxon_p": 0.16015625
+    },
+    {
+      "hist_len": 72,
+      "n_pairs": 3000,
+      "n_seeds": 10,
+      "from_scratch_mase": 1.4406769992294728,
+      "from_scratch_ci": [
+        1.3991737653798988,
+        1.4874584799595116
+      ],
+      "from_scratch_smape": 0.09716025227555157,
+      "zero_shot_mase": 1.2875794717473343,
+      "zero_shot_ci": [
+        1.2474983419728787,
+        1.3281312120557067
+      ],
+      "zero_shot_smape": 0.08876291545725164,
+      "pretrain_ft_mase": 1.4345345074348683,
+      "pretrain_ft_ci": [
+        1.391183483574645,
+        1.4830973511130137
+      ],
+      "pretrain_ft_smape": 0.09625339286241394,
+      "zero_shot_win_rate": 1.0,
+      "zero_shot_mean_improve_pct": 10.584383990396585,
+      "zero_shot_wilcoxon_p": 0.001953125,
+      "pretrain_ft_win_rate": 0.6,
+      "pretrain_ft_mean_improve_pct": 0.4289756840882392,
+      "pretrain_ft_wilcoxon_p": 0.275390625
+    },
+    {
+      "hist_len": 108,
+      "n_pairs": 3000,
+      "n_seeds": 10,
+      "from_scratch_mase": 1.3077204486516387,
+      "from_scratch_ci": [
+        1.2609147519016053,
+        1.3586671663614305
+      ],
+      "from_scratch_smape": 0.09113838991890288,
+      "zero_shot_mase": 1.4048927723134232,
+      "zero_shot_ci": [
+        1.3569345595572442,
+        1.457269257641464
+      ],
+      "zero_shot_smape": 0.09612551414911788,
+      "pretrain_ft_mase": 1.322232176347335,
+      "pretrain_ft_ci": [
+        1.2825758696626899,
+        1.366435369615432
+      ],
+      "pretrain_ft_smape": 0.09115910373857614,
+      "zero_shot_win_rate": 0.1,
+      "zero_shot_mean_improve_pct": -7.600839181714433,
+      "zero_shot_wilcoxon_p": 0.00390625,
+      "pretrain_ft_win_rate": 0.3,
+      "pretrain_ft_mean_improve_pct": -1.2149871033087143,
+      "pretrain_ft_wilcoxon_p": 0.232421875
+    },
+    {
+      "hist_len": 9999,
+      "n_pairs": 3000,
+      "n_seeds": 10,
+      "from_scratch_mase": 1.2384481584390006,
+      "from_scratch_ci": [
+        1.1966206137113722,
+        1.2847261038477924
+      ],
+      "from_scratch_smape": 0.08936677435739997,
+      "zero_shot_mase": 1.395122363804508,
+      "zero_shot_ci": [
+        1.344653953760918,
+        1.452916482247467
+      ],
+      "zero_shot_smape": 0.09704607863322463,
+      "pretrain_ft_mase": 1.2607251800485428,
+      "pretrain_ft_ci": [
+        1.222636247504074,
+        1.3026155091730252
+      ],
+      "pretrain_ft_smape": 0.08942843468642928,
+      "zero_shot_win_rate": 0.0,
+      "zero_shot_mean_improve_pct": -12.762851524649923,
+      "zero_shot_wilcoxon_p": 0.001953125,
+      "pretrain_ft_win_rate": 0.2,
+      "pretrain_ft_mean_improve_pct": -1.8645926476030952,
+      "pretrain_ft_wilcoxon_p": 0.01953125
+    }
+  ]
+}

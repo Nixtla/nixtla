@@ -1,0 +1,1140 @@
+# SynForecast Generators
+
+Reference for all synthetic time series generators in SynForecast, organized by category.
+
+## Overview
+
+SynForecast provides **32 generators** organized into five categories:
+- **Statistical** (5): Classical time series models
+- **Stochastic** (13): Stochastic process-based generators
+- **Multivariate** (3): Multi-dimensional time series
+- **Domain-Specific** (7): Industry/application-focused generators
+- **Pretraining** (4): Diversity-targeted generators for foundation-model corpora
+
+All generators share the same constructor and `generate()` interface. Constructors are keyword-only:
+
+```python
+gen = RandomWalkGenerator(min_length=50, max_length=100, freq="D", seed=42)
+df = gen.generate(n_series=10)
+```
+
+`generate(n_series, start_id=0, n_jobs=-1)` returns a long-format DataFrame with columns `[unique_id, ds, y]`:
+- `unique_id`: integer categorical series identifier
+- `ds`: `datetime64[ns]` timestamp (or `int64` when `freq` is an integer)
+- `y`: `float64` value
+
+The output is a pandas DataFrame by default; set `engine` to change the output library.
+
+---
+
+## Verification Status
+
+Every generator ships with structural tests (long format, seed determinism,
+parameter validation) and statistical property tests (`pytest -m stats`, using
+sampling-error-derived bounds from `tests/helpers.py`). The classification
+below states how far that verification reaches:
+
+- **Theory-tested** — implements a canonical published model; property tests verify
+  its statistics against theory (moments, autocorrelation, tail behavior,
+  distribution shape) and, where available, reference implementations
+  (e.g. SARIMA autocorrelation against statsmodels).
+- **Simulator** — domain-motivated composite process with no single canonical
+  model to compare against; property tests pin its designed behaviors (rates,
+  bounds, seasonality, failure modes) rather than closed-form theory.
+- **Procedural** — randomized meta-generator for pretraining breadth; each
+  draw samples a fresh configuration, so tests verify structural and
+  diversity properties rather than one model's moments.
+
+| Status | Generators |
+|--------|------------|
+| Theory-tested (23) | RandomWalk, Seasonal, SARIMA, ETS, INAR, GARCH, OrnsteinUhlenbeck, GeometricBrownianMotion, JumpDiffusion, PoissonProcess, Cyclic, FractionalBrownianMotion, HawkesProcess, StochasticVolatility, RegimeSwitching, ChaoticSystem, BoundedProcess, LevyProcess, Copula, VAR, GaussianProcess, StateSpace, IntermittentDemand |
+| Simulator (5) | IoTSensor, EnergyLoad, DailyActiveUsers, VitalSigns, Clickstream |
+| Procedural (4) | TSI, TCM, KernelSynth (published Chronos recipe), MAR (GRATIS recipe) |
+
+Augmentation strategies are frozen specs (`FitAndSimulate`, `Mixup`,
+`MovingBlockBootstrap`, `DBA`) run with `apply(df, ...)`; `SynAugment` is a
+facade over them. See the [README](README.md#augment-observed-series) for seed
+semantics, extra columns and `source_col`. The note below applies to both.
+
+A note on fit-and-simulate: outputs match the source series' mean,
+standard deviation, and lag-1 autocorrelation **by construction** through a
+rescaling step, so those matches are a property of that method, never evidence
+of fit quality. `mbb` and `dba` deliberately bypass this moment-pinning path:
+MBB rebuilds the source decomposition with resampled remainder blocks, while
+DBA's default maps a z-normalized barycenter back to the reference scale.
+Distribution shape and higher-order dependence are not guaranteed.
+
+---
+
+## Non-parametric Augmentation Methods
+
+### Applying a spec
+
+Every augmentation strategy is a frozen pydantic spec: build it once, then
+call `apply(df, ...)`, which never mutates the spec. `apply` takes:
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `seed` | `None` | Seed for this call; `None` uses the spec's `seed` |
+| `include_original` | `True` | Include the input rows in the result |
+| `id_col`, `time_col`, `target_col` | `"unique_id"`, `"ds"`, `"y"` | Column names |
+| `engine` | `None` | Output dataframe library; `None` matches the input |
+| `source_col` | `None` | Name of an added column naming each row's source series |
+
+### MovingBlockBootstrap
+
+`MovingBlockBootstrap` (`SynAugment.mbb`) applies a moving block bootstrap to a classical-decomposition remainder,
+then restores the source trend and seasonal components. It follows Bergmeir,
+Hyndman, and Benitez (2016,
+[doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002))
+and Bandara et al. (2021,
+[arXiv:2008.02663](https://arxiv.org/abs/2008.02663)). The decomposition,
+defaults, block sizing, and guards are SynForecast's own design rather than a
+reproduction of the reference code. MBB bypasses moment pinning because its
+reconstructed source components already anchor each generated series and
+re-pinning would distort bootstrap-remainder variability.
+
+```python
+from synforecast import MovingBlockBootstrap
+
+augmented = MovingBlockBootstrap(
+    seed=42, n_augment=2, seasonal_period=24, block_size=12
+).apply(train_df)
+```
+
+Spec fields:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_augment` | `1` | Synthetic copies generated for every input series, 1 to 1000 |
+| `seasonal_period` | `None` | Fixed period (>= 2); `None` enables period detection |
+| `block_size` | `None` | Requested remainder-block length (>= 2); capped per series |
+| `seed` | `None` | Default random seed for `apply`; `None` draws fresh entropy |
+
+`apply(df, ...)` also takes `seed`, `include_original` (`True`), the column
+names, `engine` and `source_col`; see [Applying a spec](#applying-a-spec).
+
+Series without a finite target or with fewer than four observations are
+skipped with a logged warning; at least one series must be usable. Missing
+targets are interpolated before decomposition. Non-target columns are copied
+from the source series.
+Infinite targets reject the call with the source ID. An explicit seasonal
+period needs two cycles per source; shorter sources use nonseasonal
+decomposition and are listed in a warning.
+The moving-average trend takes linear time, and decomposition is reused across
+all requested copies of a source.
+
+### DBA
+
+`DBA` (`SynAugment.dba`) uses panel-wide DTW nearest neighbours and weighted DTW barycenter
+averaging, based on Petitjean, Ketterlin, and Gancarski (2011,
+[doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)),
+Forestier et al. (2017,
+[doi:10.1109/ICDM.2017.106](https://doi.org/10.1109/ICDM.2017.106)), and Bandara
+et al. (2021, [arXiv:2008.02663](https://arxiv.org/abs/2008.02663)). Its
+neighbour weighting, randomization, banded DTW, and normalized alignment are
+SynForecast's own design rather than a reproduction of the reference code.
+DBA bypasses moment pinning: `scale="reference"` explicitly maps the normalized
+barycenter back to the reference scale, while `scale="none"` averages raw
+values.
+
+```python
+from synforecast import DBA
+
+augmented = DBA(
+    seed=42,
+    n_augment=2,
+    n_neighbors=3,
+    n_iterations=5,
+    window_fraction=0.1,
+    scale="reference",
+).apply(train_df)
+```
+
+Spec fields:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_augment` | `1` | Synthetic copies generated around every usable reference, 1 to 1000 |
+| `n_neighbors` | `3` | Nearest panel series included in each barycenter |
+| `n_iterations` | `5` | DBA refinement iterations, from 1 to 1000 |
+| `window_fraction` | `0.1` | DTW band width as a fraction of the longest series, in (0, 1] |
+| `scale` | `"reference"` | Reference normalization or raw-value averaging (`"none"`) |
+| `seed` | `None` | Default random seed for `apply`; `None` draws fresh entropy |
+
+`apply(df, ...)` also takes `seed`, `include_original` (`True`), the column
+names, `engine` and `source_col`; see [Applying a spec](#applying-a-spec).
+
+DBA requires at least two usable series. Synthetic rows retain the reference
+timestamps and non-target columns. DTW and barycenter updates execute in native
+Rust. Reference scaling keeps constant sources constant; near-zero-scale
+references are listed in a warning because copies may add little variation.
+
+DBA evaluates each pair once in bounded chunks and retains only the requested
+nearest neighbors, using O(number of series × `n_neighbors`) neighbor storage.
+Pairwise distance computation still grows quadratically with the series count.
+Copies share their first alignment paths and refine in parallel. DTW parent
+storage, cached paths per copy, and batched output each have a 64 MiB limit;
+oversized requests raise `ValueError`. Python interrupts are checked between
+work chunks. Panel methods sort and partition once instead of filtering the
+whole frame for each source.
+
+---
+
+## Common Parameters
+
+Defined on `BaseGenerator` (`synforecast/base.py`) and accepted by every generator.
+
+### Core
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_length` | required | Minimum length of each series (> 0) |
+| `max_length` | required | Maximum length of each series (>= `min_length`) |
+| `freq` | required | Pandas offset alias (`'D'`, `'h'`, `'5min'`, `'MS'`, `'W-MON'`, ...) or an integer for an integer time index |
+| `engine` | `"pandas"` | Output dataframe library: `pandas`, `polars`, `cudf`, `modin`, `pyarrow` |
+| `alias` | `None` | Name of the generator (default: class name) |
+| `id_col` | `"unique_id"` | Name of the ID column |
+| `time_col` | `"ds"` | Name of the timestamp column |
+| `target_col` | `"y"` | Name of the value column |
+| `start_datetime` | `"2000-01-01"` | First timestamp of every series (any format accepted by `pandas.Timestamp`); ignored when `freq` is an integer |
+| `seed` | `None` | Random seed for reproducibility |
+| `innovation_distribution` | `"normal"` | Innovation/noise distribution: `normal`, `t`, `laplace`, `uniform`, `skew_normal` |
+| `innovation_params` | `None` | Distribution parameters, e.g. `{"df": 5}` for `t` (df > 2), `{"alpha": 5}` for `skew_normal` |
+| `exogenous` | `None` | `ExogenousConfig` for exogenous variable generation (pattern flags, datetime features, correlated columns) |
+
+### Overlays
+
+`overlays` takes an `OverlayConfig` (from `synforecast` or `synforecast.overlays`) with one optional spec per stage; `None` switches a stage off. Stages run on every series in a fixed order, inside the native kernel on every generation path (native batch, per-series Python path, `SynSet`, and generators with their own generation scheme):
+
+base weight → calendar → waveform → changepoints → anomalies → observation → missing
+
+- Relative magnitudes (`scale="relative"`) are in standard deviations of the untouched base series, measured once before any stage.
+- Each stage draws from its own stream of the series' seeds, so switching one stage on never moves another, and no stage advances the generator's own random stream. With every stage off, draws are those of the generator alone.
+- Multiplicative calendar and waveform stages need a non-negative series (zeros stay zero); `fallback` decides what happens on series with negative values.
+- `generate_with_states` applies every stage to the observations and leaves the states clean. `Multivariatizer(apply_overlays=True)` draws the wrapped generator's overlays on each coupled channel.
+
+```python
+from synforecast import Anomalies, Calendar, CalendarCycle, Missing, OverlayConfig
+from synforecast.generators import RandomWalkGenerator
+
+gen = RandomWalkGenerator(
+    min_length=24 * 28, max_length=24 * 28, freq="h", seed=1,
+    overlays=OverlayConfig(
+        calendar=Calendar(cycles=[
+            CalendarCycle(phase="day", harmonics=3),
+            CalendarCycle(phase="week", profile="levels", weight=0.5),
+        ], amplitude=3.0),
+        anomalies=Anomalies(types=["spike"], fraction=0.01, scale="relative"),
+        missing=Missing(rate=0.05),
+    ),
+)
+```
+
+| `OverlayConfig` field | Default | Description |
+|-----------|---------|-------------|
+| `base_weight` | `1.0` | Weight of the base series around its mean before any other stage; small values let a calendar or waveform dominate, 0 leaves them exact |
+| `calendar` | `None` | `Calendar`: timestamp-aligned periodic profiles |
+| `waveform` | `None` | `Waveform`: a sharp-edged template with its period in steps |
+| `changepoints` | `None` | `Changepoints`: structural breaks |
+| `anomalies` | `None` | `Anomalies`: spikes, dips and level shifts |
+| `observation` | `None` | `Observation`: saturation, quantization, sample-and-hold, frozen readings |
+| `missing` | `None` | `Missing`: missing values as NaN |
+
+#### Calendar cycles
+
+`Calendar(cycles=[...])` combines one or more `CalendarCycle`s as their weighted mean (each normalized to peak 1). Phases follow the timestamps the generator emits (UTC for an offset-aware start). A cycle needs at least two steps per period.
+
+| `Calendar` field | Default | Description |
+|-----------|---------|-------------|
+| `cycles` | required | One or more `CalendarCycle` |
+| `mode` | `"additive"` | `additive` adds `amplitude` times the profile; `multiplicative` scales a non-negative series by `1 + swing * profile` |
+| `amplitude` | `1.0` | Additive peak (standard deviations of the base series with `scale="relative"`) |
+| `swing` | `0.3` | Multiplicative peak as a fraction of the level, below 1 |
+| `scale` | `"relative"` | Units of `amplitude` |
+| `fallback` | `"additive"` | Multiplicative on a series with negative values: `additive` or `none` (unchanged) |
+| `on_unsupported` | `"warn"` | A cycle that cannot show at `freq`: `warn` or `skip` drops it, `raise` fails |
+
+| `CalendarCycle` field | Default | Description |
+|-----------|---------|-------------|
+| `phase` | required | `day` (time of day, needs a step under 12 hours), `week` (day and time of week, needs a step of at most 3.5 days; real weekdays, so `B` works), `year` (month and time of year, aligned to calendar months; works at `D`, `W`, `MS`, `QS`), `step` (every `period` steps; works with integer `freq`) |
+| `profile` | `"fourier"` | `fourier` (smooth, `harmonics` harmonics) or `levels` (one level per bin) |
+| `harmonics` | `3` | Harmonics of a Fourier profile (1-12) |
+| `bins` | `None` | Bins of a levels profile; defaults to 24 (day), 7 (week), 12 (year) or `period` (step) |
+| `period` | `None` | Cycle length in steps, for `phase="step"` only |
+| `values` | `None` | Fixed profile: `2 * harmonics` Fourier coefficients (cosines, then sines) or one value per bin. Random profiles draw coefficients N(0, 1/k) or levels N(0, 1) per series |
+| `jitter` | `0.0` | Per-series normal noise added to fixed `values` |
+| `weight` | `1.0` | Weight in the calendar's weighted mean |
+
+#### Waveform
+
+| `Waveform` field | Default | Description |
+|-----------|---------|-------------|
+| `shape` | `"pulse"` | `pulse`, `spike`, `sawtooth`, `trapezoid`, `levels` (jump to a random other level each cycle) or `staircase` (a one-level step in a persistent direction each cycle) |
+| `period` | `96` | Cycle length in steps; mean dwell for `levels` and `staircase` |
+| `duty` | `0.1` | On-fraction of a cycle for `pulse` and `trapezoid` |
+| `width` | `1` | Spike width in steps |
+| `ramp` | `0.25` | Trapezoid ramp per side, as a fraction of the on-time |
+| `levels` | `4` | Number of levels for `levels` and `staircase` |
+| `timing` | `"periodic"` | `periodic` (random phase), `jitter` (each start moved by N(0, `jitter` × period)), `renewal` (on and off durations drawn from `renewal`) |
+| `jitter` | `0.05` | Cycle-start jitter as a fraction of the period |
+| `renewal` | `"gamma"` | `gamma` or `lognormal` renewal durations |
+| `cv` | `0.5` | Coefficient of variation of renewal durations |
+| `direction` | `"peak"` | `peak` or `dip` |
+| `mode` | `"additive"` | `additive` or `multiplicative` (non-negative series) |
+| `amplitude` | `3.0` | Additive peak (standard deviations of the base series with `scale="relative"`) |
+| `swing` | `0.5` | Multiplicative peak; at most 1 for dips |
+| `scale` | `"relative"` | Units of `amplitude` |
+| `fallback` | `"additive"` | As for `Calendar` |
+
+#### Changepoints, anomalies and missing data
+
+| `Changepoints` field | Default | Description |
+|-----------|---------|-------------|
+| `count` | `2` | Number of breaks |
+| `kind` | `"level"` | `level`, `trend`, `variance`, `mixed` |
+| `locations` | `None` | Relative positions 0-1 (U(0.1, 0.9) when `None`) |
+| `level_changes` | `None` | Level jumps (U(-20, 20), or U(-3, 3) standard deviations when relative) |
+| `trend_changes` | `None` | Slope changes (U(-0.5, 0.5); when relative, a total drift of U(-3, 3) standard deviations over the rest of the series) |
+| `variance_changes` | `None` | Positive factors on the deviation from a rolling mean (U(0.5, 2)) |
+| `scale` | `"absolute"` | `absolute` or `relative` |
+
+| `Anomalies` field | Default | Description |
+|-----------|---------|-------------|
+| `types` | `["spike", "dip"]` | Non-empty subset of `spike`, `dip`, `level_shift` |
+| `fraction` | `0.05` | Share of steps that start an anomaly |
+| `spike_magnitude` | `10.0` | Size of a spike |
+| `dip_magnitude` | `-10.0` | Size of a dip |
+| `level_shift_magnitude` | `20.0` | Size of a level shift |
+| `level_shift_duration` | `10` | Steps a level shift lasts |
+| `scale` | `"absolute"` | `absolute` or `relative` |
+
+| `Missing` field | Default | Description |
+|-----------|---------|-------------|
+| `pattern` | `"random"` | `random`, `block`, `seasonal` |
+| `rate` | `0.1` | Share of missing steps |
+| `block_size` | `3` | Run length for `block` |
+| `seasonal_period` | `7` | Period for `seasonal` |
+
+#### Observation
+
+Missing values stay missing and never spread.
+
+| `Observation` field | Default | Description |
+|-----------|---------|-------------|
+| `floor` | `None` | Saturation floor, as a fraction of the way from the series' minimum (0) to its maximum (1) |
+| `cap` | `None` | Saturation cap on the same scale; above `floor` |
+| `quantum` | `0.0` | Value-grid step in standard deviations of the series entering this stage; 0 disables it |
+| `hold` | `1` | Sample-and-hold block in steps; 1 disables it |
+| `stuck_fraction` | `0.0` | Share of steps inside windows where the reading freezes |
+| `stuck_length` | `20` | Mean frozen-window length in steps |
+
+#### Deprecated flat arguments
+
+The released flat arguments still work, warn with a `DeprecationWarning`, and draw exactly what the matching `OverlayConfig` draws. Reading them from a generator also warns.
+
+| Flat argument | `OverlayConfig` equivalent |
+|-----------|---------|
+| `missing_data=True`, `missing_pattern`, `missing_rate`, `missing_block_size`, `missing_seasonal_period` | `missing=Missing(pattern, rate, block_size, seasonal_period)` |
+| `anomalies=True`, `anomaly_types`, `anomaly_fraction`, `spike_magnitude`, `dip_magnitude`, `level_shift_magnitude`, `level_shift_duration` | `anomalies=Anomalies(types, fraction, spike_magnitude, dip_magnitude, level_shift_magnitude, level_shift_duration)` |
+| `changepoints=True`, `num_changepoints`, `changepoint_type`, `changepoint_locations`, `changepoint_level_changes`, `changepoint_trend_changes`, `changepoint_variance_changes` | `changepoints=Changepoints(count, kind, locations, level_changes, trend_changes, variance_changes)` |
+| `overlay_scale` | `scale=` on `Changepoints` and `Anomalies` |
+
+#### Pretraining priors
+
+`pretraining_overlays(rng)` draws heavy-tailed innovations and relative changepoints, anomalies and missing data; `calendar_overlays(rng)` a calendar (time of day with 1-5 harmonics, and a weekday profile with weekend contrast in 70% of draws); `observability_overlays(rng)` a waveform and observation configuration (clean, mild or layered). `pretraining_pool(overlay_seed=..., calendar_rate=..., observability_rate=...)` applies them per built entry, each from its own `(overlay_seed, index)` stream, so `members=` stays consistent and rates of 0 leave pools unchanged.
+
+Per-generator sections below list only generator-specific parameters.
+
+---
+
+## Statistical Generators
+
+### RandomWalkGenerator
+
+Simple random walk with configurable drift and volatility. **Applications**: finance, econometrics, baseline testing.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `drift` | `0.0` | Mean of the random steps |
+| `volatility` | `1.0` | Standard deviation of random steps (>= 0) |
+| `start_value` | `0.0` | Initial value for all series |
+
+### SeasonalGenerator
+
+Deterministic seasonal pattern combined with trend and noise. **Applications**: retail, energy, transportation, tourism.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `seasonality_period` | `24` | Period of seasonality (>= 1) |
+| `seasonality_amplitude` | `10.0` | Amplitude of seasonal component |
+| `trend` | `0.0` | Linear trend coefficient |
+| `noise_level` | `1.0` | Standard deviation of noise (>= 0) |
+| `base_level` | `50.0` | Base level of the series |
+
+### SARIMAGenerator
+
+Seasonal ARIMA with seasonal multiplicative polynomials and exogenous regressors. **Applications**: econometrics, demand forecasting, macroeconomics.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `p` | `1` | AR order (>= 0) |
+| `d` | `0` | Differencing order (0-2) |
+| `q` | `1` | MA order (>= 0) |
+| `P` | `1` | Seasonal AR order (>= 0) |
+| `D` | `0` | Seasonal differencing order (0-2) |
+| `Q` | `1` | Seasonal MA order (>= 0) |
+| `seasonal_period` | `12` | Seasonal period (>= 1) |
+| `mean` | `0.0` | Process mean (for stationary models with d=0, D=0) |
+| `drift` | `0.0` | Drift term (for integrated models with d>0 or D>0) |
+| `noise_std` | `1.0` | Standard deviation of innovation noise (> 0) |
+| `burn_in` | `None` | Burn-in period; `None` for automatic |
+| `validate_stationarity` | `True` | Validate AR parameters for stationarity |
+| `ar_params` | `None` | AR coefficients phi_1..phi_p |
+| `ma_params` | `None` | MA coefficients theta_1..theta_q |
+| `seasonal_ar_params` | `None` | Seasonal AR coefficients |
+| `seasonal_ma_params` | `None` | Seasonal MA coefficients |
+| `exog_coefficients` | `None` | Coefficients for exogenous regressors |
+
+### ETSGenerator
+
+Exponential smoothing state space (ETS) model supporting all 30 variants. **Applications**: forecasting, retail, supply chain.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `error_type` | `"add"` | Error type: `add` (A) or `mul` (M) |
+| `trend_type` | `"add"` | Trend type: `add` (A), `mul` (M), or `None` (N) |
+| `seasonal_type` | `"add"` | Seasonal type: `add` (A), `mul` (M), or `None` (N) |
+| `seasonal_period` | `12` | Seasonal period m (>= 1) |
+| `level` | `100.0` | Initial level l_0 |
+| `trend` | `0.0` | Initial trend b_0 |
+| `seasonal` | `None` | Initial seasonal factors |
+| `alpha` | `0.3` | Level smoothing parameter (0-1) |
+| `beta` | `0.1` | Trend smoothing parameter (0-1) |
+| `gamma` | `0.1` | Seasonal smoothing parameter (0-1) |
+| `phi` | `0.98` | Damping parameter (0-1) |
+| `damped` | `False` | Use damped trend |
+| `noise_std` | `1.0` | Standard deviation of noise (> 0) |
+| `box_cox_lambda` | `None` | Box-Cox lambda (`None` = no transformation) |
+
+### INARGenerator
+
+Integer-valued autoregressive (INAR) counts via binomial thinning. **Applications**: epidemiology, insurance, operations research, ecology.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `p` | `1` | INAR order (>= 1) |
+| `alpha` | `None` | Thinning probabilities (each in [0,1]) |
+| `innovation_type` | `"poisson"` | Innovation distribution: `poisson`, `negative_binomial` |
+| `innovation_mean` | `5.0` | Mean of innovation distribution (> 0) |
+| `innovation_dispersion` | `2.0` | Dispersion for negative binomial (> 0) |
+
+---
+
+## Stochastic Generators
+
+### GARCHGenerator
+
+GARCH returns with time-varying volatility clustering. **Applications**: quantitative finance, risk management, volatility modeling.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `p` | `1` | GARCH order (>= 1) |
+| `q` | `1` | ARCH order (>= 1) |
+| `omega` | `0.1` | Constant term in variance equation |
+| `alpha` | `None` | ARCH parameters |
+| `beta` | `None` | GARCH parameters |
+| `mu` | `0.0` | Mean of returns |
+| `initial_variance` | `1.0` | Initial variance |
+
+### OrnsteinUhlenbeckGenerator
+
+Mean-reverting Ornstein-Uhlenbeck process, the continuous-time analog of AR(1). **Applications**: interest rates, pairs trading, physics, biology.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `theta` | `0.5` | Speed of mean reversion (> 0) |
+| `mu` | `0.0` | Long-term mean |
+| `sigma` | `1.0` | Volatility (> 0) |
+| `initial_value` | `0.0` | Initial value |
+| `dt` | `1.0` | Time step (> 0) |
+
+### GeometricBrownianMotionGenerator
+
+Geometric Brownian Motion paths, the foundation of the Black-Scholes model. **Applications**: stock prices, options pricing, portfolio management.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `mu` | `0.05` | Drift coefficient |
+| `sigma` | `0.2` | Volatility (> 0) |
+| `initial_value` | `100.0` | Initial value (> 0) |
+| `dt` | `1.0` | Time step (> 0) |
+
+### JumpDiffusionGenerator
+
+Diffusion with random jumps (Merton model) capturing sudden market movements. **Applications**: finance, insurance, rare event modeling.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `mu` | `0.05` | Drift coefficient |
+| `sigma` | `0.2` | Diffusion volatility (> 0) |
+| `lambda_jump` | `0.1` | Jump intensity, jumps per unit time (>= 0) |
+| `jump_mean` | `0.0` | Mean of jump size (log scale) |
+| `jump_std` | `0.1` | Std of jump size (log scale, >= 0) |
+| `initial_value` | `100.0` | Initial value (> 0) |
+| `dt` | `1.0` | Time step (> 0) |
+
+### PoissonProcessGenerator
+
+Poisson process arrivals. **Applications**: queuing theory, reliability engineering, telecommunications.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lambda_rate` | `5.0` | Rate parameter (> 0) |
+| `cumulative` | `False` | Return cumulative counts |
+
+### CyclicGenerator
+
+Multiple cyclic components with varying periods and amplitudes. **Applications**: environmental science, astronomy, biology.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `base_level` | `100.0` | Base level of series |
+| `trend` | `0.0` | Linear trend coefficient |
+| `cycle_period_mean` | `50.0` | Mean cycle period (> 0) |
+| `cycle_period_std` | `10.0` | Std of cycle period variation (>= 0) |
+| `cycle_amplitude_mean` | `20.0` | Mean cycle amplitude |
+| `cycle_amplitude_std` | `5.0` | Std of cycle amplitude variation (>= 0) |
+| `num_cycles` | `3` | Number of cycles to generate (> 0) |
+| `noise_std` | `1.0` | Standard deviation of noise (>= 0) |
+
+### FractionalBrownianMotionGenerator
+
+Fractional Brownian motion with long-range dependence controlled by the Hurst exponent. **Applications**: network traffic, hydrology, finance, turbulence.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `hurst` | `0.5` | Hurst exponent H in (0, 1) |
+| `sigma` | `1.0` | Volatility/scale parameter (> 0) |
+| `method` | `"fft"` | Generation method: `fft` (O(n log n)), `cholesky`, `hosking` |
+| `return_increments` | `False` | Return fGn increments instead of cumulative fBm |
+| `initial_value` | `0.0` | Starting value for the process |
+
+### HawkesProcessGenerator
+
+Self-exciting point process where past events increase future event probability. **Applications**: order flow, seismology, social media, epidemiology.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `baseline_intensity` | `1.0` | Background event rate mu (> 0) |
+| `excitation_amplitude` | `0.5` | Jump in intensity per event alpha (>= 0) |
+| `decay_rate` | `1.0` | Rate of intensity decay beta (> 0) |
+| `kernel` | `"exponential"` | Excitation kernel: `exponential`, `power_law` |
+| `power_law_exponent` | `1.5` | Exponent for power-law kernel (> 1) |
+| `output_type` | `"counts"` | Output: `counts`, `intensity`, `events` |
+| `max_events` | `10000` | Maximum events to simulate (> 0) |
+
+### StochasticVolatilityGenerator
+
+Heston or SABR model where volatility follows its own stochastic process. **Applications**: derivatives pricing, risk management, quantitative finance.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model` | `"heston"` | Model: `heston`, `sabr` |
+| `initial_price` | `100.0` | Starting price S0 (> 0) |
+| `initial_vol` | `0.04` | Starting variance V0 (SABR starts at sqrt(initial_vol)) |
+| `drift` | `0.05` | Price drift mu |
+| `mean_vol` | `0.04` | Long-run variance theta (Heston, > 0) |
+| `vol_mean_reversion` | `2.0` | Variance mean-reversion speed kappa (> 0) |
+| `vol_of_vol` | `0.3` | Volatility of volatility (Heston sigma_v, SABR alpha) |
+| `correlation` | `-0.7` | Price-volatility correlation rho in [-1, 1] |
+| `beta` | `0.5` | CEV exponent (SABR only; 0 = normal, 1 = lognormal) |
+| `dt` | `1/252` | Time step (1/252 = daily with 252 trading days) |
+| `output_type` | `"price"` | Output: `price`, `returns`, `volatility` |
+
+### RegimeSwitchingGenerator
+
+Markov-switching series transitioning between regimes with distinct dynamics. **Applications**: macroeconomics, business cycles, bull/bear markets.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_regimes` | `2` | Number of regimes/states (>= 2) |
+| `regime_means` | `None` | Mean for each regime |
+| `regime_variances` | `None` | Variance for each regime |
+| `regime_ar_coeffs` | `None` | AR(1) coefficient for each regime |
+| `transition_matrix` | `None` | Regime transition probability matrix |
+| `initial_regime` | `None` | Starting regime (0-indexed) |
+
+### ChaoticSystemGenerator
+
+Deterministic chaotic dynamics: Lorenz attractor, logistic map, Mackey-Glass. **Applications**: physics, climate science, neuroscience, nonlinear forecasting benchmarks.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `system` | `"lorenz"` | System: `lorenz`, `logistic`, `mackey_glass` |
+| `sigma` | `10.0` | Lorenz sigma |
+| `rho` | `28.0` | Lorenz rho |
+| `beta_param` | `2.6667` | Lorenz beta |
+| `dt` | `0.01` | Integration step size (> 0) |
+| `logistic_r` | `3.9` | Logistic map parameter r |
+| `mg_beta` | `0.2` | Mackey-Glass beta |
+| `mg_gamma` | `0.1` | Mackey-Glass gamma |
+| `mg_n` | `10.0` | Mackey-Glass exponent n |
+| `mg_tau` | `17` | Mackey-Glass delay tau (>= 1) |
+| `observation_noise` | `0.0` | Observation noise std (>= 0) |
+| `initial_perturbation` | `0.01` | Initial condition perturbation scale (>= 0) |
+
+### BoundedProcessGenerator
+
+Series constrained to a finite interval via Beta-AR or logit-normal models. **Applications**: market share, utilization rates, bounded environmental and healthcare metrics.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `model` | `"beta_ar"` | Model: `beta_ar`, `logit_normal` |
+| `phi` | `0.8` | AR coefficient in [-1, 1] |
+| `omega` | `0.1` | Intercept for beta_ar conditional mean |
+| `kappa` | `20.0` | Beta precision parameter (> 0) |
+| `sigma` | `0.3` | Logit-normal innovation std (> 0) |
+| `initial_value` | `0.5` | Starting value in (0, 1) |
+| `lower` | `0.0` | Lower bound |
+| `upper` | `1.0` | Upper bound |
+
+### LevyProcessGenerator
+
+Heavy-tailed alpha-stable process via the Chambers-Mallows-Stuck algorithm. **Applications**: tail risk, insurance catastrophes, heavy-tailed network traffic, anomalous diffusion.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `alpha` | `1.5` | Stability parameter in (0, 2] |
+| `beta_skew` | `0.0` | Skewness parameter in [-1, 1] |
+| `scale` | `1.0` | Scale parameter (> 0) |
+| `location` | `0.0` | Location parameter |
+| `cumulative` | `True` | Return cumulative sum (Levy flight) |
+| `initial_value` | `0.0` | Starting value for cumulative mode |
+
+---
+
+## Multivariate Generators
+
+### CopulaGenerator
+
+Multivariate series with specified marginal distributions and dependency structure. **Applications**: portfolio risk, correlated assets, insurance aggregate claims.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `copula_type` | `"gaussian"` | Copula type: `gaussian`, `t` |
+| `correlation_matrix` | `None` | Correlation matrix for n_series |
+| `df` | `5.0` | Degrees of freedom for t-copula (> 0) |
+| `marginal_distributions` | `[{"type": "normal", "loc": 0.0, "scale": 1.0}]` | Marginal distributions |
+
+### VARGenerator
+
+Vector autoregressive (VAR) series with inter-series dependencies. **Applications**: macroeconomics, multi-asset systems, Granger causality studies.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `lag_order` | `1` | VAR lag order (>= 1) |
+| `coef_matrices` | `None` | Coefficient matrices for each lag |
+| `intercept` | `None` | Intercept vector |
+| `innovation_covariance` | `None` | Covariance matrix of innovations |
+
+### GaussianProcessGenerator
+
+Smooth, correlated series from Gaussian Process priors with configurable kernels. **Applications**: geostatistics, Bayesian optimization, robotics, environmental science.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `kernel` | `"rbf"` | Kernel: `rbf`, `matern_0.5`, `matern_1.5`, `matern_2.5`, `periodic` |
+| `length_scale` | `20.0` | Kernel length scale (> 0) |
+| `amplitude` | `1.0` | Signal amplitude (> 0) |
+| `period` | `50.0` | Period for periodic kernel (> 0) |
+| `mean` | `0.0` | Mean function value |
+| `noise_variance` | `1e-06` | Observation noise variance (>= 0) |
+
+---
+
+## Domain-Specific Generators
+
+### IntermittentDemandGenerator
+
+Sporadic demand with many zero values, typical of spare parts and slow movers. **Applications**: supply chain, inventory management, spare parts forecasting.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `demand_probability` | `0.2` | Probability of non-zero demand (0-1) |
+| `demand_distribution` | `"poisson"` | Distribution for non-zero demand: `poisson`, `negative_binomial`, `lognormal`, `gamma` |
+| `demand_mean` | `5.0` | Mean of demand when non-zero (> 0) |
+| `demand_std` | `2.0` | Std of demand (>= 0) |
+| `intermittent_pattern` | `"random"` | Pattern: `random`, `clustered`, `seasonal` |
+| `cluster_size` | `3` | Size of demand clusters (>= 1) |
+| `seasonal_period` | `12` | Period for seasonal intermittency (>= 1) |
+| `seasonal_peak_prob` | `0.4` | Peak probability in seasonal pattern (0-1) |
+| `min_demand` | `1` | Minimum non-zero demand value (>= 1) |
+
+### IoTSensorGenerator
+
+IoT sensor readings with drift, noise, failures, and battery effects. **Applications**: IoT, manufacturing, predictive maintenance.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_sensors` | `1` | Number of sensors to generate (>= 1) |
+| `sensor_type` | `"temperature"` | Sensor: `temperature`, `humidity`, `pressure`, `light`, `motion`, `generic` |
+| `base_value` | `None` | Base sensor reading |
+| `trend` | `0.0` | Linear drift rate per time step |
+| `seasonal_period` | `0` | Seasonal cycle length (>= 0) |
+| `seasonal_amplitude` | `0.0` | Amplitude of seasonal variation |
+| `measurement_noise` | `0.1` | Std of measurement noise |
+| `drift_rate` | `0.0` | Rate of sensor drift |
+| `drift_noise` | `0.01` | Random variation in drift |
+| `calibration_error` | `0.0` | Initial calibration offset |
+| `battery_life` | `None` | Steps until battery degradation starts |
+| `battery_degradation_rate` | `0.001` | Rate of quality loss |
+| `failure_probability` | `0.0` | Probability of sensor failure (0-1) |
+| `failure_type` | `"intermittent"` | Failure type: `intermittent`, `complete`, `stuck` |
+| `failure_duration` | `10` | Duration of intermittent failures (>= 1) |
+| `stuck_value` | `None` | Value when stuck |
+| `spatial_correlation` | `0.5` | Correlation between nearby sensors (0-1) |
+
+### EnergyLoadGenerator
+
+Electricity demand with daily/weekly/yearly seasonality and weather effects. **Applications**: energy, utilities, smart grid.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `base_load` | `100.0` | Base load in kW or MW (> 0) |
+| `load_type` | `"residential"` | Load type: `residential`, `commercial`, `industrial` |
+| `daily_pattern` | `True` | Enable daily cycle |
+| `daily_amplitude` | `30.0` | Amplitude of daily variation |
+| `weekly_pattern` | `True` | Enable weekly cycle |
+| `weekly_amplitude` | `15.0` | Amplitude of weekly variation |
+| `yearly_pattern` | `True` | Enable yearly cycle |
+| `yearly_amplitude` | `20.0` | Amplitude of yearly variation |
+| `temperature_sensitive` | `True` | Enable temperature effects |
+| `temperature_sensitivity` | `2.0` | Load change per degree |
+| `base_temperature` | `20.0` | Base temperature in Celsius |
+| `morning_peak_hour` | `8` | Hour of morning peak (0-23) |
+| `evening_peak_hour` | `19` | Hour of evening peak (0-23) |
+| `peak_amplitude` | `40.0` | Additional load during peaks |
+| `holiday_effect` | `0.3` | Load reduction on holidays (0-1) |
+| `holiday_days` | `[]` | Day indices for holidays |
+| `extreme_weather_prob` | `0.0` | Probability of extreme weather (0-1) |
+| `extreme_weather_impact` | `1.5` | Load multiplier during extreme weather |
+| `noise_std` | `5.0` | Standard deviation of random noise |
+
+### StateSpaceGenerator
+
+General linear or custom state space models with transition and observation equations. **Applications**: control systems, econometrics, signal processing, Kalman filter testing.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `state_dim` | `1` | Dimension of hidden state vector (>= 1) |
+| `obs_dim` | `1` | Dimension of observation vector (>= 1) |
+| `transition_matrix` | `None` | State transition matrix F |
+| `observation_matrix` | `None` | Observation matrix H |
+| `state_covariance` | `None` | State noise covariance Q |
+| `obs_covariance` | `None` | Observation noise covariance R |
+| `transition_fn` | `None` | Custom state transition function |
+| `observation_fn` | `None` | Custom observation function |
+| `initial_state` | `None` | Initial state x[0] |
+| `initial_state_covariance` | `None` | Initial state uncertainty |
+
+### DailyActiveUsersGenerator
+
+DAU patterns for digital products with growth, weekly seasonality, and event spikes. **Applications**: product analytics, mobile apps, SaaS.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `base_users` | `10000.0` | Base number of daily active users (> 0) |
+| `growth_rate` | `0.0005` | Daily organic growth rate |
+| `growth_rate_std` | `0.0` | Std dev for per-series growth rate perturbation (>= 0) |
+| `app_type` | `"consumer"` | App type: `consumer`, `business`, `gaming` |
+| `weekly_pattern` | `True` | Enable weekly seasonality |
+| `weekend_factor` | `None` | Multiplier for weekend activity (> 0) |
+| `event_probability` | `0.02` | Daily probability of an event (0-1) |
+| `event_impact_min` | `1.2` | Minimum event impact multiplier (>= 1) |
+| `event_impact_max` | `2.0` | Maximum event impact multiplier |
+| `event_decay_rate` | `0.1` | Rate at which event impact decays (0-1) |
+| `noise_std` | `0.05` | Standard deviation of noise |
+| `event_col` | `"event"` | Name of the event indicator column |
+
+### VitalSignsGenerator
+
+Physiologically realistic vital signs with patient archetypes. **Applications**: healthcare, medical devices, clinical research.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `patient_type` | `"healthy"` | Archetype: `healthy`, `cardiac`, `sepsis`, `respiratory`, `hypertensive` |
+| `vital_sign` | `"heart_rate"` | Signal: `heart_rate`, `systolic_bp`, `diastolic_bp`, `respiratory_rate`, `spo2`, `temperature` |
+| `include_circadian` | `True` | Include circadian rhythm effects |
+| `include_hrv` | `True` | Include heart rate variability |
+| `include_events` | `True` | Include random physiological events |
+| `event_probability` | `0.01` | Probability of event per timestep (0-1) |
+
+### ClickstreamGenerator
+
+Web traffic with sessions, pageviews, conversions, bounce rates, and bot traffic. **Applications**: web analytics, digital marketing, e-commerce.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `base_sessions` | `100.0` | Baseline sessions per time unit (> 0) |
+| `traffic_source` | `"mixed"` | Source: `organic`, `paid`, `direct`, `referral`, `mixed` |
+| `conversion_rate` | `0.03` | Base conversion rate (0-1) |
+| `bounce_rate` | `0.4` | Base bounce rate, single-page sessions (0-1) |
+| `avg_session_depth` | `3.5` | Average pages per non-bounced session (> 0) |
+| `include_seasonality` | `True` | Include time-of-day and day-of-week patterns |
+| `include_bots` | `True` | Include bot traffic |
+| `bot_fraction` | `0.15` | Fraction of traffic from bots (0-1) |
+| `output_type` | `"sessions"` | Metric: `sessions`, `pageviews`, `conversions`, `bounce_rate` |
+
+---
+
+## Pretraining Generators
+
+Designed for diverse pretraining corpora: each series samples a fresh random
+configuration, so a pool spans
+trend-only, pure-seasonal, causally-structured, and noise-dominated regimes.
+
+The `pretraining_pool()` preset collects these four meta-generators (plus the
+`interpretable_pool` by default) into a breadth-maximizing corpus:
+
+```python
+from synforecast import SynSet, pretraining_pool
+
+df = SynSet(pretraining_pool(min_length=512, max_length=512, freq="h")).generate(
+    n_series_per_generator=1
+)
+```
+
+KernelSynth samples each series with Durbin-Levinson recursions whose cost
+grows quadratically with series length. Scale the length and number of series
+gradually when building a large corpus.
+
+The opt-in `seasonal_pool()` preset adds eight configured instances of
+`TSIGenerator`, `ETSGenerator`, and `SeasonalGenerator` with a pronounced
+seasonal cycle on a moving level, under moderate to heavy noise. Feature-space
+coverage benchmarks found that region under-represented for quarterly and
+monthly panels such as tourism demand and hospital counts; adding the preset
+on top of `interpretable_pool` raised coverage on those panels and on M1 monthly,
+was neutral on M4, and gave nothing on intermittent data. It is an addition
+on top of a pool, not a replacement for any part of it, and its effect on
+forecasting accuracy has not been measured. `freq` is required; pass the same
+value to the pool it is added to:
+
+```python
+from synforecast import SynSet, interpretable_pool, seasonal_pool
+
+pool = interpretable_pool(freq="MS") + seasonal_pool(freq="MS")
+df = SynSet(pool).generate(n_series_per_generator=1)
+```
+
+### TSIGenerator
+
+Trend + seasonality + irregularity composition with randomized presence,
+types, and weights per series. **Applications**: pretraining data, augmentation.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `trend_types` | all 6 | Trend shapes sampled per series: `none`, `linear`, `exponential`, `logistic`, `piecewise_linear`, `damped` |
+| `n_seasonal_range` | `(0, 3)` | Number of seasonal harmonics per series |
+| `seasonal_periods` | mixed pool | Periods in steps; integer (7, 12, 24, ..., 365.25) and non-integer/co-prime values |
+| `seasonal_amplitude_range` | log-uniform | Amplitude draw range per harmonic |
+| `amplitude_modulation_prob` | prob | Slowly varying amplitude envelope |
+| `harmonics_prob` | prob | Add decaying 2f/3f overtones (non-sinusoidal shapes) |
+| `irregular_types` | all 5 | Noise process: `gaussian`, `ar1`, `garch_like`, `student_t`, `laplace` |
+| `noise_scale_range` | `(0.5, 12.0)` | Noise std as a fraction of the structural signal std |
+| `multiplicative_prob` | `0.3` | Probability of multiplicative (vs. additive) composition |
+
+### TCMGenerator
+
+Random temporal structural causal model: a sparse dependency graph over
+latent variables and lags is sampled per series, rolled out with linear or
+mildly nonlinear edge functions, and one node is observed. **Applications**:
+pretraining data with genuine causal/lead-lag structure.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_vars_range` | `(1, 5)` | Number of latent variables |
+| `max_lag_range` | `(1, 24)` | Maximum dependency lag |
+| `edge_probability_range` | `(0.05, 0.3)` | Per-(var, lag) edge probability |
+| `edge_kinds` | all 5 | Edge functions: `linear`, `tanh`, `relu`, `product`, `threshold` |
+| `stability_margin` | `0.95` | Spectral-radius bound for the linear part |
+| `noise_types` | all 3 | Node innovations: `gaussian`, `student_t`, `laplace` |
+| `heteroscedastic_prob` | prob | Slow random noise-scale envelope per node |
+| `multivariate` | `False` | When True, `generate(n_series)` observes n_series nodes of one shared causal system as correlated series |
+
+### KernelSynthGenerator
+
+Samples each series from a Gaussian-process prior whose kernel is a random
+composition of `1..max_kernels` base kernels combined with `+`/`*` operators.
+This adapts the KernelSynth recipe used to pretrain the Chronos models (Ansari
+et al. 2024) and the Apache-2.0-licensed
+[reference implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py).
+SynForecast adds a configurable kernel bank, time-step seasonal periods,
+bounded retries, divergence guards, and optional standardization. It also
+replaces the reference's dense Cholesky sampler with an exact decomposition
+into stationary terms sampled by Durbin-Levinson recursions in O(n^2), with
+`jitter` added to each term and escalated on a numerical breakdown.
+**Applications**: pretraining data with controllable temporal structure.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_kernels` | `5` | Base kernels composed per series (drawn from `1..max_kernels`, at most 64) |
+| `seasonal_periods` | broad pool | Periodic-kernel periods in time steps (4–730) |
+| `rbf_length_scales` | `[0.1, 1.0, 10.0]` | RBF length scales on the normalized grid |
+| `rational_quadratic_alphas` | `[0.1, 1.0, 10.0]` | Rational-quadratic shape parameters |
+| `linear_sigmas` | `[0.0, 1.0, 10.0]` | Linear (DotProduct) `sigma_0` offsets |
+| `white_noise_levels` | `[0.1, 1.0]` | White-kernel diagonal noise levels |
+| `include_constant` | `True` | Include a constant kernel in the bank |
+| `standardize` | `True` | Standardize each series to zero mean, unit variance |
+
+### MARGenerator
+
+Samples a fresh mixture of stationary autoregressive components for every
+series. The mixture autoregressive model is due to Wong and Li (2000); the
+breadth-oriented sampling recipe follows GRATIS (Kang, Hyndman, and Li 2020).
+Component orders, mixture weights, intercepts, innovation scales, and optional
+seasonal AR factors vary between draws. SynForecast's PACF-based sampler and
+stability guards are its own design rather than a reproduction of the `gratis`
+R package. **Applications**: broad foundation-model pretraining.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `max_components` | `3` | Maximum number of mixture components (1-64) |
+| `max_ar_order` | `5` | Maximum non-seasonal AR order (1-100) |
+| `seasonal_period` | `None` | Optional multiplicative seasonal AR period (random mode only) |
+| `weights_concentration` | `1.0` | Symmetric Dirichlet concentration |
+| `intercept_scale` | `1.0` | Component-intercept sampling scale |
+| `noise_scale_range` | `(0.1, 2.0)` | Log-uniform innovation-scale range |
+| `burn_in` | `100` | Number of discarded simulation steps (0-1,000,000) |
+| `standardize` | `True` | Standardize each accepted series |
+| `weights` | `None` | Fixed positive component weights |
+| `ar_coefficients` | `None` | Fixed stationary AR coefficients by component; the mixture must also be second-order stationary |
+| `intercepts` | `None` | Fixed component intercepts |
+| `noise_scales` | `None` | Fixed positive innovation scales |
+
+`MARGenerator.tune_to_features` selects fixed parameters by seeded evolutionary
+search over the minimal GRATIS-style feature set. The search stops early once
+the best L2 feature distance is at or below `tolerance` (default `0.05`), so
+the `n_generations * population_size * n_draws_per_candidate` budget is an upper
+bound. In fixed mode, a configuration that fails the finite, bounded,
+non-constant output guards raises `ValueError` rather than substituting noise.
+Fixed mixtures use a numerical second-order stationarity check through effective
+AR order 32 (trailing zeros do not count), using NumPy only. Covariance powers
+can certify stability when the absolute row-sum bound of `T^n(I)` falls below
+one, or instability when its smallest eigenvalue exceeds one. Inconclusive
+checks and small models use NumPy's dense eigensolver on symmetric covariance
+coordinates (at most 528 × 528), avoiding periodic power-iteration ambiguity.
+Solver failures and nonfinite eigenvalues raise an error. The dense fallback
+costs more for unresolved models but adds no runtime dependency. Bounded caches reuse
+validation results for repeated candidates. Above 32, identical stable components
+or components whose absolute AR coefficients each sum to less than one are
+accepted. Other large mixtures raise a "could not verify" error; these sufficient
+conditions can reject valid mixtures. Feature search treats them as invalid
+candidates, so high-period searches may have fewer feasible candidates.
+The reported `tuning_diagnostics.best_distance` measures training draws; fresh
+draws can be farther from the target. An equal-budget random-search comparison
+is available in `benchmarks/benchmark_mar_targeting.py`; validation coverage is
+summarized in [tests/README.md](tests/README.md).
+Candidate simulations and feature computation run together in native Rust,
+parallelized with `n_jobs` (`-1` for the default pool). A failed candidate does
+not abort the population. Search lengths are limited to 1,000,000 observations.
+The returned generator retains `engine`, column names, `alias`, `start_datetime`,
+`standardize`, `burn_in`, and innovation options passed to `tune_to_features`.
+Simulation options also apply while scoring candidates. Pattern injection and
+search-owned parameter options are not accepted. Native search changes the
+seeded stream used by the former Python search; worker counts do not change it.
+
+### Multivariatizer
+
+Not a generator: `synforecast.Multivariatizer` wraps any univariate
+generator and produces cross-dependent channels sharing one length.
+Couplings (sampled per call): `mixing` — instantaneous random correlation
+via a well-conditioned mixing matrix; `leadlag` — channels as lagged,
+scaled, noise-perturbed transforms of others. Channel diversity statistics
+of the wrapped generator are preserved.
+
+```python
+from synforecast import Multivariatizer
+from synforecast.generators import TSIGenerator
+
+mv = Multivariatizer(
+    base=TSIGenerator(min_length=512, max_length=512, freq="D"),
+    couplings=["mixing", "leadlag"],
+    seed=42,
+)
+df = mv.generate(n_series=4)
+```
+
+TSI, TCM, MAR, and KernelSynth use the Rust batch path for bulk `generate()`
+calls. MAR feature computation and the MBB/DBA numeric kernels are also
+native. Rust and NumPy RNG streams provide
+seed determinism within their respective paths but are not bit-for-bit
+equivalent. Reproduce performance measurements on your hardware with the
+scripts in `benchmarks/`; benchmark results are not API guarantees.
+
+---
+
+## Quick Reference Table
+
+| Generator | Category | Primary Domain | Key Features |
+|-----------|----------|----------------|--------------|
+| RandomWalk | Statistical | Finance | Drift, volatility |
+| Seasonal | Statistical | Retail/Energy | Periodic patterns |
+| SARIMA | Statistical | Forecasting | AR, MA, differencing, seasonal |
+| ETS | Statistical | Forecasting | 30 model variants |
+| INAR | Statistical | Epidemiology/Insurance | Integer counts, binomial thinning |
+| GARCH | Stochastic | Finance | Volatility clustering |
+| OrnsteinUhlenbeck | Stochastic | Finance/Physics | Mean reversion |
+| GeometricBrownianMotion | Stochastic | Finance | Log-normal prices |
+| JumpDiffusion | Stochastic | Finance | Sudden jumps |
+| PoissonProcess | Stochastic | Operations | Event arrivals |
+| Cyclic | Stochastic | Science | Multiple frequencies |
+| FractionalBrownianMotion | Stochastic | Networks/Finance | Long-range dependence, Hurst exponent |
+| HawkesProcess | Stochastic | Finance/Social | Self-excitation |
+| StochasticVolatility | Stochastic | Derivatives | Heston/SABR models |
+| RegimeSwitching | Stochastic | Macro/Finance | Markov switching |
+| ChaoticSystem | Stochastic | Physics/Climate | Lorenz, logistic, Mackey-Glass |
+| BoundedProcess | Stochastic | Marketing/Economics | Beta-AR, logit-normal, bounded interval |
+| LevyProcess | Stochastic | Finance/Insurance | Alpha-stable, heavy tails |
+| Copula | Multivariate | Risk | Dependency structure |
+| VAR | Multivariate | Macro | Vector autoregression |
+| GaussianProcess | Multivariate | Geostatistics | RBF, Matern, periodic kernels |
+| IntermittentDemand | Domain | Supply Chain | Sporadic demand |
+| IoTSensor | Domain | Manufacturing | Sensor data, failures |
+| EnergyLoad | Domain | Utilities | Grid demand |
+| StateSpace | Domain | Control | Custom state equations |
+| DailyActiveUsers | Domain | Product | User engagement |
+| VitalSigns | Domain | Healthcare | Patient monitoring |
+| Clickstream | Domain | Web Analytics | Sessions, conversions |
+| TSI | Pretraining | Foundation models | Randomized trend/seasonal/irregular composition |
+| TCM | Pretraining | Foundation models | Random causal graphs, nonlinear lead-lag structure |
+| KernelSynth | Pretraining | Foundation models | GP samples from randomly composed kernels (Chronos recipe) |
+| MAR | Pretraining | Foundation models | Random mixtures of stationary AR components (GRATIS recipe), feature-targeted tuning |
+
+---
+
+## Usage Example
+
+All generators follow the same keyword-only constructor and `generate()` interface:
+
+```python
+from synforecast.generators import RegimeSwitchingGenerator
+
+generator = RegimeSwitchingGenerator(
+    min_length=100,
+    max_length=200,
+    freq="D",
+    n_regimes=2,
+    regime_means=[0.0, 5.0],
+    seed=42,
+)
+df = generator.generate(n_series=10)
+
+# df is a pandas DataFrame (default engine) in long format with columns:
+#   unique_id (integer categorical), ds (datetime64[ns]), y (float64)
+```
+
+See the [`nbs/docs/generators`](https://github.com/Nixtla/synforecast/tree/main/nbs/docs/generators)
+directory for executable guides to each generator.
+
+---
+
+## References and attribution
+
+These sources describe the mathematical basis of named models and algorithms.
+Implementation references and the limits of the source-provenance review are
+recorded in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md); citing an algorithm
+does not establish how its implementation was written.
+
+- Hyndman, Koehler, Ord, and Snyder (2008), *Forecasting with Exponential
+  Smoothing: The State Space Approach*,
+  [doi:10.1007/978-3-540-71918-2](https://doi.org/10.1007/978-3-540-71918-2)
+  (ETS state equations).
+- Bollerslev (1986), “Generalized Autoregressive Conditional
+  Heteroskedasticity,”
+  [doi:10.1016/0304-4076(86)90063-1](https://doi.org/10.1016/0304-4076%2886%2990063-1)
+  (GARCH).
+- Merton (1976), “Option Pricing When Underlying Stock Returns Are
+  Discontinuous,”
+  [doi:10.1016/0304-405X(76)90022-2](https://doi.org/10.1016/0304-405X%2876%2990022-2)
+  (jump diffusion).
+- Mandelbrot and Van Ness (1968), “Fractional Brownian Motions, Fractional
+  Noises and Applications,”
+  [doi:10.1137/1010093](https://doi.org/10.1137/1010093) (fractional Brownian
+  motion).
+- Hawkes (1971), “Spectra of Some Self-Exciting and Mutually Exciting Point
+  Processes,” [doi:10.1093/biomet/58.1.83](https://doi.org/10.1093/biomet/58.1.83),
+  and Ogata (1981), “On Lewis' Simulation Method for Point Processes,”
+  [doi:10.1109/TIT.1981.1056305](https://doi.org/10.1109/TIT.1981.1056305)
+  (Hawkes process and thinning simulation).
+- Chambers, Mallows, and Stuck (1976), “A Method for Simulating Stable Random
+  Variables,”
+  [doi:10.1080/01621459.1976.10480344](https://doi.org/10.1080/01621459.1976.10480344)
+  (alpha-stable draws used by `LevyProcessGenerator`).
+- Bahrpeyma et al. (2021), “A Methodology for Validating Diversity in
+  Synthetic Time Series Generation,”
+  [doi:10.1016/j.mex.2021.101459](https://doi.org/10.1016/j.mex.2021.101459)
+  (trend/seasonality/irregularity composition). `TSIGenerator` extends this
+  construction with additional component families and safeguards.
+- Runge et al. (2023), “Causal Inference for Time Series,”
+  [doi:10.1038/s43017-023-00431-y](https://doi.org/10.1038/s43017-023-00431-y)
+  (temporal structural-causal framing). `TCMGenerator`'s graph sampler and
+  rollout are original SynForecast design choices, not an implementation
+  published in that review.
+- Ansari et al. (2024), “Chronos: Learning the Language of Time Series,”
+  [arXiv:2403.07815](https://arxiv.org/abs/2403.07815), and the official
+  Apache-2.0-licensed
+  [KernelSynth implementation](https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py)
+  (KernelSynth and TSMixup recipes; the linked script is the KernelSynth
+  reference implementation). SynForecast's deviations are described above
+  and in the corresponding API documentation.
+- Ansari et al. (2025), “Chronos-2: From Univariate to Universal Forecasting,”
+  [arXiv:2510.15821](https://arxiv.org/abs/2510.15821) (motivation for the
+  cotemporaneous and sequential couplings in `Multivariatizer`).
+- Wong and Li (2000), “On a mixture autoregressive model,” Journal of the
+  Royal Statistical Society Series B 62(1),
+  [doi:10.1111/1467-9868.00222](https://doi.org/10.1111/1467-9868.00222)
+  (mixture autoregressive model and its second-order stationarity condition).
+- Kang, Hyndman, and Li (2020), “GRATIS: GeneRAting TIme Series with diverse
+  and controllable characteristics,”
+  [arXiv:1903.02787](https://arxiv.org/abs/1903.02787) (MAR simulation and
+  feature targeting). SynForecast's sampler and search are its own design,
+  not a reproduction of the `gratis` R package.
+- Durbin (1960), “The fitting of time-series models,”
+  [doi:10.2307/1401322](https://doi.org/10.2307/1401322)
+  (Levinson-Durbin recursion). The PACF-to-AR direction is also documented in
+  [statsmodels' inverse recursion API](https://www.statsmodels.org/stable/generated/statsmodels.tsa.stattools.levinson_durbin_pacf.html).
+  MAR's seasonal factor multiplies the nonseasonal and seasonal AR polynomials.
+- Wang, Smith, and Hyndman (2006), “Characteristic-based clustering for time
+  series data,” Data Mining and Knowledge Discovery 13(3), 335–364,
+  [author's paper](https://robjhyndman.com/papers/DMKD.pdf) (feature-based
+  characterization). The exact trend/seasonal strength ratios used here are
+  described in Hyndman and Athanasopoulos, *Forecasting: Principles and
+  Practice*, [STL features](https://otexts.com/fpp3/stlfeatures.html).
+  SynForecast uses [classical decomposition](https://otexts.com/fpp3/classical-decomposition.html)
+  with endpoint extension, not STL. Spectral entropy uses the demeaned,
+  unpadded one-sided periodogram, excludes DC, and normalizes Shannon entropy
+  by the log of the number of retained bins; this differs from smoothed-spectrum
+  estimators in other feature packages.
+- Bluestein (1968), “A linear filtering approach to the computation of the
+  discrete Fourier transform,” NEREM Record 10, 218–219 (arbitrary-length FFT),
+  also referenced in [SciPy's CZT documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.CZT.html).
+  Real half-spectrum transforms use the linked RealFFT dependency; see the
+  bundled Rust notices.
+- Bergmeir, Hyndman, and Benitez (2016), “Bagging exponential smoothing
+  methods using STL decomposition and Box-Cox transformation,”
+  [doi:10.1016/j.ijforecast.2015.07.002](https://doi.org/10.1016/j.ijforecast.2015.07.002),
+  and Bandara, Hewamalage, Liu, Kang, and Bergmeir (2021),
+  [arXiv:2008.02663](https://arxiv.org/abs/2008.02663) (MBB and DBA
+  augmentation).
+- Petitjean, Ketterlin, and Gancarski (2011), “A global averaging method for
+  dynamic time warping, with applications to clustering,”
+  [doi:10.1016/j.patcog.2010.09.013](https://doi.org/10.1016/j.patcog.2010.09.013)
+  (DBA).
+- Forestier, Petitjean, Dau, Webb, and Keogh (2017), “Generating synthetic time
+  series to augment sparse datasets,”
+  [doi:10.1109/ICDM.2017.106](https://doi.org/10.1109/ICDM.2017.106)
+  (weighted-DBA augmentation).
+- Wichura (1988), “Algorithm AS 241: The Percentage Points of the Normal
+  Distribution,” [doi:10.2307/2347330](https://doi.org/10.2307/2347330)
+  (inverse-normal approximation in `_distributions.py`).

@@ -1,0 +1,164 @@
+{
+  "benchmark": "overlay_throughput",
+  "script": "benchmarks/overlay_restructure/throughput.py",
+  "builds": {
+    "pr98": "0edf7bc (PR #98 head)",
+    "new": "9a21d38 (PR #102)"
+  },
+  "timing": "one warm-up, median of 3 repeats, wall clock; the builds ran one after the other",
+  "environment": {
+    "run_date": "2026-11-02",
+    "python": "3.13.12",
+    "numpy": "2.5.4",
+    "pandas": "3.1.0",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "cpu_count": 20,
+    "note": "recorded by hand; this run did not use benchmarks/_env.py"
+  },
+  "rows": [
+    {
+      "case": "random_walk/off",
+      "n_jobs": 20,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 0.0198,
+      "new_seconds": 0.02,
+      "speedup": 0.99
+    },
+    {
+      "case": "random_walk/off",
+      "n_jobs": 1,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 0.0707,
+      "new_seconds": 0.0701,
+      "speedup": 1.01
+    },
+    {
+      "case": "random_walk/calendar",
+      "n_jobs": 20,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 1.4234,
+      "new_seconds": 0.0431,
+      "speedup": 33.03
+    },
+    {
+      "case": "random_walk/calendar",
+      "n_jobs": 1,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 1.4576,
+      "new_seconds": 0.2815,
+      "speedup": 5.18
+    },
+    {
+      "case": "random_walk/waveform+observation",
+      "n_jobs": 20,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 1.0939,
+      "new_seconds": 0.0287,
+      "speedup": 38.11
+    },
+    {
+      "case": "random_walk/waveform+observation",
+      "n_jobs": 1,
+      "n_series": 4000,
+      "length": 2048,
+      "pr98_seconds": 1.1399,
+      "new_seconds": 0.1657,
+      "speedup": 6.88
+    },
+    {
+      "case": "pool/calendar=0.0/observability=0.0",
+      "n_jobs": 20,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.1405,
+      "new_seconds": 0.1364,
+      "speedup": 1.03
+    },
+    {
+      "case": "pool/calendar=0.0/observability=0.0",
+      "n_jobs": 1,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.5393,
+      "new_seconds": 0.5269,
+      "speedup": 1.02
+    },
+    {
+      "case": "pool/calendar=0.8/observability=0.0",
+      "n_jobs": 20,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.8839,
+      "new_seconds": 0.2145,
+      "speedup": 4.12
+    },
+    {
+      "case": "pool/calendar=0.8/observability=0.0",
+      "n_jobs": 1,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 1.2701,
+      "new_seconds": 0.7109,
+      "speedup": 1.79
+    },
+    {
+      "case": "pool/calendar=0.0/observability=0.3",
+      "n_jobs": 20,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.2774,
+      "new_seconds": 0.1493,
+      "speedup": 1.86
+    },
+    {
+      "case": "pool/calendar=0.0/observability=0.3",
+      "n_jobs": 1,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.674,
+      "new_seconds": 0.5699,
+      "speedup": 1.18
+    },
+    {
+      "case": "pool/calendar=0.0/observability=1.0",
+      "n_jobs": 20,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 0.7899,
+      "new_seconds": 0.1725,
+      "speedup": 4.58
+    },
+    {
+      "case": "pool/calendar=0.0/observability=1.0",
+      "n_jobs": 1,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 1.1596,
+      "new_seconds": 0.577,
+      "speedup": 2.01
+    },
+    {
+      "case": "pool/calendar=0.8/observability=0.3",
+      "n_jobs": 20,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 1.0439,
+      "new_seconds": 0.2357,
+      "speedup": 4.43
+    },
+    {
+      "case": "pool/calendar=0.8/observability=0.3",
+      "n_jobs": 1,
+      "n_series": 3900,
+      "length": 1024,
+      "pr98_seconds": 1.3832,
+      "new_seconds": 0.7093,
+      "speedup": 1.95
+    }
+  ]
+}

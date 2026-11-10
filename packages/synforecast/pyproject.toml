@@ -1,0 +1,211 @@
+[project]
+name = "synforecast"
+version = "0.2.0"
+description = "Fast synthetic time series for testing, augmentation, and pretraining"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Nixtla", email = "olivier@nixtla.io"},
+]
+keywords = [
+    "time-series",
+    "synthetic-data",
+    "signal-processing",
+    "data-generation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "narwhals>=2.2",
+    "numpy>=1.23.5",
+    "pandas>=2.0",
+    "polars[numpy]>=1.35.2",
+    "polars[numpy]>=2.0.0; python_version >= '3.15'",
+    "pydantic>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nixtla/synforecast"
+Documentation = "https://nixtlaverse.nixtla.io/synforecast/"
+Repository = "https://github.com/Nixtla/synforecast"
+Issues = "https://github.com/Nixtla/synforecast/issues"
+Changelog = "https://github.com/Nixtla/synforecast/blob/main/CHANGELOG.md"
+Security = "https://github.com/Nixtla/synforecast/security/policy"
+
+[dependency-groups]
+dev = [
+    "arch>=6.0; python_version < '3.15'",
+    "datasetsforecast>=1.0.1; python_version < '3.15'",
+    "ipykernel<7.0",
+    "maturin>=1.14.1",
+    "matplotlib",
+    "mypy>=1.0.0",
+    "pandas",
+    "pre-commit>=4.6.1",
+    "pyarrow>=15.0.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.0",
+    "scikit-learn>=1.4.0",
+    "scipy>=1.10.0",
+    "statsforecast; python_version < '3.15'",
+    "statsmodels>=0.14.0",
+]
+docs = [
+    "datasetsforecast>=1.0.1; python_version < '3.15'",
+    "ipykernel<7.0",
+    "ipython<=9.18.1",
+    "matplotlib",
+    "mkdocstrings-parser @ git+https://github.com/Nixtla/mkdocstrings-parser@a6f375a052783c18f4ca2599c74814c05ee6d568",
+    "nbclient>=0.10.0",
+    "nbformat>=5.10.0",
+    "utilsforecast>=0.2.0",
+]
+integration-docs = [
+    "ipywidgets>=8.1.0",
+    "mlforecast>=1.0.0",
+    "neuralforecast>=3.0.0",
+    "scikit-learn>=1.4.0",
+    "statsforecast>=2.0.0",
+    "torch",
+]
+
+[build-system]
+requires = ["maturin>=1.14.1"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "rust/Cargo.toml"
+module-name = "synforecast._lib"
+features = ["pyo3/extension-module"]
+# Ship the PEP 561 marker and bundled third-party license notices in the wheel.
+include = [
+    { path = "synforecast/py.typed", format = "wheel" },
+    { path = "synforecast/THIRD_PARTY_RUST.md", format = "wheel" },
+]
+
+[tool.uv]
+# The 3.15-scoped floors are the first releases with CPython 3.15 wheels, so
+# the 3.15 fork of the lock installs wheels without moving 3.11-3.14.
+constraint-dependencies = [
+    "pytorch-lightning>=2.6.1",
+    "contourpy>=1.4.0; python_version >= '3.15'",
+    "kiwisolver>=1.5.1; python_version >= '3.15'",
+    "matplotlib>=3.11.2; python_version >= '3.15'",
+    "numpy>=2.5.2; python_version >= '3.15'",
+    "pandas>=3.0.6; python_version >= '3.15'",
+    "pyarrow>=26.0.0; python_version >= '3.15'",
+    "scikit-learn>=1.9.1; python_version >= '3.15'",
+    "scipy>=1.18.1; python_version >= '3.15'",
+    "statsmodels>=0.15.0; python_version >= '3.15'",
+]
+build-constraint-dependencies = ["scikit-build-core<0.10"]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform != 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--showlocals",
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "-W", "default",
+    "--cov=synforecast",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "stats: statistical property tests (slower; deselect with '-m \"not stats\"')",
+    "allow_ar1_fallback: test intentionally exercises SynAugment's AR(1) substitution",
+]
+log_cli = false
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.mypy]
+# Typing is being introduced incrementally (see CONTRIBUTING.md). The modules
+# listed in the lint workflow's mypy step are kept green; follow_imports is
+# silent so their imports don't drag the whole package into the gate yet.
+python_version = "3.11"
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501", # line too long (fix later)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Benchmark scripts import after warnings/env setup (E402) and time
+# immediately-invoked lambdas that close over loop variables (B023).
+"benchmarks/*" = ["E402", "B023"]
+
+[tool.coverage.run]
+source = ["synforecast"]
+omit = ["tests/*", "**/__init__.py", "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

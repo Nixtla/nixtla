@@ -1,0 +1,160 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "SynForecast",
+  "colors": {
+    "primary": "#0E0E0E",
+    "light": "#FAFAFA",
+    "dark": "#0E0E0E"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/Nixtla/synforecast"
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": " ",
+        "pages": [
+          "index.html"
+        ]
+      },
+      {
+        "group": "Getting Started",
+        "pages": [
+          "docs/getting-started/installation.html",
+          "docs/getting-started/quickstart.html"
+        ]
+      },
+      {
+        "group": "Capabilities",
+        "pages": [
+          {
+            "group": "Building panels",
+            "pages": [
+              "docs/capabilities/balanced_pool.html",
+              "docs/capabilities/dataset.html",
+              "docs/capabilities/multivariatize.html"
+            ]
+          },
+          {
+            "group": "Patterns and covariates",
+            "pages": [
+              "docs/capabilities/changepoints.html",
+              "docs/capabilities/anomalies.html",
+              "docs/capabilities/missingness.html",
+              "docs/capabilities/multivariate_missingness.html",
+              "docs/capabilities/exogenous.html"
+            ]
+          },
+          {
+            "group": "Augmentation",
+            "pages": [
+              "docs/capabilities/augmentation.html",
+              "docs/capabilities/nonparametric_augmentation.html",
+              "docs/capabilities/augmentation_real_data.html"
+            ]
+          },
+          {
+            "group": "Evaluation",
+            "pages": [
+              "docs/capabilities/when_synthetic_helps.html",
+              "docs/capabilities/robustness_testing.html",
+              "docs/capabilities/feature_coverage.html"
+            ]
+          },
+          "docs/capabilities/custom_generator.html"
+        ]
+      },
+      {
+        "group": "Generators",
+        "pages": [
+          {
+            "group": "Statistical",
+            "pages": [
+              "docs/generators/statistical/random_walk.html",
+              "docs/generators/statistical/seasonal.html",
+              "docs/generators/statistical/sarima.html",
+              "docs/generators/statistical/ets.html",
+              "docs/generators/statistical/inar.html"
+            ]
+          },
+          {
+            "group": "Stochastic",
+            "pages": [
+              "docs/generators/stochastic/garch.html",
+              "docs/generators/stochastic/ornstein_uhlenbeck.html",
+              "docs/generators/stochastic/geometric_brownian_motion.html",
+              "docs/generators/stochastic/jump_diffusion.html",
+              "docs/generators/stochastic/poisson_process.html",
+              "docs/generators/stochastic/cyclic.html",
+              "docs/generators/stochastic/fractional_brownian_motion.html",
+              "docs/generators/stochastic/hawkes_process.html",
+              "docs/generators/stochastic/stochastic_volatility.html",
+              "docs/generators/stochastic/regime_switching.html",
+              "docs/generators/stochastic/chaotic_system.html",
+              "docs/generators/stochastic/bounded_process.html",
+              "docs/generators/stochastic/levy_process.html"
+            ]
+          },
+          {
+            "group": "Multivariate",
+            "pages": [
+              "docs/generators/multivariate/copula.html",
+              "docs/generators/multivariate/var.html",
+              "docs/generators/multivariate/gaussian_process.html"
+            ]
+          },
+          {
+            "group": "Domain-Specific",
+            "pages": [
+              "docs/generators/domain/intermittent_demand.html",
+              "docs/generators/domain/iot_sensor.html",
+              "docs/generators/domain/energy_load.html",
+              "docs/generators/domain/state_space.html",
+              "docs/generators/domain/daily_active_users.html",
+              "docs/generators/domain/vital_signs.html",
+              "docs/generators/domain/clickstream.html"
+            ]
+          },
+          {
+            "group": "Pretraining",
+            "pages": [
+              "docs/generators/pretraining/tsi.html",
+              "docs/generators/pretraining/tcm.html",
+              "docs/generators/pretraining/kernel_synth.html",
+              "docs/generators/pretraining/mar.html"
+            ]
+          }
+        ]
+      },
+      {
+        "group": "Nixtlaverse",
+        "pages": [
+          "docs/integrations/nixtlaverse.html",
+          "docs/integrations/neuralforecast.html",
+          "docs/integrations/mlforecast.html",
+          "docs/integrations/statsforecast.html"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "composition.html",
+          "core.html",
+          "exogenous.html",
+          "overlays.html",
+          "dataset.html",
+          "evaluation.html",
+          "generators_statistical.html",
+          "generators_stochastic.html",
+          "generators_multivariate.html",
+          "generators_domain.html",
+          "generators_pretraining.html"
+        ]
+      }
+    ]
+  }
+}
