@@ -1,0 +1,1399 @@
+import copy
+
+import narwhals.stable.v2 as nw
+import numpy as np
+import pandas as pd
+import polars as pl
+import pytest
+
+from hierarchicalforecast.core import (
+    HierarchicalReconciliation,
+    _build_fn_name,
+    _estimate_sigmah,
+)
+from hierarchicalforecast.methods import (
+    ERM,
+    BottomUp,
+    BottomUpSparse,
+    MiddleOut,
+    MiddleOutSparse,
+    MinTrace,
+    MinTraceSparse,
+    OptimalCombination,
+    TopDown,
+    TopDownSparse,
+)
+from hierarchicalforecast.utils import aggregate, aggregate_temporal
+
+
+@pytest.fixture(scope="module")
+def common_data(tourism_df, hiers_grouped, hiers_strictly):
+    """Prepares the base tourism dataframe and hierarchy specifications."""
+    df = copy.deepcopy(tourism_df)
+    df['ds'] = pd.to_datetime(df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True))
+
+    return {
+        "df": df,
+        "grouped_spec": hiers_grouped,
+        "strict_spec": hiers_strictly
+    }
+@pytest.fixture(scope="module")
+def middle_out_level():
+    return 'Country/State'
+
+@pytest.fixture(scope="module")
+def grouped_data(common_data):
+    """Prepares data for a grouped (non-strictly hierarchical) structure."""
+    df = common_data['df']
+    spec = common_data['grouped_spec']
+
+    # Pandas
+    Y_df, S_df, tags = aggregate(df, spec)
+    Y_df['y_model'] = Y_df['y']
+    Y_hat_df = Y_df.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df['ds'].unique() # noqa: F841
+    Y_train_df = Y_df.query('~(ds in @ds_h)').copy()
+    Y_train_df['y_model'] += np.random.uniform(-1, 1, len(Y_train_df))
+
+    # Polars
+    df_pl = pl.from_pandas(df)
+    Y_df_pl, S_df_pl, tags_pl = aggregate(df_pl, spec) # noqa: F841
+    Y_hat_df_pl = pl.from_pandas(Y_hat_df)
+    Y_train_df_pl = pl.from_pandas(Y_train_df)
+
+    return {
+        "pandas": {
+            "Y_hat_df": Y_hat_df,
+            "Y_train_df": Y_train_df,
+            "S_df": S_df,
+            "tags": tags
+        },
+        "polars": {
+            "Y_hat_df": Y_hat_df_pl,
+            "Y_train_df": Y_train_df_pl,
+            "S_df": S_df_pl,
+            "tags": tags_pl
+        }
+    }
+
+@pytest.fixture(scope="module")
+def strict_data(common_data):
+    """Prepares data for a strictly hierarchical structure."""
+    df = common_data['df']
+    spec = common_data['strict_spec']
+
+    # Pandas
+    Y_df, S_df, tags = aggregate(df, spec)
+    Y_df['y_model'] = Y_df['y']
+    Y_hat_df = Y_df.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df['ds'].unique() # noqa: F841
+    Y_train_df = Y_df.query('~(ds in @ds_h)').copy()
+    Y_train_df['y_model'] += np.random.uniform(-1, 1, len(Y_train_df))
+
+    # Polars
+    df_pl = pl.from_pandas(df)
+    Y_df_pl, S_df_pl, tags_pl = aggregate(df_pl, spec) # noqa: F841
+    Y_hat_df_pl = pl.from_pandas(Y_hat_df)
+    Y_train_df_pl = pl.from_pandas(Y_train_df)
+
+    return {
+        "pandas": {
+            "Y_hat_df": Y_hat_df,
+            "Y_train_df": Y_train_df,
+            "S_df": S_df,
+            "tags": tags
+        },
+        "polars": {
+            "Y_hat_df": Y_hat_df_pl,
+            "Y_train_df": Y_train_df_pl,
+            "S_df": S_df_pl,
+            "tags": tags_pl
+        }
+    }
+
+#endregion
+
+#region: Tests
+
+def test_fn_name():
+    """Tests the _build_fn_name utility function."""
+    assert _build_fn_name(BottomUp()) == 'BottomUp'
+    assert _build_fn_name(MinTrace(method='ols')) == 'MinTrace_method-ols'
+    assert _build_fn_name(MinTrace(method='ols', nonnegative=True)) == 'MinTrace_method-ols_nonnegative-True'
+    assert _build_fn_name(MinTrace(method='mint_shrink')) == 'MinTrace_method-mint_shrink'
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_reconciliation_recovers_original_y(grouped_data, lib):
+    """Tests if various reconciliation methods can reconstruct the original `y` values."""
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    reconcilers = [
+        BottomUp(), MinTrace(method='ols'), MinTrace(method='wls_struct'),
+        MinTrace(method='wls_var'), MinTrace(method='mint_shrink'),
+        MinTrace(method='ols', nonnegative=True), MinTrace(method='wls_struct', nonnegative=True),
+        MinTrace(method='wls_var', nonnegative=True), MinTrace(method='mint_shrink', nonnegative=True),
+    ]
+    hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+    reconciled_df = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    reconciled_native = nw.from_native(reconciled_df)
+
+    drop_cols = ["unique_id", "ds", "y"]
+
+    models = reconciled_native.drop(*drop_cols).columns
+
+    for model in models:
+        np.testing.assert_allclose(reconciled_native['y'], reconciled_native[model], atol=5e-1)
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_reconcile_raises_on_invalid_y_hat_dtype(grouped_data, lib):
+    """Tests for failures when Y_hat_df contains non-numeric or null data."""
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    hrec = HierarchicalReconciliation(reconcilers=[BottomUp()])
+
+    # Test string values (should always raise non-numeric error)
+    Y_hat_str = nw.from_native(Y_hat).clone()
+    Y_hat_str = Y_hat_str.with_columns(nw.col('y_model').cast(nw.String))
+
+    with pytest.raises(ValueError, match="non-numeric values"):
+        hrec.reconcile(Y_hat_df=Y_hat_str, S_df=S, tags=tags, Y_df=Y_train)
+    # Test null values
+    Y_hat_null = nw.from_native(Y_hat).clone()
+    Y_hat_null = Y_hat_null.with_columns(
+        nw.when(nw.col('unique_id') == 'Australia')
+        .then(None)
+        .otherwise(nw.col('y_model'))
+        .alias('y_model')
+    )
+
+    with pytest.raises(ValueError, match="null values|non-numeric values"):
+        hrec.reconcile(Y_hat_df=Y_hat_null, S_df=S, tags=tags, Y_df=Y_train)
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_topdown_raises_on_non_strict_hierarchy(grouped_data, lib):
+    """Tests that TopDown fails for non-strictly hierarchical (grouped) data."""
+    data = grouped_data[lib]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+    hrec = HierarchicalReconciliation([TopDown(method='average_proportions')])
+
+    with pytest.raises(ValueError, match='require[s]? a strictly hierarchical structure'):
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+@pytest.mark.parametrize("lib", ["polars"])
+def test_reconciliation_with_strict_hierarchy(strict_data, lib, middle_out_level):
+    """Tests reconciliation methods with a strictly hierarchical structure."""
+    data = strict_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    reconcilers = [
+        BottomUp(), MinTrace(method='ols'), TopDown(method='forecast_proportions'),
+        TopDown(method='average_proportions'), MiddleOut(middle_level=middle_out_level, top_down_method='forecast_proportions')
+    ]
+    hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    reconciled = nw.from_native(reconciled)
+    for model_name in ['y_model/BottomUp', 'y_model/MinTrace_method-ols', 'y_model/TopDown_method-forecast_proportions']:
+        np.testing.assert_allclose(reconciled['y'], reconciled[model_name], atol=1e-1)
+
+    with pytest.raises(AssertionError):
+        np.testing.assert_allclose(reconciled['y'], reconciled['y_model/TopDown_method-average_proportions'], atol=1e-1)
+
+    total_tag = tags['Country'][0]
+    total_y_df = reconciled.filter(nw.col('unique_id') == total_tag)
+    np.testing.assert_allclose(total_y_df['y'], total_y_df['y_model/TopDown_method-average_proportions'], atol=1e-2)
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_raises_on_zero_residuals(grouped_data, lib):
+    """Tests that MinTrace fails gracefully when insample residuals are all zero."""
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    zero_df = nw.from_native(Y_train).clone()
+    zero_df = zero_df.with_columns([nw.lit(0, dtype=nw.Float64).alias('y'), nw.lit(0, dtype=nw.Float64).alias('y_model')])
+
+    hrec = HierarchicalReconciliation([MinTrace(method='mint_shrink')])
+    with pytest.raises(Exception, match='Insample residuals close to 0'):
+        hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags, Y_df=zero_df)
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_permbu_raises_on_non_strict_hierarchy(grouped_data, lib):
+    """Ensures permbu intervals fail with non-strictly hierarchical data."""
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    Y_hat_native = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_native.with_columns([
+            (nw.col('y_model') * 0.9).alias('y_model-lo-80'),
+            (nw.col('y_model') * 1.1).alias('y_model-hi-80')
+        ])
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match='PERMBU probabilistic reconciliation requires strictly hierarchical structures'):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_with_intervals, Y_df=Y_train, S_df=S, tags=tags,
+            level=[80], intervals_method='permbu'
+        )
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+@pytest.mark.parametrize("level, method", [([-1, 80], 'permbu'), ([80, 101], 'normality')])
+def test_reconcile_raises_on_invalid_level(grouped_data, lib, level, method):
+    """Tests failure when prediction interval levels are outside the [0, 100] range."""
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match=r"Level must be a list containing floating values in the interval \[0, 100\)"):
+         hrec.reconcile(
+            Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags,
+            level=level, intervals_method=method
+        )
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_temporal_reconcile_raises_on_insufficient_horizon(lib):
+    """Tests that temporal reconciliation fails when horizon < max aggregation factor in spec."""
+    # Create a simple dataset with 2 series and 8 quarterly periods
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 8 + ['B'] * 8,
+        'ds': pd.date_range('2020-01-01', periods=8, freq='QS').tolist() * 2,
+        'y': list(range(10, 90, 10)) + list(range(100, 180, 10)),
+    })
+
+    # Define temporal spec where max aggregation = 4 (year aggregates 4 quarters)
+    spec_temporal = {"year": 4, "quarter": 1}
+
+    # Aggregate temporally - this gives us 8 quarters and 2 years per unique_id
+    Y_df, S_df, tags = aggregate_temporal(df, spec_temporal)
+    Y_hat_df = Y_df.rename(columns={'y': 'y_model'})
+
+    # Filter to keep only 2 unique timestamps (less than max aggregation factor of 4)
+    # This simulates having only 2 forecast periods
+    first_two_ds = sorted(Y_hat_df['ds'].unique())[:2]
+    Y_hat_df = Y_hat_df[Y_hat_df['ds'].isin(first_two_ds)]
+
+    # Convert to polars if needed
+    if lib == "polars":
+        Y_hat_df = pl.from_pandas(Y_hat_df)
+        S_df = pl.from_pandas(S_df)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+
+    # Should raise ValueError because horizon (2) < max_agg_factor (4)
+    with pytest.raises(ValueError, match=r"forecast horizon.*must be greater than or equal to.*maximum aggregation factor"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            S_df=S_df,
+            tags=tags,
+            temporal=True,
+        )
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+@pytest.mark.parametrize("method", ['bootstrap', 'permbu'])
+def test_mintrace_nonnegative_raises_on_intervals_method(grouped_data, lib, method):
+    """Test that MinTrace with nonnegative=True raises error for bootstrap and permbu intervals.
+
+    Nonnegative reconciliation is not compatible with bootstrap and permbu probabilistic
+    forecasts because these methods generate samples based on historical residuals which
+    may not respect the nonnegative constraint.
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals (required for permbu method)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    hrec = HierarchicalReconciliation([MinTrace(method="mint_shrink", nonnegative=True)])
+    with pytest.raises(ValueError, match="nonnegative reconciliation is not compatible"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_with_intervals,
+            Y_df=Y_train,
+            S_df=S,
+            tags=tags,
+            level=[90],
+            intervals_method=method,
+            num_samples=1000,
+            seed=1,
+        )
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_temporal_reconcile_succeeds_with_sufficient_horizon(lib):
+    """Tests that temporal reconciliation succeeds when horizon >= max aggregation factor in spec."""
+    # Create a simple dataset with 2 series and 8 quarterly periods
+    df = pd.DataFrame({
+        'unique_id': ['A'] * 8 + ['B'] * 8,
+        'ds': pd.date_range('2020-01-01', periods=8, freq='QS').tolist() * 2,
+        'y': list(range(10, 90, 10)) + list(range(100, 180, 10)),
+    })
+
+    # Define temporal spec where max aggregation = 4 (year aggregates 4 quarters)
+    spec_temporal = {"year": 4, "quarter": 1}
+
+    # Aggregate temporally
+    Y_df, S_df, tags = aggregate_temporal(df, spec_temporal)
+    Y_hat_df = Y_df.rename(columns={'y': 'y_model'})
+
+    # Convert to polars if needed
+    if lib == "polars":
+        Y_hat_df = pl.from_pandas(Y_hat_df)
+        S_df = pl.from_pandas(S_df)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+
+    # Should succeed because we have 8 quarters which is >= max_agg_factor (4)
+    result = hrec.reconcile(
+        Y_hat_df=Y_hat_df,
+        S_df=S_df,
+        tags=tags,
+        temporal=True,
+    )
+
+    # Verify reconciliation completed
+    assert result is not None
+    result_nw = nw.from_native(result)
+    assert 'y_model/BottomUp' in result_nw.columns
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_with_normality_intervals(grouped_data, lib):
+    """Test MinTrace nonnegative reconciliation with normality intervals via HierarchicalReconciliation.
+
+    This integration test verifies that:
+    1. Nonnegative reconciliation works through the reconcile() API
+    2. Reconciled forecasts are non-negative
+    3. Samples are generated and have the correct shape
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals to Y_hat_df (required for normality intervals)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    hrec = HierarchicalReconciliation([MinTrace(method="ols", nonnegative=True)])
+    reconciled = hrec.reconcile(
+        Y_hat_df=Y_hat_with_intervals,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=[90],
+        intervals_method="normality",
+        num_samples=100,
+        seed=42,
+        diagnostics=True,
+    )
+
+    reconciled_nw = nw.from_native(reconciled)
+
+    # Verify reconciled mean forecasts exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True" in reconciled_nw.columns
+
+    # Verify prediction intervals exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True-lo-90" in reconciled_nw.columns
+    assert "y_model/MinTrace_method-ols_nonnegative-True-hi-90" in reconciled_nw.columns
+
+    # Verify samples were generated
+    sample_cols = [c for c in reconciled_nw.columns if "sample-" in c]
+    assert len(sample_cols) == 100, f"Expected 100 sample columns, got {len(sample_cols)}"
+
+    # Verify reconciled forecasts are non-negative (within numerical tolerance)
+    mean_col = reconciled_nw["y_model/MinTrace_method-ols_nonnegative-True"].to_numpy()
+    assert np.all(mean_col >= -1e-6), "Reconciled forecasts should be non-negative"
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_without_intervals(grouped_data, lib):
+    """Test MinTrace nonnegative reconciliation without probabilistic intervals.
+
+    Verifies that nonnegative reconciliation works when level=None (no intervals).
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    hrec = HierarchicalReconciliation([MinTrace(method="ols", nonnegative=True)])
+    reconciled = hrec.reconcile(
+        Y_hat_df=Y_hat,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=None,  # No intervals
+        diagnostics=True,
+    )
+
+    reconciled_nw = nw.from_native(reconciled)
+
+    # Verify reconciled mean forecasts exist
+    assert "y_model/MinTrace_method-ols_nonnegative-True" in reconciled_nw.columns
+
+    # Verify no prediction intervals or samples were generated
+    interval_cols = [c for c in reconciled_nw.columns if "-lo-" in c or "-hi-" in c]
+    sample_cols = [c for c in reconciled_nw.columns if "sample-" in c]
+    assert len(interval_cols) == 0, "Should not have interval columns when level=None"
+    assert len(sample_cols) == 0, "Should not have sample columns when level=None"
+
+    # Verify reconciled forecasts are non-negative
+    mean_col = reconciled_nw["y_model/MinTrace_method-ols_nonnegative-True"].to_numpy()
+    assert np.all(mean_col >= -1e-6), "Reconciled forecasts should be non-negative"
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_mintrace_nonnegative_samples_use_constrained_forecasts(grouped_data, lib):
+    """Integration test verifying sampler uses nonnegative-constrained forecasts.
+
+    This is a regression test for the bug where _get_sampler() was initialized with
+    original y_hat instead of the nonnegative-constrained self.y_hat.
+    """
+    data = grouped_data[lib]
+    Y_hat, S, Y_train, tags = data["Y_hat_df"], data["S_df"], data["Y_train_df"], data["tags"]
+
+    # Add prediction intervals to Y_hat_df (required for normality intervals)
+    Y_hat_nw = nw.from_native(Y_hat)
+    Y_hat_with_intervals = Y_hat_nw.with_columns([
+        (nw.col('y_model') * 0.9).alias('y_model-lo-90'),
+        (nw.col('y_model') * 1.1).alias('y_model-hi-90')
+    ])
+
+    # Use nonnegative reconciliation
+    reconciler = MinTrace(method="ols", nonnegative=True)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    reconciled = hrec.reconcile( # noqa: F841
+        Y_hat_df=Y_hat_with_intervals,
+        Y_df=Y_train,
+        S_df=S,
+        tags=tags,
+        level=[90],
+        intervals_method="normality",
+        num_samples=100,
+        seed=42,
+        diagnostics=True,
+    )
+
+    # Verify the reconciler's sampler was initialized with the constrained y_hat
+    assert reconciler.fitted, "Reconciler should be fitted"
+    assert reconciler.sampler is not None, "Sampler should be initialized"
+
+    # KEY ASSERTION: The sampler y_hat should match the reconciler's y_hat
+    # (which contains the nonnegative-constrained forecasts)
+    np.testing.assert_array_equal(
+        reconciler.sampler.y_hat,
+        reconciler.y_hat,
+        err_msg="Sampler y_hat should match nonnegative-constrained y_hat"
+    )
+
+    # Verify coherency using diagnostics
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/MinTrace_method-ols_nonnegative-True"].to_list()[0]
+    assert is_coherent == 1.0, "Reconciled forecasts should be coherent"
+
+# ==============================================================================
+# Tests for strictly hierarchical structure validation
+# ==============================================================================
+# These tests verify that:
+# 1. Methods requiring strictly hierarchical structures (TopDown, TopDownSparse,
+#    MiddleOut, MiddleOutSparse) raise appropriate errors when used with grouped
+#    (non-strictly hierarchical) data.
+# 2. Methods that support any hierarchy structure (BottomUp, BottomUpSparse,
+#    MinTrace, MinTraceSparse, OptimalCombination, ERM) work correctly with
+#    grouped data.
+# ==============================================================================
+
+@pytest.fixture(scope="module")
+def common_test_data(tourism_df, hiers_grouped, hiers_strictly):
+    """Prepares test data for both grouped and strictly hierarchical structures."""
+    df = copy.deepcopy(tourism_df)
+    df['ds'] = pd.to_datetime(df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True))
+
+    # Prepare grouped (non-strictly hierarchical) data
+    Y_df_grouped, S_df_grouped, tags_grouped = aggregate(df, hiers_grouped)
+    Y_df_grouped['y_model'] = Y_df_grouped['y']
+    Y_hat_df_grouped = Y_df_grouped.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df_grouped['ds'].unique() # noqa: F841
+    Y_train_df_grouped = Y_df_grouped.query('~(ds in @ds_h)').copy()
+    Y_train_df_grouped['y_model'] += np.random.uniform(-1, 1, len(Y_train_df_grouped))
+
+    # Prepare strictly hierarchical data
+    Y_df_strict, S_df_strict, tags_strict = aggregate(df, hiers_strictly)
+    Y_df_strict['y_model'] = Y_df_strict['y']
+    Y_hat_df_strict = Y_df_strict.groupby('unique_id').tail(12).copy()
+    ds_h_strict = Y_hat_df_strict['ds'].unique() # noqa: F841
+    Y_train_df_strict = Y_df_strict.query('~(ds in @ds_h_strict)').copy()
+    Y_train_df_strict['y_model'] += np.random.uniform(-1, 1, len(Y_train_df_strict))
+
+    return {
+        "grouped": {
+            "Y_hat_df": Y_hat_df_grouped,
+            "Y_train_df": Y_train_df_grouped,
+            "S_df": S_df_grouped,
+            "tags": tags_grouped
+        },
+        "strict": {
+            "Y_hat_df": Y_hat_df_strict,
+            "Y_train_df": Y_train_df_strict,
+            "S_df": S_df_strict,
+            "tags": tags_strict
+        }
+    }
+
+
+# Tests for methods that REQUIRE strictly hierarchical structures
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_raises_error_on_grouped_hierarchy_all_methods(common_test_data, method):
+    """Test that TopDown raises an error when used with grouped (non-strictly hierarchical) data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        if reconciler.insample:
+            hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+        else:
+            hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_sparse_raises_error_on_grouped_hierarchy(common_test_data, method):
+    """Test that TopDownSparse raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDownSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        if reconciler.insample:
+            hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+        else:
+            hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+
+def test_middleout_raises_error_on_grouped_hierarchy(common_test_data):
+    """Test that MiddleOut raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags
+    middle_level = list(tags.keys())[1]  # Use second level as middle
+
+    reconciler = MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+
+def test_middleout_sparse_raises_error_on_grouped_hierarchy(common_test_data):
+    """Test that MiddleOutSparse raises an error when used with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags
+    middle_level = list(tags.keys())[1]  # Use second level as middle
+
+    reconciler = MiddleOutSparse(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError, match="require[s]? a strictly hierarchical structure"):
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+
+# Tests for methods that SUPPORT grouped hierarchies
+
+
+def test_bottomup_works_with_grouped_hierarchy(common_test_data):
+    """Test that BottomUp works correctly with grouped (non-strictly hierarchical) data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = BottomUp()
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUp' in reconciled.columns
+
+
+def test_bottomup_sparse_works_with_grouped_hierarchy(common_test_data):
+    """Test that BottomUpSparse works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = BottomUpSparse()
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUpSparse' in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_mintrace_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that MinTrace works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = MinTrace(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MinTrace_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_mintrace_sparse_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that MinTraceSparse works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = MinTraceSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    # Check for the reconciled column - it will have the model name in it
+    assert any('y_model/' in col and method in col for col in reconciled.columns)
+
+
+@pytest.mark.parametrize("method", ["ols", "wls_struct"])
+def test_optimal_combination_works_with_grouped_hierarchy(common_test_data, method):
+    """Test that OptimalCombination works correctly with grouped data."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = OptimalCombination(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/OptimalCombination_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+def test_erm_works_with_grouped_hierarchy(common_test_data):
+    """Test that ERM works correctly with grouped data.
+
+    Note: Only testing 'closed' method as 'reg' and 'reg_bu' are computationally expensive.
+    """
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    method = "closed"
+    reconciler = ERM(method=method, lambda_reg=1e-2)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/ERM_method-{method}_lambda_reg-0.01'
+    assert expected_col in reconciled.columns
+
+
+# Tests for methods that require strictly hierarchical structures working with strict data
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_works_with_strict_hierarchy_all_methods(common_test_data, method):
+    """Test that TopDown works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/TopDown_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+@pytest.mark.parametrize("method", ["forecast_proportions", "average_proportions", "proportion_averages"])
+def test_topdown_sparse_works_with_strict_hierarchy(common_test_data, method):
+    """Test that TopDownSparse works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDownSparse(method=method)
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    if reconciler.insample:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+    else:
+        reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/TopDownSparse_method-{method}'
+    assert expected_col in reconciled.columns
+
+
+def test_middleout_works_with_strict_hierarchy_new(common_test_data):
+    """Test that MiddleOut works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags (use second level)
+    middle_level = list(tags.keys())[1]
+
+    reconciler = MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MiddleOut_middle_level-{middle_level}_top_down_method-forecast_proportions'
+    assert expected_col in reconciled.columns
+
+
+def test_middleout_sparse_works_with_strict_hierarchy(common_test_data):
+    """Test that MiddleOutSparse works correctly with strictly hierarchical data."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Get a middle level from the tags (use second level)
+    middle_level = list(tags.keys())[1]
+
+    reconciler = MiddleOutSparse(middle_level=middle_level, top_down_method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should not raise an error
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    expected_col = f'y_model/MiddleOutSparse_middle_level-{middle_level}_top_down_method-forecast_proportions'
+    assert expected_col in reconciled.columns
+
+
+# Test that verifies the error message is informative
+
+
+def test_error_message_is_informative(common_test_data):
+    """Test that the error message provides helpful information to users."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    reconciler = TopDown(method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    with pytest.raises(ValueError) as excinfo:
+        hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    error_msg = str(excinfo.value)
+    # Check that the error message contains key information
+    assert "requires a strictly hierarchical structure" in error_msg or "require a strictly hierarchical structure" in error_msg
+    assert "grouped structure" in error_msg
+    assert "BottomUp" in error_msg or "MinTrace" in error_msg or "ERM" in error_msg
+
+
+def test_multiple_strict_methods_error_message(common_test_data):
+    """Test that error message correctly lists multiple strict methods."""
+    data = common_test_data["grouped"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"]
+
+    # Use two strict methods
+    middle_level = list(tags.keys())[1]
+    reconcilers = [
+        TopDown(method="forecast_proportions"),
+        MiddleOut(middle_level=middle_level, top_down_method="forecast_proportions")
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    with pytest.raises(ValueError) as excinfo:
+        hrec.reconcile(Y_hat_df=Y_hat, Y_df=Y_train, S_df=S, tags=tags)
+
+    error_msg = str(excinfo.value)
+    # Both methods should be mentioned in the error
+    assert "TopDown" in error_msg
+    assert "MiddleOut" in error_msg
+
+
+def test_mixed_sparse_dense_strict_methods(common_test_data):
+    """Test that mixed sparse/dense strict methods are handled correctly."""
+    data = common_test_data["strict"]
+    Y_hat, Y_train, S, tags = data["Y_hat_df"], data["Y_train_df"], data["S_df"], data["tags"] # noqa: F841
+
+    # Mix of sparse and dense strict methods
+    reconcilers = [
+        TopDown(method="forecast_proportions"),  # Dense
+        TopDownSparse(method="forecast_proportions")  # Sparse
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    # Should not raise an error for valid strict hierarchy
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/TopDown_method-forecast_proportions' in reconciled.columns
+    assert 'y_model/TopDownSparse_method-forecast_proportions' in reconciled.columns
+
+
+def test_mixed_strict_and_non_strict_methods(common_test_data):
+    """Test that mixing strict and non-strict methods works correctly."""
+    data = common_test_data["strict"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    # Mix of strict and non-strict methods
+    reconcilers = [
+        BottomUp(),  # Non-strict
+        TopDown(method="forecast_proportions"),  # Strict
+        MinTrace(method="ols")  # Non-strict
+    ]
+    hrec = HierarchicalReconciliation(reconcilers)
+
+    # Should work fine with strict hierarchy
+    reconciled = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    assert reconciled is not None
+    assert 'y_model/BottomUp' in reconciled.columns
+    assert 'y_model/TopDown_method-forecast_proportions' in reconciled.columns
+    assert 'y_model/MinTrace_method-ols' in reconciled.columns
+
+
+def test_fails_fast_before_reconciliation(common_test_data):
+    """Test that validation fails before any reconciliation work starts."""
+    data = common_test_data["grouped"]
+    Y_hat, S, tags = data["Y_hat_df"], data["S_df"], data["tags"]
+
+    # Create a reconciler and track if it was called
+    class TrackingTopDown(TopDown):
+        fit_called = False
+
+        def fit(self, *args, **kwargs):
+            TrackingTopDown.fit_called = True
+            return super().fit(*args, **kwargs)
+
+    reconciler = TrackingTopDown(method="forecast_proportions")
+    hrec = HierarchicalReconciliation([reconciler])
+
+    # Should raise error without calling fit
+    with pytest.raises(ValueError):
+        hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags)
+
+    # Verify fit was never called
+    assert not TrackingTopDown.fit_called, "Validation should fail before fit() is called"
+
+
+# ------------------------------------------------------------------
+# Tests for _estimate_sigmah
+# ------------------------------------------------------------------
+class TestEstimateSigmah:
+    """Unit tests for IQR-based sigma_h estimation."""
+
+    def _make_df(self, y_hat, columns):
+        """Helper to build a narwhals-wrapped DataFrame with unique_id/ds."""
+        n_series, n_horizon = y_hat.shape
+        ids = np.repeat(np.arange(n_series), n_horizon)
+        ds = np.tile(np.arange(n_horizon), n_series)
+        data = {"unique_id": ids, "ds": ds}
+        for name, vals in columns.items():
+            data[name] = vals.flatten()
+        return nw.from_native(pd.DataFrame(data))
+
+    def test_single_paired_level(self):
+        """sigma_h from a single lo/hi pair matches (hi - lo) / (2*z)."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 3, 4
+        y_hat = np.random.default_rng(0).standard_normal((n_series, n_horizon))
+        sigma_true = np.abs(np.random.default_rng(1).standard_normal((n_series, n_horizon)))
+        level = 90
+        z = norm.ppf(0.5 + level / 200)
+        lo = y_hat - z * sigma_true
+        hi = y_hat + z * sigma_true
+
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": lo, "model-hi-90": hi})
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        np.testing.assert_allclose(sigmah, sigma_true, atol=1e-12)
+
+    def test_multiple_paired_levels(self):
+        """With multiple paired levels, the result is the average of per-level estimates."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 2, 3
+        y_hat = np.ones((n_series, n_horizon))
+        sigma_true = np.full((n_series, n_horizon), 2.0)
+
+        cols = {"model": y_hat}
+        for level in [80, 95]:
+            z = norm.ppf(0.5 + level / 200)
+            cols[f"model-lo-{level}"] = y_hat - z * sigma_true
+            cols[f"model-hi-{level}"] = y_hat + z * sigma_true
+
+        df = self._make_df(y_hat, cols)
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        # Both levels yield the same sigma, so the average is exact
+        np.testing.assert_allclose(sigmah, sigma_true, atol=1e-12)
+
+    def test_raises_on_unpaired_interval(self):
+        """Raises ValueError when only one direction (lo but no hi) exists."""
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": y_hat * 0.9})
+        with pytest.raises(ValueError, match="No paired prediction interval columns"):
+            _estimate_sigmah(df, y_hat, model_name="model")
+
+    def test_raises_on_no_intervals(self):
+        """Raises ValueError when no PI columns exist at all."""
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        df = self._make_df(y_hat, {"model": y_hat})
+        with pytest.raises(ValueError, match="No paired prediction interval columns"):
+            _estimate_sigmah(df, y_hat, model_name="model")
+
+    def test_non_negative_output(self):
+        """Ensures output is non-negative even if lo > hi (degenerate input)."""
+        from scipy.stats import norm
+
+        n_series, n_horizon = 2, 2
+        y_hat = np.ones((n_series, n_horizon))
+        # Deliberately swap lo/hi to produce negative raw sigma
+        level = 90
+        z = norm.ppf(0.5 + level / 200)
+        lo = y_hat + z * 1.0  # "lo" is actually above y_hat
+        hi = y_hat - z * 1.0  # "hi" is actually below y_hat
+
+        df = self._make_df(y_hat, {"model": y_hat, "model-lo-90": lo, "model-hi-90": hi})
+        sigmah = _estimate_sigmah(df, y_hat, model_name="model")
+        assert np.all(sigmah >= 0)
+
+
+# ==============================================================================
+# Tests for SMatrix integration through reconcile()
+# ==============================================================================
+
+@pytest.fixture(scope="module")
+def sparse_grouped_data(common_data):
+    """Prepares grouped data with sparse_s=True (SMatrix)."""
+    df = common_data['df']
+    spec = common_data['grouped_spec']
+
+    # Pandas with SMatrix
+    Y_df, S_df, tags = aggregate(df, spec, sparse_s=True)
+    Y_df['y_model'] = Y_df['y']
+    Y_hat_df = Y_df.groupby('unique_id').tail(12).copy()
+    ds_h = Y_hat_df['ds'].unique()  # noqa: F841
+    Y_train_df = Y_df.query('~(ds in @ds_h)').copy()
+    Y_train_df['y_model'] += np.random.uniform(-1, 1, len(Y_train_df))
+
+    # Polars with SMatrix
+    df_pl = pl.from_pandas(df)
+    Y_df_pl, S_df_pl, tags_pl = aggregate(df_pl, spec, sparse_s=True)
+    Y_hat_df_pl = pl.from_pandas(Y_hat_df)
+    Y_train_df_pl = pl.from_pandas(Y_train_df)
+
+    return {
+        "pandas": {
+            "Y_hat_df": Y_hat_df,
+            "Y_train_df": Y_train_df,
+            "S_df": S_df,
+            "tags": tags
+        },
+        "polars": {
+            "Y_hat_df": Y_hat_df_pl,
+            "Y_train_df": Y_train_df_pl,
+            "S_df": S_df_pl,
+            "tags": tags_pl
+        }
+    }
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_matches_dense(grouped_data, sparse_grouped_data, lib):
+    """Tests that reconciliation with SMatrix produces the same results as with dense S."""
+    from hierarchicalforecast.utils import SMatrix
+
+    dense_data = grouped_data[lib]
+    sparse_data = sparse_grouped_data[lib]
+
+    assert isinstance(sparse_data["S_df"], SMatrix)
+
+    # Use both sparse and dense reconcilers
+    reconcilers = [
+        BottomUp(),
+        MinTrace(method='ols'),
+        MinTrace(method='mint_shrink'),
+        BottomUpSparse(),
+        MinTraceSparse(method='ols'),
+        MinTraceSparse(method='wls_struct')
+    ]
+
+    # Reconcile with dense S
+    hrec_dense = HierarchicalReconciliation(reconcilers=copy.deepcopy(reconcilers))
+    result_dense = hrec_dense.reconcile(
+        Y_hat_df=dense_data["Y_hat_df"],
+        Y_df=dense_data["Y_train_df"],
+        S_df=dense_data["S_df"],
+        tags=dense_data["tags"],
+    )
+
+    # Reconcile with SMatrix
+    hrec_sparse = HierarchicalReconciliation(reconcilers=copy.deepcopy(reconcilers))
+    result_sparse = hrec_sparse.reconcile(
+        Y_hat_df=sparse_data["Y_hat_df"],
+        Y_df=sparse_data["Y_train_df"],
+        S_df=sparse_data["S_df"],
+        tags=sparse_data["tags"],
+    )
+
+    result_dense_nw = nw.from_native(result_dense)
+    result_sparse_nw = nw.from_native(result_sparse)
+
+    # Verify all reconciled columns match
+    for col in result_dense_nw.columns:
+        if col in ("unique_id", "ds"):
+            continue
+        np.testing.assert_allclose(
+            result_dense_nw[col].to_numpy(),
+            result_sparse_nw[col].to_numpy(),
+            atol=1e-6,
+            err_msg=f"Mismatch in column {col}",
+        )
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_with_sparse_methods(sparse_grouped_data, lib):
+    """Tests that sparse reconciliation methods work with SMatrix."""
+    data = sparse_grouped_data[lib]
+
+    reconcilers = [
+        BottomUpSparse(),
+        MinTraceSparse(method='ols'),
+        MinTraceSparse(method='wls_struct'),
+    ]
+    hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+    result = hrec.reconcile(
+        Y_hat_df=data["Y_hat_df"],
+        Y_df=data["Y_train_df"],
+        S_df=data["S_df"],
+        tags=data["tags"],
+    )
+
+    result_nw = nw.from_native(result)
+
+    # Verify reconciled columns exist
+    for reconciler in reconcilers:
+        col_name = f"y_model/{_build_fn_name(reconciler)}"
+        assert col_name in result_nw.columns
+
+
+@pytest.mark.parametrize("lib", ["pandas", "polars"])
+def test_smatrix_reconciliation_with_diagnostics(sparse_grouped_data, lib):
+    """Tests that diagnostics=True works with SMatrix (no crash on missing columns)."""
+    data = sparse_grouped_data[lib]
+
+    hrec = HierarchicalReconciliation(reconcilers=[BottomUp()])
+    result = hrec.reconcile(
+        Y_hat_df=data["Y_hat_df"],
+        S_df=data["S_df"],
+        tags=data["tags"],
+        diagnostics=True,
+    )
+
+    assert result is not None
+    assert hrec.diagnostics is not None
+
+    diag = nw.from_native(hrec.diagnostics)
+    is_coherent = diag.filter(
+        (nw.col("metric") == "is_coherent") & (nw.col("level") == "Overall")
+    )["y_model/BottomUp"].to_list()[0]
+    assert is_coherent == 1.0
+
+
+def test_smatrix_check_bottom_identity_rejects_bad_matrix():
+    """Tests that reconcile() raises ValueError when SMatrix has a corrupted bottom block."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    # Create a valid 5x3 summing matrix (2 aggregate + 3 bottom)
+    data = np.array([
+        [1, 1, 1],
+        [1, 1, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+    ], dtype=np.float64)
+    # Corrupt the bottom block: swap two entries so it's not identity
+    data[2, 0] = 0.0  # break the diagonal
+    data[2, 1] = 1.0  # move to off-diagonal
+
+    smat = SMatrix(
+        sparse_matrix=sp.csc_matrix(data),
+        row_labels=np.array(["top", "mid", "a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    assert not smat.check_bottom_identity()
+    assert not smat._bottom_identity_verified
+
+    # Passing to reconcile should raise ValueError
+    Y_hat_df = pd.DataFrame({
+        "unique_id": ["top", "mid", "a", "b", "c"],
+        "ds": [1, 1, 1, 1, 1],
+        "model": [6.0, 3.0, 1.0, 2.0, 3.0],
+    })
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_df,
+            S_df=smat,
+            tags={"top": np.array(["top"]), "mid": np.array(["mid"]), "bottom": np.array(["a", "b", "c"])},
+        )
+
+
+def test_reconcile_rejects_bad_dense_bottom_identity_block():
+    """A malformed dense summing matrix is never accepted."""
+    S_df = pd.DataFrame(
+        {
+            "unique_id": ["top", "mid", "a", "b", "c"],
+            "a": [1.0, 1.0, 0.0, 0.0, 0.0],
+            "b": [1.0, 1.0, 1.0, 1.0, 0.0],
+            "c": [1.0, 0.0, 0.0, 0.0, 1.0],
+        }
+    )
+    Y_hat_df = pd.DataFrame(
+        {
+            "unique_id": ["top", "mid", "a", "b", "c"],
+            "ds": [1, 1, 1, 1, 1],
+            "model": [6.0, 3.0, 1.0, 2.0, 3.0],
+        }
+    )
+    tags = {
+        "top": np.array(["top"]),
+        "mid": np.array(["mid"]),
+        "bottom": np.array(["a", "b", "c"]),
+    }
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def test_aggregate_marks_sparse_summing_matrix_as_verified(tourism_df, hiers_strictly):
+    """Sparse summing matrices created by aggregate need no identity recheck."""
+    _, S_df, _ = aggregate(tourism_df, hiers_strictly, sparse_s=True)
+
+    assert S_df._bottom_identity_verified
+
+
+def test_smatrix_caches_successful_bottom_identity_check():
+    """A manually created valid SMatrix validates once and caches the result."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    smat = SMatrix(
+        sparse_matrix=sp.eye(3, format="csc"),
+        row_labels=np.array(["a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+
+    assert not smat._bottom_identity_verified
+    assert smat.check_bottom_identity()
+    assert smat._bottom_identity_verified
+    assert smat.check_bottom_identity()
+
+    smat.clear_cache()
+    assert not smat._bottom_identity_verified
+
+
+def _dense_identity_case(bottom_block: np.ndarray):
+    """Build a small strict hierarchy whose bottom block is `bottom_block`."""
+    upper = np.array(
+        [
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ]
+    )
+    S = np.vstack([upper, bottom_block])
+    ids = ["total", "mid1", "mid2", "a", "b", "c"]
+    S_df = pd.DataFrame(
+        {"unique_id": ids, **{c: S[:, i] for i, c in enumerate(["a", "b", "c"])}}
+    )
+    Y_hat_df = pd.DataFrame(
+        {
+            "unique_id": ids,
+            "ds": [1] * len(ids),
+            "model": [6.0, 3.0, 3.0, 1.0, 2.0, 3.0],
+        }
+    )
+    tags = {
+        "total": np.array(["total"]),
+        "mid": np.array(["mid1", "mid2"]),
+        "bottom": np.array(["a", "b", "c"]),
+    }
+    return S_df, Y_hat_df, tags
+
+
+@pytest.mark.parametrize(
+    "add_noise",
+    [
+        pytest.param(lambda B: B * (1.0 - 1e-9), id="diagonal_just_below_one"),
+        pytest.param(lambda B: B + 1e-12 * (1.0 - np.eye(3)), id="tiny_off_diagonal"),
+    ],
+)
+def test_reconcile_accepts_dense_bottom_identity_within_tolerance(add_noise):
+    """Floating point noise within tolerance must stay acceptable.
+
+    The fast path only settles exact 0/1 matrices; anything else has to fall
+    back to a tolerant comparison, otherwise user-built summing matrices that
+    reconciled fine before would start raising.
+    """
+    S_df, Y_hat_df, tags = _dense_identity_case(add_noise(np.eye(3)))
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    result = hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+    assert len(result) == len(Y_hat_df)
+
+
+def test_reconcile_rejects_extra_off_diagonal_one():
+    """An intact diagonal does not excuse an extra off-diagonal entry."""
+    bottom_block = np.eye(3)
+    bottom_block[0, 1] = 1.0
+    S_df, Y_hat_df, tags = _dense_identity_case(bottom_block)
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def test_reconcile_rejects_dense_summing_matrix_with_too_few_rows():
+    """A summing matrix shorter than its bottom level reports the identity error."""
+    S_df = pd.DataFrame(
+        {
+            "unique_id": ["total", "a"],
+            "a": [1.0, 1.0],
+            "b": [1.0, 0.0],
+            "c": [1.0, 0.0],
+        }
+    )
+    Y_hat_df = pd.DataFrame(
+        {"unique_id": ["total", "a"], "ds": [1, 1], "model": [6.0, 1.0]}
+    )
+    tags = {"total": np.array(["total"]), "bottom": np.array(["a", "b", "c"])}
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+
+def _to_sparse_pandas(S_df, fill_value):
+    """Convert the bottom-level columns of `S_df` to a pandas sparse dtype."""
+    S_df = S_df.copy()
+    for col in ["a", "b", "c"]:
+        S_df[col] = pd.arrays.SparseArray(S_df[col].to_numpy(), fill_value=fill_value)
+    assert all(
+        str(dtype).startswith("Sparse") for dtype in S_df[["a", "b", "c"]].dtypes
+    )
+    return S_df
+
+
+@pytest.mark.parametrize(
+    "fill_value",
+    [
+        pytest.param(0.0, id="zero_fill_uses_sparse_path"),
+        # The default fill value cannot be converted to COO, so this exercises
+        # the fall-through to the dense path rather than raising from pandas.
+        pytest.param(np.nan, id="nan_fill_falls_back_to_dense_path"),
+    ],
+)
+def test_reconcile_checks_bottom_identity_of_sparse_pandas_summing_matrix(fill_value):
+    """The sparse pandas branch accepts a valid block and rejects a corrupted one."""
+    S_df, Y_hat_df, tags = _dense_identity_case(np.eye(3))
+
+    hrec = HierarchicalReconciliation([BottomUp()])
+    result = hrec.reconcile(
+        Y_hat_df=Y_hat_df, S_df=_to_sparse_pandas(S_df, fill_value), tags=tags
+    )
+    assert len(result) == len(Y_hat_df)
+
+    bad_block = np.eye(3)
+    bad_block[0, 0] = 0.0
+    bad_block[0, 1] = 1.0
+    S_bad, Y_hat_bad, tags_bad = _dense_identity_case(bad_block)
+
+    with pytest.raises(ValueError, match="identity matrix"):
+        hrec.reconcile(
+            Y_hat_df=Y_hat_bad,
+            S_df=_to_sparse_pandas(S_bad, fill_value),
+            tags=tags_bad,
+        )
+
+
+def test_smatrix_revalidates_bottom_identity_after_sparse_matrix_is_exposed():
+    """An exposed mutable sparse matrix disables identity-result caching."""
+    from scipy import sparse as sp
+
+    from hierarchicalforecast.utils import SMatrix
+
+    smat = SMatrix(
+        sparse_matrix=sp.eye(3, format="csc"),
+        row_labels=np.array(["a", "b", "c"]),
+        col_labels=np.array(["a", "b", "c"]),
+    )
+    assert smat.check_bottom_identity()
+
+    # Keep the zero-copy reference across checks to ensure later mutations are
+    # visible even if the matrix was valid during an intervening check.
+    sparse_matrix = smat.to_sparse()
+    assert smat.check_bottom_identity()
+    assert not smat._bottom_identity_verified
+
+    sparse_matrix.data[0] = 0.0
+
+    assert not smat.check_bottom_identity()

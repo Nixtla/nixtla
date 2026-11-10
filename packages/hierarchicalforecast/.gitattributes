@@ -1,0 +1,3 @@
+*.ipynb merge=nbdev-merge
+nbs/** linguist-documentation
+experiments/** linguist-documentation
