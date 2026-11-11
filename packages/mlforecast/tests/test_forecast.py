@@ -1574,6 +1574,78 @@ def test_horizons_prediction_partial():
     assert preds.shape[0] == n_series * 1
 
 
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_horizons_prediction_dates_series_major(engine):
+    """Sparse-horizon dates stay with their series when series end on different dates (#814)."""
+    data = {
+        "unique_id": np.repeat(["a", "b"], 30),
+        "ds": np.concatenate([np.arange(30), np.arange(10, 40)]),
+        "y": np.concatenate([np.arange(30), np.arange(10, 40)]).astype(float),
+    }
+    df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+    fcst = MLForecast(models=[LinearRegression()], freq=1, lags=[1])
+    fcst.fit(df, horizons=[2, 4, 6])
+    preds = fcst.predict(6)
+    assert list(preds["unique_id"]) == ["a"] * 3 + ["b"] * 3
+    assert list(preds["ds"]) == [31, 33, 35, 41, 43, 45]
+
+
+def _tz_series(engine):
+    # January: no DST transition, so local hours are a fixed shift from UTC
+    times = pd.date_range("2024-01-01", periods=70, freq="h", tz="America/New_York")
+    data = {
+        "unique_id": np.repeat(["a", "b"], 48),
+        "ds": times[:48].append(times[10:58]),
+        "y": np.arange(96) % 5 + 1.0,
+    }
+    df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+    return times, df, "1h" if engine == "polars" else "h"
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+@pytest.mark.parametrize(
+    "horizons, idxs",
+    [(None, [48, 49, 50, 58, 59, 60]), ([1, 3], [48, 50, 58, 60])],
+    ids=["recursive", "sparse"],
+)
+def test_timezone_aware_prediction_dates(engine, horizons, idxs):
+    times, df, freq = _tz_series(engine)
+    fcst = MLForecast(models=[LinearRegression()], freq=freq, lags=[1])
+    fcst.fit(df, horizons=horizons)
+    ds = fcst.predict(3)["ds"]
+    assert ds.dtype == df["ds"].dtype
+    assert list(ds) == list(times[idxs])
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_timezone_aware_hour_feature_is_local(engine):
+    times, df, freq = _tz_series(engine)
+    fcst = MLForecast(
+        models=[LinearRegression()], freq=freq, lags=[1], date_features=["hour"]
+    )
+    fcst.fit(df)
+    hours = []
+
+    def record_hours(X):
+        hours.extend(X["hour"])
+        return X
+
+    fcst.predict(2, before_predict_callback=record_hours)
+    # one row per series per step: a, b at step 1, then a, b at step 2
+    assert hours == list(times[[48, 58, 49, 59]].hour)
+
+
+@pytest.mark.parametrize("engine", ["pandas", "polars"])
+def test_timezone_aware_dates_survive_update(engine):
+    times, df, freq = _tz_series(engine)
+    fcst = MLForecast(models=[LinearRegression()], freq=freq, lags=[1])
+    fcst.fit(df)
+    fcst.update(ufp.assign_columns(fcst.make_future_dataframe(2), "y", 1.0))
+    ds = fcst.predict(1)["ds"]
+    assert ds.dtype == df["ds"].dtype
+    assert list(ds) == list(times[[50, 60]])
+
+
 def test_horizons_cross_validation():
     """Test that cross_validation works with sparse horizons parameter.
 
