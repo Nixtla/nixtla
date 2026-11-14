@@ -760,6 +760,11 @@ body .code-group {
   margin-top: 0 !important;
 }
 
+/* Mintlify's prose default is 1.75; body copy and lists inherit this instead */
+.prose {
+  line-height: var(--lh-prose) !important;
+}
+
 .prose :where(h1):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 .prose :where(h4):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 .prose :where(ul):not(:where([class~="not-prose"], [class~="not-prose"] *)),

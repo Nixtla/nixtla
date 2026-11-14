@@ -5,6 +5,7 @@
 
   --fs-h2: var(--fs-2xl);
   --lh-h2: var(--lh-2xl);
+  --lh-prose: 1.5;
 
   --leading-label: 92%;
   --leading-label-relaxed: 110%;
