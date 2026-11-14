@@ -1365,6 +1365,12 @@ details.expandable .primitive-param-field {
 
 [data-component-part="step-title"] {
   margin: 0 !important;
+  /* Center the first line of the title on the step number */
+  padding-top: calc(var(--step-indicator-center) - var(--lh-base) / 2) !important;
+  font-size: var(--fs-base) !important;
+  line-height: var(--lh-base) !important;
+  font-weight: var(--font-weight-step-title) !important;
+  color: var(--foreground) !important;
 }
 
 [data-component-part="step-line"] {

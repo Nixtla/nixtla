@@ -66,6 +66,8 @@ html:root {
   --image-link-badge-height: 1.75rem;
   --code-header-height: 2.25rem;
   --step-line-offset: 2.75rem;
+  --step-indicator-center: 1.375rem; /* py-2 + half of size-7 */
+  --font-weight-step-title: 600;
   --chat-input-reserve: 5rem;
   --chat-launcher-gap: 4.5rem;
   --intercom-launcher-size: 3.75rem;
