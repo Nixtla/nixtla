@@ -49,6 +49,7 @@ def _is_retriable_error(exc: BaseException) -> bool:
         ConnectionResetError,
         httpcore.ConnectError,
         httpcore.RemoteProtocolError,
+        httpx.ConnectError,
         httpx.ConnectTimeout,
         httpx.ReadError,
         httpx.RemoteProtocolError,
