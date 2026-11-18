@@ -1,0 +1,141 @@
+---
+title: Feature Engineering | UtilsForecast
+description: Create exogenous regressors for your models
+---
+
+### `fourier`
+
+```python
+fourier(df, freq, season_length, k, h=0, id_col='unique_id', time_col='ds')
+```
+
+Compute fourier seasonal terms for training and forecasting
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with ids, times and values for the exogenous regressors. | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Frequency of the data. Must be a valid pandas or polars offset alias, or an integer. | *required*
+`season_length` | <code>[int](#int)</code> | Number of observations per unit of time. Ex: 24 Hourly data. | *required*
+`k` | <code>[int](#int)</code> | Maximum order of the fourier terms | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. Defaults to 0. | <code>0</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [DFType](#utilsforecast.compat.DFType)]</code> | tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple containing the original DataFrame with the computed features and DataFrame with future values.
+
+
+### `trend`
+
+```python
+trend(df, freq, h=0, id_col='unique_id', time_col='ds')
+```
+
+Add a trend column with consecutive integers for training and forecasting
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with ids, times and values for the exogenous regressors. | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Frequency of the data. Must be a valid pandas or polars offset alias, or an integer. | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. Defaults to 0. | <code>0</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [DFType](#utilsforecast.compat.DFType)]</code> | tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple containing the original DataFrame with the computed features and DataFrame with future values.
+
+
+### `time_features`
+
+```python
+time_features(df, freq, features, h=0, id_col='unique_id', time_col='ds')
+```
+
+Compute timestamp-based features for training and forecasting
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with ids, times and values for the exogenous regressors. | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Frequency of the data. Must be a valid pandas or polars offset alias, or an integer. | *required*
+`features` | <code>list of str, callable or calendar feature</code> | Features to compute. Can be calendar features from `utilsforecast.date_features` (listed by `utilsforecast.date_features.available()`), string aliases of timestamp attributes of the dataframe backend or functions to apply to the times. | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. Defaults to 0. | <code>0</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [DFType](#utilsforecast.compat.DFType)]</code> | tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple containing the original DataFrame with the computed features and DataFrame with future values.
+
+**Raises:**
+
+Type | Description
+---- | -----------
+<code>[ValueError](#ValueError)</code> | If there are null times, if feature names are repeated or match existing columns, or if calendar features are computed from times that aren't datetimes.
+
+
+### `future_exog_to_historic`
+
+```python
+future_exog_to_historic(df, freq, features, h=0, id_col='unique_id', time_col='ds')
+```
+
+Turn future exogenous features into historic by shifting them `h` steps.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with ids, times and values for the exogenous regressors. | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Frequency of the data. Must be a valid pandas or polars offset alias, or an integer. | *required*
+`features` | <code>list of str</code> | Features to be converted into historic. | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. Defaults to 0. | <code>0</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [DFType](#utilsforecast.compat.DFType)]</code> | tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple containing the original DataFrame with the computed features and DataFrame with future values.
+
+
+### `pipeline`
+
+```python
+pipeline(df, features, freq, h=0, id_col='unique_id', time_col='ds')
+```
+
+Compute several features for training and forecasting
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with ids, times and values for the exogenous regressors. | *required*
+`features` | <code>list of callable</code> | List of features to compute. Must take only df, freq, h, id_col and time_col (other arguments must be fixed). | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Frequency of the data. Must be a valid pandas or polars offset alias, or an integer. | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. Defaults to 0. | <code>0</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [DFType](#utilsforecast.compat.DFType)]</code> | tuple[pandas or polars DataFrame, pandas or polars DataFrame]: A tuple containing the original DataFrame with the computed features and DataFrame with future values.
+
+

@@ -1,0 +1,403 @@
+---
+title: Rectify Strategy for Multi-Step Forecasts
+---
+
+> Correct horizon-dependent bias in recursive multi-step forecasts by
+> training a small residual model on top of an existing forecaster.
+
+## What you’ll learn
+
+-   Why recursive multi-step forecasts develop bias as the horizon grows
+-   How the Rectify strategy combines recursive (low-variance) and
+    direct (low-bias) forecasting
+-   How to compute horizon-indexed residuals from cross-validation
+    output
+-   How to align feature matrices with residuals for training correction
+    models
+-   How to apply fitted correction models to new forecasts using both
+    `per_horizon` and `horizon_aware` modes
+
+## The problem: bias accumulates with horizon
+
+Recursive forecasting trains a single one-step-ahead model and feeds its
+predictions back as inputs for longer horizons. It is fast and produces
+smooth multi-step trajectories, but for non-linear data-generating
+processes the bias compounds: each step uses a slightly biased
+prediction as input, which produces a more biased prediction for the
+next step.
+
+Direct forecasting avoids that problem by training a separate model per
+horizon. It is unbiased but high-variance and produces no continuity
+between horizons.
+
+The **Rectify** strategy by [Ben Taieb & Hyndman
+(2012)](https://robjhyndman.com/papers/rectify.pdf) keeps the recursive
+base forecast and adds a per-horizon correction:
+
+$$\hat{m}_h(x_t) = \hat{z}_h(x_t) + \hat{r}_h(x_t)$$
+
+`utilsforecast` provides three building blocks for this — computing
+residuals, aligning features, and applying corrections. You bring the
+base forecaster and the correction regressor.
+
+## Install libraries
+
+```python
+%%capture
+pip install utilsforecast statsforecast scikit-learn -U
+```
+
+
+```python
+import warnings
+warnings.filterwarnings('ignore')
+
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+from statsforecast import StatsForecast
+from statsforecast.models import SeasonalNaive
+
+from utilsforecast.data import generate_series
+from utilsforecast.losses import mae
+from utilsforecast.evaluation import evaluate
+from utilsforecast.rectify import (
+    align_rectify_features,
+    compute_rectify_residuals,
+    rectify,
+)
+```
+
+## Generate synthetic time series
+
+We use `generate_series` to create a panel of 8 daily series with weekly
+seasonality and a positive trend. The trend is what makes the example
+interesting: our base forecaster will be `SeasonalNaive`, which repeats
+the last observed week and has no way to capture trend. Its forecasts
+will drift further behind the actuals as the horizon grows — a textbook
+setup for rectify to fix.
+
+```python
+HORIZON = 7
+SEASON = 7
+
+series = generate_series(
+    n_series=8,
+    freq='D',
+    min_length=120,
+    max_length=160,
+    with_trend=True,
+    seed=42,
+)
+series['unique_id'] = series['unique_id'].astype(str)
+
+test_mask = series.groupby('unique_id').cumcount(ascending=False) < HORIZON
+train = series[~test_mask].reset_index(drop=True)
+test = series[test_mask].reset_index(drop=True)
+
+print(f'Train: {len(train)} rows | Test: {len(test)} rows')
+```
+
+``` text
+Train: 1089 rows | Test: 56 rows
+```
+
+## Generate cross-validation forecasts
+
+We need cross-validation output (forecasts plus actuals across multiple
+cutoffs) to train the correction models.
+`StatsForecast.cross_validation()` produces exactly that, with a
+`cutoff` column distinguishing each fold.
+
+```python
+sf = StatsForecast(
+    models=[SeasonalNaive(season_length=SEASON)],
+    freq='D',
+    n_jobs=1,
+)
+cv_df = sf.cross_validation(df=train, h=HORIZON, n_windows=4)
+cv_df['unique_id'] = cv_df['unique_id'].astype(str)
+cv_df = cv_df.sort_values(['unique_id', 'cutoff', 'ds']).reset_index(drop=True)
+cv_df.head()
+```
+
+|     | unique_id | ds         | cutoff     | y          | SeasonalNaive |
+|-----|-----------|------------|------------|------------|---------------|
+| 0   | 0         | 2000-05-21 | 2000-05-20 | 119.270219 | 113.641010    |
+| 1   | 0         | 2000-05-22 | 2000-05-20 | 120.881632 | 115.122690    |
+| 2   | 0         | 2000-05-23 | 2000-05-20 | 122.832229 | 117.082437    |
+| 3   | 0         | 2000-05-24 | 2000-05-20 | 124.984052 | 118.821265    |
+| 4   | 0         | 2000-05-25 | 2000-05-20 | 126.486714 | 120.650260    |
+
+Each row is a (series, cutoff, ds) triple with the actual `y` and the
+SeasonalNaive forecast. With 4 cutoffs and a horizon of 7, every series
+contributes 28 training rows for the correction model.
+
+## Step 1: compute per-horizon residuals
+
+`compute_rectify_residuals` joins actuals and forecasts on
+`(id_col, time_col, cutoff_col)` and computes `actual - forecast` per
+row. It also adds a 1-indexed `horizon` column based on the row position
+within each `(id, cutoff)` group.
+
+```python
+residuals_df = compute_rectify_residuals(
+    df=cv_df,
+    forecasts_df=cv_df,
+    models=['SeasonalNaive'],
+    cutoff_col='cutoff',
+)
+residuals_df.head(10)
+```
+
+|     | unique_id | ds         | cutoff     | horizon | SeasonalNaive |
+|-----|-----------|------------|------------|---------|---------------|
+| 0   | 0         | 2000-05-21 | 2000-05-20 | 1       | 5.629209      |
+| 1   | 0         | 2000-05-22 | 2000-05-20 | 2       | 5.758942      |
+| 2   | 0         | 2000-05-23 | 2000-05-20 | 3       | 5.749792      |
+| 3   | 0         | 2000-05-24 | 2000-05-20 | 4       | 6.162787      |
+| 4   | 0         | 2000-05-25 | 2000-05-20 | 5       | 5.836454      |
+| 5   | 0         | 2000-05-26 | 2000-05-20 | 6       | 5.913097      |
+| 6   | 0         | 2000-05-27 | 2000-05-20 | 7       | 5.799038      |
+| 7   | 0         | 2000-05-22 | 2000-05-21 | 1       | 5.758942      |
+| 8   | 0         | 2000-05-23 | 2000-05-21 | 2       | 5.749792      |
+| 9   | 0         | 2000-05-24 | 2000-05-21 | 3       | 6.162787      |
+
+We pass `cv_df` for both `df` and `forecasts_df` because the
+cross-validation output already contains both columns. The output is
+sorted by `(unique_id, cutoff, ds)` — the same order we sorted `cv_df`
+in. Keeping the orderings consistent matters for the next step.
+
+## Step 2: build features
+
+The correction model needs a feature matrix with the same row count and
+order as `residuals_df`. Anything that explains residual variation is
+fair game — calendar effects, lags, or exogenous variables. To keep the
+tutorial focused, we use two simple features:
+
+-   `dow`: day of week of the prediction date
+-   `lag_y`: the most recent observed `y` per series, used as a level
+    proxy
+
+```python
+def build_features(df, train_history):
+    """Build a (n_rows, 2) feature matrix row-aligned with df.
+
+    df must contain unique_id, ds, and a cutoff column (or be a forecast frame
+    where ds itself acts as the cutoff reference).
+    """
+    dow = df['ds'].dt.dayofweek.to_numpy()
+    last_y_by_uid = (
+        train_history.sort_values(['unique_id', 'ds'])
+        .groupby('unique_id')['y']
+        .last()
+    )
+    lag_y = df['unique_id'].map(last_y_by_uid).to_numpy()
+    return np.column_stack([dow, lag_y])
+
+train_features = build_features(cv_df, train_history=train)
+train_features.shape
+```
+
+``` text
+(224, 2)
+```
+
+## Step 3: align features with residuals
+
+`align_rectify_features` partitions the residuals by horizon and slices
+the feature matrix accordingly. In `per_horizon` mode it returns a dict
+mapping each horizon `h` to a `(X_h, {model: residuals_h})` tuple — one
+training set per horizon.
+
+```python
+aligned = align_rectify_features(
+    residuals_df=residuals_df,
+    features=train_features,
+    models=['SeasonalNaive'],
+)
+for h, (X_h, y_dict) in aligned.items():
+    print(f'h={h}: X shape={X_h.shape}, residuals shape={y_dict["SeasonalNaive"].shape}')
+```
+
+``` text
+h=1: X shape=(32, 2), residuals shape=(32,)
+h=2: X shape=(32, 2), residuals shape=(32,)
+h=3: X shape=(32, 2), residuals shape=(32,)
+h=4: X shape=(32, 2), residuals shape=(32,)
+h=5: X shape=(32, 2), residuals shape=(32,)
+h=6: X shape=(32, 2), residuals shape=(32,)
+h=7: X shape=(32, 2), residuals shape=(32,)
+```
+
+## Step 4: train one correction model per horizon
+
+Any object with a `.predict(X)` method works. Here we use
+`LinearRegression`, but `Ridge`, `LightGBM`, or a custom regressor would
+all be valid.
+
+```python
+correction_models = {}
+for h, (X_h, y_dict) in aligned.items():
+    correction_models[h] = {}
+    for model_name, residuals in y_dict.items():
+        reg = LinearRegression().fit(X_h, residuals)
+        correction_models[h][model_name] = reg
+
+print(f'Trained {len(correction_models)} correction models, one per horizon.')
+```
+
+``` text
+Trained 7 correction models, one per horizon.
+```
+
+## Step 5: forecast on the held-out window and rectify
+
+We refit the base model on the full training set, predict the held-out
+horizon, then build a matching feature matrix and apply `rectify`. The
+corrected forecasts add the predicted residual back to each base
+prediction.
+
+```python
+sf.fit(train)
+test_forecasts = sf.predict(h=HORIZON)
+test_forecasts['unique_id'] = test_forecasts['unique_id'].astype(str)
+test_forecasts = test_forecasts.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+
+test_features = build_features(test_forecasts, train_history=train)
+
+rectified = rectify(
+    df=test_forecasts,
+    models=['SeasonalNaive'],
+    correction_models=correction_models,
+    features=test_features,
+)
+rectified.head()
+```
+
+|     | unique_id | ds         | SeasonalNaive |
+|-----|-----------|------------|---------------|
+| 0   | 0         | 2000-05-31 | 131.317404    |
+| 1   | 0         | 2000-06-01 | 132.994530    |
+| 2   | 0         | 2000-06-02 | 134.817132    |
+| 3   | 0         | 2000-06-03 | 129.886634    |
+| 4   | 0         | 2000-06-04 | 131.599479    |
+
+## Step 6: compare base vs rectified MAE
+
+Merge the held-out actuals with both forecast frames and use
+`evaluate()` to compute MAE per series.
+
+```python
+comparison = test.merge(
+    test_forecasts.rename(columns={'SeasonalNaive': 'base'}),
+    on=['unique_id', 'ds'],
+).merge(
+    rectified.rename(columns={'SeasonalNaive': 'rectified'}),
+    on=['unique_id', 'ds'],
+)
+
+evaluate(
+    df=comparison,
+    metrics=[mae],
+    agg_fn='mean',
+)
+```
+
+|     | metric | base     | rectified |
+|-----|--------|----------|-----------|
+| 0   | mae    | 4.865848 | 0.326756  |
+
+SeasonalNaive systematically underestimates trended series, and the
+corrector learns that pattern from the CV residuals. On this run the
+rectified MAE drops from ~4.9 to ~0.3 — about a 14x reduction.
+
+## Horizon-aware mode: a single corrector for all horizons
+
+`per_horizon` mode trains one correction model per horizon, which is the
+classic Rectify formulation. When training data is small or you want a
+single model to share information across horizons, `horizon_aware` mode
+appends the horizon as an extra feature column and trains one corrector
+for the full range.
+
+```python
+X_all, y_all = align_rectify_features(
+    residuals_df=residuals_df,
+    features=train_features,
+    models=['SeasonalNaive'],
+    mode='horizon_aware',
+)
+
+horizon_aware_models = {
+    'SeasonalNaive': LinearRegression().fit(X_all, y_all['SeasonalNaive']),
+}
+
+rectified_ha = rectify(
+    df=test_forecasts,
+    models=['SeasonalNaive'],
+    correction_models=horizon_aware_models,
+    features=test_features,
+    mode='horizon_aware',
+)
+rectified_ha.head()
+```
+
+|     | unique_id | ds         | SeasonalNaive |
+|-----|-----------|------------|---------------|
+| 0   | 0         | 2000-05-31 | 131.422401    |
+| 1   | 0         | 2000-06-01 | 132.950212    |
+| 2   | 0         | 2000-06-02 | 134.765042    |
+| 3   | 0         | 2000-06-03 | 129.799484    |
+| 4   | 0         | 2000-06-04 | 131.909747    |
+
+A few notes on the API differences between the modes:
+
+-   `mode='horizon_aware'` is keyword-only, so it must be passed by name
+-   `correction_models` is flat (`{model_name: regressor}`) instead of
+    nested by horizon
+-   The horizon column is appended to the feature matrix before fitting,
+    so the corrector sees horizon as just another feature
+
+## Custom column names
+
+All three functions accept `id_col` and `time_col` parameters.
+`compute_rectify_residuals` additionally accepts `target_col` and
+`cutoff_col`. Pass them consistently across the pipeline if your data
+uses non-default names.
+
+```python
+renamed = cv_df.rename(columns={'unique_id': 'series_id', 'ds': 'timestamp'})
+
+residuals_renamed = compute_rectify_residuals(
+    df=renamed,
+    forecasts_df=renamed,
+    models=['SeasonalNaive'],
+    id_col='series_id',
+    time_col='timestamp',
+    target_col='y',
+    cutoff_col='cutoff',
+)
+residuals_renamed.columns.tolist()
+```
+
+``` text
+['series_id', 'timestamp', 'cutoff', 'horizon', 'SeasonalNaive']
+```
+
+## Key takeaways
+
+-   **Rectify is post-processing.** Your base forecaster doesn’t need to
+    change; the correction model lives on top of it.
+-   **Use `cutoff_col` when training from cross-validation output.**
+    Without it, repeated `(id, ds)` pairs across folds collide on the
+    join.
+-   **Features must be row-aligned with the dataframe.** Sort `cv_df`
+    and the forecast frame consistently before extracting features and
+    you’re safe.
+-   **`per_horizon` vs `horizon_aware` is a sample-size call.** When you
+    have plenty of folds, separate models per horizon usually win. When
+    data is thin, one shared model with horizon as a feature does
+    better.
+-   **Anything with a `predict(X)` method works.** sklearn, lightgbm,
+    xgboost, your own class.
+

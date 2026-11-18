@@ -1,0 +1,56 @@
+---
+title: Preprocessing
+description: Utilities for processing data before training/analysis
+---
+
+### `id_time_grid`
+
+```python
+id_time_grid(df, freq, start='per_serie', end='global', id_col='unique_id', time_col='ds')
+```
+
+Generate all expected combiations of ids and times.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Input data | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Series' frequency | *required*
+`start` | <code>([str](#str), [int](#int), [date](#datetime.date) or [datetime](#datetime.datetime))</code> | Initial timestamp for the series. * 'per_serie' uses each serie's first timestamp * 'global' uses the first timestamp seen in the data * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1) Defaults to "per_serie". | <code>'per_serie'</code>
+`end` | <code>([str](#str), [int](#int), [date](#datetime.date) or [datetime](#datetime.datetime))</code> | Initial timestamp for the series. * 'per_serie' uses each serie's last timestamp * 'global' uses the last timestamp seen in the data * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1) Defaults to "global". | <code>'global'</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestamp. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DFType](#utilsforecast.compat.DFType)</code> | pandas or polars DataFrame: Dataframe with expected ids and times.
+
+
+### `fill_gaps`
+
+```python
+fill_gaps(df, freq, start='per_serie', end='global', id_col='unique_id', time_col='ds')
+```
+
+Enforce start and end datetimes for dataframe.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Input data | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Series' frequency | *required*
+`start` | <code>([str](#str), [int](#int), [date](#datetime.date) or [datetime](#datetime.datetime))</code> | Initial timestamp for the series. * 'per_serie' uses each serie's first timestamp * 'global' uses the first timestamp seen in the data * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1) Defaults to "per_serie". | <code>'per_serie'</code>
+`end` | <code>([str](#str), [int](#int), [date](#datetime.date) or [datetime](#datetime.datetime))</code> | Initial timestamp for the series. * 'per_serie' uses each serie's last timestamp * 'global' uses the last timestamp seen in the data * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1) Defaults to "global". | <code>'global'</code>
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestamp. Defaults to 'ds'. | <code>'ds'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DFType](#utilsforecast.compat.DFType)</code> | pandas or polars DataFrame: Dataframe with gaps filled.
+
