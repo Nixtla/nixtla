@@ -40,6 +40,14 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
           python-version: ${{ matrix.python-version }}
 
+      # Spark/Hadoop calls Subject.getSubject, which JDK 24+ removed; ubuntu-latest ships a newer JDK
+      - name: Set up java
+        if: runner.os == 'Linux'
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Setup devenv
         run: >
           make devenv
