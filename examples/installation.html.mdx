@@ -1,0 +1,74 @@
+---
+title: Install | HierarchicalForecast
+---
+
+> Install HierarchicalForecast with pip or conda
+
+We recommend using `uv` as Python package manager, for which you can
+find installation instructions
+[here](https://docs.astral.sh/uv/getting-started/installation/).
+
+You can then install the *released version* of `HierarchicalForecast`:
+
+```python
+uv pip install hierarchicalforecast
+```
+
+Alternatively, you can directly install from the [Python package
+index](https://pypi.org) with:
+
+```python
+pip install hierarchicalforecast
+```
+
+or within a `conda` environment:
+
+```python
+conda install -c conda-forge hierarchicalforecast
+```
+
+> **Tip**
+>
+> We recommend installing your libraries inside a python virtual or
+> [conda
+> environment](https://docs.conda.io/projects/conda/en/latest/user-guide/install/macos.html).
+
+#### Installing from source
+
+We recommend using `uv` as Python package manager, for which you can
+find installation instructions
+[here](https://docs.astral.sh/uv/getting-started/installation/).
+
+1.  Clone the HierarchicalForecast repo:
+
+```bash
+$ git clone https://github.com/Nixtla/hierarchicalforecast.git && cd hierarchicalforecast
+```
+
+1.  Create the environment:
+
+```bash
+$ uv venv --python 3.10
+```
+
+1.  Activate the environment:
+
+-   on MacOS / Linux:
+
+```bash
+$ source .venv/bin/activate
+```
+
+-   on Windows:
+
+```bash
+$ .\.venv\Scripts\activate
+```
+
+1.  Install the dependencies and the library
+
+```bash
+uv pip install -r setup.py
+uv pip install .
+```
+

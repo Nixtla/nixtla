@@ -1,0 +1,397 @@
+---
+title: Reconciliation Diagnostics
+---
+
+> Understanding and debugging hierarchical forecast reconciliation
+
+After reconciling hierarchical forecasts, practitioners often need to
+answer questions like:
+
+-   **How incoherent were my base forecasts?** Did they significantly
+    violate the hierarchical constraints?
+-   **How much did reconciliation change the forecasts?** Which levels
+    were adjusted the most?
+-   **Did reconciliation introduce problems?** Such as negative values
+    where they shouldn’t exist?
+-   **Are the reconciled forecasts numerically coherent?** Within
+    acceptable tolerance?
+
+The `HierarchicalReconciliation` class provides an optional
+`diagnostics=True` parameter that generates a comprehensive report
+answering these questions. This notebook demonstrates the diagnostics
+feature through three practical use cases.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/ReconciliationDiagnostics.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+## Setup
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+
+```python
+import numpy as np
+import pandas as pd
+
+from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
+from statsforecast import StatsForecast
+from statsforecast.models import AutoARIMA, Naive
+
+from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import BottomUp, TopDown, MinTrace
+```
+
+## Load Data
+
+We’ll use the TourismSmall dataset which has a 4-level hierarchy: -
+Country (1 node) - Country/Purpose (4 nodes) - Country/Purpose/State (28
+nodes) - Country/Purpose/State/CityNonCity (56 nodes - bottom level)
+
+```python
+group_name = 'TourismSmall'
+group = HierarchicalInfo.get_group(group_name)
+Y_df, S_df, tags = HierarchicalData.load('./data', group_name)
+S_df = S_df.reset_index(names="unique_id")
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+
+# Train/test split
+Y_test_df = Y_df.groupby('unique_id').tail(group.horizon)
+Y_train_df = Y_df.drop(Y_test_df.index)
+
+print(f"Hierarchy levels: {list(tags.keys())}")
+print(f"Total series: {len(S_df)}")
+print(f"Bottom series: {S_df.shape[1] - 1}")
+```
+
+``` text
+Hierarchy levels: ['Country', 'Country/Purpose', 'Country/Purpose/State', 'Country/Purpose/State/CityNonCity']
+Total series: 89
+Bottom series: 56
+```
+
+## Generate Base Forecasts
+
+```python
+fcst = StatsForecast(
+    models=[AutoARIMA(season_length=group.seasonality), Naive()],
+    freq="QE",
+    n_jobs=-1
+)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=group.horizon)
+Y_hat_df.head()
+```
+
+|     | unique_id | ds         | AutoARIMA    | Naive   |
+|-----|-----------|------------|--------------|---------|
+| 0   | bus       | 2006-03-31 | 8918.478516  | 11547.0 |
+| 1   | bus       | 2006-06-30 | 9581.925781  | 11547.0 |
+| 2   | bus       | 2006-09-30 | 11194.676758 | 11547.0 |
+| 3   | bus       | 2006-12-31 | 10678.958008 | 11547.0 |
+| 4   | hol       | 2006-03-31 | 42805.347656 | 26418.0 |
+
+------------------------------------------------------------------------
+
+## Use Case 1: Verifying Reconciliation Quality
+
+**Scenario:** You’ve just run reconciliation and want to verify that it
+worked correctly - that base forecasts were indeed incoherent and
+reconciliation fixed them.
+
+The diagnostics report answers: - Were the base forecasts incoherent?
+(coherence residuals before \> 0) - Are the reconciled forecasts
+coherent? (coherence residuals after ≈ 0) - Is numerical coherence
+satisfied within tolerance?
+
+```python
+# Run reconciliation with diagnostics
+hrec = HierarchicalReconciliation(reconcilers=[BottomUp(), MinTrace(method='ols')])
+Y_rec_df = hrec.reconcile(
+    Y_hat_df=Y_hat_df,
+    Y_df=Y_train_df,
+    S_df=S_df,
+    tags=tags,
+    diagnostics=True  # Enable diagnostics
+)
+```
+
+
+```python
+# View overall coherence verification
+coherence_metrics = hrec.diagnostics.query(
+    "level == 'Overall' and metric in "
+    "['coherence_residual_mae_before', 'coherence_residual_mae_after', 'is_coherent', 'coherence_max_violation']"
+)
+coherence_metrics
+```
+
+|     | level   | metric                        | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/MinTrace_method-ols | Naive/MinTrace_method-ols |
+|-----|---------|-------------------------------|--------------------|----------------|-------------------------------|---------------------------|
+| 48  | Overall | coherence_residual_mae_before | 91.123692          | 0.0            | 91.123692                     | 0.0                       |
+| 50  | Overall | coherence_residual_mae_after  | 0.000000           | 0.0            | 0.000000                      | 0.0                       |
+| 60  | Overall | is_coherent                   | 1.000000           | 1.0            | 1.000000                      | 1.0                       |
+| 61  | Overall | coherence_max_violation       | 0.000000           | 0.0            | 0.000000                      | 0.0                       |
+
+**Interpretation:** - `coherence_residual_mae_before > 0`: Base
+forecasts violated hierarchical constraints -
+`coherence_residual_mae_after ≈ 0`: Reconciliation fixed the
+incoherence - `is_coherent = 1.0`: Reconciled forecasts satisfy
+constraints within tolerance - `coherence_max_violation`: Maximum
+deviation from perfect coherence (should be tiny)
+
+```python
+# View coherence residuals by hierarchy level
+residuals_by_level = hrec.diagnostics.query(
+    "metric in ['coherence_residual_mae_before', 'coherence_residual_mae_after']"
+).pivot(index='level', columns='metric')
+residuals_by_level
+```
+
+|                                   | AutoARIMA/BottomUp           |                               | Naive/BottomUp               |                               | AutoARIMA/MinTrace_method-ols |                               | Naive/MinTrace_method-ols    |                               |
+|-----------------------------------|------------------------------|-------------------------------|------------------------------|-------------------------------|-------------------------------|-------------------------------|------------------------------|-------------------------------|
+| metric                            | coherence_residual_mae_after | coherence_residual_mae_before | coherence_residual_mae_after | coherence_residual_mae_before | coherence_residual_mae_after  | coherence_residual_mae_before | coherence_residual_mae_after | coherence_residual_mae_before |
+| level                             |                              |                               |                              |                               |                               |                               |                              |                               |
+| Country                           | 0.0                          | 1551.154858                   | 0.0                          | 0.0                           | 0.0                           | 1551.154858                   | 0.0                          | 0.0                           |
+| Country/Purpose                   | 0.0                          | 996.859118                    | 0.0                          | 0.0                           | 0.0                           | 996.859118                    | 0.0                          | 0.0                           |
+| Country/Purpose/State             | 0.0                          | 91.836329                     | 0.0                          | 0.0                           | 0.0                           | 91.836329                     | 0.0                          | 0.0                           |
+| Country/Purpose/State/CityNonCity | 0.0                          | 0.000000                      | 0.0                          | 0.0                           | 0.0                           | 0.000000                      | 0.0                          | 0.0                           |
+| Overall                           | 0.0                          | 91.123692                     | 0.0                          | 0.0                           | 0.0                           | 91.123692                     | 0.0                          | 0.0                           |
+
+Note that bottom-level series always have 0 coherence residual (they
+define the hierarchy), while aggregate levels show how much they
+deviated from the sum of their children.
+
+------------------------------------------------------------------------
+
+## Use Case 2: Comparing Reconciliation Methods
+
+**Scenario:** You want to understand how different reconciliation
+methods affect your forecasts differently. Which method makes smaller
+adjustments? Which levels are most impacted?
+
+The diagnostics report helps compare: - Adjustment magnitude (MAE, RMSE,
+max) across methods - Which hierarchy levels each method adjusts the
+most
+
+```python
+# Run multiple reconciliation methods
+hrec_compare = HierarchicalReconciliation(reconcilers=[
+    BottomUp(),
+    TopDown(method='forecast_proportions'),
+    MinTrace(method='ols'),
+    MinTrace(method='wls_struct'),
+])
+Y_rec_compare = hrec_compare.reconcile(
+    Y_hat_df=Y_hat_df,
+    Y_df=Y_train_df,
+    S_df=S_df,
+    tags=tags,
+    diagnostics=True
+)
+```
+
+
+```python
+# Compare adjustment magnitude across methods (Overall level)
+adjustment_comparison = hrec_compare.diagnostics.query(
+    "level == 'Overall' and metric in ['adjustment_mae', 'adjustment_rmse', 'adjustment_max']"
+)
+adjustment_comparison
+```
+
+|     | level   | metric          | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/TopDown_method-forecast_proportions | Naive/TopDown_method-forecast_proportions | AutoARIMA/MinTrace_method-ols | Naive/MinTrace_method-ols | AutoARIMA/MinTrace_method-wls_struct | Naive/MinTrace_method-wls_struct |
+|-----|---------|-----------------|--------------------|----------------|-----------------------------------------------|-------------------------------------------|-------------------------------|---------------------------|--------------------------------------|----------------------------------|
+| 52  | Overall | adjustment_mae  | 91.123692          | 0.0            | 152.381830                                    | 0.0                                       | 125.796357                    | 7.790422e-13              | 92.567005                            | 3.649316e-13                     |
+| 53  | Overall | adjustment_rmse | 361.699708         | 0.0            | 327.852747                                    | 0.0                                       | 235.618628                    | 1.956331e-12              | 297.653444                           | 7.211469e-13                     |
+| 54  | Overall | adjustment_max  | 3563.736473        | 0.0            | 2354.425237                                   | 0.0                                       | 1367.921921                   | 1.455192e-11              | 2621.788616                          | 3.637979e-12                     |
+
+**Key insights:** - **BottomUp** only adjusts aggregate levels (bottom
+level has 0 adjustment) - **TopDown** only adjusts bottom levels (top
+level has 0 adjustment) - **MinTrace** methods distribute adjustments
+across all levels, typically with smaller overall adjustments
+
+```python
+# Compare adjustments by hierarchy level for AutoARIMA forecasts
+adjustment_by_level = hrec_compare.diagnostics.query("metric == 'adjustment_mae'")
+
+# Pivot for easier comparison
+adjustment_pivot = adjustment_by_level.set_index('level').drop(columns=['metric'])
+adjustment_pivot.columns = [c.replace('AutoARIMA/', '') for c in adjustment_pivot.columns]
+adjustment_pivot = adjustment_pivot[[c for c in adjustment_pivot.columns if 'AutoARIMA' in c or 'Naive' not in c]]
+adjustment_pivot
+```
+
+|                                   | BottomUp    | TopDown_method-forecast_proportions | MinTrace_method-ols | MinTrace_method-wls_struct |
+|-----------------------------------|-------------|-------------------------------------|---------------------|----------------------------|
+| level                             |             |                                     |                     |                            |
+| Country                           | 1551.154858 | 0.000000                            | 924.028186          | 1953.754301                |
+| Country/Purpose                   | 996.859118  | 1106.796143                         | 875.789096          | 666.870396                 |
+| Country/Purpose/State             | 91.836329   | 151.248239                          | 114.460983          | 61.695544                  |
+| Country/Purpose/State/CityNonCity | 0.000000    | 87.497279                           | 63.638995           | 33.745576                  |
+| Overall                           | 91.123692   | 152.381830                          | 125.796357          | 92.567005                  |
+
+This shows how each method distributes adjustments across hierarchy
+levels. BottomUp concentrates changes at aggregate levels, TopDown at
+bottom levels, and MinTrace spreads adjustments more evenly.
+
+------------------------------------------------------------------------
+
+## Use Case 3: Detecting Negative Value Issues
+
+**Scenario:** Your forecasts represent quantities that cannot be
+negative (e.g., sales, visitors). You need to check if reconciliation
+introduced negative values.
+
+The diagnostics report tracks: - `negative_count_before/after`: Count of
+negative values before and after reconciliation - `negative_introduced`:
+Negatives created by reconciliation - `negative_removed`: Negatives
+fixed by reconciliation
+
+```python
+# Create forecasts with some negative values to demonstrate
+Y_hat_with_negatives = Y_hat_df.copy()
+
+# Introduce some negative base forecasts at random locations in the bottom level
+bottom_ids = tags['Country/Purpose/State/CityNonCity']
+mask = Y_hat_with_negatives['unique_id'].isin(bottom_ids[:10])
+Y_hat_with_negatives.loc[mask, 'AutoARIMA'] -= 5000
+Y_hat_with_negatives.loc[mask, 'Naive'] -= 5000
+
+print(f"Negative forecasts introduced for AutoARIMA: {(Y_hat_with_negatives['AutoARIMA'] < 0).sum()}")
+print(f"Negative forecasts introduced for Naive: {(Y_hat_with_negatives['Naive'] < 0).sum()}")
+```
+
+``` text
+Negative forecasts introduced for AutoARIMA: 33
+Negative forecasts introduced for Naive: 36
+```
+
+```python
+# Run reconciliation with diagnostics
+hrec_neg = HierarchicalReconciliation(reconcilers=[
+    BottomUp(),
+    MinTrace(method='ols'),
+    MinTrace(method='ols', nonnegative=True),  # Non-negative constraint
+])
+Y_rec_neg = hrec_neg.reconcile(
+    Y_hat_df=Y_hat_with_negatives,
+    Y_df=Y_train_df,
+    S_df=S_df,
+    tags=tags,
+    diagnostics=True
+)
+```
+
+
+```python
+# Check negative value metrics at Overall level
+negative_metrics = hrec_neg.diagnostics.query(
+    "level == 'Overall' and metric in "
+    "['negative_count_before', 'negative_count_after', 'negative_introduced', 'negative_removed']"
+)
+negative_metrics
+```
+
+|     | level   | metric                | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/MinTrace_method-ols | Naive/MinTrace_method-ols | AutoARIMA/MinTrace_method-ols_nonnegative-True | Naive/MinTrace_method-ols_nonnegative-True |
+|-----|---------|-----------------------|--------------------|----------------|-------------------------------|---------------------------|------------------------------------------------|--------------------------------------------|
+| 56  | Overall | negative_count_before | 33.0               | 36.0           | 33.0                          | 36.0                      | 33.0                                           | 36.0                                       |
+| 57  | Overall | negative_count_after  | 55.0               | 60.0           | 3.0                           | 4.0                       | 0.0                                            | 0.0                                        |
+| 58  | Overall | negative_introduced   | 22.0               | 24.0           | 0.0                           | 0.0                       | 0.0                                            | 0.0                                        |
+| 59  | Overall | negative_removed      | 0.0                | 0.0            | 30.0                          | 32.0                      | 33.0                                           | 36.0                                       |
+
+**Interpretation:** - `negative_count_before`: Negatives in base
+forecasts - `negative_count_after`: Negatives after reconciliation -
+`negative_introduced`: New negatives created by reconciliation (bad!) -
+`negative_removed`: Negatives fixed by reconciliation (good!)
+
+Notice how `MinTrace` with `nonnegative=True` eliminates all negative
+values.
+
+```python
+# Check which levels have negative value issues
+negatives_by_level = hrec_neg.diagnostics.query(
+    "metric in ['negative_count_before', 'negative_count_after']"
+).pivot(index='level', columns='metric')
+negatives_by_level
+```
+
+|                                   | AutoARIMA/BottomUp   |                       | Naive/BottomUp       |                       | AutoARIMA/MinTrace_method-ols |                       | Naive/MinTrace_method-ols |                       | AutoARIMA/MinTrace_method-ols_nonnegative-True |                       | Naive/MinTrace_method-ols_nonnegative-True |                       |
+|-----------------------------------|----------------------|-----------------------|----------------------|-----------------------|-------------------------------|-----------------------|---------------------------|-----------------------|------------------------------------------------|-----------------------|--------------------------------------------|-----------------------|
+| metric                            | negative_count_after | negative_count_before | negative_count_after | negative_count_before | negative_count_after          | negative_count_before | negative_count_after      | negative_count_before | negative_count_after                           | negative_count_before | negative_count_after                       | negative_count_before |
+| level                             |                      |                       |                      |                       |                               |                       |                           |                       |                                                |                       |                                            |                       |
+| Country                           | 0.0                  | 0.0                   | 0.0                  | 0.0                   | 0.0                           | 0.0                   | 0.0                       | 0.0                   | 0.0                                            | 0.0                   | 0.0                                        | 0.0                   |
+| Country/Purpose                   | 0.0                  | 0.0                   | 0.0                  | 0.0                   | 0.0                           | 0.0                   | 0.0                       | 0.0                   | 0.0                                            | 0.0                   | 0.0                                        | 0.0                   |
+| Country/Purpose/State             | 7.0                  | 0.0                   | 8.0                  | 0.0                   | 0.0                           | 0.0                   | 0.0                       | 0.0                   | 0.0                                            | 0.0                   | 0.0                                        | 0.0                   |
+| Country/Purpose/State/CityNonCity | 15.0                 | 15.0                  | 16.0                 | 16.0                  | 0.0                           | 15.0                  | 0.0                       | 16.0                  | 0.0                                            | 15.0                  | 0.0                                        | 16.0                  |
+| Overall                           | 22.0                 | 15.0                  | 24.0                 | 16.0                  | 0.0                           | 15.0                  | 0.0                       | 16.0                  | 0.0                                            | 15.0                  | 0.0                                        | 16.0                  |
+
+This shows that BottomUp propagates negatives from bottom to aggregate
+levels, while standard MinTrace may spread negatives further. The
+nonnegative MinTrace variant addresses this.
+
+------------------------------------------------------------------------
+
+## Exporting Diagnostics
+
+The diagnostics DataFrame can be exported to CSV for CI pipelines,
+benchmarks, or sharing with stakeholders.
+
+```python
+# Export full diagnostics report
+# hrec.diagnostics.to_csv("reconciliation_diagnostics.csv", index=False)
+
+# Or export a summary
+summary = hrec.diagnostics.query("level == 'Overall'").copy()
+summary
+```
+
+|     | level   | metric                         | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/MinTrace_method-ols | Naive/MinTrace_method-ols |
+|-----|---------|--------------------------------|--------------------|----------------|-------------------------------|---------------------------|
+| 48  | Overall | coherence_residual_mae_before  | 91.123692          | 0.0            | 91.123692                     | 0.000000e+00              |
+| 49  | Overall | coherence_residual_rmse_before | 361.699708         | 0.0            | 361.699708                    | 0.000000e+00              |
+| 50  | Overall | coherence_residual_mae_after   | 0.000000           | 0.0            | 0.000000                      | 0.000000e+00              |
+| 51  | Overall | coherence_residual_rmse_after  | 0.000000           | 0.0            | 0.000000                      | 0.000000e+00              |
+| 52  | Overall | adjustment_mae                 | 91.123692          | 0.0            | 125.796357                    | 7.790422e-13              |
+| 53  | Overall | adjustment_rmse                | 361.699708         | 0.0            | 235.618628                    | 1.956331e-12              |
+| 54  | Overall | adjustment_max                 | 3563.736473        | 0.0            | 1367.921921                   | 1.455192e-11              |
+| 55  | Overall | adjustment_mean                | 29.283713          | 0.0            | 46.279825                     | -5.114311e-13             |
+| 56  | Overall | negative_count_before          | 0.000000           | 0.0            | 0.000000                      | 0.000000e+00              |
+| 57  | Overall | negative_count_after           | 0.000000           | 0.0            | 2.000000                      | 0.000000e+00              |
+| 58  | Overall | negative_introduced            | 0.000000           | 0.0            | 2.000000                      | 0.000000e+00              |
+| 59  | Overall | negative_removed               | 0.000000           | 0.0            | 0.000000                      | 0.000000e+00              |
+| 60  | Overall | is_coherent                    | 1.000000           | 1.0            | 1.000000                      | 1.000000e+00              |
+| 61  | Overall | coherence_max_violation        | 0.000000           | 0.0            | 0.000000                      | 0.000000e+00              |
+
+------------------------------------------------------------------------
+
+## Summary of Diagnostic Metrics
+
+| Metric                                 | Description                                          | Interpretation                          |
+|----------------|-------------------------|-------------------------------|
+| `coherence_residual_mae_before`        | Mean absolute incoherence before reconciliation      | Higher = more incoherent base forecasts |
+| `coherence_residual_mae_after`         | Mean absolute incoherence after reconciliation       | Should be ~0                            |
+| `coherence_residual_rmse_before/after` | RMSE variant of above                                | More sensitive to large violations      |
+| `adjustment_mae`                       | Mean absolute change made by reconciliation          | Higher = more forecast modification     |
+| `adjustment_rmse`                      | RMSE of adjustments                                  | More sensitive to large changes         |
+| `adjustment_max`                       | Maximum absolute adjustment                          | Identifies extreme changes              |
+| `adjustment_mean`                      | Mean adjustment (signed)                             | Shows directional bias                  |
+| `negative_count_before`                | Count of negatives in base forecasts                 | \-                                      |
+| `negative_count_after`                 | Count of negatives after reconciliation              | Should be 0 for non-negative data       |
+| `negative_introduced`                  | Negatives created by reconciliation                  | Warning sign if \> 0                    |
+| `negative_removed`                     | Negatives fixed by reconciliation                    | Good if \> 0                            |
+| `is_coherent`                          | Whether forecasts satisfy constraints (Overall only) | 1.0 = coherent                          |
+| `coherence_max_violation`              | Maximum coherence violation (Overall only)           | Should be \< tolerance                  |
+
+## References
+
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped
+    series.”](https://otexts.com/fpp3/hierarchical.html)
+-   [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019).
+    Optimal forecast reconciliation for hierarchical and grouped time
+    series through trace
+    minimization.](https://robjhyndman.com/papers/mint.pdf)
+

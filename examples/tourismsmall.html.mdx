@@ -1,0 +1,299 @@
+---
+title: Quick Start | HierarchicalForecast
+---
+
+> Minimal Example of Hierarchical Reconciliation
+
+Large collections of time series organized into structures at different
+aggregation levels often require their forecasts to follow their
+aggregation constraints, which poses the challenge of creating novel
+algorithms capable of coherent forecasts.
+
+The `HierarchicalForecast` package provides a wide collection of Python
+implementations of hierarchical forecasting algorithms that follow
+classic hierarchical reconciliation.
+
+In this notebook we will show how to use the `StatsForecast` library to
+produce base forecasts, and use `HierarchicalForecast` package to
+perform hierarchical reconciliation.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+## 1. Libraries
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+## 2. Load Data
+
+In this example we will use the `TourismSmall` dataset. The following
+cell gets the time series for the different levels in the hierarchy, the
+summing matrix `S` which recovers the full dataset from the bottom level
+hierarchy and the indices of each hierarchy denoted by `tags`.
+
+```python
+import pandas as pd
+
+from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
+```
+
+
+```python
+group_name = 'TourismSmall'
+group = HierarchicalInfo.get_group(group_name)
+Y_df, S_df, tags = HierarchicalData.load('./data', group_name)
+S_df = S_df.reset_index(names="unique_id")
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+```
+
+
+```python
+S_df.iloc[:6, :6]
+```
+
+|     | unique_id | nsw-hol-city | nsw-hol-noncity | vic-hol-city | vic-hol-noncity | qld-hol-city |
+|-----|-----------|--------------|-----------------|--------------|-----------------|--------------|
+| 0   | total     | 1.0          | 1.0             | 1.0          | 1.0             | 1.0          |
+| 1   | hol       | 1.0          | 1.0             | 1.0          | 1.0             | 1.0          |
+| 2   | vfr       | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| 3   | bus       | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| 4   | oth       | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| 5   | nsw-hol   | 1.0          | 1.0             | 0.0          | 0.0             | 0.0          |
+
+```python
+tags
+```
+
+``` text
+{'Country': array(['total'], dtype=object),
+ 'Country/Purpose': array(['hol', 'vfr', 'bus', 'oth'], dtype=object),
+ 'Country/Purpose/State': array(['nsw-hol', 'vic-hol', 'qld-hol', 'sa-hol', 'wa-hol', 'tas-hol',
+        'nt-hol', 'nsw-vfr', 'vic-vfr', 'qld-vfr', 'sa-vfr', 'wa-vfr',
+        'tas-vfr', 'nt-vfr', 'nsw-bus', 'vic-bus', 'qld-bus', 'sa-bus',
+        'wa-bus', 'tas-bus', 'nt-bus', 'nsw-oth', 'vic-oth', 'qld-oth',
+        'sa-oth', 'wa-oth', 'tas-oth', 'nt-oth'], dtype=object),
+ 'Country/Purpose/State/CityNonCity': array(['nsw-hol-city', 'nsw-hol-noncity', 'vic-hol-city',
+        'vic-hol-noncity', 'qld-hol-city', 'qld-hol-noncity',
+        'sa-hol-city', 'sa-hol-noncity', 'wa-hol-city', 'wa-hol-noncity',
+        'tas-hol-city', 'tas-hol-noncity', 'nt-hol-city', 'nt-hol-noncity',
+        'nsw-vfr-city', 'nsw-vfr-noncity', 'vic-vfr-city',
+        'vic-vfr-noncity', 'qld-vfr-city', 'qld-vfr-noncity',
+        'sa-vfr-city', 'sa-vfr-noncity', 'wa-vfr-city', 'wa-vfr-noncity',
+        'tas-vfr-city', 'tas-vfr-noncity', 'nt-vfr-city', 'nt-vfr-noncity',
+        'nsw-bus-city', 'nsw-bus-noncity', 'vic-bus-city',
+        'vic-bus-noncity', 'qld-bus-city', 'qld-bus-noncity',
+        'sa-bus-city', 'sa-bus-noncity', 'wa-bus-city', 'wa-bus-noncity',
+        'tas-bus-city', 'tas-bus-noncity', 'nt-bus-city', 'nt-bus-noncity',
+        'nsw-oth-city', 'nsw-oth-noncity', 'vic-oth-city',
+        'vic-oth-noncity', 'qld-oth-city', 'qld-oth-noncity',
+        'sa-oth-city', 'sa-oth-noncity', 'wa-oth-city', 'wa-oth-noncity',
+        'tas-oth-city', 'tas-oth-noncity', 'nt-oth-city', 'nt-oth-noncity'],
+       dtype=object)}
+```
+
+We split the dataframe in train/test splits.
+
+```python
+Y_test_df = Y_df.groupby('unique_id').tail(group.horizon)
+Y_train_df = Y_df.drop(Y_test_df.index)
+```
+
+## 3. Base forecasts
+
+The following cell computes the *base forecast* for each time series
+using the `auto_arima` and `naive` models. Observe that `Y_hat_df`
+contains the forecasts but they are not coherent.
+
+```python
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoARIMA, Naive
+```
+
+``` text
+/home/osprangers/Repositories/hierarchicalforecast/.venv/lib/python3.10/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html
+  from .autonotebook import tqdm as notebook_tqdm
+```
+
+```python
+fcst = StatsForecast(
+    models=[AutoARIMA(season_length=group.seasonality), Naive()], 
+    freq="QE", 
+    n_jobs=-1
+)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=group.horizon)
+```
+
+## 4. Hierarchical reconciliation
+
+The following cell makes the previous forecasts coherent using the
+`HierarchicalReconciliation` class. The used methods to make the
+forecasts coherent are:
+
+-   `BottomUp`: The reconciliation of the method is a simple addition to
+    the upper levels.
+-   `TopDown`: The second method constrains the base-level predictions
+    to the top-most aggregate-level serie and then distributes it to the
+    disaggregate series through the use of proportions.
+-   `MiddleOut`: Anchors the base predictions in a middle level.
+
+```python
+from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    TopDown(method='forecast_proportions'),
+    TopDown(method='proportion_averages'),
+    MiddleOut(middle_level="Country/Purpose/State", top_down_method="proportion_averages"),
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df, S_df=S_df, tags=tags)
+```
+
+## 4.1 Coherence Diagnostics
+
+The `reconcile` method supports an optional `diagnostics=True` parameter
+that computes a detailed report showing how reconciliation changed the
+forecasts. This is useful for:
+
+-   Verifying that base forecasts were incoherent and reconciliation
+    fixed them
+-   Understanding which hierarchy levels were adjusted the most
+-   Detecting if reconciliation introduced negative values
+-   Confirming numerical coherence within tolerance
+
+```python
+# Run reconciliation with diagnostics enabled
+hrec_diag = HierarchicalReconciliation(reconcilers=[BottomUp(), TopDown(method='forecast_proportions')])
+Y_rec_diag_df = hrec_diag.reconcile(
+    Y_hat_df=Y_hat_df, 
+    Y_df=Y_train_df, 
+    S_df=S_df, 
+    tags=tags,
+    diagnostics=True  # Enable coherence diagnostics
+)
+```
+
+The diagnostics are stored in `hrec.diagnostics` as a DataFrame with
+metrics per hierarchical level:
+
+```python
+# View the full diagnostics report
+hrec_diag.diagnostics
+```
+
+|     | level   | metric                         | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/TopDown_method-forecast_proportions | Naive/TopDown_method-forecast_proportions |
+|-----|---------|--------------------------------|--------------------|----------------|-----------------------------------------------|-------------------------------------------|
+| 0   | Country | coherence_residual_mae_before  | 1551.154858        | 0.0            | 1.551155e+03                                  | 0.0                                       |
+| 1   | Country | coherence_residual_rmse_before | 1823.566338        | 0.0            | 1.823566e+03                                  | 0.0                                       |
+| 2   | Country | coherence_residual_mae_after   | 0.000000           | 0.0            | 7.275958e-12                                  | 0.0                                       |
+| 3   | Country | coherence_residual_rmse_after  | 0.000000           | 0.0            | 1.455192e-11                                  | 0.0                                       |
+| 4   | Country | adjustment_mae                 | 1551.154858        | 0.0            | 0.000000e+00                                  | 0.0                                       |
+| ... | ...     | ...                            | ...                | ...            | ...                                           | ...                                       |
+| 57  | Overall | negative_count_after           | 0.000000           | 0.0            | 0.000000e+00                                  | 0.0                                       |
+| 58  | Overall | negative_introduced            | 0.000000           | 0.0            | 0.000000e+00                                  | 0.0                                       |
+| 59  | Overall | negative_removed               | 0.000000           | 0.0            | 0.000000e+00                                  | 0.0                                       |
+| 60  | Overall | is_coherent                    | 1.000000           | 1.0            | 1.000000e+00                                  | 1.0                                       |
+| 61  | Overall | coherence_max_violation        | 0.000000           | 0.0            | 2.910383e-11                                  | 0.0                                       |
+
+**Key metrics explained:**
+
+-   `coherence_residual_mae_before`: Mean absolute incoherence in base
+    forecasts (should be \> 0 if base forecasts are incoherent)
+-   `coherence_residual_mae_after`: Mean absolute incoherence after
+    reconciliation (should be ~0)
+-   `adjustment_mae/rmse/max`: How much forecasts were adjusted by
+    reconciliation
+-   `negative_count_before/after`: Count of negative forecast values
+-   `is_coherent`: Whether the reconciled forecasts satisfy the
+    hierarchical constraints (1.0 = yes)
+
+Let’s filter to see just the coherence verification:
+
+```python
+# Check coherence metrics at the Overall level
+coherence_check = hrec_diag.diagnostics.query(
+    "level == 'Overall' and metric in ['coherence_residual_mae_before', 'coherence_residual_mae_after', 'is_coherent', 'coherence_max_violation']"
+)
+coherence_check
+```
+
+|     | level   | metric                        | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/TopDown_method-forecast_proportions | Naive/TopDown_method-forecast_proportions |
+|-----|---------|-------------------------------|--------------------|----------------|-----------------------------------------------|-------------------------------------------|
+| 48  | Overall | coherence_residual_mae_before | 91.123692          | 0.0            | 9.112369e+01                                  | 0.0                                       |
+| 50  | Overall | coherence_residual_mae_after  | 0.000000           | 0.0            | 2.119653e-13                                  | 0.0                                       |
+| 60  | Overall | is_coherent                   | 1.000000           | 1.0            | 1.000000e+00                                  | 1.0                                       |
+| 61  | Overall | coherence_max_violation       | 0.000000           | 0.0            | 2.910383e-11                                  | 0.0                                       |
+
+We can also see which levels required the largest adjustments:
+
+```python
+# Compare adjustment magnitude across levels
+adjustment_by_level = hrec_diag.diagnostics.query("metric == 'adjustment_mae'")
+adjustment_by_level
+```
+
+|     | level                             | metric         | AutoARIMA/BottomUp | Naive/BottomUp | AutoARIMA/TopDown_method-forecast_proportions | Naive/TopDown_method-forecast_proportions |
+|-----|-----------------------------------|----------------|--------------------|----------------|-----------------------------------------------|-------------------------------------------|
+| 4   | Country                           | adjustment_mae | 1551.154858        | 0.0            | 0.000000                                      | 0.0                                       |
+| 16  | Country/Purpose                   | adjustment_mae | 996.859118         | 0.0            | 1106.796143                                   | 0.0                                       |
+| 28  | Country/Purpose/State             | adjustment_mae | 91.836329          | 0.0            | 151.248239                                    | 0.0                                       |
+| 40  | Country/Purpose/State/CityNonCity | adjustment_mae | 0.000000           | 0.0            | 87.497279                                     | 0.0                                       |
+| 52  | Overall                           | adjustment_mae | 91.123692          | 0.0            | 152.381830                                    | 0.0                                       |
+
+## 5. Evaluation
+
+The `HierarchicalForecast` package includes the `evaluate` function to
+evaluate the different hierarchies and we can use utilsforecast to
+compute the mean absolute error relative to a baseline model.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mse
+```
+
+
+```python
+df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'])
+evaluation = evaluate(df = df,
+                      tags = tags,
+                      train_df = Y_train_df,
+                      metrics = [mse],
+                      benchmark="Naive")
+
+evaluation.set_index(["level", "metric"]).filter(like="ARIMA", axis=1)
+```
+
+|                                   |            | AutoARIMA | AutoARIMA/BottomUp | AutoARIMA/TopDown_method-forecast_proportions | AutoARIMA/TopDown_method-proportion_averages | AutoARIMA/MiddleOut_middle_level-Country/Purpose/State_top_down_method-proportion_averages |
+|-----------------------------------|------------|-----------|--------------------|-----------------------------------------------|----------------------------------------------|--------------------------------------------------------------------------------------------|
+| level                             | metric     |           |                    |                                               |                                              |                                                                                            |
+| Country                           | mse-scaled | 0.123161  | 0.055264           | 0.123161                                      | 0.123161                                     | 0.079278                                                                                   |
+| Country/Purpose                   | mse-scaled | 0.171063  | 0.077688           | 0.101570                                      | 0.128151                                     | 0.104186                                                                                   |
+| Country/Purpose/State             | mse-scaled | 0.194383  | 0.149163           | 0.201738                                      | 0.327854                                     | 0.194383                                                                                   |
+| Country/Purpose/State/CityNonCity | mse-scaled | 0.170373  | 0.170373           | 0.210060                                      | 0.341365                                     | 0.225656                                                                                   |
+| Overall                           | mse-scaled | 0.154912  | 0.085342           | 0.131308                                      | 0.168269                                     | 0.115569                                                                                   |
+
+### References
+
+-   [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). Data aggregation
+    and information loss. The American Economic Review, 58 ,
+    773(787)](http://www.jstor.org/stable/1815532).
+-   [Disaggregation methods to expedite product line forecasting.
+    Journal of Forecasting, 9 , 233–254.
+    doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).<br/>
+-   [An investigation of aggregate variable time series forecast
+    strategies with specific subaggregate time series statistical
+    correlation. Computers and Operations Research, 26 , 1133–1149.
+    doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+

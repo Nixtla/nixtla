@@ -1,0 +1,225 @@
+---
+title: Core | HierarchicalForecast
+description: Core
+---
+
+##
+
+HierarchicalForecast contains pure Python implementations of
+hierarchical reconciliation methods as well as a
+`core.HierarchicalReconciliation` wrapper class that enables easy
+interaction with these methods through pandas DataFrames containing the
+hierarchical time series and the base predictions.
+
+The `core.HierarchicalReconciliation` reconciliation class operates with
+the hierarchical time series pd.DataFrame `Y_df`, the base predictions
+pd.DataFrame `Y_hat_df`, the aggregation constraints matrix `S_df`. For
+more information on the creation of aggregation constraints matrix see
+the utils [aggregation
+method](https://nixtlaverse.nixtla.io/hierarchicalforecast/utils.html#aggregate)
+
+### `HierarchicalReconciliation`
+
+```python
+HierarchicalReconciliation(reconcilers)
+```
+
+Hierarchical Reconciliation Class.
+
+The `core.HierarchicalReconciliation` class allows you to efficiently fit multiple
+HierarchicaForecast methods for a collection of time series and base predictions stored in
+pandas DataFrames. The `Y_df` dataframe identifies series and datestamps with the unique_id and ds columns while the
+y column denotes the target time series variable. The `Y_h` dataframe stores the base predictions,
+example ([AutoARIMA](../statsforecast/src/core/models.html#autoarima),
+[ETS](../statsforecast/src/core/models.html#autoets), etc.).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`- reconcilers` | <code>[list](#list)[[HReconciler](#hierarchicalforecast.methods.HReconciler)]</code> | A list of instantiated classes of the [reconciliation methods](./methods.html) module. | *required*
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Rob J. Hyndman and George Athanasopoulos (2018). "Forecasting principles and practice, Hierarchical and Grouped Series"](https://otexts.com/fpp3/hierarchical.html).
+
+</details>
+
+#### `HierarchicalReconciliation.reconcile`
+
+```python
+reconcile(Y_hat_df, tags, S_df=None, Y_df=None, level=None, intervals_method='normality', num_samples=-1, seed=0, is_balanced=False, id_col='unique_id', time_col='ds', target_col='y', id_time_col='temporal_id', temporal=False, diagnostics=False, diagnostics_atol=1e-06)
+```
+
+Hierarchical Reconciliation Method.
+
+The `reconcile` method is analogous to SKLearn `fit_predict` method, it
+applies different reconciliation techniques instantiated in the `reconcilers` list.
+
+Most reconciliation methods can be described by the following convenient
+linear algebra notation:
+
+```math
+\tilde{\mathbf{y}}_{[a,b],\\tau} = \mathbf{S}_{[a,b][b]} \mathbf{P}_{[b][a,b]} \hat{\mathbf{y}}_{[a,b],\\tau}
+```
+
+where $a, b$ represent the aggregate and bottom levels, $\mathbf{S}_{[a,b][b]}$ contains
+the hierarchical aggregation constraints, and $\mathbf{P}_{[b][a,b]}$ varies across
+reconciliation methods. The reconciled predictions are
+
+```math
+\tilde{\mathbf{y}}_{[a,b],\tau}
+```
+
+and the base predictions
+
+```math
+\hat{\mathbf{y}}_{[a,b],\tau}
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`Y_hat_df` | <code>[Frame](#narwhals.typing.Frame)</code> | DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile. | *required*
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and its value contains tags associated to that level. | *required*
+`S_df` | <code>[Frame](#narwhals.typing.Frame) \| [SMatrix](#hierarchicalforecast.utils.SMatrix)</code> | DataFrame or :class:`~hierarchicalforecast.utils.SMatrix` with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate). Passing an ``SMatrix`` (from ``aggregate(..., sparse_s=True)``) avoids dense materialization. Default is None. | <code>None</code>
+`Y_df` | <code>[Optional](#Optional)[[Frame](#narwhals.typing.Frame)]</code> | DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`. If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns. Default is None. | <code>None</code>
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | positive float list [0,100), confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is "normality". | <code>'normality'</code>
+`num_samples` | <code>[int](#int)</code> | if positive return that many probabilistic coherent samples. Default is -1. | <code>-1</code>
+`seed` | <code>[int](#int)</code> | random seed for numpy generator's replicability. Default is 0. | <code>0</code>
+`is_balanced` | <code>[bool](#bool)</code> | wether `Y_df` is balanced, set it to True to speed things up if `Y_df` is balanced. Default is False. | <code>False</code>
+`id_col` | <code>[str](#str)</code> | column that identifies each serie. Default is "unique_id". | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | column that identifies each timestep, its values can be timestamps or integers. Default is "ds". | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | column that contains the target. Default is "y". | <code>'y'</code>
+`id_time_col` | <code>[str](#str)</code> | column that identifies each temporal aggregation level (required when `temporal=True`). Default is "temporal_id". | <code>'temporal_id'</code>
+`temporal` | <code>[bool](#bool)</code> | if True, perform temporal reconciliation. Default is False. | <code>False</code>
+`diagnostics` | <code>[bool](#bool)</code> | if True, compute coherence diagnostics and store in `self.diagnostics`. Default is False. | <code>False</code>
+`diagnostics_atol` | <code>[float](#float)</code> | absolute tolerance for numerical coherence check. Default is 1e-6. | <code>1e-06</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[FrameT](#narwhals.typing.FrameT)</code> | DataFrame, with reconciled predictions.
+
+<details class="note" open markdown="1">
+<summary>Note</summary>
+
+When `diagnostics=True`, after reconciliation completes, `self.diagnostics` will contain
+a DataFrame with coherence metrics per hierarchical level, including:
+- `coherence_residual_mae_before/after`: Mean absolute coherence residual before/after reconciliation
+- `adjustment_mae/rmse/max/mean`: Statistics on the adjustments made by reconciliation
+- `negative_count_before/after`: Count of negative values before/after reconciliation
+- `is_coherent`: Whether reconciled forecasts satisfy aggregation constraints (Overall level only)
+- `coherence_max_violation`: Maximum coherence violation (Overall level only)
+
+</details>
+
+#### `HierarchicalReconciliation.bootstrap_reconcile`
+
+```python
+bootstrap_reconcile(Y_hat_df, S_df, tags, Y_df=None, level=None, intervals_method='normality', num_samples=-1, num_seeds=1, id_col='unique_id', time_col='ds', target_col='y')
+```
+
+Bootstraped Hierarchical Reconciliation Method.
+
+Applies N times, based on different random seeds, the `reconcile` method
+for the different reconciliation techniques instantiated in the `reconcilers` list.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`Y_hat_df` | <code>[Frame](#narwhals.typing.Frame)</code> | DataFrame, base forecasts with columns ['unique_id', 'ds'] and models to reconcile. | *required*
+`S_df` | <code>[Frame](#narwhals.typing.Frame)</code> | DataFrame with summing matrix of size `(base, bottom)`, see [aggregate method](./utils.html#aggregate). | *required*
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and its value contains tags associated to that level. | *required*
+`Y_df` | <code>[Optional](#Optional)[[Frame](#narwhals.typing.Frame)]</code> | DataFrame, training set of base time series with columns `['unique_id', 'ds', 'y']`. If a class of `self.reconciles` receives `y_hat_insample`, `Y_df` must include them as columns. Default is None. | <code>None</code>
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | positive float list [0,100), confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | method used to calculate prediction intervals, one of `normality`, `bootstrap`, `permbu`. Default is "normality". | <code>'normality'</code>
+`num_samples` | <code>[int](#int)</code> | if positive return that many probabilistic coherent samples. Default is -1. | <code>-1</code>
+`num_seeds` | <code>[int](#int)</code> | random seed for numpy generator's replicability. Default is 1. | <code>1</code>
+`id_col` | <code>[str](#str)</code> | column that identifies each serie. Default is "unique_id". | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | column that identifies each timestep, its values can be timestamps or integers. Default is "ds". | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | column that contains the target. Default is "y". | <code>'y'</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[FrameT](#narwhals.typing.FrameT)</code> | DataFrame, with bootstraped reconciled predictions.
+
+
+### Example
+
+```python
+import pandas as pd
+
+from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import BottomUp, MinTrace
+from hierarchicalforecast.utils import aggregate
+from hierarchicalforecast.evaluation import evaluate
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoETS
+from utilsforecast.losses import mase, rmse
+from functools import partial
+
+# Load TourismSmall dataset
+df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/tourism.csv')
+df = df.rename({'Trips': 'y', 'Quarter': 'ds'}, axis=1)
+df.insert(0, 'Country', 'Australia')
+qs = df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True)
+df['ds'] = pd.PeriodIndex(qs, freq='Q').to_timestamp()
+
+# Create hierarchical series based on geographic levels and purpose
+# And Convert quarterly ds string to pd.datetime format
+hierarchy_levels = [['Country'],
+                    ['Country', 'State'],
+                    ['Country', 'Purpose'],
+                    ['Country', 'State', 'Region'],
+                    ['Country', 'State', 'Purpose'],
+                    ['Country', 'State', 'Region', 'Purpose']]
+
+Y_df, S_df, tags = aggregate(df=df, spec=hierarchy_levels)
+
+# Split train/test sets
+Y_test_df  = Y_df.groupby('unique_id').tail(8)
+Y_train_df = Y_df.drop(Y_test_df.index)
+
+# Compute base auto-ETS predictions
+# Careful identifying correct data freq, this data quarterly 'Q'
+fcst = StatsForecast(models=[AutoETS(season_length=4, model='ZZA')], freq='QS', n_jobs=-1)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=8, fitted=True)
+Y_fitted_df = fcst.forecast_fitted_values()
+
+reconcilers = [
+                BottomUp(),
+                MinTrace(method='ols'),
+                MinTrace(method='mint_shrink'),
+               ]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df,
+                          Y_df=Y_fitted_df,
+                          S_df=S_df, tags=tags)
+
+# Evaluate
+eval_tags = {}
+eval_tags['Total'] = tags['Country']
+eval_tags['Purpose'] = tags['Country/Purpose']
+eval_tags['State'] = tags['Country/State']
+eval_tags['Regions'] = tags['Country/State/Region']
+eval_tags['Bottom'] = tags['Country/State/Region/Purpose']
+
+Y_rec_df_with_y = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'], how='left')
+mase_p = partial(mase, seasonality=4)
+
+evaluation = evaluate(Y_rec_df_with_y,
+         metrics=[mase_p, rmse],
+         tags=eval_tags,
+         train_df=Y_train_df)
+
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format)
+```

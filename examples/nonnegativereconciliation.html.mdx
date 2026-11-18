@@ -1,0 +1,311 @@
+---
+title: Non-Negative MinTrace
+---
+
+Large collections of time series organized into structures at different
+aggregation levels often require their forecasts to follow their
+aggregation constraints and to be nonnegative, which poses the challenge
+of creating novel algorithms capable of coherent forecasts.
+
+The `HierarchicalForecast` package provides a wide collection of Python
+implementations of hierarchical forecasting algorithms that follow
+nonnegative hierarchical reconciliation.
+
+In this notebook, we will show how to use the `HierarchicalForecast`
+package to perform nonnegative reconciliation of forecasts on `Wiki2`
+dataset.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/NonNegativeReconciliation.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+## 1. Load Data
+
+In this example we will use the `Wiki2` dataset. The following cell gets
+the time series for the different levels in the hierarchy, the summing
+dataframe `S_df` which recovers the full dataset from the bottom level
+hierarchy and the indices of each hierarchy denoted by `tags`.
+
+```python
+import numpy as np
+import pandas as pd
+
+from datasetsforecast.hierarchical import HierarchicalData
+```
+
+
+```python
+Y_df, S_df, tags = HierarchicalData.load('./data', 'Wiki2')
+Y_df['ds'] = pd.to_datetime(Y_df['ds'])
+S_df = S_df.reset_index(names="unique_id")
+```
+
+
+```python
+Y_df.head()
+```
+
+|     | unique_id | ds         | y      |
+|-----|-----------|------------|--------|
+| 0   | Total     | 2016-01-01 | 156508 |
+| 1   | Total     | 2016-01-02 | 129902 |
+| 2   | Total     | 2016-01-03 | 138203 |
+| 3   | Total     | 2016-01-04 | 115017 |
+| 4   | Total     | 2016-01-05 | 126042 |
+
+```python
+S_df.iloc[:5, :5]
+```
+
+|     | unique_id | de_AAC_AAG_001 | de_AAC_AAG_010 | de_AAC_AAG_014 | de_AAC_AAG_045 |
+|-----|-----------|----------------|----------------|----------------|----------------|
+| 0   | Total     | 1              | 1              | 1              | 1              |
+| 1   | de        | 1              | 1              | 1              | 1              |
+| 2   | en        | 0              | 0              | 0              | 0              |
+| 3   | fr        | 0              | 0              | 0              | 0              |
+| 4   | ja        | 0              | 0              | 0              | 0              |
+
+```python
+tags
+```
+
+``` text
+{'Views': array(['Total'], dtype=object),
+ 'Views/Country': array(['de', 'en', 'fr', 'ja', 'ru', 'zh'], dtype=object),
+ 'Views/Country/Access': array(['de_AAC', 'de_DES', 'de_MOB', 'en_AAC', 'en_DES', 'en_MOB',
+        'fr_AAC', 'fr_DES', 'fr_MOB', 'ja_AAC', 'ja_DES', 'ja_MOB',
+        'ru_AAC', 'ru_DES', 'ru_MOB', 'zh_AAC', 'zh_DES', 'zh_MOB'],
+       dtype=object),
+ 'Views/Country/Access/Agent': array(['de_AAC_AAG', 'de_AAC_SPD', 'de_DES_AAG', 'de_MOB_AAG',
+        'en_AAC_AAG', 'en_AAC_SPD', 'en_DES_AAG', 'en_MOB_AAG',
+        'fr_AAC_AAG', 'fr_AAC_SPD', 'fr_DES_AAG', 'fr_MOB_AAG',
+        'ja_AAC_AAG', 'ja_AAC_SPD', 'ja_DES_AAG', 'ja_MOB_AAG',
+        'ru_AAC_AAG', 'ru_AAC_SPD', 'ru_DES_AAG', 'ru_MOB_AAG',
+        'zh_AAC_AAG', 'zh_AAC_SPD', 'zh_DES_AAG', 'zh_MOB_AAG'],
+       dtype=object),
+ 'Views/Country/Access/Agent/Topic': array(['de_AAC_AAG_001', 'de_AAC_AAG_010', 'de_AAC_AAG_014',
+        'de_AAC_AAG_045', 'de_AAC_AAG_063', 'de_AAC_AAG_100',
+        'de_AAC_AAG_110', 'de_AAC_AAG_123', 'de_AAC_AAG_143',
+        'de_AAC_SPD_012', 'de_AAC_SPD_074', 'de_AAC_SPD_080',
+        'de_AAC_SPD_105', 'de_AAC_SPD_115', 'de_AAC_SPD_133',
+        'de_DES_AAG_064', 'de_DES_AAG_116', 'de_DES_AAG_131',
+        'de_MOB_AAG_015', 'de_MOB_AAG_020', 'de_MOB_AAG_032',
+        'de_MOB_AAG_059', 'de_MOB_AAG_062', 'de_MOB_AAG_088',
+        'de_MOB_AAG_095', 'de_MOB_AAG_109', 'de_MOB_AAG_122',
+        'de_MOB_AAG_149', 'en_AAC_AAG_044', 'en_AAC_AAG_049',
+        'en_AAC_AAG_075', 'en_AAC_AAG_114', 'en_AAC_AAG_119',
+        'en_AAC_AAG_141', 'en_AAC_SPD_004', 'en_AAC_SPD_011',
+        'en_AAC_SPD_026', 'en_AAC_SPD_048', 'en_AAC_SPD_067',
+        'en_AAC_SPD_126', 'en_AAC_SPD_140', 'en_DES_AAG_016',
+        'en_DES_AAG_024', 'en_DES_AAG_042', 'en_DES_AAG_069',
+        'en_DES_AAG_082', 'en_DES_AAG_102', 'en_MOB_AAG_018',
+        'en_MOB_AAG_022', 'en_MOB_AAG_101', 'en_MOB_AAG_124',
+        'fr_AAC_AAG_029', 'fr_AAC_AAG_046', 'fr_AAC_AAG_070',
+        'fr_AAC_AAG_087', 'fr_AAC_AAG_098', 'fr_AAC_AAG_104',
+        'fr_AAC_AAG_111', 'fr_AAC_AAG_112', 'fr_AAC_AAG_142',
+        'fr_AAC_SPD_025', 'fr_AAC_SPD_027', 'fr_AAC_SPD_035',
+        'fr_AAC_SPD_077', 'fr_AAC_SPD_084', 'fr_AAC_SPD_097',
+        'fr_AAC_SPD_130', 'fr_DES_AAG_023', 'fr_DES_AAG_043',
+        'fr_DES_AAG_051', 'fr_DES_AAG_058', 'fr_DES_AAG_061',
+        'fr_DES_AAG_091', 'fr_DES_AAG_093', 'fr_DES_AAG_094',
+        'fr_DES_AAG_136', 'fr_MOB_AAG_006', 'fr_MOB_AAG_030',
+        'fr_MOB_AAG_066', 'fr_MOB_AAG_117', 'fr_MOB_AAG_120',
+        'fr_MOB_AAG_121', 'fr_MOB_AAG_135', 'fr_MOB_AAG_147',
+        'ja_AAC_AAG_038', 'ja_AAC_AAG_047', 'ja_AAC_AAG_055',
+        'ja_AAC_AAG_076', 'ja_AAC_AAG_099', 'ja_AAC_AAG_128',
+        'ja_AAC_AAG_132', 'ja_AAC_AAG_134', 'ja_AAC_AAG_137',
+        'ja_AAC_SPD_013', 'ja_AAC_SPD_034', 'ja_AAC_SPD_050',
+        'ja_AAC_SPD_060', 'ja_AAC_SPD_078', 'ja_AAC_SPD_106',
+        'ja_DES_AAG_079', 'ja_DES_AAG_081', 'ja_DES_AAG_113',
+        'ja_MOB_AAG_065', 'ja_MOB_AAG_073', 'ja_MOB_AAG_092',
+        'ja_MOB_AAG_127', 'ja_MOB_AAG_129', 'ja_MOB_AAG_144',
+        'ru_AAC_AAG_008', 'ru_AAC_AAG_145', 'ru_AAC_AAG_146',
+        'ru_AAC_SPD_000', 'ru_AAC_SPD_090', 'ru_AAC_SPD_148',
+        'ru_DES_AAG_003', 'ru_DES_AAG_007', 'ru_DES_AAG_017',
+        'ru_DES_AAG_041', 'ru_DES_AAG_071', 'ru_DES_AAG_072',
+        'ru_MOB_AAG_002', 'ru_MOB_AAG_040', 'ru_MOB_AAG_083',
+        'ru_MOB_AAG_086', 'ru_MOB_AAG_103', 'ru_MOB_AAG_107',
+        'ru_MOB_AAG_118', 'ru_MOB_AAG_125', 'zh_AAC_AAG_021',
+        'zh_AAC_AAG_033', 'zh_AAC_AAG_037', 'zh_AAC_AAG_052',
+        'zh_AAC_AAG_057', 'zh_AAC_AAG_085', 'zh_AAC_AAG_108',
+        'zh_AAC_SPD_039', 'zh_AAC_SPD_096', 'zh_DES_AAG_009',
+        'zh_DES_AAG_019', 'zh_DES_AAG_053', 'zh_DES_AAG_054',
+        'zh_DES_AAG_056', 'zh_DES_AAG_068', 'zh_DES_AAG_089',
+        'zh_DES_AAG_139', 'zh_MOB_AAG_005', 'zh_MOB_AAG_028',
+        'zh_MOB_AAG_031', 'zh_MOB_AAG_036', 'zh_MOB_AAG_138'], dtype=object)}
+```
+
+We split the dataframe in train/test splits.
+
+```python
+Y_test_df = Y_df.groupby('unique_id', as_index=False).tail(7)
+Y_train_df = Y_df.drop(Y_test_df.index)
+```
+
+## 2. Base Forecasts
+
+The following cell computes the *base forecast* for each time series
+using the `AutoETS` model. Observe that `Y_hat_df` contains the
+forecasts but they are not coherent.
+
+```python
+from statsforecast.models import AutoETS, Naive
+from statsforecast.core import StatsForecast
+```
+
+
+```python
+fcst = StatsForecast(
+    models=[AutoETS(season_length=7, model='ZAA'), Naive()], 
+    freq='D', 
+    n_jobs=-1
+)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=7)
+```
+
+Observe that the `AutoETS` model computes negative forecasts for some
+series.
+
+```python
+Y_hat_df.query('AutoETS < 0')
+```
+
+|      | unique_id      | ds         | AutoETS     | Naive  |
+|------|----------------|------------|-------------|--------|
+| 28   | de_AAC_AAG_001 | 2016-12-25 | -523.766907 | 340.0  |
+| 29   | de_AAC_AAG_001 | 2016-12-26 | -245.337433 | 340.0  |
+| 30   | de_AAC_AAG_001 | 2016-12-27 | -194.253815 | 340.0  |
+| 33   | de_AAC_AAG_001 | 2016-12-30 | -315.425659 | 340.0  |
+| 34   | de_AAC_AAG_001 | 2016-12-31 | -806.920105 | 340.0  |
+| ...  | ...            | ...        | ...         | ...    |
+| 1217 | zh_AAC_AAG_033 | 2016-12-31 | -86.466789  | 37.0   |
+| 1345 | zh_MOB         | 2016-12-26 | -199.534882 | 1036.0 |
+| 1346 | zh_MOB         | 2016-12-27 | -69.527260  | 1036.0 |
+| 1352 | zh_MOB_AAG     | 2016-12-26 | -199.534882 | 1036.0 |
+| 1353 | zh_MOB_AAG     | 2016-12-27 | -69.527260  | 1036.0 |
+
+## 3. Non-Negative Reconciliation
+
+The following cell makes the previous forecasts coherent and nonnegative
+using the `HierarchicalReconciliation` class.
+
+```python
+from hierarchicalforecast.methods import MinTrace
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+
+```python
+reconcilers = [
+    MinTrace(method='ols'),
+    MinTrace(method='ols', nonnegative=True)
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df,
+                          S_df=S_df, tags=tags)
+```
+
+Observe that the nonnegative reconciliation method obtains nonnegative
+forecasts.
+
+```python
+Y_rec_df
+```
+
+|      | unique_id      | ds         | AutoETS       | Naive   | AutoETS/MinTrace_method-ols | Naive/MinTrace_method-ols | AutoETS/MinTrace_method-ols_nonnegative-True | Naive/MinTrace_method-ols_nonnegative-True |
+|------|----------------|------------|---------------|---------|-----------------------------|---------------------------|----------------------------------------------|--------------------------------------------|
+| 0    | Total          | 2016-12-25 | 94523.164062  | 95743.0 | 95852.000421                | 95743.0                   | 9.664245e+04                                 | 95743.0                                    |
+| 1    | Total          | 2016-12-26 | 87734.367188  | 95743.0 | 89525.238276                | 95743.0                   | 9.028857e+04                                 | 95743.0                                    |
+| 2    | Total          | 2016-12-27 | 87751.125000  | 95743.0 | 89638.119184                | 95743.0                   | 9.056593e+04                                 | 95743.0                                    |
+| 3    | Total          | 2016-12-28 | 133237.968750 | 95743.0 | 131051.839057               | 95743.0                   | 1.314028e+05                                 | 95743.0                                    |
+| 4    | Total          | 2016-12-29 | 126501.796875 | 95743.0 | 121214.048604               | 95743.0                   | 1.218000e+05                                 | 95743.0                                    |
+| ...  | ...            | ...        | ...           | ...     | ...                         | ...                       | ...                                          | ...                                        |
+| 1388 | zh_MOB_AAG_138 | 2016-12-27 | 62.049744     | 65.0    | -147.399760                 | 65.0                      | 0.000000e+00                                 | 65.0                                       |
+| 1389 | zh_MOB_AAG_138 | 2016-12-28 | 54.934032     | 65.0    | 7.561682                    | 65.0                      | 4.397229e-15                                 | 65.0                                       |
+| 1390 | zh_MOB_AAG_138 | 2016-12-29 | 60.452618     | 65.0    | 114.253489                  | 65.0                      | 9.321380e+01                                 | 65.0                                       |
+| 1391 | zh_MOB_AAG_138 | 2016-12-30 | 50.356693     | 65.0    | 96.446754                   | 65.0                      | 7.565171e+01                                 | 65.0                                       |
+| 1392 | zh_MOB_AAG_138 | 2016-12-31 | 66.735626     | 65.0    | 208.184648                  | 65.0                      | 1.851130e+02                                 | 65.0                                       |
+
+```python
+Y_rec_df.query('`AutoETS/MinTrace_method-ols_nonnegative-True` < 0')
+```
+
+|     | unique_id | ds  | AutoETS | Naive | AutoETS/MinTrace_method-ols | Naive/MinTrace_method-ols | AutoETS/MinTrace_method-ols_nonnegative-True | Naive/MinTrace_method-ols_nonnegative-True |
+|-----|-----------|-----|---------|-------|-----------------------------|---------------------------|----------------------------------------------|--------------------------------------------|
+
+The free reconciliation method gets negative forecasts.
+
+```python
+Y_rec_df.query('`AutoETS/MinTrace_method-ols` < 0')
+```
+
+|      | unique_id      | ds         | AutoETS      | Naive | AutoETS/MinTrace_method-ols | Naive/MinTrace_method-ols | AutoETS/MinTrace_method-ols_nonnegative-True | Naive/MinTrace_method-ols_nonnegative-True |
+|------|----------------|------------|--------------|-------|-----------------------------|---------------------------|----------------------------------------------|--------------------------------------------|
+| 56   | de_DES         | 2016-12-25 | -2553.932861 | 495.0 | -3818.990043                | 495.0                     | 0.000000e+00                                 | 495.0                                      |
+| 57   | de_DES         | 2016-12-26 | -2155.228271 | 495.0 | -3309.806933                | 495.0                     | 1.909922e-30                                 | 495.0                                      |
+| 58   | de_DES         | 2016-12-27 | -2720.993896 | 495.0 | -3965.351121                | 495.0                     | 1.140223e-13                                 | 495.0                                      |
+| 60   | de_DES         | 2016-12-29 | -3429.432617 | 495.0 | -3042.502484                | 495.0                     | 3.049601e+02                                 | 495.0                                      |
+| 61   | de_DES         | 2016-12-30 | -3963.202637 | 495.0 | -3476.273292                | 495.0                     | 2.877829e+02                                 | 495.0                                      |
+| ...  | ...            | ...        | ...          | ...   | ...                         | ...                       | ...                                          | ...                                        |
+| 1380 | zh_MOB_AAG_036 | 2016-12-26 | 75.298317    | 115.0 | -166.245228                 | 115.0                     | 0.000000e+00                                 | 115.0                                      |
+| 1381 | zh_MOB_AAG_036 | 2016-12-27 | 72.895554    | 115.0 | -136.553950                 | 115.0                     | 1.699002e-14                                 | 115.0                                      |
+| 1386 | zh_MOB_AAG_138 | 2016-12-25 | 94.796623    | 65.0  | -49.410174                  | 65.0                      | 0.000000e+00                                 | 65.0                                       |
+| 1387 | zh_MOB_AAG_138 | 2016-12-26 | 71.293983    | 65.0  | -170.249562                 | 65.0                      | 0.000000e+00                                 | 65.0                                       |
+| 1388 | zh_MOB_AAG_138 | 2016-12-27 | 62.049744    | 65.0  | -147.399760                 | 65.0                      | 0.000000e+00                                 | 65.0                                       |
+
+## 4. Evaluation
+
+The `HierarchicalForecast` package includes the `evaluate` function to
+evaluate the different hierarchies. We use `utilsforecast` to compute
+the mean absolute error.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mse
+```
+
+
+```python
+evaluation = evaluate(df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds']),
+                      tags = tags,
+                      train_df = Y_train_df,
+                      metrics = [mse],
+                      benchmark="Naive")
+
+evaluation.set_index(["level", "metric"]).filter(like='ETS')
+```
+
+|                                  |            | AutoETS  | AutoETS/MinTrace_method-ols | AutoETS/MinTrace_method-ols_nonnegative-True |
+|----------------------------------|------------|----------|-----------------------------|----------------------------------------------|
+| level                            | metric     |          |                             |                                              |
+| Views                            | mse-scaled | 0.735800 | 0.697371                    | 0.675672                                     |
+| Views/Country                    | mse-scaled | 1.190354 | 1.053631                    | 0.994758                                     |
+| Views/Country/Access             | mse-scaled | 1.086102 | 1.133507                    | 1.172270                                     |
+| Views/Country/Access/Agent       | mse-scaled | 1.067394 | 1.100215                    | 1.127960                                     |
+| Views/Country/Access/Agent/Topic | mse-scaled | 1.435105 | 1.381990                    | 1.163428                                     |
+| Overall                          | mse-scaled | 1.010801 | 0.977667                    | 0.939286                                     |
+
+Observe that the nonnegative reconciliation method performs better
+(lower error) than its unconstrained counterpart.
+
+### References
+
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+-   [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019).
+    "Optimal forecast reconciliation for hierarchical and grouped time
+    series through trace minimization". Journal of the American
+    Statistical Association, 114 , 804–819.
+    doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+-   [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020).
+    "Optimal non-negative forecast reconciliation”. Stat Comput 30,
+    1167–1182,
+    https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+

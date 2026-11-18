@@ -1,0 +1,328 @@
+---
+title: Geographical Aggregation (Prison Population)
+---
+
+> Geographical Hierarchical Forecasting on Australian Prison Population
+> Data
+
+In many applications, a set of time series is hierarchically organized.
+Examples include the presence of geographic levels, products, or
+categories that define different types of aggregations. In such
+scenarios, forecasters are often required to provide predictions for all
+disaggregate and aggregate series. A natural desire is for those
+predictions to be **“coherent”**, that is, for the bottom series to add
+up precisely to the forecasts of the aggregated series.
+
+In this notebook we present an example on how to use
+`HierarchicalForecast` to produce coherent forecasts between
+geographical levels. We will use the Australian Prison Population
+dataset.
+
+We will first load the dataset and produce base forecasts using an `ETS`
+model from `StatsForecast`, and then reconciliate the forecasts with
+several reconciliation algorithms from `HierarchicalForecast`. Finally,
+we show the performance is comparable with the results reported by the
+[Forecasting: Principles and
+Practice](https://otexts.com/fpp3/tourism.html) which uses the R package
+[fable](https://github.com/tidyverts/fable).
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/AustralianPrisonPopulation.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+```python
+
+!pip install hierarchicalforecast statsforecast
+```
+
+## 1. Load and Process Data
+
+The dataset only contains the time series at the lowest level, so we
+need to create the time series for all hierarchies.
+
+```python
+import numpy as np
+import pandas as pd
+```
+
+
+```python
+Y_df = pd.read_csv('https://OTexts.com/fpp3/extrafiles/prison_population.csv',
+                    storage_options={'User-Agent': 'Mozilla/5.0'})
+Y_df = Y_df.rename({'Count': 'y', 'Date': 'ds'}, axis=1)
+Y_df.insert(0, 'Country', 'Australia')
+Y_df = Y_df[['Country', 'State', 'Gender', 'Legal', 'Indigenous', 'ds', 'y']]
+Y_df['ds'] = pd.to_datetime(Y_df['ds']) + pd.DateOffset(months=1)
+Y_df.head()
+```
+
+|     | Country   | State | Gender | Legal     | Indigenous | ds         | y   |
+|-----|-----------|-------|--------|-----------|------------|------------|-----|
+| 0   | Australia | ACT   | Female | Remanded  | ATSI       | 2005-04-01 | 0   |
+| 1   | Australia | ACT   | Female | Remanded  | Non-ATSI   | 2005-04-01 | 2   |
+| 2   | Australia | ACT   | Female | Sentenced | ATSI       | 2005-04-01 | 0   |
+| 3   | Australia | ACT   | Female | Sentenced | Non-ATSI   | 2005-04-01 | 5   |
+| 4   | Australia | ACT   | Male   | Remanded  | ATSI       | 2005-04-01 | 7   |
+
+The dataset can be grouped in the following grouped structure.
+
+```python
+hiers = [
+    ['Country'],
+    ['Country', 'State'], 
+    ['Country', 'Gender'], 
+    ['Country', 'Legal'], 
+    ['Country', 'State', 'Gender', 'Legal']
+]
+```
+
+Using the `aggregate` function from `HierarchicalForecast` we can get
+the full set of time series.
+
+```python
+from hierarchicalforecast.utils import aggregate
+```
+
+
+```python
+
+Y_df, S_df, tags = aggregate(Y_df, hiers)
+Y_df['y'] = Y_df['y']/1e3
+```
+
+
+```python
+Y_df.head()
+```
+
+|     | unique_id | ds         | y      |
+|-----|-----------|------------|--------|
+| 0   | Australia | 2005-04-01 | 24.296 |
+| 1   | Australia | 2005-07-01 | 24.643 |
+| 2   | Australia | 2005-10-01 | 24.511 |
+| 3   | Australia | 2006-01-01 | 24.393 |
+| 4   | Australia | 2006-04-01 | 24.524 |
+
+```python
+S_df.iloc[:5, :5]
+```
+
+|     | unique_id     | Australia/ACT/Female/Remanded | Australia/ACT/Female/Sentenced | Australia/ACT/Male/Remanded | Australia/ACT/Male/Sentenced |
+|-----|---------------|-------------------------------|--------------------------------|-----------------------------|------------------------------|
+| 0   | Australia     | 1.0                           | 1.0                            | 1.0                         | 1.0                          |
+| 1   | Australia/ACT | 1.0                           | 1.0                            | 1.0                         | 1.0                          |
+| 2   | Australia/NSW | 0.0                           | 0.0                            | 0.0                         | 0.0                          |
+| 3   | Australia/NT  | 0.0                           | 0.0                            | 0.0                         | 0.0                          |
+| 4   | Australia/QLD | 0.0                           | 0.0                            | 0.0                         | 0.0                          |
+
+```python
+tags
+```
+
+``` text
+{'Country': array(['Australia'], dtype=object),
+ 'Country/State': array(['Australia/ACT', 'Australia/NSW', 'Australia/NT', 'Australia/QLD',
+        'Australia/SA', 'Australia/TAS', 'Australia/VIC', 'Australia/WA'],
+       dtype=object),
+ 'Country/Gender': array(['Australia/Female', 'Australia/Male'], dtype=object),
+ 'Country/Legal': array(['Australia/Remanded', 'Australia/Sentenced'], dtype=object),
+ 'Country/State/Gender/Legal': array(['Australia/ACT/Female/Remanded', 'Australia/ACT/Female/Sentenced',
+        'Australia/ACT/Male/Remanded', 'Australia/ACT/Male/Sentenced',
+        'Australia/NSW/Female/Remanded', 'Australia/NSW/Female/Sentenced',
+        'Australia/NSW/Male/Remanded', 'Australia/NSW/Male/Sentenced',
+        'Australia/NT/Female/Remanded', 'Australia/NT/Female/Sentenced',
+        'Australia/NT/Male/Remanded', 'Australia/NT/Male/Sentenced',
+        'Australia/QLD/Female/Remanded', 'Australia/QLD/Female/Sentenced',
+        'Australia/QLD/Male/Remanded', 'Australia/QLD/Male/Sentenced',
+        'Australia/SA/Female/Remanded', 'Australia/SA/Female/Sentenced',
+        'Australia/SA/Male/Remanded', 'Australia/SA/Male/Sentenced',
+        'Australia/TAS/Female/Remanded', 'Australia/TAS/Female/Sentenced',
+        'Australia/TAS/Male/Remanded', 'Australia/TAS/Male/Sentenced',
+        'Australia/VIC/Female/Remanded', 'Australia/VIC/Female/Sentenced',
+        'Australia/VIC/Male/Remanded', 'Australia/VIC/Male/Sentenced',
+        'Australia/WA/Female/Remanded', 'Australia/WA/Female/Sentenced',
+        'Australia/WA/Male/Remanded', 'Australia/WA/Male/Sentenced'],
+       dtype=object)}
+```
+
+### Split Train/Test sets
+
+We use the final two years (8 quarters) as test set.
+
+```python
+Y_test_df = Y_df.groupby('unique_id', as_index=False).tail(8)
+Y_train_df = Y_df.drop(Y_test_df.index)
+```
+
+## 2. Computing base forecasts
+
+The following cell computes the **base forecasts** for each time series
+in `Y_df` using the `ETS` model. Observe that `Y_hat_df` contains the
+forecasts but they are not coherent.
+
+```python
+
+from statsforecast.models import AutoETS
+from statsforecast.core import StatsForecast
+```
+
+
+```python
+
+fcst = StatsForecast(models=[AutoETS(season_length=4, model='ZMZ')], 
+                     freq='QS', n_jobs=-1)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=8, fitted=True)
+Y_fitted_df = fcst.forecast_fitted_values()
+```
+
+
+```python
+Y_test_df
+```
+
+|      | unique_id                   | ds         | y      |
+|------|-----------------------------|------------|--------|
+| 40   | Australia                   | 2015-04-01 | 35.271 |
+| 41   | Australia                   | 2015-07-01 | 35.921 |
+| 42   | Australia                   | 2015-10-01 | 36.067 |
+| 43   | Australia                   | 2016-01-01 | 36.983 |
+| 44   | Australia                   | 2016-04-01 | 37.830 |
+| ...  | ...                         | ...        | ...    |
+| 2155 | Australia/WA/Male/Sentenced | 2016-01-01 | 3.894  |
+| 2156 | Australia/WA/Male/Sentenced | 2016-04-01 | 3.876  |
+| 2157 | Australia/WA/Male/Sentenced | 2016-07-01 | 3.969  |
+| 2158 | Australia/WA/Male/Sentenced | 2016-10-01 | 4.076  |
+| 2159 | Australia/WA/Male/Sentenced | 2017-01-01 | 4.088  |
+
+```python
+Y_train_df
+```
+
+|      | unique_id                   | ds         | y      |
+|------|-----------------------------|------------|--------|
+| 0    | Australia                   | 2005-04-01 | 24.296 |
+| 1    | Australia                   | 2005-07-01 | 24.643 |
+| 2    | Australia                   | 2005-10-01 | 24.511 |
+| 3    | Australia                   | 2006-01-01 | 24.393 |
+| 4    | Australia                   | 2006-04-01 | 24.524 |
+| ...  | ...                         | ...        | ...    |
+| 2147 | Australia/WA/Male/Sentenced | 2014-01-01 | 3.614  |
+| 2148 | Australia/WA/Male/Sentenced | 2014-04-01 | 3.635  |
+| 2149 | Australia/WA/Male/Sentenced | 2014-07-01 | 3.692  |
+| 2150 | Australia/WA/Male/Sentenced | 2014-10-01 | 3.726  |
+| 2151 | Australia/WA/Male/Sentenced | 2015-01-01 | 3.780  |
+
+## 3. Reconcile forecasts
+
+The following cell makes the previous forecasts coherent using the
+`HierarchicalReconciliation` class. Since the hierarchy structure is not
+strict, we can’t use methods such as `TopDown` or `MiddleOut`. In this
+example we use `BottomUp` and `MinTrace`.
+
+```python
+from hierarchicalforecast.methods import BottomUp, MinTrace
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='mint_shrink')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_fitted_df, S_df=S_df, tags=tags)
+```
+
+The dataframe `Y_rec_df` contains the reconciled forecasts.
+
+```python
+Y_rec_df.head()
+```
+
+|     | unique_id | ds         | AutoETS   | AutoETS/BottomUp | AutoETS/MinTrace_method-mint_shrink |
+|-----|-----------|------------|-----------|------------------|-------------------------------------|
+| 0   | Australia | 2015-04-01 | 34.799497 | 34.946476        | 34.923548                           |
+| 1   | Australia | 2015-07-01 | 35.192638 | 35.410342        | 35.432421                           |
+| 2   | Australia | 2015-10-01 | 35.188216 | 35.580849        | 35.473386                           |
+| 3   | Australia | 2016-01-01 | 35.888628 | 35.951878        | 35.939526                           |
+| 4   | Australia | 2016-04-01 | 36.045437 | 36.416829        | 36.245158                           |
+
+## 4. Evaluation
+
+The `HierarchicalForecast` package includes the `HierarchicalEvaluation`
+class to evaluate the different hierarchies and also is capable of
+compute scaled metrics compared to a benchmark model.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mase
+from functools import partial
+```
+
+
+```python
+eval_tags = {}
+eval_tags['Total'] = tags['Country']
+eval_tags['State'] = tags['Country/State']
+eval_tags['Legal status'] = tags['Country/Legal']
+eval_tags['Gender'] = tags['Country/Gender']
+eval_tags['Bottom'] = tags['Country/State/Gender/Legal']
+
+df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'])
+evaluation = evaluate(df = df,
+                      tags = eval_tags,
+                      train_df = Y_train_df,
+                      metrics = [partial(mase, seasonality=4)])
+
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+evaluation.rename(columns={'AutoETS': 'Base'}, inplace=True)
+```
+
+
+```python
+evaluation
+```
+
+|     | level        | metric | Base | AutoETS/BottomUp | AutoETS/MinTrace_method-mint_shrink |
+|-----|--------------|--------|------|------------------|-------------------------------------|
+| 0   | Total        | mase   | 1.36 | 1.07             | 1.17                                |
+| 1   | State        | mase   | 1.53 | 1.55             | 1.59                                |
+| 2   | Legal status | mase   | 2.40 | 2.48             | 2.38                                |
+| 3   | Gender       | mase   | 1.08 | 0.82             | 0.93                                |
+| 4   | Bottom       | mase   | 2.16 | 2.16             | 2.14                                |
+| 5   | Overall      | mase   | 1.99 | 1.98             | 1.98                                |
+
+### Fable Comparison
+
+Observe that we can recover the results reported by the [Forecasting:
+Principles and Practice](https://otexts.com/fpp3/prison.html) book. The
+original results were calculated using the R package
+[fable](https://github.com/tidyverts/fable).
+
+<figure>
+<img src="./imgs/AustralianPrisonPopulation-results-fable.png"
+alt="Fable’s reconciliation results" />
+<figcaption aria-hidden="true">Fable’s reconciliation
+results</figcaption>
+</figure>
+
+### References
+
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+-   [Rob Hyndman, Alan Lee, Earo Wang, Shanika Wickramasuriya, and
+    Maintainer Earo Wang (2021). “hts: Hierarchical and Grouped Time
+    Series”. URL https://CRAN.R-project.org/package=hts. R package
+    version
+    0.3.1.](https://cran.r-project.org/web/packages/hts/index.html)
+-   [Mitchell O’Hara-Wild, Rob Hyndman, Earo Wang, Gabriel Caceres,
+    Tim-Gunnar Hensel, and Timothy Hyndman (2021). “fable: Forecasting
+    Models for Tidy Time Series”. URL
+    https://CRAN.R-project.org/package=fable. R package version
+    6.0.2.](https://CRAN.R-project.org/package=fable)
+

@@ -1,0 +1,295 @@
+---
+title: Bootstrap
+---
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/AustralianDomesticTourism-Bootstraped-Intervals.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+In many cases, only the time series at the lowest level of the
+hierarchies (bottom time series) are available. `HierarchicalForecast`
+has tools to create time series for all hierarchies and also allows you
+to calculate prediction intervals for all hierarchies. In this notebook
+we will see how to do it.
+
+```python
+!pip install hierarchicalforecast statsforecast
+```
+
+
+```python
+import pandas as pd
+
+# compute base forecast no coherent
+from statsforecast.models import AutoETS
+from statsforecast.core import StatsForecast
+
+#obtain hierarchical reconciliation methods and evaluation
+from hierarchicalforecast.methods import BottomUp, MinTrace
+from hierarchicalforecast.utils import aggregate, HierarchicalPlot
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+## Aggregate bottom time series
+
+In this example we will use the
+[Tourism](https://otexts.com/fpp3/tourism.html) dataset from the
+[Forecasting: Principles and Practice](https://otexts.com/fpp3/) book.
+The dataset only contains the time series at the lowest level, so we
+need to create the time series for all hierarchies.
+
+```python
+Y_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/tourism.csv')
+Y_df = Y_df.rename({'Trips': 'y', 'Quarter': 'ds'}, axis=1)
+Y_df.insert(0, 'Country', 'Australia')
+Y_df = Y_df[['Country', 'Region', 'State', 'Purpose', 'ds', 'y']]
+Y_df['ds'] = Y_df['ds'].str.replace(r'(\d+) (Q\d)', r'\1\2', regex=True)
+Y_df['ds'] = pd.PeriodIndex(Y_df["ds"], freq='Q').to_timestamp()
+Y_df.head()
+```
+
+|     | Country   | Region   | State           | Purpose  | ds         | y          |
+|-----|-----------|----------|-----------------|----------|------------|------------|
+| 0   | Australia | Adelaide | South Australia | Business | 1998-01-01 | 135.077690 |
+| 1   | Australia | Adelaide | South Australia | Business | 1998-04-01 | 109.987316 |
+| 2   | Australia | Adelaide | South Australia | Business | 1998-07-01 | 166.034687 |
+| 3   | Australia | Adelaide | South Australia | Business | 1998-10-01 | 127.160464 |
+| 4   | Australia | Adelaide | South Australia | Business | 1999-01-01 | 137.448533 |
+
+The dataset can be grouped in the following non-strictly hierarchical
+structure.
+
+```python
+spec = [
+    ['Country'],
+    ['Country', 'State'], 
+    ['Country', 'Purpose'], 
+    ['Country', 'State', 'Region'], 
+    ['Country', 'State', 'Purpose'], 
+    ['Country', 'State', 'Region', 'Purpose']
+]
+```
+
+Using the `aggregate` function from `HierarchicalForecast` we can
+generate: 1. `Y_df`: the hierarchical structured series
+$\mathbf{y}_{[a,b]\tau}$ 2. `S_df`: the aggregation constraints
+dataframe with $S_{[a,b]}$ 3. `tags`: a list with the ‘unique_ids’
+conforming to each aggregation level.
+
+```python
+Y_df, S_df, tags = aggregate(df=Y_df, spec=spec)
+```
+
+
+```python
+Y_df.head()
+```
+
+|     | unique_id | ds         | y            |
+|-----|-----------|------------|--------------|
+| 0   | Australia | 1998-01-01 | 23182.197269 |
+| 1   | Australia | 1998-04-01 | 20323.380067 |
+| 2   | Australia | 1998-07-01 | 19826.640511 |
+| 3   | Australia | 1998-10-01 | 20830.129891 |
+| 4   | Australia | 1999-01-01 | 22087.353380 |
+
+```python
+S_df.iloc[:5, :5]
+```
+
+|     | unique_id                    | Australia/ACT/Canberra/Business | Australia/ACT/Canberra/Holiday | Australia/ACT/Canberra/Other | Australia/ACT/Canberra/Visiting |
+|-----|------------------------------|---------------------------------|--------------------------------|------------------------------|---------------------------------|
+| 0   | Australia                    | 1.0                             | 1.0                            | 1.0                          | 1.0                             |
+| 1   | Australia/ACT                | 1.0                             | 1.0                            | 1.0                          | 1.0                             |
+| 2   | Australia/New South Wales    | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+| 3   | Australia/Northern Territory | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+| 4   | Australia/Queensland         | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+
+```python
+tags['Country/Purpose']
+```
+
+``` text
+array(['Australia/Business', 'Australia/Holiday', 'Australia/Other',
+       'Australia/Visiting'], dtype=object)
+```
+
+We can visualize the `S_df` dataframe and `Y_df` using the
+`HierarchicalPlot` class as follows.
+
+```python
+hplot = HierarchicalPlot(S=S_df, tags=tags)
+```
+
+
+```python
+hplot.plot_summing_matrix()
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-11-output-1.png)
+
+```python
+hplot.plot_hierarchically_linked_series(
+    bottom_series='Australia/ACT/Canberra/Holiday',
+    Y_df=Y_df
+)
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-12-output-1.png)
+
+### Split Train/Test sets
+
+We use the final two years (8 quarters) as test set.
+
+```python
+Y_test_df = Y_df.groupby('unique_id', as_index=False).tail(8)
+Y_train_df = Y_df.drop(Y_test_df.index)
+```
+
+
+```python
+Y_train_df.groupby('unique_id').size()
+```
+
+``` text
+unique_id
+Australia                                                72
+Australia/ACT                                            72
+Australia/ACT/Business                                   72
+Australia/ACT/Canberra                                   72
+Australia/ACT/Canberra/Business                          72
+                                                         ..
+Australia/Western Australia/Experience Perth/Other       72
+Australia/Western Australia/Experience Perth/Visiting    72
+Australia/Western Australia/Holiday                      72
+Australia/Western Australia/Other                        72
+Australia/Western Australia/Visiting                     72
+Length: 425, dtype: int64
+```
+
+## Computing Base Forecasts
+
+The following cell computes the **base forecasts** for each time series
+in `Y_df` using the `AutoETS` model. Observe that `Y_hat_df` contains
+the forecasts but they are not coherent. Since we are computing
+prediction intervals using bootstrapping, we only need the fitted values
+of the models.
+
+```python
+fcst = StatsForecast(models=[AutoETS(season_length=4, model='ZAA')],
+                     freq='QS', n_jobs=-1)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=8, fitted=True)
+Y_fitted_df = fcst.forecast_fitted_values()
+```
+
+## Reconcile Base Forecasts
+
+The following cell makes the previous forecasts coherent using the
+`HierarchicalReconciliation` class. Since the hierarchy structure is not
+strict, we can’t use methods such as `TopDown` or `MiddleOut`. In this
+example we use `BottomUp` and `MinTrace`. If you want to calculate
+prediction intervals, you have to use the `level` argument as follows
+and set `intervals_method='bootstrap'`.
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='mint_shrink'),
+    MinTrace(method='ols')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_fitted_df, S_df=S_df, 
+                          tags=tags, level=[80, 90], 
+                          intervals_method='bootstrap')
+```
+
+The dataframe `Y_rec_df` contains the reconciled forecasts.
+
+```python
+Y_rec_df.head()
+```
+
+|     | unique_id | ds         | AutoETS      | AutoETS/BottomUp | AutoETS/BottomUp-lo-90 | AutoETS/BottomUp-lo-80 | AutoETS/BottomUp-hi-80 | AutoETS/BottomUp-hi-90 | AutoETS/MinTrace_method-mint_shrink | AutoETS/MinTrace_method-mint_shrink-lo-90 | AutoETS/MinTrace_method-mint_shrink-lo-80 | AutoETS/MinTrace_method-mint_shrink-hi-80 | AutoETS/MinTrace_method-mint_shrink-hi-90 | AutoETS/MinTrace_method-ols | AutoETS/MinTrace_method-ols-lo-90 | AutoETS/MinTrace_method-ols-lo-80 | AutoETS/MinTrace_method-ols-hi-80 | AutoETS/MinTrace_method-ols-hi-90 |
+|-----|-----------|------------|--------------|------------------|------------------------|------------------------|------------------------|------------------------|-------------------------------------|-------------------------------------------|-------------------------------------------|-------------------------------------------|-------------------------------------------|-----------------------------|-----------------------------------|-----------------------------------|-----------------------------------|-----------------------------------|
+| 0   | Australia | 2016-01-01 | 26080.878488 | 24487.152503     | 23242.757311           | 23332.592968           | 25379.829486           | 25424.139137           | 25521.551706                        | 24407.442712                              | 24698.931479                              | 26357.024354                              | 26466.740682                              | 26034.132091                | 24914.199038                      | 25100.470502                      | 27102.746065                      | 27176.467048                      |
+| 1   | Australia | 2016-04-01 | 24587.012115 | 23068.314292     | 21823.919100           | 21910.615057           | 23945.982949           | 24278.683243           | 24106.522479                        | 23185.403634                              | 23283.902251                              | 25098.332342                              | 25473.239949                              | 24567.457913                | 23483.983814                      | 23640.627126                      | 25709.792870                      | 25809.220444                      |
+| 2   | Australia | 2016-07-01 | 24147.307744 | 22686.983933     | 21293.529449           | 21526.525610           | 23697.859931           | 24150.879789           | 23717.610501                        | 22603.501507                              | 22802.771308                              | 24802.973260                              | 25228.795629                              | 24150.111246                | 23030.178193                      | 23154.972436                      | 25359.917993                      | 25404.792198                      |
+| 3   | Australia | 2016-10-01 | 24794.040779 | 23428.037637     | 22034.583153           | 22273.826957           | 24241.840440           | 24438.913635           | 24472.939115                        | 23361.285512                              | 23584.825871                              | 25338.713995                              | 25469.426623                              | 24831.540721                | 23725.927463                      | 23836.401911                      | 25900.154695                      | 25977.249268                      |
+| 4   | Australia | 2017-01-01 | 26283.998654 | 24939.637616     | 23695.217554           | 23903.395713           | 25815.638682           | 25973.164607           | 26029.322724                        | 24948.339795                              | 25144.179030                              | 26900.068461                              | 27119.073160                              | 26348.229758                | 25254.682234                      | 25487.518098                      | 27410.894158                      | 27477.330557                      |
+
+## Plot Predictions
+
+Then we can plot the probabilistic forecasts using the following
+function.
+
+```python
+plot_df = Y_df.merge(Y_rec_df, on=['unique_id', 'ds'], how="outer")
+```
+
+### Plot single time series
+
+```python
+hplot.plot_series(
+    series='Australia',
+    Y_df=plot_df, 
+    models=['y', 'AutoETS', 'AutoETS/MinTrace_method-ols', 'AutoETS/MinTrace_method-mint_shrink'],
+    level=[80]
+)
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-19-output-1.png)
+
+```python
+# Since we are plotting a bottom time series
+# the probabilistic and mean forecasts
+# differ due to bootstrapping
+hplot.plot_series(
+    series='Australia/Western Australia/Experience Perth/Visiting',
+    Y_df=plot_df, 
+    models=['y', 'AutoETS', 'AutoETS/BottomUp'],
+    level=[80]
+)
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-20-output-1.png)
+
+### Plot hierarchically linked time series
+
+```python
+hplot.plot_hierarchically_linked_series(
+    bottom_series='Australia/Western Australia/Experience Perth/Visiting',
+    Y_df=plot_df, 
+    models=['y', 'AutoETS', 'AutoETS/MinTrace_method-ols', 'AutoETS/BottomUp'],
+    level=[80]
+)
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-21-output-1.png)
+
+```python
+# ACT only has Canberra
+hplot.plot_hierarchically_linked_series(
+    bottom_series='Australia/ACT/Canberra/Other',
+    Y_df=plot_df, 
+    models=['y', 'AutoETS/MinTrace_method-mint_shrink'],
+    level=[80, 90]
+)
+```
+
+![](./australiandomestictourism-bootstraped-intervals_files/figure-markdown_strict/cell-22-output-1.png)
+
+### References
+
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+-   [Shanika L. Wickramasuriya, George Athanasopoulos, and Rob J.
+    Hyndman. Optimal forecast reconciliation for hierarchical and
+    grouped time series through trace minimization.Journal of the
+    American Statistical Association, 114(526):804–819, 2019. doi:
+    10.1080/01621459.2018.1448825. URL
+    https://robjhyndman.com/publications/mint/.](https://robjhyndman.com/publications/mint/)
+-   [Puwasala Gamakumara Ph. D. dissertation. Monash University,
+    Econometrics and Business Statistics (2020). “Probabilistic Forecast
+    Reconciliation”](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
+

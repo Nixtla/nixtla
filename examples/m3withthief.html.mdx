@@ -1,0 +1,315 @@
+---
+title: Temporal Aggregation with THIEF
+---
+
+> Temporal Hierarchical Forecasting on M3 monthly and quarterly data
+> with THIEF
+
+In this notebook we present an example on how to use
+`HierarchicalForecast` to produce coherent forecasts between temporal
+levels. We will use the monthly and quarterly timeseries of the `M3`
+dataset. We will first load the `M3` data and produce base forecasts
+using an `AutoETS` model from `StatsForecast`. Then, we reconcile the
+forecasts with `THIEF` (Temporal HIerarchical Forecasting) from
+`HierarchicalForecast` according to a specified temporal hierarchy.
+
+### References
+
+[Athanasopoulos, G, Hyndman, Rob J., Kourentzes, N., Petropoulos, Fotios
+(2017). Forecasting with temporal hierarchies. European Journal of
+Operational Research, 262,
+60-74](https://www.sciencedirect.com/science/article/pii/S0377221717301911)
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/M3withThief.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+## 1. Load and Process Data
+
+```python
+import numpy as np
+import pandas as pd
+```
+
+
+```python
+from datasetsforecast.m3 import M3
+```
+
+
+```python
+m3_monthly, _, _ = M3.load(directory='data', group='Monthly')
+m3_quarterly, _, _ = M3.load(directory='data', group='Quarterly')
+```
+
+We will be making aggregations up to yearly levels, so for both monthly
+and quarterly data we make sure each time series has an integer multiple
+of bottom-level timesteps.
+
+For example, the first time series in m3_monthly (with `unique_id='M1'`)
+has 68 timesteps. This is not a multiple of 12 (12 months in one year),
+so we would not be able to aggregate all timesteps into full years.
+Hence, we truncate (remove) the first 8 timesteps, resulting in 60
+timesteps for this series. We do something similar for the quarterly
+data, albeit with a multiple of 4 (4 quarters in one year).
+
+Depending on the highest temporal aggregation in your reconciliation
+problem, you may want to truncate your data differently.
+
+```python
+m3_monthly = m3_monthly.groupby("unique_id", group_keys=False)\
+                       .apply(lambda x: x.tail(len(x) //  12 * 12))\
+                       .reset_index(drop=True)
+
+m3_quarterly = m3_quarterly.groupby("unique_id", group_keys=False)\
+                           .apply(lambda x: x.tail(len(x) //  4 * 4))\
+                           .reset_index(drop=True)
+```
+
+## 2. Temporal reconciliation
+
+### 2a. Split Train/Test sets
+
+We use as test samples the last 24 observations from the Monthly series
+and the last 8 observations of each quarterly series, following the
+original THIEF paper.
+
+```python
+horizon_monthly = 24
+horizon_quarterly = 8
+```
+
+
+```python
+m3_monthly_test = m3_monthly.groupby("unique_id", as_index=False).tail(horizon_monthly)
+m3_monthly_train = m3_monthly.drop(m3_monthly_test.index)
+
+m3_quarterly_test = m3_quarterly.groupby("unique_id", as_index=False).tail(horizon_quarterly)
+m3_quarterly_train = m3_quarterly.drop(m3_quarterly_test.index)
+```
+
+### 2b. Aggregating the dataset according to temporal hierarchy
+
+We first define the temporal aggregation spec. The spec is a dictionary
+in which the keys are the name of the aggregation and the value is the
+amount of bottom-level timesteps that should be aggregated in that
+aggregation. For example, `year` consists of `12` months, so we define a
+key, value pair `"yearly":12`. We can do something similar for other
+aggregations that we are interested in.
+
+```python
+spec_temporal_monthly = {"yearly": 12, "semiannually": 6, "fourmonthly": 4, "quarterly": 3, "bimonthly": 2, "monthly": 1}
+spec_temporal_quarterly = {"yearly": 4, "semiannually": 2, "quarterly": 1}
+```
+
+We next compute the temporally aggregated train- and test sets using the
+`aggregate_temporal` function. Note that we have different aggregation
+matrices `S` for the train- and test set, as the test set contains
+temporal hierarchies that are not included in the train set.
+
+```python
+from hierarchicalforecast.utils import aggregate_temporal
+```
+
+
+```python
+# Monthly
+Y_monthly_train, S_monthly_train, tags_monthly_train = aggregate_temporal(df=m3_monthly_train, spec=spec_temporal_monthly)
+Y_monthly_test, S_monthly_test, tags_monthly_test = aggregate_temporal(df=m3_monthly_test, spec=spec_temporal_monthly)
+
+# Quarterly
+Y_quarterly_train, S_quarterly_train, tags_quarterly_train = aggregate_temporal(df=m3_quarterly_train, spec=spec_temporal_quarterly)
+Y_quarterly_test, S_quarterly_test, tags_quarterly_test = aggregate_temporal(df=m3_quarterly_test,  spec=spec_temporal_quarterly)
+
+```
+
+Our aggregation matrices aggregate the lowest temporal granularity
+(quarters) up to years, for the train- and test set.
+
+```python
+S_monthly_train.iloc[:5, :5]
+```
+
+|     | temporal_id | monthly-1 | monthly-2 | monthly-3 | monthly-4 |
+|-----|-------------|-----------|-----------|-----------|-----------|
+| 0   | yearly-1    | 0.0       | 0.0       | 0.0       | 0.0       |
+| 1   | yearly-2    | 0.0       | 0.0       | 0.0       | 0.0       |
+| 2   | yearly-3    | 0.0       | 0.0       | 0.0       | 0.0       |
+| 3   | yearly-4    | 0.0       | 0.0       | 0.0       | 0.0       |
+| 4   | yearly-5    | 0.0       | 0.0       | 0.0       | 0.0       |
+
+```python
+S_monthly_test.iloc[:5, :5]
+```
+
+|     | temporal_id    | monthly-1 | monthly-2 | monthly-3 | monthly-4 |
+|-----|----------------|-----------|-----------|-----------|-----------|
+| 0   | yearly-1       | 1.0       | 1.0       | 1.0       | 1.0       |
+| 1   | yearly-2       | 0.0       | 0.0       | 0.0       | 0.0       |
+| 2   | semiannually-1 | 1.0       | 1.0       | 1.0       | 1.0       |
+| 3   | semiannually-2 | 0.0       | 0.0       | 0.0       | 0.0       |
+| 4   | semiannually-3 | 0.0       | 0.0       | 0.0       | 0.0       |
+
+### 2c. Computing base forecasts
+
+Now, we need to compute base forecasts for each temporal aggregation.
+The following cell computes the **base forecasts** for each temporal
+aggregation in `Y_monthly_train` and `Y_quarterly_train` using the
+`AutoARIMA` model. Observe that `Y_hats` contains the forecasts but they
+are not coherent.
+
+Note also that both frequency and horizon are different for each
+temporal aggregation. For the monthly data, the lowest level has a
+monthly frequency, and a horizon of `24` (constituting 2 years).
+However, as an example, the `year` aggregation has a yearly frequency
+with a horizon of 2.
+
+It is of course possible to choose a different model for each level in
+the temporal aggregation - you can be as creative as you like!
+
+```python
+from statsforecast.models import AutoARIMA
+from statsforecast.core import StatsForecast
+```
+
+
+```python
+Y_hats = []
+id_cols = ["unique_id", "temporal_id", "ds", "y"]
+
+# We loop over the monthly and quarterly data
+for tags_train, tags_test, Y_train, Y_test in zip([tags_monthly_train, tags_quarterly_train], 
+                                                  [tags_monthly_test, tags_quarterly_test],
+                                                  [Y_monthly_train, Y_quarterly_train], 
+                                                  [Y_monthly_test, Y_quarterly_test]):
+    # We will train a model for each temporal level
+    Y_hats_tags = []
+    for level, temporal_ids_train in tags_train.items():
+        # Filter the data for the level
+        Y_level_train = Y_train.query("temporal_id in @temporal_ids_train")
+        temporal_ids_test = tags_test[level]
+        Y_level_test = Y_test.query("temporal_id in @temporal_ids_test")
+        # For each temporal level we have a different frequency and forecast horizon. We use the timestamps of the first timeseries to automatically derive the frequency & horizon of the temporally aggregated series.
+        unique_id = Y_level_train["unique_id"].iloc[0]
+        freq_level = pd.infer_freq(Y_level_train.query("unique_id == @unique_id")["ds"])
+        horizon_level = Y_level_test.query("unique_id == @unique_id")["ds"].nunique()
+        # Train a model and create forecasts
+        fcst = StatsForecast(models=[AutoARIMA()], freq=freq_level, n_jobs=-1)
+        Y_hat_level = fcst.forecast(df=Y_level_train[["ds", "unique_id", "y"]], h=horizon_level)
+        # Add the test set to the forecast
+        Y_hat_level = pd.concat([Y_level_test.reset_index(drop=True), Y_hat_level.drop(columns=["unique_id", "ds"])], axis=1)
+        # Put cols in the right order (for readability)
+        Y_hat_cols = id_cols + [col for col in Y_hat_level.columns if col not in id_cols]
+        Y_hat_level = Y_hat_level[Y_hat_cols]
+        # Append the forecast to the list
+        Y_hats_tags.append(Y_hat_level)
+
+    Y_hat_tag = pd.concat(Y_hats_tags, ignore_index=True)
+    Y_hats.append(Y_hat_tag)
+```
+
+### 2d. Reconcile forecasts
+
+We can use the `HierarchicalReconciliation` class to reconcile the
+forecasts. In this example we use `BottomUp` and `MinTrace(wls_struct)`.
+The latter is the ‘structural scaling’ method introduced in [Forecasting
+with temporal
+hierarchies](https://robjhyndman.com/publications/temporal-hierarchies/).
+
+Note that we have to set `temporal=True` in the `reconcile` function.
+
+```python
+from hierarchicalforecast.methods import BottomUp, MinTrace
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method="wls_struct"),
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_recs = []
+# We loop over the monthly and quarterly data
+for Y_hat, S, tags in zip(Y_hats, 
+                          [S_monthly_test, S_quarterly_test], 
+                          [tags_monthly_test, tags_quarterly_test]):
+    Y_rec = hrec.reconcile(Y_hat_df=Y_hat, S_df=S, tags=tags, temporal=True)
+    Y_recs.append(Y_rec)
+```
+
+## 3. Evaluation
+
+The `HierarchicalForecast` package includes the `evaluate` function to
+evaluate the different hierarchies.
+
+We evaluate the temporally aggregated forecasts *across all temporal
+aggregations*.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mae
+```
+
+### 3a. Monthly
+
+```python
+Y_rec_monthly = Y_recs[0]
+evaluation = evaluate(df = Y_rec_monthly.drop(columns = 'unique_id'),
+                      tags = tags_monthly_test,
+                      metrics = [mae],
+                      id_col='temporal_id',
+                      benchmark="AutoARIMA")
+
+evaluation.columns = ['level', 'metric', 'Base', 'BottomUp', 'MinTrace(wls_struct)']
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+
+evaluation
+```
+
+|     | level        | metric     | Base | BottomUp | MinTrace(wls_struct) |
+|-----|--------------|------------|------|----------|----------------------|
+| 0   | yearly       | mae-scaled | 1.0  | 0.78     | 0.75                 |
+| 1   | semiannually | mae-scaled | 1.0  | 0.99     | 0.95                 |
+| 2   | fourmonthly  | mae-scaled | 1.0  | 0.96     | 0.93                 |
+| 3   | quarterly    | mae-scaled | 1.0  | 0.95     | 0.93                 |
+| 4   | bimonthly    | mae-scaled | 1.0  | 0.96     | 0.94                 |
+| 5   | monthly      | mae-scaled | 1.0  | 1.00     | 0.99                 |
+| 6   | Overall      | mae-scaled | 1.0  | 0.94     | 0.92                 |
+
+`MinTrace(wls_struct)` is the best overall method, scoring the lowest
+`mae` on all levels.
+
+### 3b. Quarterly
+
+```python
+Y_rec_quarterly = Y_recs[1]
+evaluation = evaluate(df = Y_rec_quarterly.drop(columns = 'unique_id'),
+                      tags = tags_quarterly_test,
+                      metrics = [mae],
+                      id_col='temporal_id',
+                      benchmark="AutoARIMA")
+
+evaluation.columns = ['level', 'metric', 'Base', 'BottomUp', 'MinTrace(wls_struct)']
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+
+evaluation
+```
+
+|     | level        | metric     | Base | BottomUp | MinTrace(wls_struct) |
+|-----|--------------|------------|------|----------|----------------------|
+| 0   | yearly       | mae-scaled | 1.0  | 0.87     | 0.85                 |
+| 1   | semiannually | mae-scaled | 1.0  | 1.03     | 1.00                 |
+| 2   | quarterly    | mae-scaled | 1.0  | 1.00     | 0.97                 |
+| 3   | Overall      | mae-scaled | 1.0  | 0.97     | 0.94                 |
+
+Again, `MinTrace(wls_struct)` is the best overall method, scoring the
+lowest `mae` on all levels.
+

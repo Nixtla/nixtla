@@ -1,0 +1,1332 @@
+---
+output-file: methods.html
+title: Reconciliation Methods
+---
+
+
+In hierarchical forecasting, we aim to create forecasts for many time
+series concurrently, whilst adhering to pre-specified hierarchical
+relationships that exist between the time series. We can enforce this
+coherence by performing a post-processing reconciliation step on the
+forecasts.
+
+The `HierarchicalForecast` package provides the most comprehensive
+collection of Python implementations of hierarchical forecasting
+algorithms that follow classic hierarchical reconciliation. All the
+methods have a `reconcile` function capable of reconciling base
+forecasts using `numpy` arrays.
+
+## Cross-sectional hierarchies
+
+Traditionally, hierarchical forecasting methods reconcile
+*cross-sectional* aggregations. For example, we may have forecasts for
+individual product demand, but also for the overall product group,
+department and store, and we are interested in making sure these
+forecasts are coherent with each other. This can be formalized as:
+
+$$\tilde{\textbf{Y}} = SP\hat{\textbf{Y}} \;, $$
+
+where $\hat{\textbf{Y}} \in \mathbb{R}^{m \times p}$ denotes the matrix
+of forecasts for all $m$ time series for all $p$ time steps in the
+hierarchy, $S \in \lbrace 0, 1 \rbrace^{m \times n}$ is a matrix that
+defines the hierarchical relationship between the $n$ bottom-level time
+series and the $m^* = m - n$ aggregations,
+$P \in \mathbb{R}^{n \times m}$ is a matrix that encapsulates the
+contribution of each forecast to the final estimate, and
+$\tilde{\textbf{Y}} \in \mathbb{R}^{m \times p}$ is the matrix of
+reconciled forecasts. We can use the matrix $P$ to define various
+forecast contribution scenarios.
+
+Cross-sectional reconciliation methods aim to find the optimal $P$
+matrix.
+
+## Temporal hierarchies
+
+We can also perform *temporal* reconciliation. For example, we may have
+forecasts for daily demand, weekly, and monthly, and we are interested
+in making sure these forecasts are coherent with each other. We
+formalize the temporal hierarchical forecasting problem as:
+
+$$\tilde{\textbf{Y}} = \left( S_{te} P_{te} \hat{\textbf{Y}}^{\intercal} \right)^{\intercal}  \;, $$
+
+where $S_{te} \in \lbrace 0, 1 \rbrace^{p \times k}$ is a matrix that
+defines the hierarchical relationship between the $k$ bottom-level time
+steps and the $p^* = p - k$ aggregations and
+$P_{te} \in \mathbb{R}^{k \times p}$ is a matrix that encapsulates the
+contribution of each forecast to the final estimate. We can use the
+matrix $P_{te}$ to define various forecast contribution scenarios.
+
+Temporal reconciliation methods aim to find the optimal $P_{te}$ matrix.
+
+## Cross-temporal reconciliation
+
+We can combine cross-sectional and temporal hierarchical forecasting by
+performing cross-sectional reconciliation and temporal reconciliation in
+a two-step procedure.
+
+## References
+
+-[Hyndman, Rob. Notation for forecast reconciliation.](https://robjhyndman.com/hyndsight/reconciliation-notation.html)
+
+## 1. Bottom-Up
+
+------------------------------------------------------------------------
+
+### `BottomUp`
+
+```python
+BottomUp()
+```
+
+Bases: <code>[HReconciler](#hierarchicalforecast.methods.HReconciler)</code>
+
+Bottom Up Reconciliation Class.
+
+The most basic hierarchical reconciliation is performed using an Bottom-Up strategy. It was proposed for
+the first time by Orcutt in 1968.
+The corresponding hierarchical \"projection\" matrix is defined as:
+```math
+\mathbf{P}_{\\text{BU}} = [\mathbf{0}_{\mathrm{[b],[a]}}\;|\;\mathbf{I}_{\mathrm{[b][b]}}]
+```
+
+References:
+- [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). "Data aggregation and
+information loss". The American Economic Review, 58 , 773(787)](http://www.jstor.org/stable/1815532).
+
+#### `BottomUp.fit`
+
+```python
+fit(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+Bottom Up Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample values of size (`base`, `horizon`). Default is None. | <code>None</code>
+`y_hat_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample forecast values of size (`base`, `horizon`). Default is None. | <code>None</code>
+`sigmah` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`intervals_method` | <code>[Optional](#Optional)[[str](#str)]</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[Optional](#Optional)[[int](#int)]</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[Optional](#Optional)[[int](#int)]</code> | Seed for reproducibility. Default is None. | <code>None</code>
+`tags` | <code>[Optional](#Optional)[[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]]</code> | Tags for hierarchical structure. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`BottomUp` | <code>[object](#object)</code> | fitted reconciler.
+
+#### `BottomUp.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `BottomUp.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+BottomUp Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample values of size (`base`, `insample_size`). Default is None. | <code>None</code>
+`y_hat_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample forecast values of size (`base`, `insample_size`). Default is None. | <code>None</code>
+`sigmah` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[Optional](#Optional)[[str](#str)]</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[Optional](#Optional)[[int](#int)]</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[Optional](#Optional)[[int](#int)]</code> | Seed for reproducibility. Default is None. | <code>None</code>
+`tags` | <code>[Optional](#Optional)[[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]]</code> | Tags for hierarchical structure. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated y_hat using the Bottom Up approach.
+
+#### `BottomUp.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+### `BottomUpSparse`
+
+```python
+BottomUpSparse()
+```
+
+Bases: <code>[BottomUp](#hierarchicalforecast.methods.BottomUp)</code>
+
+BottomUpSparse Reconciliation Class.
+
+This is the implementation of a Bottom Up reconciliation using the sparse
+matrix approach. It works much more efficient on datasets with many time series.
+[makoren: At least I hope so, I only checked up until ~20k time series, and
+there's no real improvement, it would be great to check for smth like 1M time
+series, where the dense S matrix really stops fitting in memory]
+
+See the parent class for more details.
+
+#### `BottomUpSparse.fit`
+
+```python
+fit(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+Bottom Up Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample values of size (`base`, `horizon`). Default is None. | <code>None</code>
+`y_hat_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample forecast values of size (`base`, `horizon`). Default is None. | <code>None</code>
+`sigmah` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`intervals_method` | <code>[Optional](#Optional)[[str](#str)]</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[Optional](#Optional)[[int](#int)]</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[Optional](#Optional)[[int](#int)]</code> | Seed for reproducibility. Default is None. | <code>None</code>
+`tags` | <code>[Optional](#Optional)[[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]]</code> | Tags for hierarchical structure. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`BottomUp` | <code>[object](#object)</code> | fitted reconciler.
+
+#### `BottomUpSparse.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `BottomUpSparse.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+BottomUp Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample values of size (`base`, `insample_size`). Default is None. | <code>None</code>
+`y_hat_insample` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | In-sample forecast values of size (`base`, `insample_size`). Default is None. | <code>None</code>
+`sigmah` | <code>[Optional](#Optional)[[ndarray](#numpy.ndarray)]</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[Optional](#Optional)[[str](#str)]</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[Optional](#Optional)[[int](#int)]</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[Optional](#Optional)[[int](#int)]</code> | Seed for reproducibility. Default is None. | <code>None</code>
+`tags` | <code>[Optional](#Optional)[[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]]</code> | Tags for hierarchical structure. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated y_hat using the Bottom Up approach.
+
+#### `BottomUpSparse.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+## 2. Top-Down
+
+### `TopDown`
+
+```python
+TopDown(method)
+```
+
+Bases: <code>[HReconciler](#hierarchicalforecast.methods.HReconciler)</code>
+
+Top Down Reconciliation Class.
+
+The Top Down hierarchical reconciliation method, distributes the total aggregate predictions and decomposes
+it down the hierarchy using proportions $\mathbf{p}_{\mathrm{[b]}}$ that can be actual historical values
+or estimated.
+
+```math
+\mathbf{P}=[\mathbf{p}_{\mathrm{[b]}}\;|\;\mathbf{0}_{\mathrm{[b][a,b\;-1]}}]
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`method` | <code>[str](#str)</code> | One of `forecast_proportions`, `average_proportions` and `proportion_averages`. | *required*
+
+References:
+- [CW. Gross (1990). "Disaggregation methods to expedite product line forecasting". Journal of Forecasting, 9 , 233-254. doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
+- [G. Fliedner (1999). "An investigation of aggregate variable time series forecast strategies with specific subaggregate time series statistical correlation". Computers and Operations Research, 26 , 1133-1149. doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+
+#### `TopDown.fit`
+
+```python
+fit(S, y_hat, y_insample, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+TopDown Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. | *required*
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray)</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int)</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int)</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`TopDown` | <code>[object](#object)</code> | fitted reconciler.
+
+#### `TopDown.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `TopDown.fit_predict`
+
+```python
+fit_predict(S, y_hat, tags, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None)
+```
+
+Top Down Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and each value its `S` indices. | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None. | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. Default is None. | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray)</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[int](#int)</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[int](#int)</code> | Seed for reproducibility. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[ndarray](#numpy.ndarray)</code> | Reconciliated y_hat using the Top Down approach.
+
+#### `TopDown.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+### `TopDownSparse`
+
+Bases: <code>[TopDown](#hierarchicalforecast.methods.TopDown)</code>
+
+TopDownSparse Reconciliation Class.
+
+This is an implementation of top-down reconciliation using the sparse matrix
+approach. It works much more efficiently on data sets with many time series.
+
+See the parent class for more details.
+
+#### `TopDownSparse.fit`
+
+```python
+fit(S, y_hat, y_insample, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+TopDown Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. | *required*
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample forecast values of size (`base`, `insample_size`). Optional for `forecast_proportions` method. | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray)</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int)</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int)</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`TopDown` | <code>[object](#object)</code> | fitted reconciler.
+
+#### `TopDownSparse.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `TopDownSparse.fit_predict`
+
+```python
+fit_predict(S, y_hat, tags, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None)
+```
+
+#### `TopDownSparse.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+```python
+cls_top_down(
+                S=S, y_hat=S @ y_hat_bottom, y_insample=S @ y_bottom, tags=tags
+            )["mean"]
+```
+
+```python
+cls_top_down = TopDownSparse(method="average_proportions")
+test_fail(
+    cls_top_down,
+    contains="Top-down reconciliation requires strictly hierarchical structures.",
+    args=(sparse.csr_matrix(S_non_hier), None, tags_non_hier),
+)
+```
+
+## 3. Middle-Out
+
+### `MiddleOut`
+
+```python
+MiddleOut(middle_level, top_down_method)
+```
+
+Bases: <code>[HReconciler](#hierarchicalforecast.methods.HReconciler)</code>
+
+Middle Out Reconciliation Class.
+
+This method is only available for **strictly hierarchical structures**. It anchors the base predictions
+in a middle level. The levels above the base predictions use the Bottom-Up approach, while the levels
+below use a Top-Down.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`middle_level` | <code>[str](#str)</code> | Middle level. | *required*
+`top_down_method` | <code>[str](#str)</code> | One of `forecast_proportions`, `average_proportions` and `proportion_averages`. | *required*
+
+References:
+- [Hyndman, R.J., & Athanasopoulos, G. (2021). "Forecasting: principles and
+practice, 3rd edition: Chapter 11: Forecasting hierarchical and grouped series".
+OTexts: Melbourne, Australia. OTexts.com/fpp3. Accessed on July 2022.](https://otexts.com/fpp3/hierarchical.html)
+
+#### `MiddleOut.fit`
+
+```python
+fit(**kwargs)
+```
+
+#### `MiddleOut.predict`
+
+```python
+predict(**kwargs)
+```
+
+#### `MiddleOut.fit_predict`
+
+```python
+fit_predict(S, y_hat, tags, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None)
+```
+
+Middle Out Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and each value its `S` indices. | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample values of size (`base`, `insample_size`). Only used for `forecast_proportions`. Default is None. | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray)</code> | In-sample forecast values of size (`base`, `insample_size`). Only used for `forecast_proportions`. Default is None. | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray)</code> | Estimated standard deviation of the conditional marginal distribution. Default is None. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)]</code> | Confidence levels for prediction intervals. Default is None. | <code>None</code>
+`intervals_method` | <code>[str](#str)</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. Default is None. | <code>None</code>
+`num_samples` | <code>[int](#int)</code> | Number of samples for probabilistic coherent distribution. Default is None. | <code>None</code>
+`seed` | <code>[int](#int)</code> | Seed for reproducibility. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` |  | Reconciliated y_hat using the Middle Out approach.
+
+#### `MiddleOut.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+### `MiddleOutSparse`
+
+Bases: <code>[MiddleOut](#hierarchicalforecast.methods.MiddleOut)</code>
+
+MiddleOutSparse Reconciliation Class.
+
+This is an implementation of middle-out reconciliation using the sparse matrix
+approach. It works much more efficiently on data sets with many time series.
+
+See the parent class for more details.
+
+#### `MiddleOutSparse.fit`
+
+```python
+fit(**kwargs)
+```
+
+#### `MiddleOutSparse.predict`
+
+```python
+predict(**kwargs)
+```
+
+#### `MiddleOutSparse.fit_predict`
+
+```python
+fit_predict(S, y_hat, tags, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None)
+```
+
+#### `MiddleOutSparse.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+## 4. Min-Trace
+
+### `MinTrace`
+
+```python
+MinTrace(method, nonnegative=False, mint_shr_ridge=2e-08, num_threads=1)
+```
+
+Bases: <code>[HReconciler](#hierarchicalforecast.methods.HReconciler)</code>
+
+MinTrace Reconciliation Class.
+
+This reconciliation algorithm proposed by Wickramasuriya et al. depends on a generalized least squares estimator
+and an estimator of the covariance matrix of the coherency errors $\mathbf{W}_{h}$. The Min Trace algorithm
+minimizes the squared errors for the coherent forecasts under an unbiasedness assumption; the solution has a
+closed form.
+
+```math
+\mathbf{P}_{\text{MinT}}=\left(\mathbf{S}^{\intercal}\mathbf{W}_{h}\mathbf{S}\right)^{-1}\mathbf{S}^{\intercal}\mathbf{W}^{-1}_{h}
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`method` | <code>[str](#str)</code> | One of `ols`, `wls_struct`, `wls_var`, `mint_shrink`, `mint_cov`, `emint`. | *required*
+`nonnegative` | <code>[bool](#bool)</code> | Reconciled forecasts should be nonnegative? | <code>False</code>
+`mint_shr_ridge` | <code>[float](#float)</code> | Ridge numeric protection to MinTrace-shr covariance estimator. | <code>2e-08</code>
+`num_threads` | <code>[int](#int)</code> | Number of threads for the C++ covariance backend (OpenMP) and for solving the optimization problems (when nonnegative=True). | <code>1</code>
+
+References:
+- [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019). "Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization". Journal of the American Statistical Association, 114 , 804-819. doi:10.1080/01621459.2018.1448825.](https://robjhyndman.com/publications/mint/).
+- [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+- [Wickramasuriya, S.L. (2021). Properties of point forecast reconciliation approaches. arXiv:2103.11129](https://arxiv.org/abs/2103.11129).
+- [Wang, X., Hyndman, R.J., & Wickramasuriya, S.L. (2025). Optimal forecast reconciliation with time series selection. European Journal of Operational Research, 323, 455-470.](https://doi.org/10.1016/j.ejor.2024.12.004)
+
+#### `MinTrace.fit`
+
+```python
+fit(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTrace Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` |  | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` |  | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink". | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink" | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` |  | object, fitted reconciler.
+
+#### `MinTrace.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `MinTrace.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTrace Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)] \| None</code> | float list 0-100, confidence levels for prediction intervals. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` |  | Reconciliated y_hat using the MinTrace approach.
+
+#### `MinTrace.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+### `MinTraceSparse`
+
+```python
+MinTraceSparse(method, nonnegative=False, num_threads=1, qp=True)
+```
+
+Bases: <code>[MinTrace](#hierarchicalforecast.methods.MinTrace)</code>
+
+MinTraceSparse Reconciliation Class.
+
+This is the implementation of OLS and WLS estimators using sparse matrices. It is not guaranteed
+to give identical results to the non-sparse version, but works much more efficiently on data sets
+with many time series.
+
+See the parent class for more details.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`method` | <code>[str](#str)</code> | One of `ols`, `wls_struct`, or `wls_var`. | *required*
+`nonnegative` | <code>[bool](#bool)</code> | Return non-negative reconciled forecasts. | <code>False</code>
+`num_threads` | <code>[int](#int)</code> | Number of threads for non-negative quadratic programming calls. | <code>1</code>
+`qp` | <code>[bool](#bool)</code> | Implement non-negativity constraint with a quadratic programming approach. Setting | <code>True</code>
+
+#### `MinTraceSparse.fit`
+
+```python
+fit(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTraceSparse Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[csr_matrix](#scipy.sparse.csr_matrix)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used with "wls_var". | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var" | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` | <code>[MinTraceSparse](#hierarchicalforecast.methods.MinTraceSparse)</code> | object, fitted reconciler.
+
+#### `MinTraceSparse.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `MinTraceSparse.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTrace Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)] \| None</code> | float list 0-100, confidence levels for prediction intervals. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` |  | Reconciliated y_hat using the MinTrace approach.
+
+#### `MinTraceSparse.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+## 5. Optimal Combination
+
+### `OptimalCombination`
+
+```python
+OptimalCombination(method, nonnegative=False, num_threads=1)
+```
+
+Bases: <code>[MinTrace](#hierarchicalforecast.methods.MinTrace)</code>
+
+Optimal Combination Reconciliation Class.
+
+This reconciliation algorithm was proposed by Hyndman et al. 2011, the method uses generalized least squares
+estimator using the coherency errors covariance matrix. Consider the covariance of the base forecast
+$\textrm{Var}(\epsilon_{h}) = \Sigma_{h}$, the $\mathbf{P}$ matrix of this method is defined by:
+```math
+\mathbf{P} = \left(\mathbf{S}^{\intercal}\Sigma_{h}^{\dagger}\mathbf{S}\right)^{-1}\mathbf{S}^{\intercal}\Sigma^{\dagger}_{h}
+```
+where $\Sigma_{h}^{\dagger}$ denotes the variance pseudo-inverse. The method was later proven equivalent to
+`MinTrace` variants.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`method` | <code>[str](#str)</code> | str, allowed optimal combination methods: 'ols', 'wls_struct'. | *required*
+`nonnegative` | <code>[bool](#bool)</code> | bool, reconciled forecasts should be nonnegative? | <code>False</code>
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin Shang (2010). "Optimal Combination Forecasts for Hierarchical Time Series".](https://robjhyndman.com/papers/Hierarchical6.pdf).
+- [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J. Hyndman (2010). "Optimal Combination Forecasts for Hierarchical Time Series".](https://robjhyndman.com/papers/MinT.pdf).
+- [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020). "Optimal non-negative forecast reconciliation". Stat Comput 30, 1167-1182. https://doi.org/10.1007/s11222-020-09930-0](https://robjhyndman.com/publications/nnmint/).
+
+</details>
+
+#### `OptimalCombination.fit`
+
+```python
+fit(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTrace Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` |  | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` |  | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink". | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample forecast values of size (`base`, `insample_size`). Only used with "wls_var", "mint_cov", "mint_shrink" | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` |  | object, fitted reconciler.
+
+#### `OptimalCombination.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `OptimalCombination.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+MinTrace Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample fitted values of size (`base`, `insample_size`). Only used by `wls_var`, `mint_cov`, `mint_shrink` | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)] \| None</code> | float list 0-100, confidence levels for prediction intervals. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` |  | Reconciliated y_hat using the MinTrace approach.
+
+#### `OptimalCombination.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+## 6. Emp. Risk Minimization
+
+### `ERM`
+
+```python
+ERM(method, lambda_reg=0.01)
+```
+
+Bases: <code>[HReconciler](#hierarchicalforecast.methods.HReconciler)</code>
+
+Empirical Risk Minimization Reconciliation Class.
+
+The Empirical Risk Minimization reconciliation strategy relaxes the unbiasedness assumptions from
+previous reconciliation methods like MinT and optimizes square errors between the reconciled predictions
+and the validation data to obtain an optimal reconciliation matrix P.
+
+The exact solution for $\mathbf{P}$ (`method='closed'`) follows the expression:
+```math
+\mathbf{P}^{*} = \left(\mathbf{S}^{\intercal}\mathbf{S}\right)^{-1}\mathbf{Y}^{\intercal}\hat{\mathbf{Y}}\left(\hat{\mathbf{Y}}\hat{\mathbf{Y}}\right)^{-1}
+```
+
+The alternative Lasso regularized $\mathbf{P}$ solution (`method='reg_bu'`) is useful when the observations
+of validation data is limited or the exact solution has low numerical stability.
+```math
+\mathbf{P}^{*} = \text{argmin}_{\mathbf{P}} ||\mathbf{Y}-\mathbf{S} \mathbf{P} \hat{Y} ||^{2}_{2} + \lambda ||\mathbf{P}-\mathbf{P}_{\text{BU}}||_{1}
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`method` | <code>[str](#str)</code> | str, one of `closed`, `reg` and `reg_bu`. | *required*
+`lambda_reg` | <code>[float](#float)</code> | float, l1 regularizer for `reg` and `reg_bu`. | <code>0.01</code>
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Ben Taieb, S., & Koo, B. (2019). Regularized regression for hierarchical forecasting without unbiasedness conditions. In Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining KDD '19 (p. 1337-1347). New York, NY, USA: Association for Computing Machinery.](https://doi.org/10.1145/3292500.3330976).
+
+</details>
+
+#### `ERM.fit`
+
+```python
+fit(S, y_hat, y_insample, y_hat_insample, sigmah=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+ERM Fit Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` |  | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` |  | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` |  | Train values of size (`base`, `insample_size`). | *required*
+`y_hat_insample` |  | Insample train predictions of size (`base`, `insample_size`). | *required*
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` |  | object, fitted reconciler.
+
+#### `ERM.predict`
+
+```python
+predict(S, y_hat, level=None)
+```
+
+Predict using reconciler.
+
+Predict using fitted mean and probabilistic reconcilers.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`level` | <code>[Optional](#Optional)[[list](#list)[[int](#int)]]</code> | float list 0-100, confidence levels for prediction intervals. Default is None. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` | <code>[dict](#dict)</code> | Reconciliated predictions.
+
+#### `ERM.fit_predict`
+
+```python
+fit_predict(S, y_hat, y_insample=None, y_hat_insample=None, sigmah=None, level=None, intervals_method=None, num_samples=None, seed=None, tags=None)
+```
+
+ERM Reconciliation Method.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray)</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Forecast values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Train values of size (`base`, `insample_size`). | <code>None</code>
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray) \| None</code> | Insample train predictions of size (`base`, `insample_size`). | <code>None</code>
+`sigmah` | <code>[ndarray](#numpy.ndarray) \| None</code> | Estimated standard deviation of the conditional marginal distribution. | <code>None</code>
+`level` | <code>[list](#list)[[int](#int)] \| None</code> | float list 0-100, confidence levels for prediction intervals. | <code>None</code>
+`intervals_method` | <code>[str](#str) \| None</code> | Sampler for prediction intervals, one of `normality`, `bootstrap`, `permbu`, `conformal`. | <code>None</code>
+`num_samples` | <code>[int](#int) \| None</code> | Number of samples for probabilistic coherent distribution. | <code>None</code>
+`seed` | <code>[int](#int) \| None</code> | Seed for reproducibility. | <code>None</code>
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)] \| None</code> | Each key is a level and each value its `S` indices. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`y_tilde` |  | Reconciliated y_hat using the ERM approach.
+
+#### `ERM.sample`
+
+```python
+sample(num_samples)
+```
+
+Sample probabilistic coherent distribution.
+
+Generates n samples from a probabilistic coherent distribution.
+The method uses fitted mean and probabilistic reconcilers, defined by
+the `intervals_method` selected during the reconciler's
+instantiation. Currently available: `normality`, `bootstrap`, `permbu`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`num_series`, `horizon`, `num_samples`).
+
+
+## References
+
+### General Reconciliation
+
+- [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). Data aggregation
+    and information loss. The American Economic Review, 58 ,
+    773(787).](http://www.jstor.org/stable/1815532)
+- [Disaggregation methods to expedite product line forecasting.
+    Journal of Forecasting, 9 , 233–254.
+    doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).
+- [An investigation of aggregate variable time series forecast
+    strategies with specific subaggregate time series statistical
+    correlation. Computers and Operations Research, 26 , 1133–1149.
+    doi:10.1016/S0305-0548(99)00017-9.](https://doi.org/10.1016/S0305-0548(99)00017-9)
+- [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+- [Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, Han Lin
+    Shang. “Optimal Combination Forecasts for Hierarchical Time Series”
+    (2010).](https://robjhyndman.com/papers/Hierarchical6.pdf)
+- [Shanika L. Wickramasuriya, George Athanasopoulos and Rob J.
+    Hyndman. “Optimal Combination Forecasts for Hierarchical Time
+    Series” (2010).](https://robjhyndman.com/papers/MinT.pdf)
+- [Ben Taieb, S., & Koo, B. (2019). Regularized regression for
+    hierarchical forecasting without unbiasedness conditions. In
+    Proceedings of the 25th ACM SIGKDD International Conference on
+    Knowledge Discovery & Data Mining KDD ’19 (p. 1337-1347). New York,
+    NY, USA: Association for Computing
+    Machinery.](https://doi.org/10.1145/3292500.3330976)
+
+### Hierarchical Probabilistic Coherent Predictions
+
+- [Puwasala Gamakumara Ph. D. dissertation. Monash University,
+    Econometrics and Business Statistics. “Probabilistic Forecast
+    Reconciliation”.](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
+- [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017).
+    Coherent probabilistic forecasts for hierarchical time series.
+    International conference on machine learning
+    ICML.](https://proceedings.mlr.press/v70/taieb17a.html)

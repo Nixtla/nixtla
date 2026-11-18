@@ -1,0 +1,296 @@
+---
+output-file: probabilistic_methods.html
+title: Probabilistic Methods
+---
+
+
+Here we provide a collection of methods designed to provide
+hierarchically coherent probabilistic distributions, which means that
+they generate samples of multivariate time series with hierarchical
+linear constraints.
+
+We designed these methods to extend the `core.HierarchicalForecast`
+capabilities class. Check their [usage example
+here](https://nixtlaverse.nixtla.io/hierarchicalforecast/examples/introduction.html).
+
+## 1. Normality
+
+### `Normality`
+
+```python
+Normality(S, P, y_hat, sigmah, W=None, seed=0, covariance_type='diagonal', residuals=None, shrinkage_ridge=_DEFAULT_SHRINKAGE_RIDGE)
+```
+
+Normality Probabilistic Reconciliation Class.
+
+The Normality method leverages the Gaussian Distribution linearity, to
+generate hierarchically coherent prediction distributions. This class is
+meant to be used as the `sampler` input as other `HierarchicalForecast` [reconciliation classes](./methods.html).
+
+Given base forecasts under a normal distribution:
+```math
+\hat{y}_{h} \sim \mathrm{N}(\hat{\boldsymbol{\mu}}, \hat{\mathbf{W}}_{h})
+```
+
+The reconciled forecasts are also normally distributed:
+
+```math
+\tilde{y}_{h} \sim \mathrm{N}(\mathbf{S}\mathbf{P}\hat{\boldsymbol{\mu}},
+\mathbf{S}\mathbf{P}\hat{\mathbf{W}}_{h} \mathbf{P}^{\intercal} \mathbf{S}^{\intercal})
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[Union](#Union)[[ndarray](#numpy.ndarray), [spmatrix](#scipy.sparse.spmatrix)]</code> | Summing matrix of size (`base`, `bottom`). | *required*
+`P` | <code>[Union](#Union)[[ndarray](#numpy.ndarray), [spmatrix](#scipy.sparse.spmatrix)]</code> | Reconciliation matrix of size (`bottom`, `base`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Point forecasts values of size (`base`, `horizon`). | *required*
+`sigmah` | <code>[ndarray](#numpy.ndarray)</code> | Forecast standard dev. of size (`base`, `horizon`). | *required*
+`W` | <code>[Union](#Union)[[ndarray](#numpy.ndarray), [spmatrix](#scipy.sparse.spmatrix)]</code> | Hierarchical covariance matrix of size (`base`, `base`). Required when `covariance_type='diagonal'` (default). **Ignored** when `covariance_type` is `'full'` or `'shrink'` (covariance is computed from residuals instead). Default is None. | <code>None</code>
+`seed` | <code>[int](#int)</code> | Random seed for numpy generator's replicability. Default is 0. | <code>0</code>
+`covariance_type` | <code>[Union](#Union)[[str](#str), [CovarianceType](#hierarchicalforecast.probabilistic_methods.CovarianceType)]</code> | Type of covariance estimator. Can be a string or CovarianceType enum. Options are:<br/>- `'diagonal'` / `CovarianceType.DIAGONAL`: Uses the W matrix diagonal with   correlation scaling (default, backward compatible). W is required. - `'full'` / `CovarianceType.FULL`: Uses full empirical covariance from residuals.   W is ignored. Warning: may be non-positive-definite if n_series > n_observations. - `'shrink'` / `CovarianceType.SHRINK`: Uses Schäfer-Strimmer shrinkage estimator.   W is ignored. Recommended for numerical stability with many series.<br/>Default is `'diagonal'`. | <code>'diagonal'</code>
+`residuals` | <code>[ndarray](#numpy.ndarray)</code> | Insample residuals of size (`base`, `obs`). Required when `covariance_type` is `'full'` or `'shrink'`. Default is None. | <code>None</code>
+`shrinkage_ridge` | <code>[float](#float)</code> | Ridge parameter for shrinkage covariance estimator. Only used when `covariance_type='shrink'`. A warning is issued if provided with other covariance types. Default is 2e-8. | <code>[_DEFAULT_SHRINKAGE_RIDGE](#hierarchicalforecast.probabilistic_methods.Normality._DEFAULT_SHRINKAGE_RIDGE)</code>
+
+**Raises:**
+
+Type | Description
+---- | -----------
+<code>[ValueError](#ValueError)</code> | If `covariance_type` is invalid.
+<code>[ValueError](#ValueError)</code> | If `covariance_type='diagonal'` and `W` is None.
+<code>[ValueError](#ValueError)</code> | If `covariance_type` is `'full'` or `'shrink'` and `residuals` is None.
+<code>[ValueError](#ValueError)</code> | If `residuals` shape doesn't match expected (`base`, `obs`).
+<code>[ValueError](#ValueError)</code> | If `residuals` has fewer than 2 observations.
+<code>[ValueError](#ValueError)</code> | If `residuals` is empty.
+<code>[ValueError](#ValueError)</code> | If any series in `residuals` has all NaN values.
+
+**Warns:**
+
+Type | Description
+---- | -----------
+<code>UserWarning</code> | If `shrinkage_ridge` is provided but `covariance_type` is not `'shrink'`.
+<code>UserWarning</code> | If `W` is provided but `covariance_type` is not `'diagonal'` (W is ignored).
+<code>UserWarning</code> | If any series has zero or near-zero variance (may affect correlation estimates).
+<code>UserWarning</code> | If `covariance_type='full'` and n_series > n_observations (non-PSD risk).
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022).
+  "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation".
+  European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+- [Schäfer, Juliane, and Korbinian Strimmer. "A Shrinkage Approach to Large-Scale
+  Covariance Matrix Estimation". Statistical Applications in Genetics and Molecular
+  Biology 4, no. 1 (2005).](https://doi.org/10.2202/1544-6115.1175)
+
+</details>
+
+**Examples:**
+
+```pycon
+>>> # Using diagonal covariance (default, backward compatible)
+>>> normality = Normality(S=S, P=P, y_hat=y_hat, sigmah=sigmah, W=W)
+>>> samples = normality.get_samples(num_samples=100)
+```
+
+```pycon
+>>> # Using full empirical covariance from residuals
+>>> normality = Normality(
+...     S=S, P=P, y_hat=y_hat, sigmah=sigmah,
+...     covariance_type="full", residuals=residuals
+... )
+```
+
+```pycon
+>>> # Using shrinkage covariance (recommended for stability)
+>>> normality = Normality(
+...     S=S, P=P, y_hat=y_hat, sigmah=sigmah,
+...     covariance_type=CovarianceType.SHRINK, residuals=residuals
+... )
+```
+
+#### `Normality.get_samples`
+
+```python
+get_samples(num_samples)
+```
+
+Normality Coherent Samples.
+
+Obtains coherent samples under the Normality assumptions.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`base`, `horizon`, `num_samples`).
+
+
+## 2. Bootstrap
+
+### `Bootstrap`
+
+```python
+Bootstrap(S, P, y_hat, y_insample, y_hat_insample, num_samples=100, seed=0, W=None)
+```
+
+Bootstrap Probabilistic Reconciliation Class.
+
+This method goes beyond the normality assumption for the base forecasts,
+the technique simulates future sample paths and uses them to generate
+base sample paths that are latered reconciled. This clever idea and its
+simplicity allows to generate coherent bootstraped prediction intervals
+for any reconciliation strategy. This class is meant to be used as the `sampler`
+input as other `HierarchicalForecast` [reconciliation classes](./methods.html).
+
+Given a boostraped set of simulated sample paths:
+```math
+\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\hat{\mathbf{y}}^{[B]}_{\\tau})
+```
+
+The reconciled sample paths allow for reconciled distributional forecasts:
+```math
+(\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[1]}_{\\tau}, \dots ,\mathbf{S}\mathbf{P}\hat{\mathbf{y}}^{[B]}_{\\tau})
+```
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[ndarray](#numpy.ndarray) \| [spmatrix](#scipy.sparse.spmatrix)</code> | np.array, summing matrix of size (`base`, `bottom`). | *required*
+`P` | <code>[ndarray](#numpy.ndarray) \| [spmatrix](#scipy.sparse.spmatrix)</code> | np.array, reconciliation matrix of size (`bottom`, `base`). | *required*
+`y_hat` | <code>[ndarray](#numpy.ndarray)</code> | Point forecasts values of size (`base`, `horizon`). | *required*
+`y_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample values of size (`base`, `insample_size`). | *required*
+`y_hat_insample` | <code>[ndarray](#numpy.ndarray)</code> | Insample point forecasts of size (`base`, `insample_size`). | *required*
+`num_samples` | <code>[int](#int)</code> | int, number of bootstraped samples generated. | <code>100</code>
+`seed` | <code>[int](#int)</code> | int, random seed for numpy generator's replicability. | <code>0</code>
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Puwasala Gamakumara Ph. D. dissertation. Monash University, Econometrics and Business Statistics (2020). "Probabilistic Forecast Reconciliation"](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
+- [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J. (2022). "Probabilistic forecast reconciliation: Properties, evaluation and score optimisation". European Journal of Operational Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+
+</details>
+
+#### `Bootstrap.get_samples`
+
+```python
+get_samples(num_samples)
+```
+
+Bootstrap Sample Reconciliation Method.
+
+Applies Bootstrap sample reconciliation method as defined by Gamakumara 2020.
+Generating independent sample paths and reconciling them with Bootstrap.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | int, number of samples generated from coherent distribution. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` |  | Coherent samples of size (`base`, `horizon`, `num_samples`).
+
+
+## 3. PERMBU
+
+### `PERMBU`
+
+```python
+PERMBU(S, tags, y_hat, y_insample, y_hat_insample, sigmah, num_samples=None, seed=0, P=None)
+```
+
+PERMBU Probabilistic Reconciliation Class.
+
+The PERMBU method leverages empirical bottom-level marginal distributions
+with empirical copula functions (describing bottom-level dependencies) to
+generate the distribution of aggregate-level distributions using BottomUp
+reconciliation. The sample reordering technique in the PERMBU method reinjects
+multivariate dependencies into independent bottom-level samples.
+
+```math
+residuals = \hat{\epsilon}_{i,t}
+```
+
+Algorithm:
+1. For all series compute conditional marginals distributions.
+2. Compute `residuals` and obtain rank permutations.
+3. Obtain K-sample from the bottom-level series predictions.
+4. Apply recursively through the hierarchical structure:
+    1. For a given aggregate series $i$ and its children series:
+    2. Obtain children's empirical joint using sample reordering copula.
+    3. From the children's joint obtain the aggregate series's samples.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`S` | <code>[array](#numpy.array)</code> | summing matrix of size (`base`, `bottom`). | *required*
+`tags` | <code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | Each key is a level and each value its `S` indices. | *required*
+`y_insample` | <code>[array](#numpy.array)</code> | Insample values of size (`base`, `insample_size`). | *required*
+`y_hat_insample` | <code>[array](#numpy.array)</code> | Insample point forecasts of size (`base`, `insample_size`). | *required*
+`sigmah` | <code>[array](#numpy.array)</code> | forecast standard dev. of size (`base`, `horizon`). | *required*
+`num_samples` | <code>[int](#int)</code> | number of normal prediction samples generated. Default is None | <code>None</code>
+`seed` | <code>[int](#int)</code> | random seed for numpy generator's replicability. Default is 0. | <code>0</code>
+
+<details class="references" open markdown="1">
+<summary>References</summary>
+
+- [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017). "Coherent probabilistic forecasts for hierarchical time series. International conference on machine learning ICML."](https://proceedings.mlr.press/v70/taieb17a.html)
+
+</details>
+
+#### `PERMBU.get_samples`
+
+```python
+get_samples(num_samples=None)
+```
+
+PERMBU Sample Reconciliation Method.
+
+Applies PERMBU reconciliation method as defined by Taieb et. al 2017.
+Generating independent base prediction samples, restoring its multivariate
+dependence using estimated copula with reordering and applying the BottomUp
+aggregation to the new samples.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`num_samples` | <code>[int](#int)</code> | number of samples generated from coherent distribution. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`samples` | <code>[ndarray](#numpy.ndarray)</code> | Coherent samples of size (`base`, `horizon`, `num_samples`).
+
+
+## References
+
+- [Rob J. Hyndman and George Athanasopoulos (2018). “Forecasting
+    principles and practice, Reconciled distributional
+    forecasts”.](https://otexts.com/fpp3/rec-prob.html)
+- [Puwasala Gamakumara Ph. D. dissertation. Monash University,
+    Econometrics and Business Statistics (2020). “Probabilistic Forecast
+    Reconciliation”](https://bridges.monash.edu/articles/thesis/Probabilistic_Forecast_Reconciliation_Theory_and_Applications/11869533)
+- [Panagiotelis A., Gamakumara P. Athanasopoulos G., and Hyndman R. J.
+    (2022). “Probabilistic forecast reconciliation: Properties,
+    evaluation and score optimisation”. European Journal of Operational
+    Research.](https://www.sciencedirect.com/science/article/pii/S0377221722006087)
+- [Taieb, Souhaib Ben and Taylor, James W and Hyndman, Rob J. (2017).
+    Coherent probabilistic forecasts for hierarchical time series.
+    International conference on machine learning
+    ICML.](https://proceedings.mlr.press/v70/taieb17a.html)

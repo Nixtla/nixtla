@@ -1,0 +1,415 @@
+---
+title: Hierarchical Forecasting at Scale
+---
+
+> Practical tips to improve performance when reconciling large
+> hierarchies
+
+When working with hierarchies containing thousands or millions of time
+series, default settings can lead to slow reconciliation and high memory
+usage. This guide covers concrete steps to improve performance.
+
+We will cover: 1. Using Polars instead of Pandas 2. Using sparse S
+matrices via `aggregate(..., sparse_s=True)` 3. Telling the library your
+data is balanced 4. Using sparse reconciliation methods 5. Choosing the
+right reconciliation method for your scale 6. Parallelizing non-negative
+reconciliation 7. Avoiding unnecessary computation 8. Profiling your
+pipeline
+
+## 1. Libraries
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+
+```python
+import time
+import numpy as np
+import polars as pl
+
+from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
+
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoARIMA, Naive
+
+from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import (
+    BottomUp,
+    BottomUpSparse,
+    MinTrace,
+    MinTraceSparse,
+)
+from hierarchicalforecast.utils import CodeTimer
+```
+
+## 2. Load Data
+
+We use the `TourismSmall` dataset for demonstration. The same principles
+apply to much larger hierarchies.
+
+```python
+group_name = 'TourismSmall'
+group = HierarchicalInfo.get_group(group_name)
+Y_df, S_df, tags = HierarchicalData.load('./data', group_name)
+
+# Convert to Polars (see Tip 1 below)
+Y_df = pl.from_pandas(Y_df).with_columns(pl.col('ds').cast(pl.Date))
+S_df = pl.from_pandas(S_df.reset_index(names='unique_id'))
+
+# Train/test split
+Y_test_df = Y_df.group_by('unique_id').tail(group.horizon)
+Y_train_df = Y_df.filter(pl.col('ds') < Y_test_df['ds'].min())
+```
+
+## 3. Base Forecasts
+
+```python
+fcst = StatsForecast(
+    models=[AutoARIMA(season_length=group.seasonality), Naive()],
+    freq='1q',
+    n_jobs=-1,
+)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=group.horizon, fitted=True)
+Y_fitted_df = fcst.forecast_fitted_values()
+```
+
+### Tip 1: Use Polars instead of Pandas
+
+`HierarchicalForecast` supports both Pandas and Polars DataFrames
+transparently via [Narwhals](https://narwhals-dev.github.io/narwhals/).
+Polars is generally faster for the DataFrame operations used internally
+(sorting, joining, pivoting) and uses less memory due to Apache Arrow
+columnar storage.
+
+Simply pass Polars DataFrames to `reconcile()` — no code changes needed
+beyond the data loading step:
+
+```python
+# Instead of pandas DataFrames, convert to Polars:
+import polars as pl
+
+Y_df = pl.from_pandas(Y_df)
+S_df = pl.from_pandas(S_df)
+```
+
+If you use `aggregate()` to build your hierarchy, pass a Polars
+DataFrame directly:
+
+```python
+from hierarchicalforecast.utils import aggregate
+
+Y_df, S_df, tags = aggregate(df=pl.from_pandas(df), spec=[...]) 
+```
+
+### Tip 2: Use `sparse_s=True` in `aggregate()`
+
+By default, `aggregate()` returns the summing matrix **S** as a dense
+DataFrame. For large hierarchies this can be expensive — a hierarchy
+with 100k series and 50k bottom-level series produces a 100k x 50k dense
+matrix (~40 GB in float64).
+
+Setting `sparse_s=True` returns an `SMatrix` object that keeps **S** as
+a `scipy.sparse` matrix throughout the pipeline, materialising dense
+arrays only when needed:
+
+```python
+from hierarchicalforecast.utils import aggregate
+
+Y_df, S_df, tags = aggregate(df=df, spec=spec, sparse_s=True)
+# S_df is now an SMatrix — pass it directly to reconcile()
+```
+
+`SMatrix` works transparently with both Pandas and Polars inputs, and is
+accepted directly by `reconcile()`:
+
+```python
+hrec = HierarchicalReconciliation(reconcilers=[MinTraceSparse(method='ols')])
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+```
+
+For the best performance, pass the returned `SMatrix` directly to
+`reconcile()`. The library knows that matrices created by `aggregate()`
+are valid, so repeated reconciliation calls avoid unnecessary checks.
+
+**When to use**: Always beneficial for large hierarchies (thousands of
+bottom-level series). For small hierarchies the overhead is negligible
+either way, so `sparse_s=True` is a safe explicit choice.
+
+### Tip 3: Set `is_balanced=True`
+
+If all your time series have the same number of observations (same start
+and end dates), set `is_balanced=True` in `reconcile()`. This skips an
+expensive `pivot()` operation and uses a fast `reshape` instead.
+
+```python
+Y_rec_df = hrec.reconcile(
+    Y_hat_df=Y_hat_df, S_df=S_df, tags=tags,
+    is_balanced=True,  # <-- skip pivot, use fast reshape
+)
+```
+
+**When can you use this?** Most hierarchical datasets are balanced —
+every series has observations at every time step. If you built your
+hierarchy with `aggregate()`, the result is always balanced.
+
+```python
+# Demonstrate the speedup from is_balanced
+reconcilers = [BottomUp()]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+
+with CodeTimer('is_balanced=False (default)', verbose=True):
+    _ = hrec.reconcile(
+        Y_hat_df=Y_hat_df, S_df=S_df, tags=tags,
+        is_balanced=False,
+    )
+
+with CodeTimer('is_balanced=True', verbose=True):
+    _ = hrec.reconcile(
+        Y_hat_df=Y_hat_df, S_df=S_df, tags=tags,
+        is_balanced=True,
+    )
+```
+
+### Tip 4: Use Sparse Reconciliation Methods
+
+For large hierarchies, the dense summing matrix **S** (shape:
+`n_hiers × n_bottom`) can consume significant memory and slow down
+matrix operations. Sparse methods use `scipy.sparse` matrices and
+iterative solvers instead of dense linear algebra.
+
+The library provides sparse variants of the main methods:
+
+| Dense Method                    | Sparse Variant                        | Notes                            |
+|------------------------|------------------------|------------------------|
+| `BottomUp()`                    | `BottomUpSparse()`                    | Drop-in replacement              |
+| `TopDown(...)`                  | `TopDownSparse(...)`                  | Strictly hierarchical data only  |
+| `MiddleOut(...)`                | `MiddleOutSparse(...)`                | Strictly hierarchical data only  |
+| `MinTrace(method='ols')`        | `MinTraceSparse(method='ols')`        | Uses iterative `bicgstab` solver |
+| `MinTrace(method='wls_struct')` | `MinTraceSparse(method='wls_struct')` | Uses iterative `bicgstab` solver |
+| `MinTrace(method='wls_var')`    | `MinTraceSparse(method='wls_var')`    | Uses iterative `bicgstab` solver |
+
+`MinTraceSparse` constructs a `scipy.sparse.linalg.LinearOperator` for
+the projection matrix **P** and solves the system iteratively with
+`bicgstab`, avoiding materialization of the full dense P matrix.
+
+**When to use sparse methods**: When your hierarchy has thousands of
+bottom-level series or more. For small hierarchies (\< 500 series), the
+overhead of sparse operations may negate the savings.
+
+**Combine with `sparse_s=True`**: For maximum benefit, use sparse
+methods together with `aggregate(..., sparse_s=True)` (Tip 2). This
+keeps the entire pipeline sparse — from S construction through
+reconciliation.
+
+```python
+# Compare dense vs sparse methods
+dense_reconcilers = [
+    BottomUp(),
+    MinTrace(method='ols'),
+    MinTrace(method='wls_struct'),
+]
+sparse_reconcilers = [
+    BottomUpSparse(),
+    MinTraceSparse(method='ols'),
+    MinTraceSparse(method='wls_struct'),
+]
+
+hrec_dense = HierarchicalReconciliation(reconcilers=dense_reconcilers)
+hrec_sparse = HierarchicalReconciliation(reconcilers=sparse_reconcilers)
+
+with CodeTimer('Dense methods', verbose=True):
+    Y_rec_dense = hrec_dense.reconcile(
+        Y_hat_df=Y_hat_df, S_df=S_df, tags=tags, is_balanced=True,
+    )
+
+with CodeTimer('Sparse methods', verbose=True):
+    Y_rec_sparse = hrec_sparse.reconcile(
+        Y_hat_df=Y_hat_df, S_df=S_df, tags=tags, is_balanced=True,
+    )
+```
+
+### Tip 5: Choose the Right Reconciliation Method
+
+Reconciliation methods vary significantly in computational cost. Here is
+a rough ranking from fastest to slowest:
+
+| Speed   | Method                                      | Requires insample data? | Notes                                              |
+|------------------|------------------|------------------|------------------|
+| Fastest | `BottomUp` / `BottomUpSparse`               | No                      | Simple aggregation, no optimization                |
+| Fast    | `TopDown` / `TopDownSparse`                 | Depends on variant      | Strictly hierarchical only                         |
+| Fast    | `MinTrace(method='ols')`                    | No                      | Closed-form, `np.linalg.solve`                     |
+| Fast    | `MinTrace(method='wls_struct')`             | No                      | Closed-form, weighted by hierarchy structure       |
+| Medium  | `MinTraceSparse(method='ols'/'wls_struct')` | No                      | Iterative solver; better for very large S          |
+| Medium  | `MinTrace(method='wls_var')`                | Yes                     | Diagonal covariance from residuals                 |
+| Slow    | `MinTrace(method='mint_shrink')`            | Yes                     | Full covariance with shrinkage (Numba-accelerated) |
+| Slow    | `MinTrace(method='mint_cov')`               | Yes                     | Full empirical covariance (Numba-accelerated)      |
+| Slow    | `ERM(method='closed')`                      | Yes                     | Pseudoinverse on large matrices                    |
+| Slowest | `ERM(method='reg')`                         | Yes                     | Lasso coordinate descent (iterative)               |
+| +Cost   | Any method with `nonnegative=True`          | —                       | Adds a QP solve per horizon step                   |
+
+**Key takeaways**: - `BottomUp` and `MinTrace(method='ols')` are the
+cheapest and don’t require insample data (`Y_df`). - Methods requiring
+insample residuals (`wls_var`, `mint_shrink`, `mint_cov`) need the
+`Y_df` argument passed to `reconcile()`. Omitting `Y_df` when not needed
+saves computation. - For very large hierarchies, prefer `MinTraceSparse`
+over `MinTrace` to avoid dense matrix operations. - `mint_shrink` and
+`mint_cov` compute a full n×n covariance matrix — this scales
+quadratically with the number of series.
+
+### Tip 6: Parallelize Non-Negative Reconciliation
+
+When using `nonnegative=True`, a quadratic programming (QP) problem is
+solved for each forecast horizon step. Use `num_threads` to parallelize
+these independent QP calls:
+
+```python
+MinTrace(method='ols', nonnegative=True, num_threads=4)
+MinTraceSparse(method='ols', nonnegative=True, num_threads=4)
+```
+
+The `num_threads` parameter controls the `ThreadPoolExecutor` pool size.
+Set it to the number of available CPU cores. Note that `num_threads`
+only takes effect when `nonnegative=True`.
+
+`MinTraceSparse` also offers a `qp` parameter (default `True`). Setting
+`qp=False` replaces the full QP solve with simple clipping of negative
+values — much faster but lower quality:
+
+```python
+# Fast non-negative approximation (clipping)
+MinTraceSparse(method='ols', nonnegative=True, qp=False)
+
+# Full QP solve with parallelism (more accurate)
+MinTraceSparse(method='ols', nonnegative=True, qp=True, num_threads=4)
+```
+
+### Tip 7: Avoid Unnecessary Computation
+
+**Skip probabilistic forecasts when not needed.** If you only need point
+forecasts, don’t pass the `level` parameter:
+
+```python
+# Point forecasts only (fast)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+
+# With prediction intervals (slower)
+Y_rec_df = hrec.reconcile(
+    Y_hat_df=Y_hat_df, S_df=S_df, tags=tags,
+    Y_df=Y_fitted_df,
+    level=[80, 95],
+    intervals_method='normality',  # cheapest interval method
+)
+```
+
+If you do need intervals, `intervals_method='normality'` is the cheapest
+option. The `'bootstrap'` and `'permbu'` methods require many
+re-evaluations and are significantly slower.
+
+**Skip diagnostics in production.** The `diagnostics=True` flag computes
+coherence checks across all forecasts — useful for debugging but adds
+overhead:
+
+```python
+# During development
+Y_rec_df = hrec.reconcile(..., diagnostics=True)
+
+# In production
+Y_rec_df = hrec.reconcile(..., diagnostics=False)  # default
+```
+
+**Don’t pass insample data when not needed.** Methods like `BottomUp`,
+`TopDown(method='forecast_proportions')`, `MinTrace(method='ols')`, and
+`MinTrace(method='wls_struct')` don’t use insample data. Omitting `Y_df`
+skips the data preparation for insample values:
+
+```python
+# These methods don't need Y_df
+reconcilers = [BottomUp(), MinTrace(method='ols')]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, S_df=S_df, tags=tags)
+#                         ^^^^^^ no Y_df argument needed
+```
+
+### Tip 8: Profile Your Pipeline
+
+`HierarchicalForecast` provides built-in profiling tools to identify
+bottlenecks.
+
+**`execution_times` attribute**: After calling `reconcile()`, the
+`HierarchicalReconciliation` instance exposes a dictionary of per-method
+execution times:
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='ols'),
+    MinTrace(method='wls_var'),
+    MinTrace(method='mint_shrink'),
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(
+    Y_hat_df=Y_hat_df, Y_df=Y_fitted_df,
+    S_df=S_df, tags=tags, is_balanced=True,
+)
+
+# Inspect per-method timing
+for method_name, elapsed in hrec.execution_times.items():
+    print(f'{method_name}: {elapsed:.4f}s')
+```
+
+``` text
+AutoARIMA/BottomUp: 0.0008s
+Naive/BottomUp: 0.0005s
+AutoARIMA/MinTrace_method-ols: 0.0012s
+Naive/MinTrace_method-ols: 0.0010s
+AutoARIMA/MinTrace_method-wls_var: 0.0011s
+Naive/MinTrace_method-wls_var: 0.0009s
+AutoARIMA/MinTrace_method-mint_shrink: 0.0186s
+Naive/MinTrace_method-mint_shrink: 0.0122s
+```
+
+**`CodeTimer` context manager**: Use this to time any block of code in
+your pipeline:
+
+```python
+with CodeTimer('Full reconciliation pipeline', verbose=True):
+    reconcilers = [MinTraceSparse(method='ols')]
+    hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+    Y_rec_df = hrec.reconcile(
+        Y_hat_df=Y_hat_df, S_df=S_df, tags=tags, is_balanced=True,
+    )
+```
+
+## 5. Summary Checklist
+
+Here is a quick checklist to optimize your hierarchical forecasting
+pipeline:
+
+| Tip                | Action                                            | Impact                                       |
+|------------------|---------------------------|---------------------------|
+| Use Polars         | Pass Polars DataFrames instead of Pandas          | Faster DataFrame ops, lower memory           |
+| `sparse_s=True`    | Use `aggregate(..., sparse_s=True)`               | Keeps S sparse, avoids dense materialisation |
+| `is_balanced=True` | Set when all series have equal length             | Skips expensive pivot                        |
+| Sparse methods     | Use `BottomUpSparse`, `MinTraceSparse`, etc.      | Less memory, iterative solvers               |
+| Right method       | Start with `BottomUp` or `MinTrace(method='ols')` | Avoid unnecessary covariance computation     |
+| `num_threads`      | Set \>1 when using `nonnegative=True`             | Parallel QP solves                           |
+| Skip intervals     | Omit `level` parameter for point forecasts        | Avoids sampling/interval computation         |
+| Skip `Y_df`        | Omit when reconciler doesn’t need insample data   | Skips data preparation                       |
+| Profile            | Check `hrec.execution_times` and use `CodeTimer`  | Find bottlenecks                             |
+
+### References
+
+-   [Wickramasuriya, S. L., Athanasopoulos, G., & Hyndman, R. J. (2019).
+    “Optimal forecast reconciliation for hierarchical and grouped time
+    series through trace minimization”. Journal of the American
+    Statistical Association, 114,
+    804-819.](https://robjhyndman.com/publications/mint/)
+-   [Wickramasuriya, S.L., Turlach, B.A. & Hyndman, R.J. (2020).
+    “Optimal non-negative forecast reconciliation”. Stat Comput 30,
+    1167-1182.](https://robjhyndman.com/publications/nnmint/)
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne,
+    Australia.](https://otexts.com/fpp3/hierarchical.html)
+

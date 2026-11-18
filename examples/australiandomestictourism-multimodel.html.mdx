@@ -1,0 +1,388 @@
+---
+title: Multi-model Aggregation
+---
+
+> Geographical Hierarchical Forecasting on Australian Tourism Data using
+> multiple models for each level in the hierarchy.
+
+This notebook extends the classic Australian Domestic Tourism
+(`Tourism`) geographical aggregation example to showcase how
+`HierarchicalForecast` can be used to produce coherent forecasts when
+**different forecasting models are applied at each level of the
+hierarchy**. We will use the `Tourism` dataset, which contains monthly
+time series of the number of visitors to each state of Australia.
+
+Specifically, we will demonstrate fitting a diverse set of models across
+the hierarchical levels. This includes statistical models like `AutoETS`
+from `StatsForecast`, machine learning models such as
+`HistGradientBoostingRegressor` using `MLForecast`, and neural network
+models like `NBEATS` from `NeuralForecast`. After generating these base
+forecasts, we will reconcile them using `BottomUp`,
+`MinTrace(mint_shrink)`, `TopDown(forecast_proportions)` reconciliators
+from `HierarchicalForecast`.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href='https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/AustralianDomesticTourism-Multimodel.ipynb' target='_parent'><img src='https://colab.research.google.com/assets/colab-badge.svg' alt='Open In Colab'/></a>
+
+```python
+!pip install hierarchicalforecast statsforecast mlforecast datasetsforecast neuralforecast
+```
+
+## 1. Load and Process Data
+
+In this example we will use the
+[Tourism](https://otexts.com/fpp3/tourism.html) dataset from the
+[Forecasting: Principles and Practice](https://otexts.com/fpp3/) book.
+
+The dataset only contains the time series at the lowest level, so we
+need to create the time series for all hierarchies.
+
+```python
+import numpy as np
+import pandas as pd
+```
+
+
+```python
+Y_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/tourism.csv')
+Y_df = Y_df.rename({'Trips': 'y', 'Quarter': 'ds'}, axis=1)
+Y_df.insert(0, 'Country', 'Australia')
+Y_df = Y_df[['Country', 'Region', 'State', 'ds', 'y']]
+Y_df['ds'] = Y_df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True)
+Y_df['ds'] = pd.PeriodIndex(Y_df['ds'], freq='Q').to_timestamp()
+Y_df_first = Y_df.groupby(['Country', 'Region', 'State', 'ds'], as_index=False).agg({'y':'sum'})
+Y_df_first.head()
+```
+
+|     | Country   | Region   | State           | ds         | y          |
+|-----|-----------|----------|-----------------|------------|------------|
+| 0   | Australia | Adelaide | South Australia | 1998-01-01 | 658.553895 |
+| 1   | Australia | Adelaide | South Australia | 1998-04-01 | 449.853935 |
+| 2   | Australia | Adelaide | South Australia | 1998-07-01 | 592.904597 |
+| 3   | Australia | Adelaide | South Australia | 1998-10-01 | 524.242760 |
+| 4   | Australia | Adelaide | South Australia | 1999-01-01 | 548.394105 |
+
+The dataset can be grouped in the following hierarchical structure.
+
+```python
+spec = [
+    ['Country'],
+    ['Country', 'State'],
+    ['Country', 'State', 'Region']
+]
+```
+
+Using the `aggregate` function from `HierarchicalForecast` we can get
+the full set of time series.
+
+```python
+from hierarchicalforecast.utils import aggregate
+```
+
+
+```python
+Y_df, S_df, tags = aggregate(Y_df_first, spec)
+```
+
+### Split Train/Test sets
+
+We use the final two years (8 quarters) as test set.
+
+```python
+Y_test_df = Y_df.groupby('unique_id', as_index=False).tail(8)
+Y_train_df = Y_df.drop(Y_test_df.index)
+```
+
+## 2. Computing different models for different hierarchies
+
+In this section, we illustrate how to fit a different type of model for
+each level of the hierarchy. In particular, for each level, we will fit
+the following models:
+
+-   **Country**: `AutoETS` model from `StatsForecast`.
+-   **Country/State**: `HistGradientBoostingRegressor` model from
+    `scikit-learn` through the `MLForecast` API.
+-   **Country/State/Region**: `NBEATS` model from `NeuralForecast`.
+
+```python
+
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoETS
+
+from mlforecast import MLForecast
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+from neuralforecast import NeuralForecast
+from neuralforecast.models import NBEATS
+```
+
+This `fit_predict_any_models` function is a helper function for training
+and forecasting with models from `StatsForecast`, `MLForecast`, and
+`NeuralForecast`.
+
+```python
+def fit_predict_any_models(models, df, h):
+    if isinstance(models, StatsForecast):
+        yhat = models.forecast(df=df, h=h, fitted=True)
+        yfitted = models.forecast_fitted_values()
+    elif isinstance(models, MLForecast):
+        models.fit(df, fitted=True)
+        yhat = models.predict(new_df=df, h=h)
+        yfitted = models.forecast_fitted_values()
+
+    elif isinstance(models, NeuralForecast):
+        models.fit(df=df, val_size=h)
+        yhat = models.predict()
+        yfitted = models.predict_insample(step_size=h)
+        yfitted = yfitted.drop(columns=['cutoff'])
+    else:
+        raise ValueError("Model is not a StatsForecast, MLForecast or NeuralForecast object.")
+
+    return yhat, yfitted
+```
+
+We now define the models that we want to use.
+
+```python
+h = 8
+stat_models = StatsForecast(models=[AutoETS(season_length=4, model='ZZA')], freq='QS', n_jobs=-1)
+ml_models = MLForecast(models = [HistGradientBoostingRegressor()], freq='QS', lags=[1, 4])
+neural_models = NeuralForecast(models=[NBEATS(h=h, input_size=16)],freq='QS')
+```
+
+We have defined a hierarchy consisting of three levels. We will use the
+different model types for each of the levels in the hierarchy.
+
+```python
+models = {
+    'Country': stat_models,
+    'Country/State': ml_models,
+    'Country/State/Region': neural_models
+}
+```
+
+To fit each model and create forecasts with it, we loop over the
+timeseries that are present in each level of the hierarchy, using the
+`tags` we created earlier using the `aggregate` function.
+
+```python
+
+Y_hat = []
+Y_fitted = []
+# We loop through the tags to fit and predict for each level of the hierarchy.
+for key, value in tags.items():
+    # We filter the training dataframe for the current level of the hierarchy.
+    df_level = Y_train_df.query('unique_id.isin(@value)')
+    # We fit and predict using the corresponding model for the current level.
+    yhat_level, yfitted_level = fit_predict_any_models(models[key], df_level, h=h)
+    # We add the predictions for this level
+    Y_hat.append(yhat_level)
+    Y_fitted.append(yfitted_level)
+
+# Concatenate the predictions for all levels into a single DataFrame
+Y_hat_df = pd.concat(Y_hat, ignore_index=True)
+Y_fitted_df = pd.concat(Y_fitted, ignore_index=True)
+```
+
+We have now created forecasts for different levels of the hierarchy,
+using different model types. Let’s look at the forecasts.
+
+```python
+Y_hat_df.head(10)
+```
+
+|     | unique_id     | ds         | AutoETS      | HistGradientBoostingRegressor | NBEATS |
+|-----|---------------|------------|--------------|-------------------------------|--------|
+| 0   | Australia     | 2016-01-01 | 25990.068004 | NaN                           | NaN    |
+| 1   | Australia     | 2016-04-01 | 24458.490282 | NaN                           | NaN    |
+| 2   | Australia     | 2016-07-01 | 23974.055984 | NaN                           | NaN    |
+| 3   | Australia     | 2016-10-01 | 24563.454495 | NaN                           | NaN    |
+| 4   | Australia     | 2017-01-01 | 25990.068004 | NaN                           | NaN    |
+| 5   | Australia     | 2017-04-01 | 24458.490282 | NaN                           | NaN    |
+| 6   | Australia     | 2017-07-01 | 23974.055984 | NaN                           | NaN    |
+| 7   | Australia     | 2017-10-01 | 24563.454495 | NaN                           | NaN    |
+| 8   | Australia/ACT | 2016-01-01 | NaN          | 571.433902                    | NaN    |
+| 9   | Australia/ACT | 2016-04-01 | NaN          | 548.060532                    | NaN    |
+
+As you can see, `AutoETS` only has entries for the
+`unique_id=Australia`, which is because we only created forecasts for
+the level `Country` using `AutoETS`.
+
+Secondly, we also only have forecasts using
+`HistGradientBoostingRegressor` for timeseries in the level
+`Country/State`, again as we only created forecasts for the level
+`Country/State` using `HistGradientBoostingRegressor`.
+
+Finally, `NBEATS` shows no forecasts at all in this view, but when we
+look at the tail of the predictions we see that `NBEATS` only has
+forecasts for the level `Country/State/Region`, which was also what we
+intended to create.
+
+```python
+Y_hat_df.tail(10)
+```
+
+|     | unique_id                                         | ds         | AutoETS | HistGradientBoostingRegressor | NBEATS      |
+|-----|---------------------------------------------------|------------|---------|-------------------------------|-------------|
+| 670 | Australia/Western Australia/Australia's South ... | 2017-07-01 | NaN     | NaN                           | 416.720154  |
+| 671 | Australia/Western Australia/Australia's South ... | 2017-10-01 | NaN     | NaN                           | 605.681030  |
+| 672 | Australia/Western Australia/Experience Perth      | 2016-01-01 | NaN     | NaN                           | 1139.827393 |
+| 673 | Australia/Western Australia/Experience Perth      | 2016-04-01 | NaN     | NaN                           | 1017.152527 |
+| 674 | Australia/Western Australia/Experience Perth      | 2016-07-01 | NaN     | NaN                           | 917.289673  |
+| 675 | Australia/Western Australia/Experience Perth      | 2016-10-01 | NaN     | NaN                           | 1141.263062 |
+| 676 | Australia/Western Australia/Experience Perth      | 2017-01-01 | NaN     | NaN                           | 1134.063477 |
+| 677 | Australia/Western Australia/Experience Perth      | 2017-04-01 | NaN     | NaN                           | 1021.346558 |
+| 678 | Australia/Western Australia/Experience Perth      | 2017-07-01 | NaN     | NaN                           | 839.628418  |
+| 679 | Australia/Western Australia/Experience Perth      | 2017-10-01 | NaN     | NaN                           | 972.161499  |
+
+## 3. Reconcile forecasts
+
+First, we need to make sure we have one forecast column containing all
+the forecasts across all the levels, as we want to reconcile the
+forecasts across the levels. We do so by taking the mean across the
+forecast columns. In this case, because there’s only a single entry for
+each unique_id, it would be equivalent to just combine or sum the
+forecast columns. However, you might want to use more than one model
+*per level* in the hierarchy. In that case, you’d need to think about
+how to ensemble the multiple forecasts - a simple mean ensemble
+generally works well in those cases, so you can directly use the below
+code also for the more complex case where you have multiple models for
+each level.
+
+```python
+forecast_cols = [col for col in Y_hat_df.columns if col not in ['unique_id', 'ds', 'y']]
+Y_hat_df["all_forecasts"] = Y_hat_df[forecast_cols].mean(axis=1)
+Y_fitted_df["all_forecasts"] = Y_fitted_df[forecast_cols].mean(axis=1)
+```
+
+As we can see, we now have a single column `all_forecasts` that includes
+the forecasts across all the levels:
+
+```python
+Y_hat_df.head(10)
+```
+
+|     | unique_id     | ds         | AutoETS      | HistGradientBoostingRegressor | NBEATS | all_forecasts |
+|-----|---------------|------------|--------------|-------------------------------|--------|---------------|
+| 0   | Australia     | 2016-01-01 | 25990.068004 | NaN                           | NaN    | 25990.068004  |
+| 1   | Australia     | 2016-04-01 | 24458.490282 | NaN                           | NaN    | 24458.490282  |
+| 2   | Australia     | 2016-07-01 | 23974.055984 | NaN                           | NaN    | 23974.055984  |
+| 3   | Australia     | 2016-10-01 | 24563.454495 | NaN                           | NaN    | 24563.454495  |
+| 4   | Australia     | 2017-01-01 | 25990.068004 | NaN                           | NaN    | 25990.068004  |
+| 5   | Australia     | 2017-04-01 | 24458.490282 | NaN                           | NaN    | 24458.490282  |
+| 6   | Australia     | 2017-07-01 | 23974.055984 | NaN                           | NaN    | 23974.055984  |
+| 7   | Australia     | 2017-10-01 | 24563.454495 | NaN                           | NaN    | 24563.454495  |
+| 8   | Australia/ACT | 2016-01-01 | NaN          | 571.433902                    | NaN    | 571.433902    |
+| 9   | Australia/ACT | 2016-04-01 | NaN          | 548.060532                    | NaN    | 548.060532    |
+
+We are now ready to make the forecasts coherent using the
+`HierarchicalReconciliation` class. In this example we use `BottomUp`,
+`MinTrace(mint_shrink)`, `TopDown(forecast_proportions)` reconcilers.
+
+```python
+from hierarchicalforecast.methods import BottomUp, MinTrace, TopDown
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='mint_shrink'),
+    TopDown(method='forecast_proportions')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df[["unique_id", "ds", "all_forecasts"]], Y_df=Y_fitted_df[["unique_id", "ds", "y", "all_forecasts"]], S_df=S_df, tags=tags)
+```
+
+The dataframe `Y_rec_df` contains the reconciled forecasts.
+
+```python
+Y_rec_df.head()
+```
+
+|     | unique_id | ds         | all_forecasts | all_forecasts/BottomUp | all_forecasts/MinTrace_method-mint_shrink | all_forecasts/TopDown_method-forecast_proportions |
+|-----|-----------|------------|---------------|------------------------|-------------------------------------------|---------------------------------------------------|
+| 0   | Australia | 2016-01-01 | 25990.068004  | 24916.914513           | 25959.517939                              | 25990.068004                                      |
+| 1   | Australia | 2016-04-01 | 24458.490282  | 22867.133526           | 24656.012177                              | 24458.490282                                      |
+| 2   | Australia | 2016-07-01 | 23974.055984  | 22845.050221           | 24933.182437                              | 23974.055984                                      |
+| 3   | Australia | 2016-10-01 | 24563.454495  | 23901.916314           | 26382.869677                              | 24563.454495                                      |
+| 4   | Australia | 2017-01-01 | 25990.068004  | 25246.089151           | 26923.282464                              | 25990.068004                                      |
+
+## 4. Evaluation
+
+The `HierarchicalForecast` package includes an `evaluate` function to
+evaluate the different hierarchies. To evaluate models we use `mase`
+metric and compare it to base predictions.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mase
+from functools import partial
+```
+
+
+```python
+eval_tags = {}
+eval_tags['Total'] = tags['Country']
+eval_tags['State'] = tags['Country/State']
+eval_tags['Regions'] = tags['Country/State/Region']
+
+df = Y_rec_df.merge(Y_test_df, on=['unique_id', 'ds'])
+evaluation = evaluate(df = df,
+                      tags = eval_tags,
+                      train_df = Y_train_df,
+                      metrics = [partial(mase, seasonality=4)])
+```
+
+
+```python
+evaluation
+```
+
+|     | level   | metric | all_forecasts | all_forecasts/BottomUp | all_forecasts/MinTrace_method-mint_shrink | all_forecasts/TopDown_method-forecast_proportions |
+|-----|---------|--------|---------------|------------------------|-------------------------------------------|---------------------------------------------------|
+| 0   | Total   | mase   | 1.589074      | 3.002085               | 0.440261                                  | 1.589074                                          |
+| 1   | State   | mase   | 2.166374      | 1.905035               | 1.882345                                  | 2.361169                                          |
+| 2   | Regions | mase   | 1.342429      | 1.342429               | 1.423867                                  | 1.458773                                          |
+| 3   | Overall | mase   | 1.422878      | 1.414905               | 1.455446                                  | 1.545237                                          |
+
+We find that:
+
+-   **No Single Best Method**: The results indicate that there is no
+    universally superior reconciliation method. The optimal choice
+    depends on which level of the hierarchy is most important.
+-   **MinTrace for Country and Country/State**: The
+    `MinTrace(mint_shrink)` reconciler shows best performance for the
+    upper levels of the hierarchy, reducing the MASE from 1.59 (base
+    forecast) to just 0.44.
+-   **BottomUp for Country/State/Region and Overall**: The `BottomUp`
+    method preserves only the NBEATS forecast of the most granular
+    **Country/State/Regions** level, and aggregates those forecasts for
+    the upper levels. It yields the **best Overall MASE score**.
+
+## 6. Recap
+
+This notebook demonstrated the power and flexibility of
+HierarchicalForecast in a multi-model forecasting scenario.
+
+In this example we fitted:
+
+-   `StatsForecast` with `AutoETS` model for the **Country** level.
+-   `MLForecast` with `HistGradientBoostingRegressor` model for the
+    **Country/State** level.
+-   `NeuralForecast` with `NBEATS` model for the
+    **Country/State/Region** level.
+
+We then combined the results into a single prediction.
+
+For the reconciliation of the forecasts, we used
+`HierarchicalReconciliation` with three different methods:
+
+-   `BottomUp`
+-   `MinTrace(method='mint_shrink')`
+-   `TopDown(method='forecast_proportions')`
+
+Finally, we evaluated the performance of these reconciliation methods.
+

@@ -1,0 +1,208 @@
+---
+title: Quick Start (Polars)
+---
+
+> Minimal Example of Hierarchical Reconciliation using Polars
+
+Large collections of time series organized into structures at different
+aggregation levels often require their forecasts to follow their
+aggregation constraints, which poses the challenge of creating novel
+algorithms capable of coherent forecasts.
+
+The `HierarchicalForecast` package provides a wide collection of Python
+implementations of hierarchical forecasting algorithms that follow
+classic hierarchical reconciliation.
+
+In this notebook we will show how to use the `StatsForecast` library to
+produce base forecasts, and use `HierarchicalForecast` package to
+perform hierarchical reconciliation.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/TourismSmall.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+## 1. Libraries
+
+```python
+!pip install hierarchicalforecast statsforecast datasetsforecast
+```
+
+## 2. Load Data
+
+In this example we will use the `TourismSmall` dataset. The following
+cell gets the time series for the different levels in the hierarchy, the
+summing matrix `S` which recovers the full dataset from the bottom level
+hierarchy and the indices of each hierarchy denoted by `tags`.
+
+```python
+import numpy as np
+import polars as pl
+
+from datasetsforecast.hierarchical import HierarchicalData, HierarchicalInfo
+```
+
+
+```python
+group_name = 'TourismSmall'
+group = HierarchicalInfo.get_group(group_name)
+Y_df, S_df, tags = HierarchicalData.load('./data', group_name)
+
+Y_df = pl.from_pandas(Y_df)
+S_df = pl.from_pandas(S_df.reset_index(names="unique_id"))
+Y_df = Y_df.with_columns(pl.col('ds').cast(pl.Date))
+```
+
+
+```python
+S_df[:6, :6]
+```
+
+| unique_id | nsw-hol-city | nsw-hol-noncity | vic-hol-city | vic-hol-noncity | qld-hol-city |
+|-----------|--------------|-----------------|--------------|-----------------|--------------|
+| str       | f64          | f64             | f64          | f64             | f64          |
+| "total"   | 1.0          | 1.0             | 1.0          | 1.0             | 1.0          |
+| "hol"     | 1.0          | 1.0             | 1.0          | 1.0             | 1.0          |
+| "vfr"     | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| "bus"     | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| "oth"     | 0.0          | 0.0             | 0.0          | 0.0             | 0.0          |
+| "nsw-hol" | 1.0          | 1.0             | 0.0          | 0.0             | 0.0          |
+
+```python
+tags
+```
+
+``` text
+{'Country': array(['total'], dtype=object),
+ 'Country/Purpose': array(['hol', 'vfr', 'bus', 'oth'], dtype=object),
+ 'Country/Purpose/State': array(['nsw-hol', 'vic-hol', 'qld-hol', 'sa-hol', 'wa-hol', 'tas-hol',
+        'nt-hol', 'nsw-vfr', 'vic-vfr', 'qld-vfr', 'sa-vfr', 'wa-vfr',
+        'tas-vfr', 'nt-vfr', 'nsw-bus', 'vic-bus', 'qld-bus', 'sa-bus',
+        'wa-bus', 'tas-bus', 'nt-bus', 'nsw-oth', 'vic-oth', 'qld-oth',
+        'sa-oth', 'wa-oth', 'tas-oth', 'nt-oth'], dtype=object),
+ 'Country/Purpose/State/CityNonCity': array(['nsw-hol-city', 'nsw-hol-noncity', 'vic-hol-city',
+        'vic-hol-noncity', 'qld-hol-city', 'qld-hol-noncity',
+        'sa-hol-city', 'sa-hol-noncity', 'wa-hol-city', 'wa-hol-noncity',
+        'tas-hol-city', 'tas-hol-noncity', 'nt-hol-city', 'nt-hol-noncity',
+        'nsw-vfr-city', 'nsw-vfr-noncity', 'vic-vfr-city',
+        'vic-vfr-noncity', 'qld-vfr-city', 'qld-vfr-noncity',
+        'sa-vfr-city', 'sa-vfr-noncity', 'wa-vfr-city', 'wa-vfr-noncity',
+        'tas-vfr-city', 'tas-vfr-noncity', 'nt-vfr-city', 'nt-vfr-noncity',
+        'nsw-bus-city', 'nsw-bus-noncity', 'vic-bus-city',
+        'vic-bus-noncity', 'qld-bus-city', 'qld-bus-noncity',
+        'sa-bus-city', 'sa-bus-noncity', 'wa-bus-city', 'wa-bus-noncity',
+        'tas-bus-city', 'tas-bus-noncity', 'nt-bus-city', 'nt-bus-noncity',
+        'nsw-oth-city', 'nsw-oth-noncity', 'vic-oth-city',
+        'vic-oth-noncity', 'qld-oth-city', 'qld-oth-noncity',
+        'sa-oth-city', 'sa-oth-noncity', 'wa-oth-city', 'wa-oth-noncity',
+        'tas-oth-city', 'tas-oth-noncity', 'nt-oth-city', 'nt-oth-noncity'],
+       dtype=object)}
+```
+
+We split the dataframe in train/test splits.
+
+```python
+Y_test_df = Y_df.group_by('unique_id').tail(group.horizon)
+Y_train_df = Y_df.filter(pl.col('ds') < Y_test_df['ds'].min())
+```
+
+## 3. Base forecasts
+
+The following cell computes the *base forecast* for each time series
+using the `auto_arima` and `naive` models. Observe that `Y_hat_df`
+contains the forecasts but they are not coherent.
+
+```python
+from statsforecast.core import StatsForecast
+from statsforecast.models import AutoARIMA, Naive
+```
+
+
+```python
+fcst = StatsForecast(
+    models=[AutoARIMA(season_length=group.seasonality), Naive()], 
+    freq="1q", 
+    n_jobs=-1
+)
+Y_hat_df = fcst.forecast(df=Y_train_df, h=group.horizon)
+```
+
+## 4. Hierarchical reconciliation
+
+The following cell makes the previous forecasts coherent using the
+`HierarchicalReconciliation` class. The used methods to make the
+forecasts coherent are:
+
+-   `BottomUp`: The reconciliation of the method is a simple addition to
+    the upper levels.
+-   `TopDown`: The second method constrains the base-level predictions
+    to the top-most aggregate-level serie and then distributes it to the
+    disaggregate series through the use of proportions.
+-   `MiddleOut`: Anchors the base predictions in a middle level.
+
+```python
+from hierarchicalforecast.core import HierarchicalReconciliation
+from hierarchicalforecast.methods import BottomUp, TopDown, MiddleOut
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    TopDown(method='forecast_proportions'),
+    MiddleOut(middle_level='Country/Purpose/State', 
+              top_down_method='forecast_proportions')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df = hrec.reconcile(Y_hat_df=Y_hat_df, Y_df=Y_train_df, S_df=S_df, tags=tags)
+```
+
+## 5. Evaluation
+
+The `HierarchicalForecast` package includes the `evaluate` function to
+evaluate the different hierarchies and we can use utilsforecast to
+compute the mean absolute error relative to a baseline model.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import mse
+```
+
+
+```python
+df = Y_rec_df.join(Y_test_df, on=['unique_id', 'ds'])
+evaluation = evaluate(df = df,
+                      tags = tags,
+                      train_df = Y_train_df,
+                      metrics = [mse],
+                      benchmark="Naive")
+
+evaluation[["level", "metric", "AutoARIMA", "AutoARIMA/BottomUp", "AutoARIMA/TopDown_method-forecast_proportions"]]
+```
+
+| level                            | metric       | AutoARIMA | AutoARIMA/BottomUp | AutoARIMA/TopDown_method-forecast_proportions |
+|----------------------------------|--------------|-----------|--------------------|-----------------------------------------------|
+| str                              | str          | f64       | f64                | f64                                           |
+| "Country"                        | "mse-scaled" | 0.317897  | 0.226999           | 0.317897                                      |
+| "Country/Purpose"                | "mse-scaled" | 0.323207  | 0.199359           | 0.251368                                      |
+| "Country/Purpose/State"          | "mse-scaled" | 0.266118  | 0.305711           | 0.308241                                      |
+| "Country/Purpose/State/CityNonC… | "mse-scaled" | 0.305173  | 0.305173           | 0.305913                                      |
+| "Overall"                        | "mse-scaled" | 0.311707  | 0.234934           | 0.289406                                      |
+
+### References
+
+-   [Orcutt, G.H., Watts, H.W., & Edwards, J.B.(1968). Data aggregation
+    and information loss. The American Economic Review, 58 ,
+    773(787)](http://www.jstor.org/stable/1815532).
+-   [Disaggregation methods to expedite product line forecasting.
+    Journal of Forecasting, 9 , 233–254.
+    doi:10.1002/for.3980090304](https://onlinelibrary.wiley.com/doi/abs/10.1002/for.3980090304).<br/>
+-   [An investigation of aggregate variable time series forecast
+    strategies with specific subaggregate time series statistical
+    correlation. Computers and Operations Research, 26 , 1133–1149.
+    doi:10.1016/S0305-0548(99)00017-9](https://doi.org/10.1016/S0305-0548(99)00017-9).
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+

@@ -1,0 +1,562 @@
+---
+title: Geographical and Temporal Aggregation (Tourism)
+---
+
+> Geographical and Temporal Hierarchical Forecasting on Australian
+> Tourism Data
+
+In many applications, a set of time series is hierarchically organized.
+Examples include the presence of geographic levels, products, or
+categories that define different types of aggregations. In such
+scenarios, forecasters are often required to provide predictions for all
+disaggregate and aggregate series. A natural desire is for those
+predictions to be **“coherent”**, that is, for the bottom series to add
+up precisely to the forecasts of the aggregated series.
+
+In this notebook we present an example on how to use
+`HierarchicalForecast` to produce coherent forecasts between both
+geographical levels and temporal levels. We will use the classic
+Australian Domestic Tourism (`Tourism`) dataset, which contains monthly
+time series of the number of visitors to each state of Australia.
+
+We will first load the `Tourism` data and produce base forecasts using
+an `AutoETS` model from `StatsForecast`. Then, we reconciliate the
+forecasts with several reconciliation algorithms from
+`HierarchicalForecast` according to the cross-sectional geographical
+hierarchies. Finally, we reconciliate the forecasts in the temporal
+dimension according to a temporal hierarchy.
+
+You can run these experiments using CPU or GPU with Google Colab.
+
+<a href="https://colab.research.google.com/github/Nixtla/hierarchicalforecast/blob/main/nbs/examples/AustralianDomesticTourismCrossTemporal.ipynb" target="_parent"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/></a>
+
+```python
+!pip install hierarchicalforecast statsforecast
+```
+
+## 1. Load and Process Data
+
+In this example we will use the
+[Tourism](https://otexts.com/fpp3/tourism.html) dataset from the
+[Forecasting: Principles and Practice](https://otexts.com/fpp3/) book.
+
+The dataset only contains the time series at the lowest level, so we
+need to create the time series for all hierarchies.
+
+```python
+import numpy as np
+import pandas as pd
+```
+
+
+```python
+Y_df = pd.read_csv('https://raw.githubusercontent.com/Nixtla/transfer-learning-time-series/main/datasets/tourism.csv')
+Y_df = Y_df.rename({'Trips': 'y', 'Quarter': 'ds'}, axis=1)
+Y_df.insert(0, 'Country', 'Australia')
+Y_df = Y_df[['Country', 'Region', 'State', 'Purpose', 'ds', 'y']]
+Y_df['ds'] = Y_df['ds'].str.replace(r'(\d+) (Q\d)', r'\1-\2', regex=True)
+Y_df['ds'] = pd.PeriodIndex(Y_df["ds"], freq='Q').to_timestamp()
+Y_df.head()
+```
+
+|     | Country   | Region   | State           | Purpose  | ds         | y          |
+|-----|-----------|----------|-----------------|----------|------------|------------|
+| 0   | Australia | Adelaide | South Australia | Business | 1998-01-01 | 135.077690 |
+| 1   | Australia | Adelaide | South Australia | Business | 1998-04-01 | 109.987316 |
+| 2   | Australia | Adelaide | South Australia | Business | 1998-07-01 | 166.034687 |
+| 3   | Australia | Adelaide | South Australia | Business | 1998-10-01 | 127.160464 |
+| 4   | Australia | Adelaide | South Australia | Business | 1999-01-01 | 137.448533 |
+
+## 2. Cross-sectional reconciliation
+
+### 2a. Aggregating the dataset according to cross-sectional hierarchy
+
+The dataset can be grouped in the following non-strictly hierarchical
+structure.
+
+```python
+spec = [
+    ['Country'],
+    ['Country', 'State'], 
+    ['Country', 'Purpose'], 
+    ['Country', 'State', 'Region'], 
+    ['Country', 'State', 'Purpose'], 
+    ['Country', 'State', 'Region', 'Purpose']
+]
+```
+
+Using the `aggregate` function from `HierarchicalForecast` we can get
+the full set of time series.
+
+```python
+from hierarchicalforecast.utils import aggregate
+```
+
+
+```python
+Y_df_cs, S_df_cs, tags_cs = aggregate(Y_df, spec)
+```
+
+
+```python
+Y_df_cs
+```
+
+|       | unique_id                                         | ds         | y            |
+|-------|---------------------------------------------------|------------|--------------|
+| 0     | Australia                                         | 1998-01-01 | 23182.197269 |
+| 1     | Australia                                         | 1998-04-01 | 20323.380067 |
+| 2     | Australia                                         | 1998-07-01 | 19826.640511 |
+| 3     | Australia                                         | 1998-10-01 | 20830.129891 |
+| 4     | Australia                                         | 1999-01-01 | 22087.353380 |
+| ...   | ...                                               | ...        | ...          |
+| 33995 | Australia/Western Australia/Experience Perth/V... | 2016-10-01 | 439.699451   |
+| 33996 | Australia/Western Australia/Experience Perth/V... | 2017-01-01 | 356.867038   |
+| 33997 | Australia/Western Australia/Experience Perth/V... | 2017-04-01 | 302.296119   |
+| 33998 | Australia/Western Australia/Experience Perth/V... | 2017-07-01 | 373.442070   |
+| 33999 | Australia/Western Australia/Experience Perth/V... | 2017-10-01 | 455.316702   |
+
+```python
+S_df_cs.iloc[:5, :5]
+```
+
+|     | unique_id                    | Australia/ACT/Canberra/Business | Australia/ACT/Canberra/Holiday | Australia/ACT/Canberra/Other | Australia/ACT/Canberra/Visiting |
+|-----|------------------------------|---------------------------------|--------------------------------|------------------------------|---------------------------------|
+| 0   | Australia                    | 1.0                             | 1.0                            | 1.0                          | 1.0                             |
+| 1   | Australia/ACT                | 1.0                             | 1.0                            | 1.0                          | 1.0                             |
+| 2   | Australia/New South Wales    | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+| 3   | Australia/Northern Territory | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+| 4   | Australia/Queensland         | 0.0                             | 0.0                            | 0.0                          | 0.0                             |
+
+### 2b. Split Train/Test sets
+
+We use the final two years (8 quarters) as test set. Consequently, our
+forecast horizon=8.
+
+```python
+horizon = 8
+```
+
+
+```python
+Y_test_df_cs = Y_df_cs.groupby("unique_id", as_index=False).tail(horizon)
+Y_train_df_cs = Y_df_cs.drop(Y_test_df_cs.index)
+```
+
+### 2c. Computing base forecasts
+
+The following cell computes the **base forecasts** for each time series
+in `Y_df` using the `AutoETS` model. Observe that `Y_hat_df` contains
+the forecasts but they are not coherent.
+
+```python
+from statsforecast.models import AutoETS
+from statsforecast.core import StatsForecast
+```
+
+
+```python
+fcst = StatsForecast(models=[AutoETS(season_length=4, model='ZZA')], 
+                     freq='QS', n_jobs=-1)
+Y_hat_df_cs = fcst.forecast(df=Y_train_df_cs, h=horizon, fitted=True)
+Y_fitted_df_cs = fcst.forecast_fitted_values()
+```
+
+### 2d. Reconcile forecasts
+
+The following cell makes the previous forecasts coherent using the
+`HierarchicalReconciliation` class. Since the hierarchy structure is not
+strict, we can’t use methods such as `TopDown` or `MiddleOut`. In this
+example we use `BottomUp` and `MinTrace`.
+
+```python
+from hierarchicalforecast.methods import BottomUp, MinTrace
+from hierarchicalforecast.core import HierarchicalReconciliation
+```
+
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='mint_shrink'),
+    MinTrace(method='ols')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df_cs = hrec.reconcile(Y_hat_df=Y_hat_df_cs, Y_df=Y_fitted_df_cs, S_df=S_df_cs, tags=tags_cs)
+```
+
+The dataframe `Y_rec_df` contains the reconciled forecasts.
+
+```python
+Y_rec_df_cs.head()
+```
+
+|     | unique_id | ds         | AutoETS      | AutoETS/BottomUp | AutoETS/MinTrace_method-mint_shrink | AutoETS/MinTrace_method-ols |
+|-----|-----------|------------|--------------|------------------|-------------------------------------|-----------------------------|
+| 0   | Australia | 2016-01-01 | 25990.068004 | 24381.911737     | 25428.089783                        | 25894.399067                |
+| 1   | Australia | 2016-04-01 | 24458.490282 | 22903.895964     | 23914.271400                        | 24357.301898                |
+| 2   | Australia | 2016-07-01 | 23974.055984 | 22412.265739     | 23428.462394                        | 23865.910647                |
+| 3   | Australia | 2016-10-01 | 24563.454495 | 23127.349578     | 24089.845955                        | 24470.782393                |
+| 4   | Australia | 2017-01-01 | 25990.068004 | 24518.118006     | 25545.358678                        | 25901.362283                |
+
+## 3. Temporal reconciliation
+
+Next, we aim to reconcile our forecasts also in the temporal domain.
+
+### 3a. Aggregating the dataset according to temporal hierarchy
+
+We first define the temporal aggregation spec. The spec is a dictionary
+in which the keys are the name of the aggregation and the value is the
+amount of bottom-level timesteps that should be aggregated in that
+aggregation. For example, `year` consists of `12` months, so we define a
+key, value pair `"yearly":12`. We can do something similar for other
+aggregations that we are interested in.
+
+In this example, we choose a temporal aggregation of `year`,
+`semiannual` and `quarter`. The bottom level timesteps have a quarterly
+frequency.
+
+```python
+spec_temporal = {"year": 4, "semiannual": 2, "quarter": 1}
+```
+
+We next compute the temporally aggregated train- and test sets using the
+`aggregate_temporal` function. Note that we have different aggregation
+matrices `S` for the train- and test set, as the test set contains
+temporal hierarchies that are not included in the train set.
+
+```python
+from hierarchicalforecast.utils import aggregate_temporal
+```
+
+
+```python
+Y_train_df_te, S_train_df_te, tags_te_train = aggregate_temporal(df=Y_train_df_cs, spec=spec_temporal)
+Y_test_df_te, S_test_df_te, tags_te_test = aggregate_temporal(df=Y_test_df_cs, spec=spec_temporal)
+
+```
+
+
+```python
+S_train_df_te.iloc[:5, :5]
+```
+
+|     | temporal_id | quarter-1 | quarter-2 | quarter-3 | quarter-4 |
+|-----|-------------|-----------|-----------|-----------|-----------|
+| 0   | year-1      | 1.0       | 1.0       | 1.0       | 1.0       |
+| 1   | year-2      | 0.0       | 0.0       | 0.0       | 0.0       |
+| 2   | year-3      | 0.0       | 0.0       | 0.0       | 0.0       |
+| 3   | year-4      | 0.0       | 0.0       | 0.0       | 0.0       |
+| 4   | year-5      | 0.0       | 0.0       | 0.0       | 0.0       |
+
+```python
+S_test_df_te.iloc[:5, :5]
+```
+
+|     | temporal_id  | quarter-1 | quarter-2 | quarter-3 | quarter-4 |
+|-----|--------------|-----------|-----------|-----------|-----------|
+| 0   | year-1       | 1.0       | 1.0       | 1.0       | 1.0       |
+| 1   | year-2       | 0.0       | 0.0       | 0.0       | 0.0       |
+| 2   | semiannual-1 | 1.0       | 1.0       | 0.0       | 0.0       |
+| 3   | semiannual-2 | 0.0       | 0.0       | 1.0       | 1.0       |
+| 4   | semiannual-3 | 0.0       | 0.0       | 0.0       | 0.0       |
+
+If you don’t have a test set available, as is usually the case when
+you’re making forecasts, it is necessary to create a future dataframe
+that holds the correct bottom-level unique_ids and timestamps so that
+they can be temporally aggregated. We can use the
+`make_future_dataframe` helper function for that.
+
+```python
+from hierarchicalforecast.utils import make_future_dataframe
+```
+
+
+```python
+Y_test_df_te_new = make_future_dataframe(Y_train_df_te, freq="QS", h=horizon)
+```
+
+`Y_test_df_te_new` can be then used in `aggregate_temporal` to construct
+the temporally aggregated structures:
+
+```python
+Y_test_df_te_new, S_test_df_te_new, tags_te_test_new = aggregate_temporal(df=Y_test_df_te_new, spec=spec_temporal)
+
+```
+
+And we can verify that we have the same temporally aggregated test set,
+except that `Y_test_df_te_new` doesn’t contain the ground truth values
+`y`.
+
+```python
+Y_test_df_te
+```
+
+|      | temporal_id | unique_id                            | ds         | y             |
+|------|-------------|--------------------------------------|------------|---------------|
+| 0    | year-1      | Australia                            | 2016-10-01 | 101484.586551 |
+| 1    | year-2      | Australia                            | 2017-10-01 | 107709.864650 |
+| 2    | year-1      | Australia/ACT                        | 2016-10-01 | 2457.401367   |
+| 3    | year-2      | Australia/ACT                        | 2017-10-01 | 2734.748452   |
+| 4    | year-1      | Australia/ACT/Business               | 2016-10-01 | 754.139245    |
+| ...  | ...         | ...                                  | ...        | ...           |
+| 5945 | quarter-4   | Australia/Western Australia/Visiting | 2016-10-01 | 787.030391    |
+| 5946 | quarter-5   | Australia/Western Australia/Visiting | 2017-01-01 | 702.777251    |
+| 5947 | quarter-6   | Australia/Western Australia/Visiting | 2017-04-01 | 642.516090    |
+| 5948 | quarter-7   | Australia/Western Australia/Visiting | 2017-07-01 | 646.521395    |
+| 5949 | quarter-8   | Australia/Western Australia/Visiting | 2017-10-01 | 813.184778    |
+
+```python
+Y_test_df_te_new
+```
+
+|      | temporal_id | unique_id                            | ds         |
+|------|-------------|--------------------------------------|------------|
+| 0    | year-1      | Australia                            | 2016-10-01 |
+| 1    | year-2      | Australia                            | 2017-10-01 |
+| 2    | year-1      | Australia/ACT                        | 2016-10-01 |
+| 3    | year-2      | Australia/ACT                        | 2017-10-01 |
+| 4    | year-1      | Australia/ACT/Business               | 2016-10-01 |
+| ...  | ...         | ...                                  | ...        |
+| 5945 | quarter-4   | Australia/Western Australia/Visiting | 2016-10-01 |
+| 5946 | quarter-5   | Australia/Western Australia/Visiting | 2017-01-01 |
+| 5947 | quarter-6   | Australia/Western Australia/Visiting | 2017-04-01 |
+| 5948 | quarter-7   | Australia/Western Australia/Visiting | 2017-07-01 |
+| 5949 | quarter-8   | Australia/Western Australia/Visiting | 2017-10-01 |
+
+### 3b. Computing base forecasts
+
+Now, we need to compute base forecasts for each temporal aggregation.
+The following cell computes the **base forecasts** for each temporal
+aggregation in `Y_train_df_te` using the `AutoETS` model. Observe that
+`Y_hat_df_te` contains the forecasts but they are not coherent.
+
+Note also that both frequency and horizon are different for each
+temporal aggregation. In this example, the lowest level has a quarterly
+frequency, and a horizon of `8` (constituting `2` years). The `year`
+aggregation thus has a yearly frequency with a horizon of `2`.
+
+It is of course possible to choose a different model for each level in
+the temporal aggregation - you can be as creative as you like!
+
+```python
+Y_hat_dfs_te = []
+id_cols = ["unique_id", "temporal_id", "ds", "y"]
+# We will train a model for each temporal level
+for level, temporal_ids_train in tags_te_train.items():
+    # Filter the data for the level
+    Y_level_train = Y_train_df_te.query("temporal_id in @temporal_ids_train")
+    temporal_ids_test = tags_te_test[level]
+    Y_level_test = Y_test_df_te.query("temporal_id in @temporal_ids_test")
+    # For each temporal level we have a different frequency and forecast horizon
+    freq_level = pd.infer_freq(Y_level_train["ds"].unique())
+    horizon_level = Y_level_test["ds"].nunique()
+    # Train a model and create forecasts
+    fcst = StatsForecast(models=[AutoETS(model='ZZZ')], freq=freq_level, n_jobs=-1)
+    Y_hat_df_te_level = fcst.forecast(df=Y_level_train[["ds", "unique_id", "y"]], h=horizon_level)
+    # Add the test set to the forecast
+    Y_hat_df_te_level = Y_hat_df_te_level.merge(Y_level_test, on=["ds", "unique_id"], how="left")
+    # Put cols in the right order (for readability)
+    Y_hat_cols = id_cols + [col for col in Y_hat_df_te_level.columns if col not in id_cols]
+    Y_hat_df_te_level = Y_hat_df_te_level[Y_hat_cols]
+    # Append the forecast to the list
+    Y_hat_dfs_te.append(Y_hat_df_te_level)
+
+Y_hat_df_te = pd.concat(Y_hat_dfs_te, ignore_index=True)
+
+```
+
+### 3c. Reconcile forecasts
+
+We can again use the `HierarchicalReconciliation` class to reconcile the
+forecasts. In this example we use `BottomUp` and `MinTrace`. Note that
+we have to set `temporal=True` in the `reconcile` function.
+
+Note that temporal reconciliation currently isn’t supported for insample
+reconciliation methods, such as `MinTrace(method='mint_shrink')`.
+
+```python
+reconcilers = [
+    BottomUp(),
+    MinTrace(method='ols')
+]
+hrec = HierarchicalReconciliation(reconcilers=reconcilers)
+Y_rec_df_te = hrec.reconcile(Y_hat_df=Y_hat_df_te, S_df=S_test_df_te, tags=tags_te_test, temporal=True)
+```
+
+## 4. Evaluation
+
+The `HierarchicalForecast` package includes the `evaluate` function to
+evaluate the different hierarchies.
+
+```python
+from hierarchicalforecast.evaluation import evaluate
+from utilsforecast.losses import rmse
+```
+
+### 4a. Cross-sectional evaluation
+
+We first evaluate the forecasts *across all cross-sectional
+aggregations*.
+
+```python
+eval_tags = {}
+eval_tags['Total'] = tags_cs['Country']
+eval_tags['Purpose'] = tags_cs['Country/Purpose']
+eval_tags['State'] = tags_cs['Country/State']
+eval_tags['Regions'] = tags_cs['Country/State/Region']
+eval_tags['Bottom'] = tags_cs['Country/State/Region/Purpose']
+
+evaluation = evaluate(df = Y_rec_df_te.drop(columns = 'temporal_id'),
+                      tags = eval_tags,
+                      metrics = [rmse])
+
+evaluation.columns = ['level', 'metric', 'Base', 'BottomUp', 'MinTrace(ols)']
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+```
+
+
+```python
+evaluation
+```
+
+|     | level   | metric | Base    | BottomUp | MinTrace(ols) |
+|-----|---------|--------|---------|----------|---------------|
+| 0   | Total   | rmse   | 4249.25 | 4461.95  | 4234.55       |
+| 1   | Purpose | rmse   | 1222.57 | 1273.48  | 1137.57       |
+| 2   | State   | rmse   | 635.78  | 546.02   | 611.32        |
+| 3   | Regions | rmse   | 103.67  | 107.00   | 99.23         |
+| 4   | Bottom  | rmse   | 33.15   | 33.98    | 32.30         |
+| 5   | Overall | rmse   | 81.89   | 82.41    | 78.97         |
+
+As can be seen `MinTrace(ols)` seems to be the best forecasting method
+across each cross-sectional aggregation.
+
+### 4b. Temporal evaluation
+
+We then evaluate the temporally aggregated forecasts *across all
+temporal aggregations*.
+
+```python
+evaluation = evaluate(df = Y_rec_df_te.drop(columns = 'unique_id'),
+                      tags = tags_te_test,
+                      metrics = [rmse],
+                      id_col="temporal_id")
+
+evaluation.columns = ['level', 'metric', 'Base', 'BottomUp', 'MinTrace(ols)']
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+```
+
+
+```python
+evaluation
+```
+
+|     | level      | metric | Base   | BottomUp | MinTrace(ols) |
+|-----|------------|--------|--------|----------|---------------|
+| 0   | year       | rmse   | 480.85 | 581.18   | 515.32        |
+| 1   | semiannual | rmse   | 312.33 | 304.98   | 275.30        |
+| 2   | quarter    | rmse   | 168.02 | 168.02   | 155.61        |
+| 3   | Overall    | rmse   | 253.94 | 266.17   | 241.19        |
+
+Again, `MinTrace(ols)` is the best overall method, scoring the lowest
+`rmse` on the `quarter` aggregated forecasts, and being slightly worse
+than the `Base` forecasts on the `year` aggregated forecasts.
+
+### 4c. Cross-temporal evaluation
+
+Finally, we evaluate cross-temporally. To do so, we first need to obtain
+the combination of cross-sectional and temporal hierarchies, for which
+we can use the `get_cross_temporal_tags` helper function.
+
+```python
+from hierarchicalforecast.utils import get_cross_temporal_tags
+```
+
+
+```python
+Y_rec_df_te, tags_ct = get_cross_temporal_tags(Y_rec_df_te, tags_cs=tags_cs, tags_te=tags_te_test)
+```
+
+As we can see, we now have a tag `Country//year` that contains
+`Australia//year-1` and `Australia//year-2`, indicating the
+cross-sectional hierarchy `Australia` at the temporal hierarchies `2016`
+and `2017`.
+
+```python
+tags_ct["Country//year"]
+```
+
+``` text
+['Australia//year-1', 'Australia//year-2']
+```
+
+We now have our dataset and cross-temporal tags ready for evaluation.
+
+We define a set of eval_tags, and now we split each cross-sectional
+aggregation also by each temporal aggregation. Note that we skip the
+semiannual temporal aggregation in the below overview.
+
+```python
+eval_tags = {}
+eval_tags['TotalByYear'] = tags_ct['Country//year']
+eval_tags['RegionsByYear'] = tags_ct['Country/State/Region//year']
+eval_tags['BottomByYear'] = tags_ct['Country/State/Region/Purpose//year']
+eval_tags['TotalByQuarter'] = tags_ct['Country//quarter']
+eval_tags['RegionsByQuarter'] = tags_ct['Country/State/Region//quarter']
+eval_tags['BottomByQuarter'] = tags_ct['Country/State/Region/Purpose//quarter']
+
+
+evaluation = evaluate(df = Y_rec_df_te.drop(columns=['unique_id', 'temporal_id']),
+                      tags = eval_tags,
+                      id_col = 'cross_temporal_id',
+                      metrics = [rmse])
+
+evaluation.columns = ['level', 'metric', 'Base', 'BottomUp', 'MinTrace(ols)']
+numeric_cols = evaluation.select_dtypes(include="number").columns
+evaluation[numeric_cols] = evaluation[numeric_cols].map('{:.2f}'.format).astype(np.float64)
+                      
+```
+
+
+```python
+evaluation
+```
+
+|     | level            | metric | Base    | BottomUp | MinTrace(ols) |
+|-----|------------------|--------|---------|----------|---------------|
+| 0   | TotalByYear      | rmse   | 7148.99 | 8243.06  | 7748.40       |
+| 1   | RegionsByYear    | rmse   | 151.96  | 175.69   | 158.48        |
+| 2   | BottomByYear     | rmse   | 46.98   | 50.78    | 46.72         |
+| 3   | TotalByQuarter   | rmse   | 2060.77 | 2060.77  | 1942.32       |
+| 4   | RegionsByQuarter | rmse   | 57.07   | 57.07    | 54.12         |
+| 5   | BottomByQuarter  | rmse   | 19.42   | 19.42    | 18.69         |
+| 6   | Overall          | rmse   | 43.14   | 45.27    | 42.49         |
+
+We find that the best method is the cross-temporally reconciled method
+`AutoETS/MinTrace_method-ols`, which achieves overall lowest RMSE.
+
+### References
+
+-   [Hyndman, R.J., & Athanasopoulos, G. (2021). “Forecasting:
+    principles and practice, 3rd edition: Chapter 11: Forecasting
+    hierarchical and grouped series.”. OTexts: Melbourne, Australia.
+    OTexts.com/fpp3 Accessed on July
+    2022.](https://otexts.com/fpp3/hierarchical.html)
+-   [Rob Hyndman, Alan Lee, Earo Wang, Shanika Wickramasuriya, and
+    Maintainer Earo Wang (2021). “hts: Hierarchical and Grouped Time
+    Series”. URL https://CRAN.R-project.org/package=hts. R package
+    version
+    0.3.1.](https://cran.r-project.org/web/packages/hts/index.html)
+-   [Mitchell O’Hara-Wild, Rob Hyndman, Earo Wang, Gabriel Caceres,
+    Tim-Gunnar Hensel, and Timothy Hyndman (2021). “fable: Forecasting
+    Models for Tidy Time Series”. URL
+    https://CRAN.R-project.org/package=fable. R package version
+    6.0.2.](https://CRAN.R-project.org/package=fable)
+-   [Athanasopoulos, G, Hyndman, Rob J., Kourentzes, N., Petropoulos,
+    Fotios (2017). Forecasting with temporal hierarchies. European
+    Journal of Operational Research, 262,
+    60-74](https://www.sciencedirect.com/science/article/pii/S0377221717301911)
+
