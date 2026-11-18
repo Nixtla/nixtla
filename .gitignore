@@ -13,3 +13,7 @@ __pycache__/
 .ruff_cache/
 .quarto/
 .DS_Store
+.env
+.ipynb_checkpoints/
+dist/
+*.egg-info/

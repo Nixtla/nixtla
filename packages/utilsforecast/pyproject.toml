@@ -59,7 +59,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/Nixtla/nixtla/tree/main/packages/utilsforecast"
-Documentation = "https://nixtlaverse.verse.io/utilsforecast"
+Documentation = "https://nixtlaverse.nixtla.io/utilsforecast"
 Repository = "https://github.com/Nixtla/nixtla/tree/main/packages/utilsforecast"
 
 

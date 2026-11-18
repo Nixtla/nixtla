@@ -44,7 +44,7 @@
   "navbar": {
     "primary": {
       "type": "github",
-      "href": "https://github.com/Nixtla/utilsforecast"
+      "href": "https://github.com/Nixtla/nixtla/tree/main/packages/utilsforecast"
     }
   }
 }

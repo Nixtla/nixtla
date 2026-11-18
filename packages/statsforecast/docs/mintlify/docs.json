@@ -130,7 +130,7 @@
   "navbar": {
     "primary": {
       "type": "github",
-      "href": "https://github.com/Nixtla/nixtla"
+      "href": "https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast"
     }
   }
 }

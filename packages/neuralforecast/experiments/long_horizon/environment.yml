@@ -6,4 +6,4 @@ dependencies:
   - pip
   - pip:
     - "git+https://github.com/Nixtla/datasetsforecast.git"
-    - "git+https://github.com/Nixtla/neuralforecast.git"
+    - "git+https://github.com/Nixtla/nixtla.git#subdirectory=packages/neuralforecast"

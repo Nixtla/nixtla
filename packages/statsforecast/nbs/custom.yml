@@ -7,7 +7,7 @@ website:
       - text: "Get Started"
         href: examples/Getting_Started_with_Auto_Arima_and_ETS.ipynb
       - text: "Experiments"
-        href: https://github.com/Nixtla/statsforecast/tree/main/experiments
+        href: https://github.com/Nixtla/nixtla/tree/main/packages/statsforecast/experiments
       - text: "Help"
         menu:
           - text: "Report an Issue"

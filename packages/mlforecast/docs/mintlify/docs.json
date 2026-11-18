@@ -110,7 +110,7 @@
   "navbar": {
     "primary": {
       "type": "github",
-      "href": "https://github.com/Nixtla/mlforecast"
+      "href": "https://github.com/Nixtla/nixtla/tree/main/packages/mlforecast"
     }
   }
 }
