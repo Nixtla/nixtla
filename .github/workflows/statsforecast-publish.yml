@@ -17,8 +17,9 @@ jobs:
     uses: ./.github/workflows/_build-wheels.yml
     with:
       package: statsforecast
+      python-versions: '[311,312,313,314,315]'
       os-platforms: >-
-        [["ubuntu-latest","manylinux_x86_64"],["ubuntu-latest","manylinux_aarch64"],["windows-latest","win_amd64"],["macos-15-intel","macosx_x86_64"],["macos-latest","macosx_arm64"]]
+        [["ubuntu-latest","manylinux_x86_64"],["ubuntu-24.04-arm","manylinux_aarch64"],["windows-latest","win_amd64"],["macos-15-intel","macosx_x86_64"],["macos-latest","macosx_arm64"]]
 
   publish:
     needs: build
