@@ -19,7 +19,7 @@ jobs:
       package: hierarchicalforecast
       python-versions: '[311,312,313,314,315]'
       os-platforms: >-
-        [["ubuntu-latest","manylinux_x86_64"],["ubuntu-latest","manylinux_aarch64"],["windows-latest","win_amd64"],["macos-14","macosx_arm64"]]
+        [["ubuntu-latest","manylinux_x86_64"],["ubuntu-latest","manylinux_aarch64"],["windows-latest","win_amd64"],["macos-latest","macosx_arm64"]]
       cibw-enable: cpython-prerelease
       cibw-before-build-macos: brew install libomp
       cibw-environment-macos: MACOSX_DEPLOYMENT_TARGET=14.0

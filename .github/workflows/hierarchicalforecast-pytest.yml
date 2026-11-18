@@ -53,7 +53,7 @@ jobs:
           - [ubuntu-latest, manylinux_x86_64]
           - [ubuntu-latest, manylinux_aarch64]
           - [windows-latest, win_amd64]
-          - [macos-14, macosx_arm64]
+          - [macos-latest, macosx_arm64]
     steps:
       - name: Clone repo
         uses: actions/checkout@v7
