@@ -1,0 +1,57 @@
+name-template: 'mlforecast v$NEXT_PATCH_VERSION'
+tag-template: 'mlforecast/v$NEXT_PATCH_VERSION'
+# Scopes both the draft this config updates and the previous release it diffs against.
+tag-prefix: 'mlforecast/v'
+categories:
+  - type: pre-include
+    when:
+      paths:
+        - 'packages/mlforecast/**'
+  - title: 'New Features'
+    when:
+      label: 'feature'
+  - title: 'Breaking Change'
+    when:
+      label: 'breaking change'
+  - title: 'Bug Fixes'
+    when:
+      label: 'fix'
+  - title: 'Performance'
+    when:
+      label: 'performance'
+  - title: 'Documentation'
+    when:
+      label: 'documentation'
+  - title: 'Maintenance'
+    when:
+      label: 'chore'
+  - title: 'Dependencies'
+    when:
+      label: 'dependencies'
+  - title: 'Enhancement'
+    when:
+      label: 'enhancement'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+template: |
+  ## Changes
+  $CHANGES
+# Also read by the autolabel job for coreforecast PRs, which used identical rules.
+autolabeler:
+  - label: 'breaking change'
+    title:
+      - '/^\w+(\(.+\))?!:/'
+  - label: 'feature'
+    title:
+      - '/^feat(\(.+\))?:/'
+  - label: 'fix'
+    title:
+      - '/^fix(\(.+\))?:/'
+  - label: 'performance'
+    title:
+      - '/^perf(\(.+\))?:/'
+  - label: 'documentation'
+    title:
+      - '/^docs(\(.+\))?:/'
+  - label: 'chore'
+    title:
+      - '/^(chore|refactor|style|test|build|ci)(\(.+\))?:/'

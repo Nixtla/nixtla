@@ -1,20 +1,53 @@
+# One draft release per package. Each .github/release-drafter/<pkg>.yml keeps
+# only PRs touching packages/<pkg>/ and only releases tagged <pkg>/v* (plain v*
+# for nixtla), so the drafts don't mix.
 name: Release Drafter
 
 on:
   push:
     branches:
       - main
+  # Title-based labels, which only mlforecast and coreforecast used before the merge.
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+    paths:
+      - 'packages/mlforecast/**'
+      - 'packages/coreforecast/**'
 
 permissions:
   contents: read
 
 jobs:
+  autolabel:
+    if: github.event_name == 'pull_request_target'
+    permissions:
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: release-drafter/release-drafter/autolabeler@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          config-name: release-drafter/mlforecast.yml
+
   update_release_draft:
+    if: github.event_name == 'push'
     permissions:
       contents: write
       pull-requests: read
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - nixtla
+          - coreforecast
+          - utilsforecast
+          - statsforecast
+          - neuralforecast
+          - mlforecast
+          - hierarchicalforecast
+          - conformalforecast
+          - synforecast
     steps:
       - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config-name: release-drafter/${{ matrix.package }}.yml
