@@ -221,3 +221,55 @@ def test_extract_categorical_exog_reads_future_values_for_both_backends(frame):
     assert df_cat_vals["event"].tolist() == ["none", "sale", "none"]
     assert "event" not in out_df.columns
     assert "event" not in out_X_df.columns
+
+
+@pytest.mark.parametrize("shuffle", [False, True])
+def test_cv_payload_orders_categorical_exog_like_the_target(shuffle):
+    client = client_module.NixtlaClient(api_key="test-key")
+    client._model_params[("timegpt-2.1", "D")] = (100, 10)
+    df = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "unique_id": uid,
+                    "ds": pd.date_range("2020-01-01", periods=30, freq="D"),
+                    "y": np.arange(30, dtype=float) + 100 * i,
+                }
+            )
+            for i, uid in enumerate(["a", "b"])
+        ]
+    ).reset_index(drop=True)
+    df["cat"] = df["y"].astype(int).astype(str)
+    if shuffle:
+        df = df.sample(frac=1.0, random_state=0).reset_index(drop=True)
+    payload, _ = client_module._payloads.prepare_cross_validation(
+        client,
+        df=df,
+        h=5,
+        freq="D",
+        id_col="unique_id",
+        time_col="ds",
+        target_col="y",
+        level=None,
+        quantiles=None,
+        validate_api_key=False,
+        n_windows=1,
+        step_size=None,
+        finetune_steps=0,
+        finetune_depth=1,
+        finetune_loss="default",
+        finetuned_model_id=None,
+        refit=True,
+        clean_ex_first=True,
+        hist_exog_list=None,
+        date_features=False,
+        date_features_to_one_hot=False,
+        model="timegpt-2.1",
+        model_parameters=None,
+        multivariate=False,
+        categorical_exog_list=["cat"],
+    )
+    series = payload["series"]
+    (cat_values,) = series["X"]
+    assert series["categorical_exog"] == [0]
+    assert cat_values == [str(int(y)) for y in series["y"]]
