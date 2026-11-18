@@ -1,0 +1,319 @@
+---
+title: Core contracts
+description: ForecasterAdapter, ScoreFunction, results and exceptions
+---
+
+### `ForecasterAdapter`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Uniform interface over any forecasting library.
+
+Concrete adapters live in `adapters/`. They convert framework-specific
+objects to/from numpy arrays so that ConformalMethod implementations
+never see framework types.
+
+Capabilities are declared via mixins in `capabilities.py`. An adapter that
+can produce quantiles inherits `SupportsQuantiles`. An adapter that can
+refit on demand inherits `SupportsRefit`. Etc. Whether an adapter provides
+a capability is queried via :meth:`supports`.
+
+The minimum contract is `predict()`. Everything else is opt-in via mixins.
+
+#### `ForecasterAdapter.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a point forecast for the next ``self.horizon`` steps per series.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+    Past observations for each series, ending immediately before the
+    forecast window. T may be any value >= the model's required minimum.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Future exogenous features aligned to the forecast window. Adapters
+    that do not support exogenous features raise if ``X`` is not None.
+
+Returns
+-------
+Forecast, shape (n_series, 1, horizon)
+    Point forecast over the horizon for each series. The middle axis
+    is 1 because this call produces one forecast per series.
+
+#### `ForecasterAdapter.predict_batch`
+
+```python
+predict_batch(histories, *, X=None)
+```
+
+Vectorized prediction over multiple history windows.
+
+Parameters
+----------
+histories : list of Series, each shape (n_series, T)
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Per-window future exogenous features; window ``w`` receives
+    ``X[:, w:w+1, :, :]``.
+
+Returns
+-------
+Forecast, shape (n_series, len(histories), horizon)
+
+Default implementation calls `predict` in a loop and stacks results.
+Adapters where the underlying library supports batch inference should
+override this for performance.
+
+#### `ForecasterAdapter.supports`
+
+```python
+supports(capability)
+```
+
+Return True if this adapter provides ``capability`` (a mixin type).
+
+The default is an ``isinstance`` check. Adapters whose capability is
+runtime-conditional (e.g. a NeuralForecast adapter whose quantile
+support depends on the fitted loss) override this. Keeping the check
+here means the runtime capability gate lives where the forecaster is
+bound -- the first thing ``calibrate`` and ``calibrate_cv`` do -- never
+inside ``predict``.
+
+Parameters
+----------
+capability : type
+    A capability mixin class (e.g. ``SupportsCrossValidation``).
+
+Returns
+-------
+bool
+
+
+### `ScoreFunction`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Maps (predictions, truths) to nonconformity scores.
+
+Stateless except for parameters fitted in `fit`. All operations are
+panel-aware: the leading axis is `n_series`.
+
+Every concrete subclass declares its own ``kind`` tag as a ``Literal`` with
+a default, e.g. ``kind: Literal["absolute"] = "absolute"``. The tag is what
+lets a method's ``score`` field survive ``model_validate(model_dump())``: a
+dumped score is a dict, and the tag names the class to rebuild it as.
+Concrete subclasses are registered by tag when the class is defined, and a
+subclass that reuses another class's tag -- typically by inheriting it from
+a built-in without declaring its own -- raises ``TypeError`` there, since it
+would otherwise reload silently as its parent.
+
+#### `ScoreFunction.kind`
+
+```python
+kind: str = Field(description='Tag naming the score function. Each concrete score fixes it to a single literal value, so a serialized score can be rebuilt as the right class.')
+```
+
+#### `ScoreFunction.fit`
+
+```python
+fit(prediction, truth)
+```
+
+Fit any internal parameters of the score function (e.g. scale
+estimates for normalised residuals). Default: no-op.
+
+Called by the method's ``fit`` **before** the first call to :meth:`score` on the
+calibration data, so implementations can assume that ``prediction`` and
+``truth`` are the full calibration arrays.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+#### `ScoreFunction.score`
+
+```python
+score(prediction, truth)
+```
+
+Compute nonconformity scores.
+
+Parameters
+----------
+prediction, truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+scores : NDArray, shape (n_series, n_samples, horizon)
+
+#### `ScoreFunction.invert`
+
+```python
+invert(prediction, score_threshold)
+```
+
+Given a point forecast and a score threshold, return the prediction interval.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+score_threshold : NDArray
+    Either scalar, or shape (n_series,), or shape (n_series, horizon).
+    Will be broadcast against `prediction` along its last two axes.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+#### `ScoreFunction.from_kind`
+
+```python
+from_kind(value)
+```
+
+Rebuild a serialized score as the class its ``kind`` tag names.
+
+Parameters
+----------
+value : dict
+    A dumped score, carrying a ``kind`` key.
+
+Returns
+-------
+ScoreFunction
+
+Raises
+------
+ValueError
+    If ``kind`` is missing or names no registered score. The module
+    defining a custom score must be imported before loading it.
+
+
+### `CalibrationResult`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>
+
+Snapshot taken at fit, carried on the fitted object as ``calibration_``.
+
+Every fitted :class:`~conformalforecast.methods.base.ConformalForecaster`
+holds one, built by its method's ``fit`` and stamped with a ``"path"`` by
+the calibrate entry points (``recalibrate`` and ``adapt`` build their own).
+
+Attributes
+----------
+n_calibration_samples : NDArray[np.integer], shape (n_series,)
+    Per-series effective (non-NaN) calibration window counts.
+diagnostics : dict
+    Method-specific diagnostics (quantile levels, learning rates,
+    per-method quantile arrays, and the orchestration-layer ``"path"`` marker).
+    Arrays stored here are defensively copied.
+
+Notes
+-----
+``extra="forbid"``: results are *returned to* callers rather than
+constructed by them, so the only writers are this package's ``fit``
+implementations — a mistyped keyword there is a bug worth failing on, and
+forbidding extras cannot break a user call that does not exist.
+
+#### `CalibrationResult.n_calibration_samples`
+
+```python
+n_calibration_samples: NDArray[np.integer]
+```
+
+#### `CalibrationResult.diagnostics`
+
+```python
+diagnostics: dict[str, object]
+```
+
+
+### `PredictionResult`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>
+
+Returned by `ConformalForecaster.predict`.
+
+Attributes
+----------
+point : Forecast, shape (n_series, n_samples, horizon)
+    Point forecasts.
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+    Prediction intervals; the last axis is ``(lower, upper)``.
+alpha : float
+    The miscoverage level the intervals target.
+
+Notes
+-----
+``extra="forbid"`` for the same reason as :class:`CalibrationResult`.
+
+#### `PredictionResult.point`
+
+```python
+point: Forecast
+```
+
+#### `PredictionResult.interval`
+
+```python
+interval: Interval
+```
+
+#### `PredictionResult.alpha`
+
+```python
+alpha: float
+```
+
+
+## Exceptions
+
+### `ConformalForecastError`
+
+Bases: <code>[Exception](#Exception)</code>
+
+Base exception for the package.
+
+
+### `CalibrationError`
+
+Bases: <code>[ConformalForecastError](#conformalforecast.base.ConformalForecastError)</code>
+
+Raised when predict() is called before calibrate(), or calibration data is invalid.
+
+
+### `InsufficientCalibrationSamples`
+
+```python
+InsufficientCalibrationSamples(message, series_indices)
+```
+
+Bases: <code>[CalibrationError](#conformalforecast.base.CalibrationError)</code>
+
+Raised when one or more series have too few effective calibration samples.
+
+"Effective" means non-NaN calibration windows. Each series needs at least
+``ceil(1 / alpha)`` effective samples for the finite-sample-corrected
+conformal quantile to be well-defined.
+
+Attributes
+----------
+series_indices : list[int]
+    Indices (along the leading ``n_series`` axis) of the offending series.
+
+#### `InsufficientCalibrationSamples.series_indices`
+
+```python
+series_indices = series_indices
+```
+
+
+### `UnsupportedCapability`
+
+Bases: <code>[ConformalForecastError](#conformalforecast.base.ConformalForecastError)</code>
+
+Raised when a method requires an adapter capability that isn't supported.
+

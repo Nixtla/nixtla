@@ -1,0 +1,468 @@
+---
+title: Transfer and adaptation
+---
+
+Calibration assumes you have what conformal prediction actually
+consumes: pairs of a forecast and the value that followed it. Transfer
+problems are the ones where you do not — at least not in the domain you
+care about. A new store with three weeks of history. A new SKU with
+none. A model calibrated on last year’s regime, pointed at this year’s.
+
+This page is about the three verbs `conformalforecast` offers for that,
+and how to pick between them by asking one question: **what
+target-domain data do you actually have?**
+
+## Three verbs
+
+| Verb                                                           | What it consumes                                              | What it changes                              |
+|------------------------|------------------------|------------------------|
+| `method.calibrate(forecaster, histories, truths)`              | source forecasts and source truths                            | fits the conformal quantile from scratch     |
+| `fitted.recalibrate(target_histories, target_truths)`          | **target** forecasts and truths, reusing the bound forecaster | refits the same quantile on the target panel |
+| `fitted.adapt(weighting=..., target_X=..., target_series=...)` | target features and/or target history — **no target truths**  | reweights and rescales the source quantile   |
+
+All three return a **new** fitted object. `calibrate` is called on the
+method (the configuration); `recalibrate` and `adapt` are called on a
+fitted object and leave it untouched, so the source-domain object stays
+available next to its target-domain counterpart.
+
+`recalibrate()` is `calibrate()` pointed at a different panel. The
+forecaster is never refitted: looping `predict_batch` over target
+histories and scoring against target truths *is* the frozen backtest
+transfer learning wants. It exists as a separate name for intent, and it
+marks `calibration_.diagnostics["path"] = "recalibrate"` on the object
+it returns, so a log can tell the two apart.
+
+`adapt()` exists because the other strategies **have nothing to
+calibrate on**. Density-ratio weighting needs only the target’s
+features; scale alignment needs only the target’s history. Neither can
+be expressed as a call to `calibrate`, because neither has a single
+target `(prediction, truth)` pair to score. `adapt` is the entry point
+for the label-free half of the problem, and it is *idempotent*: it
+always rebuilds from the stored source scores, so calling it twice is
+the same as calling it once.
+
+## Which strategy your data allows
+
+| Target input available | Strategy               | Mechanism                                                   |
+|------------------------|------------------------|------------------------|
+| Labelled target pairs  | recalibrate            | `recalibrate()` — `calibrate()` pointed at the target panel |
+| Target features only   | weighted conformal     | `adapt(weighting=DensityRatio(...), target_X=...)`          |
+| Target history only    | scale alignment        | `adapt(target_series=...)` + `scale_estimator`              |
+| Both                   | scale-aligned weighted | `adapt(weighting=..., target_X=..., target_series=...)`     |
+
+Work down it and stop at the first row your data supports. Labelled
+target pairs beat everything below them: they measure the target’s
+errors instead of estimating them from a proxy. The bottom three rows
+are what you reach for when that measurement does not exist yet.
+
+All four run through [`WeightedSplit`](../methods/weighted_split.html),
+whose fitted object is the one that implements `SupportsTransfer` today.
+`isinstance(fitted, SupportsTransfer)` says whether a given fitted
+object can `adapt` at all; on every other one, `adapt()` does not exist,
+and calling `recalibrate()` still works identically.
+
+## The panel
+
+Eight M4 hourly series, which differ in level by three orders of
+magnitude — `H50` averages around 35,000 units an hour and `H200` around
+20. Six are the source domain; two are held back as a target domain the
+calibration never saw.
+
+```python
+import numpy as np
+import pandas as pd
+
+from conformalforecast import SplitConformal, WeightedSplit
+from conformalforecast.adapters import CallableAdapter
+
+HORIZON, SEASON, ALPHA, TAIL = 12, 24, 0.1, 480
+N_CAL, N_HOLDOUT = 20, 8
+
+df = pd.read_csv("nbs/data/m4_hourly_panel.csv")
+SOURCE_IDS = ["H1", "H10", "H100", "H150", "H400", "H50"]
+TARGET_IDS = ["H200", "H300"]
+
+
+def load(ids):
+    return np.stack([df.loc[df.unique_id == i, "y"].to_numpy()[-TAIL:] for i in ids])
+
+
+source, target = load(SOURCE_IDS), load(TARGET_IDS)
+print("source levels", source.mean(axis=1).round(0))
+print("target levels", target.mean(axis=1).round(0))
+```
+
+``` text
+source levels [  665.   433.  1118.   131.    81. 34925.]
+target levels [21. 20.]
+```
+
+```python
+def seasonal_naive(history):
+    """Repeat yesterday's 12 hours. Instant -- this page is about calibration."""
+    return history[:, -SEASON : -SEASON + HORIZON]
+
+
+def adapter(n_series):
+    return CallableAdapter(predict_fn=seasonal_naive, horizon=HORIZON, n_series=n_series)
+
+
+def windows(panel, n_windows, end):
+    """The n_windows non-overlapping windows ending at `end`."""
+    histories, truths = [], []
+    for k in range(n_windows, 0, -1):
+        stop = end - k * HORIZON
+        histories.append(panel[:, :stop])
+        truths.append(panel[:, stop : stop + HORIZON])
+    return histories, np.stack(truths, axis=1)
+
+
+def score(name, intervals, truths):
+    covered = ((truths >= intervals[..., 0]) & (truths <= intervals[..., 1])).mean()
+    width = (intervals[..., 1] - intervals[..., 0]).mean()
+    print(f"{name:26s} coverage {covered:6.1%}   mean width {width:9.2f}")
+
+
+CUT = TAIL - N_HOLDOUT * HORIZON
+src_histories, src_truths = windows(source, N_CAL, CUT)
+tgt_histories, tgt_truths = windows(target, N_CAL, CUT)
+holdout_histories, holdout_truths = windows(target, N_HOLDOUT, TAIL)
+print("source calibration truths", src_truths.shape)
+print("target holdout truths    ", holdout_truths.shape)
+```
+
+``` text
+source calibration truths (6, 20, 12)
+target holdout truths     (2, 8, 12)
+```
+
+## Row 1 — labelled target pairs: `recalibrate`
+
+The easy case, and the one to take whenever it is available. You have
+run the frozen forecaster over target history and observed what
+followed, so the target’s own residuals exist and can be scored
+directly.
+
+There is one constraint. A `ForecasterAdapter` fixes `n_series` at
+construction, so a source adapter built for six series cannot be handed
+a two-series target panel. `recalibrate` checks this and says so:
+
+```python
+source_fitted = WeightedSplit(alpha=ALPHA).calibrate(
+    adapter(len(SOURCE_IDS)), src_histories, src_truths
+)
+
+try:
+    source_fitted.recalibrate(tgt_histories, tgt_truths)
+except ValueError as error:
+    print("ValueError:", error)
+```
+
+``` text
+ValueError: target_histories[0] has n_series=2 but the adapter was constructed with n_series=6. Adapters fix n_series at construction; build a fresh adapter for this target panel.
+```
+
+The workaround is the one the message names: build a **fresh adapter**
+for the target panel. `recalibrate` is called on a fitted object, which
+carries the forecaster bound by the `calibrate` / `calibrate_cv` call
+that produced it — there is no forecaster-at-construction in this API —
+so the first fit on a brand-new adapter has to go through `calibrate`
+itself, and `calibration_.diagnostics["path"]` reads `"loop"`.
+`recalibrate` then reuses that binding and returns a new object marked
+`"recalibrate"`. Below, the second call repeats the same panel just to
+show the naming boundary; in practice it would point at a later
+target-domain window.
+
+```python
+bound = WeightedSplit(alpha=ALPHA).calibrate(adapter(len(TARGET_IDS)), tgt_histories, tgt_truths)
+print("path:", bound.calibration_.diagnostics["path"])
+
+target_fitted = bound.recalibrate(tgt_histories, tgt_truths)
+print(
+    "path:",
+    target_fitted.calibration_.diagnostics["path"],
+    " windows:",
+    target_fitted.n_calibration_samples_,
+)
+
+recalibrated = np.stack(
+    [target_fitted.predict(history).interval[:, 0] for history in holdout_histories], axis=1
+)
+score("recalibrate", recalibrated, holdout_truths)
+```
+
+``` text
+path: loop
+path: recalibrate  windows: [20 20]
+recalibrate                coverage  87.5%   mean width      0.44
+```
+
+## Row 3 — target history only: scale alignment and `pooling="global"`
+
+Now delete the target truths. All that is left is the target series
+itself: raw observations, no forecasts, no residuals. What that still
+tells you is the target’s **scale** — how much it moves hour to hour —
+and scale is most of what an interval width is.
+
+`scale_estimator="mad"` (or `"std"`, or `"iqr"`) makes `WeightedSplit`
+record a per-series scale, computed on first differences so a level or a
+slow trend does not inflate it. `fitted.adapt(target_series=...)` then
+computes the same statistic on the target history and returns a new
+fitted object whose quantile is the source quantile rescaled by the
+ratio.
+
+That still leaves the series-count problem: a per-series quantile fitted
+on six source series has nothing to say about a seventh.
+`pooling="global"` is the answer — it pools scale-normalized calibration
+scores across the series axis into one quantile per horizon step. That
+pooled quantile has one row per horizon, not one per target series, so
+it is `adapt(target_series=...)` that widens it: rescaling by a
+per-target-series ratio is what gives it a row per target series, and
+only then can a panel of any width be served. `interval` on a panel the
+quantile has not been widened to raises rather than broadcasting — which
+is why the demo below adapts before it predicts.
+
+`pooling="global"` **requires** a `scale_estimator`, and refuses to be
+constructed without one:
+
+```python
+try:
+    WeightedSplit(alpha=ALPHA, pooling="global")
+except ValueError as error:
+    print("ValueError:", error)
+```
+
+``` text
+ValueError: 1 validation error for WeightedSplit
+  Value error, pooling='global' requires a scale_estimator. Pooling residuals across series of different scales is unsound; normalize first. [type=value_error, input_value={'alpha': 0.1, 'pooling': 'global'}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.13/v/value_error
+```
+
+That rule is not defensive politeness. Pooling raw residuals across
+series of different scales lets the largest series decide the interval
+for the smallest. On this panel `H50` moves in thousands and `H200` in
+single units, so a pooled *unnormalized* quantile is dominated entirely
+by `H50`:
+
+```python
+holdout_points = np.stack([seasonal_naive(h) for h in holdout_histories], axis=1)
+
+# What pooling without normalization would give: every source residual in one bag.
+raw_points = np.stack([seasonal_naive(h) for h in src_histories], axis=1)
+raw = SplitConformal(alpha=ALPHA).fit(
+    raw_points.reshape(1, -1, HORIZON), src_truths.reshape(1, -1, HORIZON)
+)
+score(
+    "raw pooling (unsound)",
+    raw.interval(holdout_points.reshape(1, -1, HORIZON)),
+    holdout_truths.reshape(1, -1, HORIZON),
+)
+```
+
+``` text
+raw pooling (unsound)      coverage 100.0%   mean width   2903.00
+```
+
+A band roughly 140 times the level of the series it describes covers
+everything and says nothing. Normalizing first is what makes the pooled
+quantile mean anything, which is why the constructor insists on it.
+
+```python
+global_method = WeightedSplit(alpha=ALPHA, pooling="global", scale_estimator="mad")
+source_global = global_method.calibrate(adapter(len(SOURCE_IDS)), src_histories, src_truths)
+adapted = source_global.adapt(target_series=target[:, :CUT])
+print("scale ratio per target series:", adapted.calibration_.diagnostics["scale_ratio"].round(3))
+
+# The adapted object serves a panel the source adapter could never predict for,
+# so the point forecasts come from the target's own forecaster.
+score("adapt (scale alignment)", adapted.interval(holdout_points), holdout_truths)
+score("recalibrate", recalibrated, holdout_truths)
+```
+
+``` text
+scale ratio per target series: [1.038 0.741]
+adapt (scale alignment)    coverage 100.0%   mean width     13.64
+recalibrate                coverage  87.5%   mean width      0.44
+```
+
+Both are usable, and the gap between them is the price of having no
+target labels. `recalibrate` measured the target’s actual errors and
+produced a band around 0.44 units wide, landing at 87.5% — a shade under
+nominal, which 20 calibration windows can easily be. Scale alignment
+inferred the target’s volatility from its raw history and transported
+the *source* panel’s normalized error distribution onto it. The source
+forecaster is relatively worse on its own six series than on these two,
+so the transported quantile is conservative: it covers 100% of the
+holdout with a band about thirty times wider (13.64 vs 0.44).
+
+That is the honest summary of this row: it produces a valid, usable
+interval where no calibration was possible at all, and it is not
+competitive with labelled calibration. Move up the table as soon as
+target labels exist.
+
+> **`adapt` never touches the forecaster**
+>
+> `adapt` changes the conformal quantile only. The point forecasts above
+> still come from the same frozen seasonal-naive rule. If the
+> *forecaster* is what has gone stale in the target domain, no amount of
+> adaptation to its residuals will fix the forecast — it will only widen
+> the band around a bad one.
+
+## Rows 2 and 4 — target features: `adapt(weighting=..., target_X=...)`
+
+The remaining rows use features.
+`adapt(weighting=DensityRatio(...), target_X=...)` fits a copy of the
+weight function on the features of the steps you are about to predict;
+`DensityRatio` fits a classifier that separates source rows from target
+rows and reads the importance weight off its odds. The [weighted split
+conformal page](../methods/weighted_split.html) works through a case
+with a real shift; here the point is what the call looks like, and what
+it does when there is no shift to correct.
+
+The features are two per predicted step: the log of the last 24 hours’
+level, and how far into the horizon the step sits. Source is the
+calibration block, target is the same six series eight windows later.
+
+```python
+from sklearn.linear_model import LogisticRegression
+
+from conformalforecast.weighting import DensityRatio
+
+
+def features(histories):
+    """(n_series, n_windows, horizon, 2): recent log level, and step index."""
+    blocks = []
+    for history in histories:
+        level = np.log(history[:, -SEASON:].mean(axis=1))
+        step = np.arange(HORIZON) / HORIZON
+        blocks.append(
+            np.stack(
+                [np.repeat(level[:, None], HORIZON, axis=1), np.tile(step, (level.size, 1))],
+                axis=-1,
+            )
+        )
+    return np.stack(blocks, axis=1)
+
+
+src_X = features(src_histories)
+src_holdout_histories, src_holdout_truths = windows(source, N_HOLDOUT, TAIL)
+holdout_X = features(src_holdout_histories)
+print("source X ", src_X.shape, " holdout X", holdout_X.shape)
+```
+
+``` text
+source X  (6, 20, 12, 2)  holdout X (6, 8, 12, 2)
+```
+
+```python
+def roll(fitted, histories, X=None):
+    intervals = []
+    for k, history in enumerate(histories):
+        step_X = None if X is None else X[:, k : k + 1]
+        intervals.append(fitted.predict(history, X=step_X).interval[:, 0])
+    return np.stack(intervals, axis=1)
+
+
+def density_ratio():
+    return DensityRatio(estimator=LogisticRegression(max_iter=1000), cv=5)
+
+
+source_forecaster = adapter(len(SOURCE_IDS))
+
+unweighted = WeightedSplit(alpha=ALPHA).calibrate(
+    source_forecaster, src_histories, src_truths, X=src_X
+)
+score("uniform weights", roll(unweighted, src_holdout_histories), src_holdout_truths)
+
+weighted = unweighted.adapt(weighting=density_ratio(), target_X=holdout_X)
+summary = weighted.calibration_.diagnostics["weight_summary"]
+score("adapt (target_X)", roll(weighted, src_holdout_histories, holdout_X), src_holdout_truths)
+print("weight summary", {k: round(v, 3) for k, v in summary.items()})
+```
+
+``` text
+uniform weights            coverage  89.9%   mean width   1504.11
+adapt (target_X)           coverage  89.9%   mean width   1504.11
+weight summary {'min': 0.357, 'median': 0.401, 'max': 0.434}
+```
+
+Identical, to the last digit — and that is the correct answer. (`adapt`
+left `unweighted` untouched and returned `weighted` as a separate
+object, which is what lets the two rows be scored side by side.) The
+weight summary shows why: every weight lands between 0.357 and 0.434, so
+the classifier cannot tell a calibration window from a holdout window.
+There is no covariate shift here to correct, and weighting a set of
+scores almost uniformly picks out the same order statistic the
+unweighted quantile did.
+
+Weighting is not free insurance, but it is close: when the shift is
+absent it degenerates gracefully toward split conformal rather than
+damaging a working interval. The failure mode to watch is the opposite
+one — a *confident* and wrong density ratio — which the [method page’s
+clipping section](../methods/weighted_split.html) measures.
+
+Row 4 is the two mechanisms together. They compose because they act on
+different parts of the same quantile: weights choose *which* calibration
+scores count, the scale ratio decides *what units* the resulting
+quantile is in.
+
+```python
+both = (
+    WeightedSplit(alpha=ALPHA, scale_estimator="mad")
+    .calibrate(source_forecaster, src_histories, src_truths, X=src_X)
+    .adapt(weighting=density_ratio(), target_X=holdout_X, target_series=source[:, :CUT])
+)
+score("adapt (X + series)", roll(both, src_holdout_histories, holdout_X), src_holdout_truths)
+```
+
+``` text
+adapt (X + series)         coverage  90.6%   mean width   1587.57
+```
+
+> **`pooling="global"` and test-point weights do not combine**
+>
+> The per-test-point weighted quantile — the one that puts `w(x_test)`
+> in the denominator, per Tibshirani et al. (2019) — runs only under
+> `pooling="per_series"`. Under `pooling="global"` the weights still
+> shape the pooled calibration quantile, but the test point’s own weight
+> is ignored and one quantile per horizon step is applied to every
+> sample. So the two headline transfer features are individually
+> available and not jointly: weighting with per-test-point
+> normalization, or serving a target panel with a different series
+> count. Choose per problem.
+
+## What adaptation cannot do
+
+-   **A shift in `P(y | x)`.** Both mechanisms assume the *conditional*
+    error distribution is stable and only the inputs moved. If the
+    relationship itself changed — a new process, a stale model, a
+    structural break — reweighting old residuals describes the old world
+    more precisely. Get target labels, or use an [online
+    method](../methods/aci.html) that learns from its own misses.
+-   **Missing overlap.** A density ratio is only estimable where both
+    domains have support. If no source window resembles the target, the
+    weights are an extrapolation with a confident face.
+-   **A degenerate target.** `compute_series_scales` raises on a
+    constant series: a flat history carries no scale information, so
+    there is nothing to align to.
+-   **Anything on another method.** `SupportsTransfer` is implemented by
+    `WeightedSplit`’s fitted object only. Every other method has no
+    `adapt()` at all — extending transfer to them is recorded in the
+    roadmap, not shipped.
+
+## References
+
+-   R. J. Tibshirani, R. F. Barber, E. J. Candes, and A. Ramdas,
+    “Conformal prediction under covariate shift,” *Advances in Neural
+    Information Processing Systems 32*, 2019.
+    https://arxiv.org/abs/1904.06019
+
+## Next
+
+-   [Weighted split conformal](../methods/weighted_split.html) — the
+    method behind all four rows, with a worked covariate shift.
+-   [Diagnostics](./diagnostics.html) — coverage and width together,
+    which is how the rows above should be compared.
+-   [Online updating](./online-updating.html) — the other answer to a
+    moving world.
+

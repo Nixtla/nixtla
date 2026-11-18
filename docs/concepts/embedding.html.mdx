@@ -1,0 +1,175 @@
+---
+title: "Embedding"
+description: "Using a method's array surface inside a forecasting library that already owns its cross-validation loop."
+---
+
+Most of this site is written for people who want a calibrated interval
+out of a forecaster. This page is for the other audience: maintainers of
+a forecasting library who want conformal calibration *inside* it,
+without taking on `conformalforecast`’s orchestration or its view of the
+world.
+
+That is what the **array surface** is for: `method.fit` on numpy arrays
+returns a fitted object, whose `interval` (and, for online methods,
+`update`) you call from then on. It takes no forecaster, no adapter and
+no DataFrame.
+
+## The invariant
+
+> An array-surface signature may only accept numpy-coercible arrays and
+> plain-Python config — never adapters, DataFrames, or library types.
+
+This holds across `methods/`, `nonconformity/` and `panel.py`, and it is
+the entire reason those modules are embeddable. A method has no opinion
+about how you produce forecasts, where your data lives, or what your
+cross-validation looks like. It takes arrays and gives back arrays.
+
+```python
+import numpy as np
+from conformalforecast import SplitConformal
+
+# predictions/truths: (n_series, n_windows, horizon)
+method = SplitConformal(alpha=0.1)
+fitted = method.fit(predictions, truths)
+interval = fitted.interval(new_predictions)   # (n_series, n_samples, horizon, 2)
+```
+
+Keep the **returned** object: `fit` never modifies `method`, so the
+method is a reusable, serializable description of the calibration
+(`method.model_dump()`) and `fitted` is the per-model state your library
+stores next to the model it calibrates. For an online method,
+`fitted.update(prediction, truth)` advances that state in place;
+`fitted.model_copy(deep=True)` takes a snapshot.
+
+Construction is keyword-only (`SplitConformal(alpha=0.1)`) because every
+method is a pydantic model, and an out-of-range `alpha` is a
+`pydantic.ValidationError` rather than a bare `ValueError` — worth
+knowing if you re-raise it as your own error type. The nonconformity
+score is config too:
+`SplitConformal(alpha=0.1, score=AbsoluteResidual())`, rejected at
+construction if the method cannot invert it. `fit` works on a copy of
+it, retained on the fitted object as `score_fn_` for `interval` to
+invert with.
+
+Nothing here needs an adapter. An object fitted through the array
+surface alone has no `forecaster_`, so its `predict` raises
+`CalibrationError` pointing you at `interval` — the two surfaces do not
+have to be mixed, and for an embedding they should not be.
+
+The dependency you take on is narwhals, numpy, pydantic and scipy —
+nothing else. Importing `conformalforecast` never imports statsforecast,
+mlforecast, neuralforecast or torch.
+
+## What you get that a hand-rolled quantile does not
+
+A library that already computes `np.quantile` on its residuals is most
+of the way there. What the array surface adds is the parts that are easy
+to get subtly wrong:
+
+-   **The exact conformal quantile.** Split and CQR take
+    `k = ceil((1 - alpha)(n + 1))` as an order statistic, not an
+    interpolated quantile. The `n + 1` is what makes the coverage
+    guarantee finite-sample. The adaptive methods need a time-varying
+    level, so ACI and AgACI use a linear quantile and NexCP and
+    WeightedSplit a weighted one.
+-   **Version-stable arithmetic.** `_quantiles.py` computes its
+    interpolation constant in `float64` regardless of input dtype. numpy
+    changed that behaviour in 2.5; following numpy would have shifted
+    every `float32` interval bound on an upgrade. Output is identical
+    across numpy versions by contract, with tests pinning it.
+-   **NaN-aware ragged handling.** Per-series effective counts, masked
+    order statistics, and `InsufficientCalibrationSamples` naming the
+    series that are too short. See [ragged
+    panels](../capabilities/ragged-panels.html).
+-   **`float32` preservation.** No silent upcast of neural network
+    output.
+-   **Batched math.** Nothing loops over the `(n_series × horizon)` grid
+    in Python. The per-cell quantile is one gather, and the online
+    methods keep an incrementally-sorted history rather than
+    re-quantiling from scratch each step. SPCI, which fits one regressor
+    per cell, is the sanctioned exception.
+-   **Six more methods.** Once the array contract is satisfied,
+    [ACI](../methods/aci.html), [AgACI](../methods/agaci.html),
+    [NexCP](../methods/nexcp.html), [CQR](../methods/cqr.html),
+    [SPCI](../methods/spci.html) and
+    [WeightedSplit](../methods/weighted_split.html) are the same three
+    calls — `fit`, `interval`, and `update` for the online four. CQR’s
+    `fit` and `interval` take a quantile cube rather than point
+    forecasts, with a trailing `(q_lo, q_hi)` axis.
+
+## The reference migration
+
+`conformalforecast.compat.mlforecast_shim` is a worked example of
+embedding a method behind an existing library’s interval hook —
+mlforecast’s `_INTERVAL_METHODS` registry.
+
+```python
+from conformalforecast.compat.mlforecast_shim import register_interval_method
+from conformalforecast import SplitConformal
+
+register_interval_method("conformal_method_split", SplitConformal)
+```
+
+`register_interval_method` takes the method *class* plus any extra
+config keywords (`gamma=`, `rho=`, `seed=`) and constructs one method
+per requested level, since `alpha` comes from the level. It is
+deliberately a *shim*, not a supported API: the expectation is that the
+upstream PR copies the pattern in-repo and this module is deleted. Read
+its module docstring before writing your own — it documents the three
+things that turned out to be fiddly, all of which will apply to any
+library:
+
+**Array layout.** mlforecast’s conformity scores arrive window-major,
+`(cs_n_windows, n_series, cs_h)`, and the array surface wants
+`(n_series, n_windows, horizon)`. One transpose. Note that the shim does
+*not* use `panel.long_to_panel` for this — the scores are already a
+contiguous cube, and pivoting would re-sort the series axis away from
+mlforecast’s own order. Getting the series axis to line up with the
+caller’s is the single most common integration bug.
+
+**Score reconstruction.** mlforecast drops the target column before the
+hook runs, so its `cs_df` holds `abs(prediction - truth)` and the signed
+residual is unrecoverable. The shim reconstructs the method’s input as
+`predictions = 0`, `truths = scores` — exact under `AbsoluteResidual`,
+and wrong under any signed or quantile score. It therefore *rejects*
+methods whose default score is anything else, rather than producing a
+plausible wrong number. If your library can preserve the sign, do; it
+unlocks the signed-score methods.
+
+**A stricter calibration floor.** `fit` requires `ceil(1/alpha)`
+effective windows per series and raises otherwise. mlforecast’s native
+methods interpolate a quantile from as few as two. This will look like a
+regression to your users and is not one — it is the sample size the
+requested quantile actually needs — so surface the error rather than
+papering over it.
+
+## Two upstream changes the shim wants
+
+Both are small, and both are documented in the module docstring:
+
+1.  `PredictionIntervals.__init__` validates `method` against a
+    hard-coded list rather than `_INTERVAL_METHODS.keys()`, so a newly
+    registered name is reachable through `get_conformal_method` but not
+    through `PredictionIntervals(method=...)`. One line.
+2.  `compute_conformity_scores` already takes `signed=`, but
+    `MLForecast.fit` never passes `signed=True` on the ordinary path.
+    Threading it through would make the signed-score methods usable.
+
+## Not supported by the shim
+
+`weights` / `target_weights` (density-ratio reweighting) and
+`is_transfer=True` (pooled cross-domain calibration) raise
+`NotImplementedError`. NexCP’s `rho` decay is a *different* mechanism
+and must not be silently substituted for density-ratio weights — they
+answer different questions and would give different intervals under the
+same name.
+
+## Next
+
+-   [Architecture](./architecture.html) — the two surfaces and the shape
+    conventions.
+-   [Methods](../methods/index.html) — what each method does, with the
+    papers.
+-   [Adapters](../adapters/index.html) — the forecaster-surface route,
+    if you want the orchestration after all.
+

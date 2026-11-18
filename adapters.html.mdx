@@ -1,0 +1,991 @@
+---
+title: Adapters
+description: Uniform interface over statsforecast, mlforecast, neuralforecast and plain callables
+---
+
+### `CallableAdapter`
+
+Bases: <code>[ForecasterAdapter](#conformalforecast.base.ForecasterAdapter)</code>
+
+Wrap a user-supplied function into a :class:`ForecasterAdapter`.
+
+The callable must accept a history array and return a point forecast.
+No capability mixins are provided — the callable has no concept of
+refit, quantiles, or bootstrap.
+
+Parameters
+----------
+predict_fn : callable
+    ``fn(history) -> forecast`` where *history* has shape
+    ``(n_series, T)`` and the return value has shape
+    ``(n_series, horizon)``. May optionally accept an ``X`` keyword to
+    receive exogenous features; see :meth:`predict`.
+horizon : int
+    Number of steps to forecast.
+n_series : int
+    Number of series in the panel.
+
+Notes
+-----
+``predict_fn`` is hidden from ``model_json_schema()``: pydantic cannot
+render a JsonSchema for a callable, and no schema-filled call could supply
+a Python function anyway -- it has to be passed programmatically. For the
+same reason this adapter does not round-trip through
+``model_validate(model_dump())``.
+
+#### `CallableAdapter.horizon`
+
+```python
+horizon: int = Field(ge=1, description='Forecast horizon this adapter produces per call.')
+```
+
+#### `CallableAdapter.n_series`
+
+```python
+n_series: int = Field(ge=1, description='Number of series in the panel, the leading array axis.')
+```
+
+#### `CallableAdapter.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a point forecast by calling the wrapped function.
+
+If the wrapped callable accepts an ``X`` keyword, the exogenous array
+is forwarded to it; otherwise ``X`` is ignored.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+X : NDArray or None, shape (n_series, 1, horizon, n_features)
+
+Returns
+-------
+Forecast, shape (n_series, 1, horizon)
+
+Raises
+------
+ValueError
+    If ``history`` is not 2-D, has the wrong leading axis, contains
+    NaN, or if the callable returns an unexpected shape.
+
+#### `CallableAdapter.predict_batch`
+
+```python
+predict_batch(histories, *, X=None)
+```
+
+Vectorized prediction over multiple history windows.
+
+Parameters
+----------
+histories : list of Series, each shape (n_series, T)
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Per-window future exogenous features; window ``w`` receives
+    ``X[:, w:w+1, :, :]``.
+
+Returns
+-------
+Forecast, shape (n_series, len(histories), horizon)
+
+Default implementation calls `predict` in a loop and stacks results.
+Adapters where the underlying library supports batch inference should
+override this for performance.
+
+#### `CallableAdapter.predict_fn`
+
+```python
+predict_fn: SkipJsonSchema[Callable[..., NDArray[np.floating]]] = Field(description='Called as predict_fn(history) -> (n_series, horizon), where history has shape (n_series, T). May accept an X keyword to receive exogenous features of shape (n_series, 1, horizon, n_features). The simplest adapter and the test workhorse.')
+```
+
+#### `CallableAdapter.supports`
+
+```python
+supports(capability)
+```
+
+Return True if this adapter provides ``capability`` (a mixin type).
+
+The default is an ``isinstance`` check. Adapters whose capability is
+runtime-conditional (e.g. a NeuralForecast adapter whose quantile
+support depends on the fitted loss) override this. Keeping the check
+here means the runtime capability gate lives where the forecaster is
+bound -- the first thing ``calibrate`` and ``calibrate_cv`` do -- never
+inside ``predict``.
+
+Parameters
+----------
+capability : type
+    A capability mixin class (e.g. ``SupportsCrossValidation``).
+
+Returns
+-------
+bool
+
+
+### `StatsForecastAdapter`
+
+Bases: <code>[ForecasterAdapter](#conformalforecast.base.ForecasterAdapter)</code>, <code>[SupportsRefit](#conformalforecast.capabilities.SupportsRefit)</code>, <code>[SupportsCrossValidation](#conformalforecast.capabilities.SupportsCrossValidation)</code>, <code>[SupportsQuantiles](#conformalforecast.capabilities.SupportsQuantiles)</code>, <code>[SupportsCrossValidationQuantiles](#conformalforecast.capabilities.SupportsCrossValidationQuantiles)</code>
+
+Adapter for a fitted :class:`statsforecast.StatsForecast` instance.
+
+``n_series`` is derived from ``train_df`` rather than accepted; passing it
+is refused at construction.
+
+Parameters
+----------
+sf : StatsForecast
+    An already-fitted StatsForecast instance.
+train_df : pandas.DataFrame or polars.DataFrame
+    The long-format DataFrame used to fit ``sf``. Kept in its own backend:
+    a polars frame means every frame handed to StatsForecast is polars.
+horizon : int
+    Forecast horizon in time steps.
+freq : str or int
+    The freq you passed to StatsForecast: a pandas alias (``'D'``, ``'MS'``)
+    for pandas frames, a polars interval (``'1d'``, ``'1mo'``) for polars
+    frames, or an int for an integer time column.
+model_name : str
+    Which model column to read from StatsForecast output. Must match one
+    of the fitted model aliases.
+id_col : str
+    Column identifying individual series (default ``'unique_id'``).
+time_col : str
+    Timestamp column (default ``'ds'``).
+target_col : str
+    Target value column (default ``'y'``).
+exog_features : list of str or None, default None
+    Names of the model's future exogenous regressor columns, in the
+    order they appear on the exogenous feature axis of ``X``. When
+    ``None`` (the default), passing a non-``None`` ``X`` to ``predict``
+    raises ``ValueError``.
+
+```
+Must name *exactly* the columns of ``train_df`` outside
+``id_col``/``time_col``/``target_col`` -- no more, no less. Anything
+else is refused at construction, because ``cross_validate`` reads its
+regressors from the whole frame while ``predict`` reads only this list,
+and a mismatch calibrates one model to correct another.
+```
+Notes
+-----
+Not serialisable, deliberately: ``sf`` is a live library object and
+``train_df`` a DataFrame, so ``model_validate(model_dump())`` cannot
+rebuild one -- and it would be refused anyway, since a dump carries the
+derived ``n_series``. Those two fields are hidden from
+``model_json_schema()`` along with the derived ones, so a schema-filled
+call still has to supply ``sf`` and ``train_df`` programmatically; the
+schema describes the scalar arguments only.
+
+#### `StatsForecastAdapter.cross_validate`
+
+```python
+cross_validate(n_windows, step_size, refit=False, *, aligned=False)
+```
+
+Run rolling-origin cross-validation.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows (>= 1).
+step_size : int
+    Steps between successive windows (>= 1).
+refit : bool or int
+    Whether (or how often) to refit between windows.
+aligned : bool, default False
+    ``False`` returns dense per-series arrays (window axis = k steps
+    before each series' own end). ``True`` returns calendar-aligned
+    cutoffs with NaN cells for late-starting series.
+
+Returns
+-------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+#### `StatsForecastAdapter.cross_validate_quantiles`
+
+```python
+cross_validate_quantiles(n_windows, step_size, quantiles, refit=False)
+```
+
+Run rolling-origin cross-validation producing quantile forecasts.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows (>= 1).
+step_size : int
+    Steps between successive windows (>= 1).
+quantiles : NDArray, shape (n_quantiles,)
+    Values in ``(0, 1)``. Symmetric-pair / range rules of
+    :func:`_nixtla_common.quantiles_to_levels` apply.
+refit : bool or int
+    Whether (or how often) to refit between windows.
+
+Returns
+-------
+quantile_predictions : Forecast, shape (n_series, n_windows, horizon, n_quantiles)
+    Quantiles are on the **last axis**, in the order requested.
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+Raises
+------
+ValueError
+    If ``n_windows`` / ``step_size`` are invalid, the quantile
+    validation fails, or the model did not return a requested
+    quantile column.
+RuntimeError
+    If the cross-validation output contains NaN.
+
+#### `StatsForecastAdapter.exog_features`
+
+```python
+exog_features: list[str] | None = Field(default=None, description="Names of the future exogenous regressor columns, in the order they appear on X's feature axis. Must name exactly train_df's non-key columns. None disables exogenous support.")
+```
+
+#### `StatsForecastAdapter.freq`
+
+```python
+freq: str | int = Field(description="The freq you passed to StatsForecast: a pandas alias ('D', 'MS') for pandas frames, a polars interval ('1d', '1mo') for polars frames, or an int for an integer time column.")
+```
+
+#### `StatsForecastAdapter.horizon`
+
+```python
+horizon: int = Field(ge=1, description='Forecast horizon this adapter produces per call.')
+```
+
+#### `StatsForecastAdapter.id_col`
+
+```python
+id_col: str = Field(default='unique_id', description='Column identifying individual series.')
+```
+
+#### `StatsForecastAdapter.model_name`
+
+```python
+model_name: str = Field(description="Which fitted model alias to read from sf's output.")
+```
+
+#### `StatsForecastAdapter.n_series`
+
+```python
+n_series: SkipJsonSchema[int] = Field(ge=1, description='Number of series in train_df, the leading array axis. Derived.')
+```
+
+#### `StatsForecastAdapter.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a point forecast anchored at the end of ``history``.
+
+The anchor follows the panel's width: a history of ``T`` columns against
+a training panel of ``train_t_len`` ends ``train_t_len - T`` steps before
+the training end. A rolling ``predict_batch`` loop therefore stamps each
+window with its own dates, which is what makes seasonal and calendar
+components line up for older windows.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+X : Forecast or None, shape (n_series, 1, horizon, n_features)
+    Future exogenous features, aligned to the ``horizon`` steps that
+    follow ``history``. Requires the adapter to have been constructed
+    with ``exog_features=[...]``.
+
+Returns
+-------
+Forecast, shape (n_series, 1, horizon)
+
+Raises
+------
+ValueError
+    If ``X`` is not None but the adapter was constructed without
+    ``exog_features``.
+
+#### `StatsForecastAdapter.predict_batch`
+
+```python
+predict_batch(histories, *, X=None)
+```
+
+Vectorized prediction over multiple history windows.
+
+Parameters
+----------
+histories : list of Series, each shape (n_series, T)
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Per-window future exogenous features; window ``w`` receives
+    ``X[:, w:w+1, :, :]``.
+
+Returns
+-------
+Forecast, shape (n_series, len(histories), horizon)
+
+Default implementation calls `predict` in a loop and stacks results.
+Adapters where the underlying library supports batch inference should
+override this for performance.
+
+#### `StatsForecastAdapter.predict_quantiles`
+
+```python
+predict_quantiles(history, quantiles)
+```
+
+Produce quantile forecasts via StatsForecast's level-based interval API.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+quantiles : NDArray, shape (n_quantiles,)
+    Values in ``(0, 1)``. Must come in symmetric pairs around 0.5;
+    ``q == 0.5`` is rejected.
+
+Returns
+-------
+Forecast, shape (n_series, n_quantiles, horizon)
+    Quantiles are on the middle axis, in the order the user requested.
+
+Raises
+------
+ValueError
+    If quantiles fail the symmetric-pair / range checks, or if the
+    underlying model did not return a requested quantile column.
+UnsupportedCapability
+    If the adapter was constructed with ``exog_features``. The
+    ``SupportsQuantiles`` contract has no ``X`` parameter, so there is
+    no way to supply the future regressors -- and forecasting a model
+    fit *with* regressors without them yields intervals that look
+    plausible and are not the model's.
+
+#### `StatsForecastAdapter.refit`
+
+```python
+refit(history)
+```
+
+Refit the underlying StatsForecast model on a new history panel.
+
+The set of series must be identical to the original training data.
+If the new panel is longer than the previous one, the end timestamp
+shifts forward proportionally (i.e. extra length = new data appended
+at the end).
+
+Not available when the adapter was constructed with ``exog_features``:
+a ``Series`` panel carries target values only, so there is nowhere for
+the regressors' new values to come from.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+
+Raises
+------
+ValueError
+    If ``exog_features`` was set, or if the series IDs change.
+
+#### `StatsForecastAdapter.sf`
+
+```python
+sf: SkipJsonSchema[StatsForecast] = Field(description='An already-fitted StatsForecast.')
+```
+
+#### `StatsForecastAdapter.supports`
+
+```python
+supports(capability)
+```
+
+Runtime-aware capability check.
+
+Quantile support here depends on how the adapter was *configured*, not on
+its class: the :class:`SupportsQuantiles` contract has no ``X``
+parameter, so an adapter built with ``exog_features`` cannot honour it --
+there would be no way to supply the future regressors. Reporting that
+through ``supports`` puts the failure **where the forecaster is bound**
+-- the first thing ``calibrate`` / ``calibrate_cv`` do -- which is where
+CLAUDE.md requires capability checks to happen; without it, an exogenous
+adapter calibrates a CQR method happily and only fails at ``predict`` --
+after the user has paid for a full CV calibration.
+
+Mirrors :meth:`NeuralForecastAdapter.supports`, which gates on the
+fitted loss for the same reason.
+
+Parameters
+----------
+capability : type
+    A capability mixin class.
+
+Returns
+-------
+bool
+
+#### `StatsForecastAdapter.target_col`
+
+```python
+target_col: str = Field(default='y', description='Target value column.')
+```
+
+#### `StatsForecastAdapter.time_col`
+
+```python
+time_col: str = Field(default='ds', description='Timestamp column.')
+```
+
+#### `StatsForecastAdapter.train_df`
+
+```python
+train_df: SkipJsonSchema[_nx.TrainFrame] = Field(description='The long-format pandas or polars DataFrame used to fit ``sf``.')
+```
+
+
+### `MLForecastAdapter`
+
+Bases: <code>[ForecasterAdapter](#conformalforecast.base.ForecasterAdapter)</code>, <code>[SupportsRefit](#conformalforecast.capabilities.SupportsRefit)</code>, <code>[SupportsCrossValidation](#conformalforecast.capabilities.SupportsCrossValidation)</code>
+
+Adapter for a fitted :class:`mlforecast.MLForecast` instance.
+
+The adapter wraps **point** forecasters only. Any MLForecast configuration
+that produces intervals natively (``prediction_intervals``) is rejected at
+construction; conformalforecast produces its own intervals from point forecasts.
+
+``n_series`` is derived from ``train_df`` rather than accepted; passing it
+is refused at construction.
+
+Parameters
+----------
+mlf : MLForecast
+    An already-fitted MLForecast instance with point models only.
+train_df : pandas.DataFrame or polars.DataFrame
+    The long-format DataFrame used to fit ``mlf``. Kept in its own backend:
+    a polars frame means every frame handed to MLForecast is polars.
+horizon : int
+    Forecast horizon in time steps.
+freq : str or int
+    The freq you passed to MLForecast: a pandas alias (``'D'``, ``'MS'``)
+    for pandas frames, a polars interval (``'1d'``, ``'1mo'``) for polars
+    frames, or an int for an integer time column.
+model_name : str
+    Which model column to read from MLForecast output. Must be an alias
+    present in ``mlf.models_``.
+id_col : str
+    Column identifying individual series (default ``'unique_id'``).
+time_col : str
+    Timestamp column (default ``'ds'``).
+target_col : str
+    Target value column (default ``'y'``).
+
+```
+All three must match the names ``mlf.fit`` recorded: ``MLForecast.predict``
+takes no column-name arguments and reuses them, so a mismatch is
+refused at construction.
+```
+exog_features : list of str or None
+    Names of the future exogenous columns ``mlf`` was fitted with. Required
+    to pass ``X`` to :meth:`predict`, and ``train_df`` must carry them:
+    ``MLForecast.predict`` rebuilds its feature matrix from the history
+    frame, so the regressors' past values have to travel with it.
+Notes
+-----
+Not serialisable, deliberately: ``mlf`` is a live library object and
+``train_df`` a DataFrame, so ``model_validate(model_dump())`` cannot
+rebuild one -- and it would be refused anyway, since a dump carries the
+derived ``n_series``. Those two fields are hidden from
+``model_json_schema()`` along with the derived ones, so a schema-filled
+call still has to supply ``mlf`` and ``train_df`` programmatically; the
+schema describes the scalar arguments only.
+
+#### `MLForecastAdapter.cross_validate`
+
+```python
+cross_validate(n_windows, step_size, refit=False, *, aligned=False)
+```
+
+Run rolling-origin cross-validation.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows (>= 1).
+step_size : int
+    Steps between successive windows (>= 1).
+refit : bool or int
+    Whether (or how often) to refit between windows.
+aligned : bool, default False
+    ``False`` returns dense per-series arrays (window axis = k steps
+    before each series' own end). ``True`` returns calendar-aligned
+    cutoffs with NaN cells for late-starting series.
+
+Returns
+-------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+#### `MLForecastAdapter.exog_features`
+
+```python
+exog_features: list[str] | None = Field(default=None, description="Names of the future exogenous columns ``mlf`` was fitted with, in the order they appear on X's feature axis. Required to pass X to predict, and train_df must carry them.")
+```
+
+#### `MLForecastAdapter.freq`
+
+```python
+freq: str | int = Field(description="The freq you passed to MLForecast: a pandas alias ('D', 'MS') for pandas frames, a polars interval ('1d', '1mo') for polars frames, or an int for an integer time column.")
+```
+
+#### `MLForecastAdapter.horizon`
+
+```python
+horizon: int = Field(ge=1, description='Forecast horizon this adapter produces per call.')
+```
+
+#### `MLForecastAdapter.id_col`
+
+```python
+id_col: str = Field(default='unique_id', description='Column identifying individual series.')
+```
+
+#### `MLForecastAdapter.mlf`
+
+```python
+mlf: SkipJsonSchema[MLForecast] = Field(description='An already-fitted MLForecast.')
+```
+
+#### `MLForecastAdapter.model_name`
+
+```python
+model_name: str = Field(description="Which fitted model alias to read from mlf's output.")
+```
+
+#### `MLForecastAdapter.n_series`
+
+```python
+n_series: SkipJsonSchema[int] = Field(ge=1, description='Number of series in train_df, the leading array axis. Derived.')
+```
+
+#### `MLForecastAdapter.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a point forecast anchored where ``history`` sits in the training data.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+X : Forecast or None, shape (n_series, 1, horizon, n_features)
+    Future exogenous features, aligned to the ``horizon`` steps that
+    follow ``history``. Requires the adapter to have been constructed
+    with ``exog_features=[...]``.
+
+Returns
+-------
+Forecast, shape (n_series, 1, horizon)
+
+Raises
+------
+ValueError
+    If ``X`` is not None but the adapter was constructed without
+    ``exog_features``.
+
+#### `MLForecastAdapter.predict_batch`
+
+```python
+predict_batch(histories, *, X=None)
+```
+
+Vectorized prediction over multiple history windows.
+
+Parameters
+----------
+histories : list of Series, each shape (n_series, T)
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Per-window future exogenous features; window ``w`` receives
+    ``X[:, w:w+1, :, :]``.
+
+Returns
+-------
+Forecast, shape (n_series, len(histories), horizon)
+
+Default implementation calls `predict` in a loop and stacks results.
+Adapters where the underlying library supports batch inference should
+override this for performance.
+
+#### `MLForecastAdapter.refit`
+
+```python
+refit(history)
+```
+
+Refit the underlying MLForecast model on a new history panel.
+
+The set of series must be identical to the original training data.
+If the new panel is longer than the previous one, the end timestamp
+shifts forward proportionally.
+
+Not available when the adapter was constructed with ``exog_features``:
+a ``Series`` panel carries target values only, so there is nowhere for
+the regressors' new values to come from.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+
+Raises
+------
+ValueError
+    If ``exog_features`` was set, or if the series IDs change.
+
+#### `MLForecastAdapter.supports`
+
+```python
+supports(capability)
+```
+
+Capability check, with the exogenous case resolved at runtime.
+
+``SupportsRefit`` depends on how the adapter was configured rather than
+on its class: a history panel carries target values only, so refitting
+an exogenous model would retrain it without its regressors. Gating here
+means the failure surfaces where the forecaster is bound, at the top of
+``calibrate`` / ``calibrate_cv``, not mid-calibration.
+
+#### `MLForecastAdapter.target_col`
+
+```python
+target_col: str = Field(default='y', description='Target value column.')
+```
+
+#### `MLForecastAdapter.time_col`
+
+```python
+time_col: str = Field(default='ds', description='Timestamp column.')
+```
+
+#### `MLForecastAdapter.train_df`
+
+```python
+train_df: SkipJsonSchema[_nx.TrainFrame] = Field(description='The long-format pandas or polars DataFrame used to fit ``mlf``.')
+```
+
+
+### `NeuralForecastAdapter`
+
+Bases: <code>[ForecasterAdapter](#conformalforecast.base.ForecasterAdapter)</code>, <code>[SupportsRefit](#conformalforecast.capabilities.SupportsRefit)</code>, <code>[SupportsCrossValidation](#conformalforecast.capabilities.SupportsCrossValidation)</code>, <code>[SupportsQuantiles](#conformalforecast.capabilities.SupportsQuantiles)</code>, <code>[SupportsCrossValidationQuantiles](#conformalforecast.capabilities.SupportsCrossValidationQuantiles)</code>
+
+Adapter for a fitted :class:`neuralforecast.NeuralForecast` instance.
+
+The adapter wraps **point** forecasters only. Any NeuralForecast
+configuration that produces intervals natively (``prediction_intervals``)
+is rejected at construction; conformalforecast produces its own intervals
+from point forecasts.
+
+The horizon is read from the underlying models' ``h`` attribute. All
+models in ``nf.models`` must share the same horizon.
+
+``horizon``, ``n_series`` and ``exog_features`` are all derived -- from the
+models' ``h``, from ``train_df``, and from the selected model's
+``futr_exog_list`` respectively -- rather than accepted; passing any of them
+is refused at construction.
+
+Parameters
+----------
+nf : NeuralForecast
+    An already-fitted NeuralForecast instance with point models only.
+train_df : pandas.DataFrame or polars.DataFrame
+    The long-format DataFrame used to fit ``nf``. Kept in its own backend:
+    a polars frame means every frame handed to NeuralForecast is polars.
+freq : str or int
+    The freq you passed to NeuralForecast: a pandas alias (``'D'``, ``'MS'``)
+    for pandas frames, a polars interval (``'1d'``, ``'1mo'``) for polars
+    frames, or an int for an integer time column.
+model_name : str
+    Which model column to read from NeuralForecast output. Must be the
+    alias of a model in ``nf.models`` (or its class name if no alias was
+    set explicitly).
+id_col : str
+    Column identifying individual series (default ``'unique_id'``).
+time_col : str
+    Timestamp column (default ``'ds'``).
+target_col : str
+    Target value column (default ``'y'``).
+
+```
+All three must match the names ``nf.fit`` recorded: ``NeuralForecast.predict``
+takes no column-name arguments and reuses them, so a mismatch is
+refused at construction.
+```
+Notes
+-----
+Not serialisable, deliberately: ``nf`` is a live library object and
+``train_df`` a DataFrame, so ``model_validate(model_dump())`` cannot
+rebuild one -- and it would be refused anyway, since a dump carries the
+derived ``horizon``, ``n_series`` and ``exog_features``. Those two fields are hidden from
+``model_json_schema()`` along with the derived ones, so a schema-filled
+call still has to supply ``nf`` and ``train_df`` programmatically; the
+schema describes the scalar arguments only.
+
+#### `NeuralForecastAdapter.cross_validate`
+
+```python
+cross_validate(n_windows, step_size, refit=False, *, aligned=False)
+```
+
+Run rolling-origin cross-validation.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows (>= 1).
+step_size : int
+    Steps between successive windows (>= 1).
+refit : bool or int
+    Whether (or how often) to refit between windows.
+aligned : bool, default False
+    ``False`` returns dense per-series arrays (window axis = k steps
+    before each series' own end). ``True`` returns calendar-aligned
+    cutoffs with NaN cells for late-starting series.
+
+Returns
+-------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+#### `NeuralForecastAdapter.cross_validate_quantiles`
+
+```python
+cross_validate_quantiles(n_windows, step_size, quantiles, refit=False)
+```
+
+Run rolling-origin cross-validation producing quantile forecasts.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows (>= 1).
+step_size : int
+    Steps between successive windows (>= 1).
+quantiles : NDArray, shape (n_quantiles,)
+    Values in ``(0, 1)``. Symmetric-pair / range rules of
+    :func:`_nixtla_common.quantiles_to_levels` apply.
+refit : bool or int
+    Whether (or how often) to refit between windows.
+
+Returns
+-------
+quantile_predictions : Forecast, shape (n_series, n_windows, horizon, n_quantiles)
+    Quantiles are on the **last axis**, in the order requested.
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+Raises
+------
+UnsupportedCapability
+    If the underlying model was fit with a non-probabilistic loss.
+ValueError
+    If ``n_windows`` / ``step_size`` are invalid, the quantile
+    validation fails, or the model did not return a requested
+    quantile column.
+RuntimeError
+    If the cross-validation output contains NaN.
+
+#### `NeuralForecastAdapter.exog_features`
+
+```python
+exog_features: SkipJsonSchema[list[str] | None] = Field(default=None, description="Derived, not accepted: the selected model's futr_exog_list, or None if it has none. NeuralForecast models record their own regressors and predict requires them, so the model is the source of truth.")
+```
+
+#### `NeuralForecastAdapter.freq`
+
+```python
+freq: str | int = Field(description="The freq you passed to NeuralForecast: a pandas alias ('D', 'MS') for pandas frames, a polars interval ('1d', '1mo') for polars frames, or an int for an integer time column.")
+```
+
+#### `NeuralForecastAdapter.horizon`
+
+```python
+horizon: SkipJsonSchema[int] = Field(ge=1, description="The models' shared h. Derived.")
+```
+
+#### `NeuralForecastAdapter.id_col`
+
+```python
+id_col: str = Field(default='unique_id', description='Column identifying individual series.')
+```
+
+#### `NeuralForecastAdapter.model_name`
+
+```python
+model_name: str = Field(description="Which fitted model alias to read from nf's output.")
+```
+
+#### `NeuralForecastAdapter.n_series`
+
+```python
+n_series: SkipJsonSchema[int] = Field(ge=1, description='Number of series in train_df, the leading array axis. Derived.')
+```
+
+#### `NeuralForecastAdapter.nf`
+
+```python
+nf: SkipJsonSchema[NeuralForecast] = Field(description='An already-fitted NeuralForecast with point models only.')
+```
+
+#### `NeuralForecastAdapter.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a point forecast anchored where ``history`` sits in the training data.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+X : Forecast or None, shape (n_series, 1, horizon, n_features)
+    Future exogenous features. Not supported by this adapter.
+
+Returns
+-------
+Forecast, shape (n_series, 1, horizon)
+
+Raises
+------
+ValueError
+    If ``X`` is not None but the model declares no future exogenous
+    features, or if it declares them and ``X`` is None.
+
+#### `NeuralForecastAdapter.predict_batch`
+
+```python
+predict_batch(histories, *, X=None)
+```
+
+Vectorized prediction over multiple history windows.
+
+Parameters
+----------
+histories : list of Series, each shape (n_series, T)
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Per-window future exogenous features; window ``w`` receives
+    ``X[:, w:w+1, :, :]``.
+
+Returns
+-------
+Forecast, shape (n_series, len(histories), horizon)
+
+Default implementation calls `predict` in a loop and stacks results.
+Adapters where the underlying library supports batch inference should
+override this for performance.
+
+#### `NeuralForecastAdapter.predict_quantiles`
+
+```python
+predict_quantiles(history, quantiles)
+```
+
+Produce quantile forecasts via NeuralForecast's level-based API.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+quantiles : NDArray, shape (n_quantiles,)
+    Values in ``(0, 1)``. Must come in symmetric pairs around 0.5;
+    ``q == 0.5`` is rejected. NeuralForecast's runtime behaviour for
+    ``MQLoss`` ignores arbitrary quantile requests in favour of the
+    quantiles the loss was trained with — this adapter therefore
+    uses ``level=`` (the underlying API both losses honour) and
+    requires symmetric inputs.
+
+Returns
+-------
+Forecast, shape (n_series, n_quantiles, horizon)
+    Quantiles are on the middle axis, in the order requested.
+
+Raises
+------
+UnsupportedCapability
+    If the underlying model was fit with a non-probabilistic loss.
+ValueError
+    If the symmetric-pair / range checks fail, or if the model did
+    not return a requested quantile column. For ``MQLoss``, the
+    requested quantiles must match a symmetric pair the loss was
+    trained with.
+
+#### `NeuralForecastAdapter.refit`
+
+```python
+refit(history)
+```
+
+Refit the underlying NeuralForecast model on a new history panel.
+
+The set of series must be identical to the original training data.
+If the new panel is longer than the previous one, the end timestamp
+shifts forward proportionally.
+
+Note that NeuralForecast's ``fit`` retrains the neural networks from
+scratch and may take significantly longer than the StatsForecast or
+MLForecast equivalents. For online-style usage, batch the refits.
+
+Not available when the model declares future exogenous features: a
+``Series`` panel carries target values only, so there is nowhere for the
+regressors' new values to come from.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+
+Raises
+------
+ValueError
+    If the model declares future exogenous features.
+
+#### `NeuralForecastAdapter.supports`
+
+```python
+supports(capability)
+```
+
+Runtime-aware capability check.
+
+Quantile capabilities depend on the fitted loss, not the adapter class,
+so this override consults ``_supports_quantiles_runtime`` for
+:class:`SupportsQuantiles` / :class:`SupportsCrossValidationQuantiles`
+and defers to the default ``isinstance`` check otherwise. This puts the
+runtime quantile gate at the top of ``calibrate`` / ``calibrate_cv``,
+where the forecaster is bound, rather than surfacing it only at
+``predict`` time.
+
+Parameters
+----------
+capability : type
+    A capability mixin class.
+
+Returns
+-------
+bool
+
+#### `NeuralForecastAdapter.target_col`
+
+```python
+target_col: str = Field(default='y', description='Target value column.')
+```
+
+#### `NeuralForecastAdapter.time_col`
+
+```python
+time_col: str = Field(default='ds', description='Timestamp column.')
+```
+
+#### `NeuralForecastAdapter.train_df`
+
+```python
+train_df: SkipJsonSchema[_nx.TrainFrame] = Field(description='The long-format pandas or polars DataFrame used to fit ``nf``.')
+```
+

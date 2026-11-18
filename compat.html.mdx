@@ -1,0 +1,86 @@
+---
+title: Compatibility shims
+description: Reference migration shim registering conformal methods into mlforecast's interval registry
+---
+
+### `make_interval_method`
+
+```python
+make_interval_method(method_cls, **method_kwargs)
+```
+
+Adapt a ``ConformalMethod`` to mlforecast's interval-hook signature.
+
+Parameters
+----------
+method_cls : type[ConformalMethod]
+    A method class, e.g. :class:`~conformalforecast.methods.split.SplitConformal`.
+    ``alpha`` is supplied per requested level by the returned function, so
+    do not pass it here.
+**method_kwargs
+    Extra keyword arguments forwarded to ``method_cls`` (``gamma``, ``rho``,
+    ``seed``, ``score``, ...). A ``score`` must be an
+    :class:`AbsoluteResidual`, like the class default it replaces.
+
+Returns
+-------
+callable
+    A function matching mlforecast 1.1's interval hook — ``fcst_df`` and
+    ``cs_df`` positional, then keyword ``model_names``, ``level``,
+    ``cs_n_windows``, ``cs_h``, ``n_series``, ``horizon``, ``weights``,
+    ``is_transfer``, ``target_weights`` — that appends
+    ``{model}-lo-{level}`` / ``{model}-hi-{level}`` columns. One method is
+    constructed and fitted per ``(model, level)`` pair. Weighted and
+    transfer conformal arguments raise ``NotImplementedError``.
+
+Raises
+------
+ValueError
+    If ``method_cls`` ``CONSUMES_QUANTILES`` (it needs quantile forecasts
+    mlforecast does not record), or the score it would fit with is not an
+    :class:`AbsoluteResidual` (see the module docstring).
+
+Examples
+--------
+>>> from conformalforecast.compat.mlforecast_shim import make_interval_method
+>>> from conformalforecast.methods import AdaptiveConformalInference
+>>> hook = make_interval_method(AdaptiveConformalInference, gamma=0.01)   # doctest: +SKIP
+
+
+### `register_interval_method`
+
+```python
+register_interval_method(name, method_cls, *, overwrite=False, **method_kwargs)
+```
+
+Register a method-backed interval method in mlforecast's registry.
+
+Parameters
+----------
+name : str
+    Registry key, e.g. ``"conformal_method_split"``. Note the upstream gap
+    described in the module docstring: ``PredictionIntervals`` validates
+    ``method`` against a hard-coded list, so a brand-new name is reachable
+    via ``get_conformal_method(name)`` but not yet via
+    ``PredictionIntervals(method=name)``.
+method_cls : type[ConformalMethod]
+    Method class; see :func:`make_interval_method`.
+overwrite : bool, default False
+    Allow replacing an existing registry entry (e.g. shadowing
+    ``"conformal_error"`` to compare against mlforecast's native method).
+**method_kwargs
+    Forwarded to ``method_cls``.
+
+Returns
+-------
+callable
+    The registered hook.
+
+Raises
+------
+ImportError
+    If mlforecast is not installed.
+ValueError
+    If ``name`` is already registered and ``overwrite`` is False, or if
+    ``method_cls`` is unsupported (see :func:`make_interval_method`).
+

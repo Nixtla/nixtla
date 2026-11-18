@@ -1,0 +1,151 @@
+---
+title: Aggregators
+description: Online aggregation of expert predictions, used by AgACI
+---
+
+### `OnlineAggregator`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Online expert aggregator for AgACI and similar methods.
+
+Maintains per-expert cumulative losses and exposes normalized weights.
+Subclasses differ in how they convert losses to weights.
+
+The panel shape (`n_experts`, `n_series`, `horizon`) is unknown at
+construction time -- it is only known once the caller sees the
+calibration arrays -- so it is bound via :meth:`initialize`, not
+``__init__``. Call :meth:`initialize` once before :meth:`weights` or
+:meth:`update`.
+
+#### `OnlineAggregator.initialize`
+
+```python
+initialize(n_experts, n_series, horizon)
+```
+
+Bind the panel shape and allocate ``cumulative_losses_``.
+
+Parameters
+----------
+n_experts : int
+    Number of experts being aggregated.
+n_series : int
+    Number of series in the panel.
+horizon : int
+    Forecast horizon length.
+
+Raises
+------
+ValueError
+    If any argument is &lt; 1.
+
+#### `OnlineAggregator.update`
+
+```python
+update(losses)
+```
+
+Add per-expert losses to cumulative losses.
+
+Parameters
+----------
+losses : NDArray, shape (n_experts, n_series, horizon)
+
+Raises
+------
+CalibrationError
+    If called before :meth:`initialize`.
+ValueError
+    If ``losses`` does not have the expected shape.
+
+#### `OnlineAggregator.weights`
+
+```python
+weights()
+```
+
+Return current normalized weights.
+
+Returns
+-------
+NDArray, shape (n_experts, n_series, horizon)
+    Sum along axis 0 equals 1 for every (series, horizon) cell.
+
+Raises
+------
+CalibrationError
+    If called before :meth:`initialize`.
+
+
+### `EWA`
+
+Bases: <code>[OnlineAggregator](#conformalforecast.aggregators.base.OnlineAggregator)</code>
+
+Exponentially Weighted Average aggregator (Vovk 1990).
+
+Weights are proportional to ``exp(-eta * cumulative_loss)``. Larger ``eta``
+converges faster to the best expert but is noisier.
+
+Call :meth:`initialize` with the panel shape before :meth:`weights` or
+:meth:`update`.
+
+#### `EWA.initialize`
+
+```python
+initialize(n_experts, n_series, horizon)
+```
+
+Bind the panel shape and allocate ``cumulative_losses_``.
+
+Parameters
+----------
+n_experts : int
+    Number of experts being aggregated.
+n_series : int
+    Number of series in the panel.
+horizon : int
+    Forecast horizon length.
+
+Raises
+------
+ValueError
+    If any argument is &lt; 1.
+
+#### `EWA.update`
+
+```python
+update(losses)
+```
+
+Add per-expert losses to cumulative losses.
+
+Parameters
+----------
+losses : NDArray, shape (n_experts, n_series, horizon)
+
+Raises
+------
+CalibrationError
+    If called before :meth:`initialize`.
+ValueError
+    If ``losses`` does not have the expected shape.
+
+#### `EWA.weights`
+
+```python
+weights()
+```
+
+Return current softmax weights over experts.
+
+Returns
+-------
+NDArray, shape (n_experts, n_series, horizon)
+    Numerically stable softmax along axis 0. Sums to 1 along axis 0.
+
+Raises
+------
+CalibrationError
+    If called before :meth:`initialize`.
+

@@ -1,0 +1,319 @@
+---
+title: "Architecture"
+description: "A declarative method, the fitted object it returns, the array shapes they share, and which entry point you want."
+---
+
+Each conformal method in `conformalforecast` is **a pair of classes**:
+
+-   a **method** — `SplitConformal`, `ConformalizedQuantileRegression`,
+    `AdaptiveConformalInference`,
+    `AggregatedAdaptiveConformalInference`,
+    `NonexchangeableConformalPrediction`,
+    `SequentialPredictiveConformalInference`, `WeightedSplit` — which is
+    pure configuration: `alpha`, the nonconformity `score`, and the
+    method’s own knobs. Fitting never modifies it.
+-   a **fitted object** — what the method’s `fit`, `calibrate` and
+    `calibrate_cv` return. It holds everything learned from calibration,
+    plus a copy of the config it was fitted under (`method_`), and it is
+    what produces intervals.
+
+| Method                                              | Fitted object             |
+|------------------------------------|------------------------------------|
+| `SplitConformal`, `ConformalizedQuantileRegression` | `FixedOffsetForecaster`   |
+| `WeightedSplit`                                     | `WeightedSplitForecaster` |
+| `AdaptiveConformalInference`                        | `ACIForecaster`           |
+| `AggregatedAdaptiveConformalInference`              | `AgACIForecaster`         |
+| `NonexchangeableConformalPrediction`                | `NexCPForecaster`         |
+| `SequentialPredictiveConformalInference`            | `SPCIForecaster`          |
+
+Split conformal and CQR share a fitted class because, once fitted, both
+are the same thing: a fixed per-cell offset applied through the score.
+
+Which entry point you call depends on who owns the cross-validation
+loop.
+
+**The array surface.** `method.fit(predictions, truths)` returns the
+fitted object; `fitted.interval(predictions)` and
+`fitted.update(prediction, truth)` use it. Pure array-in/array-out
+calibration math, taking no forecaster at all. An array-surface
+signature may only accept numpy-coercible arrays and plain-Python config
+— never adapters, DataFrames, or library types. This is the surface for
+libraries that already own their cross-validation and predict
+orchestration: statsforecast, mlforecast, neuralforecast.
+
+**The forecaster surface.**
+`method.calibrate(forecaster, histories, truths)` /
+`method.calibrate_cv(forecaster, n_windows)` return the fitted object,
+and `fitted.predict(history)` uses it. Written once in the base classes
+and never overridden, it dispatches through a `ForecasterAdapter`. This
+is the surface for standalone users, and the one the rest of these pages
+use.
+
+Both surfaces run the same math: a page that calibrates through an
+adapter and a library that hands over its own residual cube get the same
+fitted object.
+
+## Using the array surface
+
+```python
+import numpy as np
+from conformalforecast import SplitConformal
+
+rng = np.random.default_rng(0)
+
+# predictions/truths: (n_series, n_windows, horizon)
+predictions = np.zeros((2, 50, 3))
+truths = rng.normal(size=(2, 50, 3))
+
+method = SplitConformal(alpha=0.1)
+fitted = method.fit(predictions, truths)
+interval = fitted.interval(np.zeros((2, 1, 3)))   # (2, 1, 3, 2) — (lower, upper)
+```
+
+`fitted.calibration_` is a `CalibrationResult`: `n_calibration_samples`
+(per-series effective window counts) and a `diagnostics` dict of
+method-specific values.
+
+An object fitted this way has no forecaster, so `fitted.predict` raises
+`CalibrationError` telling you to use `interval` — see
+[Embedding](./embedding.html).
+
+## Construction is keyword-only, and config is a schema
+
+Every method is a pydantic model. Construction is therefore keyword-only
+— `SplitConformal(alpha=0.1)`, never `SplitConformal(0.1)` — an unknown
+keyword is a `ValidationError` rather than a silently ignored argument
+(`extra="forbid"`), and an out-of-range `alpha` is a
+`pydantic.ValidationError`, which is a `ValueError` subclass:
+
+```python
+import pydantic
+from conformalforecast import AdaptiveConformalInference
+
+try:
+    AdaptiveConformalInference(alpha=1.5, gamma=0.01)
+except pydantic.ValidationError as err:
+    print(err)          # 1 validation error ... alpha: Input should be less than 1
+```
+
+Each config field carries `Field` constraints and a description, so
+`model_json_schema()` is a usable description of the knobs — the
+constraint `alpha ∈ (0, 1)` and the sentence explaining what `gamma`
+trades off are both in the schema, not only in the prose:
+
+```python
+schema = AdaptiveConformalInference.model_json_schema()
+sorted(schema["properties"])        # ['alpha', 'gamma', 'score', 'seed']
+```
+
+Because a method is only config, it round-trips through
+`model_validate(model_dump())` whether or not it has been used to fit.
+
+## The score is config
+
+The nonconformity score is an ordinary constructor field, `score=`.
+Leave it out to take the method’s default:
+
+```python
+from conformalforecast import SignedResidual, SplitConformal
+
+method = SplitConformal(
+    alpha=0.1, symmetric=False, alpha_lo=0.05, alpha_hi=0.95, score=SignedResidual()
+)
+```
+
+A score the method cannot invert is rejected at construction, as a
+`pydantic.ValidationError`: SPCI needs a signed residual, CQR a
+quantile-shaped score, `WeightedSplit` a symmetric one, and asymmetric
+split conformal a signed one. Each check accepts subclasses, so a custom
+score must subclass the type the method requires.
+
+A score serializes through its `kind` tag (`"absolute"`, `"signed"`,
+`"quantile"`), which is what lets a configured method survive a dump and
+reload. A custom score declares its own tag —
+`kind: Literal["scaled"] = "scaled"` — and subclassing a built-in
+without one is a `TypeError` when the class is defined, because it would
+otherwise reload as its parent.
+
+`fit` works on a copy of the score, so a score with fitted parameters of
+its own never carries state from one fit into the next.
+
+## Config versus fitted state
+
+Following sklearn’s convention:
+
+-   **Config** lives on the method. It is set at construction, has no
+    trailing underscore, and is a pydantic `Field` with constraints and
+    a description: `alpha`, `seed`, `score`, `gamma`, `rho`,
+    `window_size`, `gammas`, `symmetric`.
+-   **Fitted state** lives on the fitted object only, with a trailing
+    underscore: `score_quantile_`, `alpha_t_`, `n_calibration_samples_`,
+    `residuals_`, `forecaster_`. The fitted object reads config through
+    `fitted.method_`, a copy taken at fit, so later edits to the method
+    never reach an object that was already fitted.
+
+There is no “not yet fitted” state to check for: a fitted object exists
+only once fitting succeeded, and a method is never fitted.
+
+`REQUIRED_CAPABILITIES`, `CONSUMES_QUANTILES`, `SCORE_TYPE` and
+`IS_ONLINE` are `ClassVar` class metadata on the method rather than
+fields, so they stay off the constructor and off the schema and are
+readable on the class itself with no instance in hand.
+
+## The forecaster arrives at calibration
+
+The forecaster is never a constructor argument. It is passed to
+`calibrate` / `calibrate_cv` and kept on the returned object as
+`forecaster_`, where `predict` reuses it. Calibrating twice gives two
+independent fitted objects, so calibrating the same method against two
+forecasters is just two calls.
+
+The two collaborators that are configurable objects rather than plain
+values — AgACI’s `aggregator=EWA(eta=2.0)` (the default is `EWA()`,
+`eta=1.0`) and SPCI’s `regressor=QRFQuantileRegressor(n_estimators=200)`
+(the default is `None`, resolved to
+`QRFQuantileRegressor(random_state=seed)`) — are **prototypes**: config
+on the method, deep-copied into the fitted object, and never fitted
+themselves.
+
+> **Capability failures happen where the forecaster is bound**
+>
+> A method declares what it needs from an adapter through
+> `REQUIRED_CAPABILITIES`, checked where the forecaster is bound — the
+> first thing `calibrate` and `calibrate_cv` do. Calibrating
+> `ConformalizedQuantileRegression` on a forecaster that cannot produce
+> quantiles raises `UnsupportedCapability` before any forecasting
+> happens. Constructing it does not: with no forecaster in hand there is
+> nothing to check. And `predict` never raises it — a fitted object is
+> only ever built after the check passed. See
+> [Adapters](../adapters/index.html) for the matrix.
+
+## Shapes
+
+Every array in the public API follows these conventions, and the leading
+axis is **always** `n_series` — iterate over it the way you would
+iterate over groupby keys.
+
+| Name       | Shape                                                     | Meaning                                           |
+|------------------------|------------------------|------------------------|
+| `Series`   | `(n_series, T)`                                           | A panel of histories; left-NaN padded when ragged |
+| `Forecast` | `(n_series, n_windows \| n_samples, horizon)`             | Always 3-D                                        |
+| `Interval` | `(n_series, n_samples, horizon, 2)`                       | Last axis `(lower, upper)`                        |
+| `Exog`     | `(n_series, n_windows \| n_samples, horizon, n_features)` | Features per predicted step                       |
+
+CQR consumes quantile forecasts rather than point forecasts, so the
+`predictions` its `fit` and its fitted `interval` take carry a trailing
+`(q_lo, q_hi)` axis: `(n_series, n_windows | n_samples, horizon, 2)`.
+
+A NaN cell in `predictions`/`truths` at `fit` time means “this window
+does not exist for this series”. The math propagates NaN through scoring
+— never impute — and takes per-`(series, horizon)` quantiles with masked
+helpers. Each series needs enough effective windows or `fit` raises
+`InsufficientCalibrationSamples` naming the offending series. The floor
+is `ceil(1/alpha)` for most methods; asymmetric split takes one quantile
+per tail and needs `max(ceil(1/alpha_lo), ceil(1/(1 - alpha_hi)))`, SPCI
+needs `max(window_size + 1, ceil(1/alpha))`, and NexCP and WeightedSplit
+test the weighted effective sample size `(Σw)² / Σw²` rather than a raw
+count.
+
+Split and CQR take the exact `k = ceil((1 - alpha)(n + 1))` order
+statistic, not an interpolated quantile — matching the conformal
+literature. ACI and AgACI need a quantile at a time-varying level, so
+they use a numpy-version-stable linear quantile; NexCP and WeightedSplit
+take weighted quantiles.
+
+## Ragged panels and long-format data
+
+`conformalforecast.panel` converts between long format (one row per
+`(series, timestamp)`) and the `(n_series, T)` panels the array surface
+consumes. It imports only numpy — no pandas — so it is embeddable
+wherever the array surface is.
+
+```python
+from conformalforecast import panel
+
+values = [1.0, 2.0, 3.0, 5.0, 6.0]
+series_ids = ["a", "a", "a", "b", "b"]
+timestamps = [0, 1, 2, 1, 2]
+
+# Series "b" starts late -> one leading NaN, no truncation of "a".
+matrix, index = panel.long_to_panel(values, series_ids, timestamps)
+assert matrix.shape == (2, 3)
+assert index.lengths.tolist() == [3, 2]
+```
+
+## Calibration entry points
+
+Both are concrete on `ConformalMethod`, never overridden by a subclass,
+and both return a new fitted object:
+
+-   `calibrate(forecaster, histories, truths, *, X=None)` — explicit
+    arrays, any adapter, looping via `forecaster.predict_batch`.
+-   `calibrate_cv(forecaster, n_windows, *, step_size=1, refit=False,   aligned=False, X=None)`
+    — delegates to the adapter’s cross-validation, automatically
+    requesting quantile predictions when the method
+    `CONSUMES_QUANTILES`.
+
+`aligned=False` (the default) gives dense per-series windows, where the
+window axis means “k steps before this series’ own end”. `aligned=True`
+gives calendar-aligned cutoffs with NaN cells for late-starting series.
+The recency-weighted methods — NexCP and SPCI — interpret that axis
+accordingly, so the choice matters for them in a way it does not for
+split conformal.
+
+`fitted.recalibrate(target_histories, target_truths)` is `calibrate`
+pointed at a target-domain panel with the forecaster and score already
+bound; it, too, returns a new object.
+
+## Online methods update in place
+
+The fitted objects of the four online methods advance through
+`update(prediction, truth)`, which **mutates the fitted object in
+place** and returns `None`. That is deliberate: a version returning a
+new object would make `fitted.update(...)` without reassignment a silent
+no-op, and the intervals would quietly stop adapting. To keep a snapshot
+— before a backtest, or to compare two futures — copy it explicitly:
+
+```python
+snapshot = fitted.model_copy(deep=True)
+fitted.update(prediction, truth)    # snapshot is unaffected
+```
+
+`update` is concrete on the base class and delegates to an `_update`
+algorithm hook. The online fitted classes implement `_update`; the
+offline ones inherit a no-op.
+
+## Migrating a library
+
+`conformalforecast.compat.mlforecast_shim` is a reference
+implementation: `make_interval_method` adapts a method’s array surface
+to mlforecast’s interval hook, and `register_interval_method` puts it in
+mlforecast’s `_INTERVAL_METHODS` registry (requires mlforecast \>= 1.1).
+
+```python
+from conformalforecast.compat.mlforecast_shim import register_interval_method
+from conformalforecast import SplitConformal
+
+register_interval_method("conformal_method_split", SplitConformal)
+```
+
+[Embedding](./embedding.html) walks through this in full: the layout
+contract, the arguments the shim does not support (weighted and transfer
+conformal), and the two upstream changes needed for full method
+coverage.
+
+## Performance
+
+The calibration math is fully batched: nothing loops over the
+`(n_series × horizon)` grid in Python. The per-cell quantile is a single
+gather, and the online methods keep their growing history in one
+incrementally-sorted buffer instead of re-quantiling it from scratch at
+every step. SPCI is the sanctioned exception — it fits one quantile
+regressor per cell.
+
+ACI and AgACI fit is still quadratic in `n_windows` by construction — an
+online method has to roll `alpha_t` forward one step at a time, and each
+step looks at the whole history — but the per-step work is array work
+rather than a Python loop, and AgACI’s expert axis is batched into the
+same gather.
+

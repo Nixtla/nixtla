@@ -1,0 +1,273 @@
+---
+title: Weighting
+description: Weight functions for covariate-shift-weighted conformal prediction
+---
+
+### `WeightFunction`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Supplies per-cell weights for the weighted conformal quantile.
+
+Calibration and test weights are separate methods because they are computed
+differently: calibration weights must be out-of-fold (a point's weight may
+not come from a model trained on it), while test weights come from a model
+fitted on all available data.
+
+<details class="lifecycle" open markdown="1">
+<summary>Lifecycle</summary>
+
+1. ``fit_source(X, shape, valid=...)`` — the method's ``fit`` supplies
+   source exogenous features, the calibration array shape, and which
+   cells of it are real windows rather than ragged padding.
+2. ``fit_target(X)`` — the method's ``adapt`` supplies target features.
+   Optional; without it the function stays unadapted.
+3. ``calibration_weights()`` / ``test_weights(X)``.
+
+</details>
+
+#### `WeightFunction.fit_source`
+
+```python
+fit_source(X, shape, *, valid=None)
+```
+
+Record the source features, the calibration shape and the valid mask.
+
+Parameters
+----------
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+shape : tuple of int
+    The ``(n_series, n_windows, horizon)`` shape of the calibration
+    scores the weights must align with.
+valid : NDArray of bool or None, shape (n_series, n_windows, horizon)
+    False marks a cell whose calibration window does not exist for that
+    series — a ragged panel's left-NaN padding. Features in those cells
+    are NaN by construction, so a weight function that fits a model on
+    them must leave them out. None means every cell is a real window.
+
+Raises
+------
+ValueError
+    If ``valid`` is given and its shape is not ``shape``.
+
+#### `WeightFunction.fit_target`
+
+```python
+fit_target(X)
+```
+
+Fit against target-domain features. Default: no-op (stays unadapted).
+
+Parameters
+----------
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+
+#### `WeightFunction.calibration_weights`
+
+```python
+calibration_weights()
+```
+
+Weights for the calibration scores.
+
+Returns
+-------
+NDArray, shape (n_series, n_windows, horizon)
+
+#### `WeightFunction.test_weights`
+
+```python
+test_weights(X)
+```
+
+Weights for the test points (the ``w(x_test)`` term).
+
+Parameters
+----------
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+    When None, one sample is assumed.
+
+Returns
+-------
+NDArray, shape (n_series, n_samples, horizon)
+
+
+### `DensityRatioEstimator`
+
+Bases: <code>[Protocol](#typing.Protocol)</code>
+
+Binary probabilistic classifier used to estimate a density ratio.
+
+Structural (not nominal) on purpose: any object exposing ``fit`` and
+``predict_proba`` satisfies it, so scikit-learn, XGBoost, LightGBM and
+CatBoost classifiers all plug in with no wrapper and no subclassing.
+
+#### `DensityRatioEstimator.fit`
+
+```python
+fit(X, y)
+```
+
+Fit on features ``X`` (n, n_features) and binary labels ``y`` (n,).
+
+#### `DensityRatioEstimator.predict_proba`
+
+```python
+predict_proba(X)
+```
+
+Return class probabilities, shape ``(n, 2)``, column 1 = P(y=1|x).
+
+
+### `DensityRatio`
+
+Bases: <code>[WeightFunction](#conformalforecast.weighting.base.WeightFunction)</code>
+
+Density-ratio weights estimated by a binary classifier.
+
+Source rows are labelled 0 and target rows 1; the fitted classifier's odds
+``p / (1 - p)`` estimate ``d_target(x) / d_source(x)``, the importance
+weight for conformal prediction under covariate shift (Tibshirani et al.,
+2019).
+
+Calibration weights are computed **out-of-fold**: a calibration point's
+weight never comes from a model that trained on it. Test weights come from
+a final model fitted on all data.
+
+Parameters
+----------
+estimator : DensityRatioEstimator
+    Any object with ``fit(X, y)`` and ``predict_proba(X) -> (n, 2)``.
+    Required — this package ships no default, so it gains no dependency.
+    A fresh copy is **not** made; supply a distinct instance per
+    ``DensityRatio`` if the estimator is stateful.
+cv : int, default 5
+    Cross-fitting folds. Values below 2 disable cross-fitting, in which
+    case calibration weights come from a model fitted on all data (faster,
+    but the weights are optimistically biased).
+clip_quantile : float or None, default 0.99
+    Upper quantile at which weights are clipped, so one extreme weight
+    cannot dominate the weighted quantile. None disables clipping.
+standardize : bool, default True
+    Standardize features to zero mean and unit variance before fitting.
+seed : int, default 0
+    Seed for the fold assignment. Never None.
+
+Raises
+------
+pydantic.ValidationError
+    If ``cv`` is negative, or ``clip_quantile`` is outside (0, 1] — a
+    subclass of ``ValueError``.
+
+#### `DensityRatio.fit_target`
+
+```python
+fit_target(X)
+```
+
+Fit the density-ratio classifier against target-domain features.
+
+Parameters
+----------
+X : Exog, shape (n_series, n_samples, horizon, n_features)
+
+Raises
+------
+ValueError
+    If source features were not supplied at ``fit_source``; if the
+    target feature count disagrees with the source; if a source cell
+    the valid mask marks as a real window is non-finite; or if the
+    target features contain any non-finite value.
+
+#### `DensityRatio.calibration_weights`
+
+```python
+calibration_weights()
+```
+
+Out-of-fold density-ratio weights for the calibration scores.
+
+Returns
+-------
+NDArray, shape (n_series, n_windows, horizon)
+    Uniform ones when ``fit_target`` has not been called, so an
+    unadapted DensityRatio recovers unweighted split conformal.
+
+#### `DensityRatio.test_weights`
+
+```python
+test_weights(X)
+```
+
+Density-ratio weights for the test points (the ``w(x_test)`` term).
+
+Parameters
+----------
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+
+Returns
+-------
+NDArray, shape (n_series, n_samples, horizon)
+
+
+### `UniformWeights`
+
+Bases: <code>[WeightFunction](#conformalforecast.weighting.base.WeightFunction)</code>
+
+Constant unit weights. Recovers unweighted split conformal exactly.
+
+This is the default when no weighting is supplied, so an un-weighted
+``WeightedSplit`` behaves identically to ``SplitConformal``.
+
+#### `UniformWeights.calibration_weights`
+
+```python
+calibration_weights()
+```
+
+#### `UniformWeights.test_weights`
+
+```python
+test_weights(X)
+```
+
+
+### `PrecomputedWeights`
+
+Bases: <code>[WeightFunction](#conformalforecast.weighting.base.WeightFunction)</code>
+
+User-supplied calibration weights.
+
+The escape hatch for weights computed outside this package. Test weights
+are uniform: with weights fixed in advance there is no model from which to
+evaluate ``w(x_test)``.
+
+Parameters
+----------
+weights : NDArray, shape (n_series, n_windows, horizon)
+    Non-negative, finite weights aligned with the calibration scores.
+
+Raises
+------
+ValueError
+    If ``weights`` is not 3-D or contains a negative or non-finite entry.
+
+#### `PrecomputedWeights.fit_source`
+
+```python
+fit_source(X, shape, *, valid=None)
+```
+
+#### `PrecomputedWeights.calibration_weights`
+
+```python
+calibration_weights()
+```
+
+#### `PrecomputedWeights.test_weights`
+
+```python
+test_weights(X)
+```
+

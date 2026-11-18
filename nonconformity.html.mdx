@@ -1,0 +1,382 @@
+---
+title: Nonconformity scores
+description: Score functions used to turn predictions and truths into calibration scores
+---
+
+A score is method config: pass it as `score=` when constructing a method, or
+leave it out to take the method's default. Each concrete score carries a `kind`
+tag (`"absolute"`, `"signed"`, `"quantile"`), which is what lets a configured
+method survive `model_validate(model_dump())`.
+
+A custom score subclasses `ScoreFunction` (or one of the built-ins) and declares
+its own tag, e.g. `kind: Literal["scaled"] = "scaled"`. Subclassing a built-in
+without declaring a new tag raises `TypeError` when the class is defined,
+because the score would otherwise reload as its parent. To reload a dumped
+method holding a custom score, import the module that defines the score first.
+
+### `AbsoluteResidual`
+
+Bases: <code>[ScoreFunction](#conformalforecast.base.ScoreFunction)</code>
+
+Nonconformity score defined as the absolute residual |truth - prediction|.
+
+This is the simplest and most widely used score function in conformal
+prediction. It produces symmetric intervals around the point forecast.
+
+#### `AbsoluteResidual.CONSUMES_QUANTILES`
+
+```python
+CONSUMES_QUANTILES: bool = False
+```
+
+#### `AbsoluteResidual.fit`
+
+```python
+fit(prediction, truth)
+```
+
+Fit any internal parameters of the score function (e.g. scale
+estimates for normalised residuals). Default: no-op.
+
+Called by the method's ``fit`` **before** the first call to :meth:`score` on the
+calibration data, so implementations can assume that ``prediction`` and
+``truth`` are the full calibration arrays.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+#### `AbsoluteResidual.from_kind`
+
+```python
+from_kind(value)
+```
+
+Rebuild a serialized score as the class its ``kind`` tag names.
+
+Parameters
+----------
+value : dict
+    A dumped score, carrying a ``kind`` key.
+
+Returns
+-------
+ScoreFunction
+
+Raises
+------
+ValueError
+    If ``kind`` is missing or names no registered score. The module
+    defining a custom score must be imported before loading it.
+
+#### `AbsoluteResidual.invert`
+
+```python
+invert(prediction, score_threshold)
+```
+
+Produce a symmetric interval around the point forecast.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+score_threshold : NDArray
+    Either scalar, shape (n_series,), or shape (n_series, horizon).
+    Broadcast against ``prediction`` along its last two axes.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+    Last axis is (lower, upper).
+
+#### `AbsoluteResidual.kind`
+
+```python
+kind: Literal['absolute'] = 'absolute'
+```
+
+#### `AbsoluteResidual.score`
+
+```python
+score(prediction, truth)
+```
+
+Compute absolute residual scores.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+scores : NDArray, shape (n_series, n_samples, horizon)
+
+
+### `SignedResidual`
+
+Bases: <code>[ScoreFunction](#conformalforecast.base.ScoreFunction)</code>
+
+Nonconformity score defined as the signed residual ``truth - prediction``.
+
+Unlike :class:`AbsoluteResidual`, this score preserves directional
+information. Positive scores indicate truth was above prediction;
+negative scores indicate truth was below. Used by methods that produce
+asymmetric intervals around the point forecast (e.g. SPCI).
+
+#### `SignedResidual.CONSUMES_QUANTILES`
+
+```python
+CONSUMES_QUANTILES: bool = False
+```
+
+#### `SignedResidual.fit`
+
+```python
+fit(prediction, truth)
+```
+
+Fit any internal parameters of the score function (e.g. scale
+estimates for normalised residuals). Default: no-op.
+
+Called by the method's ``fit`` **before** the first call to :meth:`score` on the
+calibration data, so implementations can assume that ``prediction`` and
+``truth`` are the full calibration arrays.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+#### `SignedResidual.from_kind`
+
+```python
+from_kind(value)
+```
+
+Rebuild a serialized score as the class its ``kind`` tag names.
+
+Parameters
+----------
+value : dict
+    A dumped score, carrying a ``kind`` key.
+
+Returns
+-------
+ScoreFunction
+
+Raises
+------
+ValueError
+    If ``kind`` is missing or names no registered score. The module
+    defining a custom score must be imported before loading it.
+
+#### `SignedResidual.invert`
+
+```python
+invert(prediction, score_threshold)
+```
+
+Produce an asymmetric interval around the point forecast.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+score_threshold : NDArray, shape (n_series, horizon, 2) or                 (n_series, n_samples, horizon, 2)
+    For each cell, the last axis is ``(lower_offset, upper_offset)``.
+    The interval becomes ``[prediction + lower_offset, prediction +
+    upper_offset]``. Note that ``lower_offset`` is typically negative
+    and ``upper_offset`` positive for non-degenerate intervals.
+
+```
+The 3-D form is one offset pair per ``(series, horizon)`` cell,
+broadcast over every sample -- what :meth:`interval` produces. The
+4-D form carries a distinct pair per sample, which is what a method
+whose offsets vary window-to-window needs; see
+:meth:`~conformalforecast.methods.base.ConformalMethod.calibration_intervals`.
+NaN offsets propagate to NaN bounds, marking a window as not
+evaluable.
+```
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+    Last axis is ``(lower, upper)``.
+
+Raises
+------
+ValueError
+    If ``score_threshold`` is not 3-D or 4-D with trailing axis of size 2.
+
+#### `SignedResidual.kind`
+
+```python
+kind: Literal['signed'] = 'signed'
+```
+
+#### `SignedResidual.score`
+
+```python
+score(prediction, truth)
+```
+
+Compute signed residual scores.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+scores : NDArray, shape (n_series, n_samples, horizon)
+    Signed residuals (truth - prediction). Positive when truth exceeds
+    prediction, negative when truth is below.
+
+
+### `QuantileScore`
+
+Bases: <code>[ScoreFunction](#conformalforecast.base.ScoreFunction)</code>
+
+Nonconformity score for Conformalized Quantile Regression (CQR).
+
+Unlike :class:`AbsoluteResidual`, the ``prediction`` input is a pair of
+quantile forecasts ``(q_lo, q_hi)`` rather than a point forecast. The
+score measures how far truth falls outside the predicted quantile
+interval:
+
+.. math::
+
+```
+E_i = \max\{q_{\text{lo}}(X_i) - Y_i,\; Y_i - q_{\text{hi}}(X_i)\}
+```
+
+Negative scores mean truth is inside the predicted interval; positive
+scores mean it falls outside (above the upper bound or below the lower
+bound). :meth:`invert` widens the predicted interval symmetrically by
+the score threshold.
+
+#### `QuantileScore.CONSUMES_QUANTILES`
+
+```python
+CONSUMES_QUANTILES: bool = True
+```
+
+#### `QuantileScore.fit`
+
+```python
+fit(prediction, truth)
+```
+
+Fit any internal parameters of the score function (e.g. scale
+estimates for normalised residuals). Default: no-op.
+
+Called by the method's ``fit`` **before** the first call to :meth:`score` on the
+calibration data, so implementations can assume that ``prediction`` and
+``truth`` are the full calibration arrays.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+#### `QuantileScore.from_kind`
+
+```python
+from_kind(value)
+```
+
+Rebuild a serialized score as the class its ``kind`` tag names.
+
+Parameters
+----------
+value : dict
+    A dumped score, carrying a ``kind`` key.
+
+Returns
+-------
+ScoreFunction
+
+Raises
+------
+ValueError
+    If ``kind`` is missing or names no registered score. The module
+    defining a custom score must be imported before loading it.
+
+#### `QuantileScore.invert`
+
+```python
+invert(prediction, score_threshold)
+```
+
+Widen the predicted quantile interval by ``score_threshold``.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon, 2)
+    Quantile forecasts. The last axis is ``(q_lo, q_hi)``.
+score_threshold : NDArray
+    Either scalar, shape ``(n_series,)``, or shape
+    ``(n_series, horizon)``. Broadcast against ``prediction`` along
+    its sample and horizon axes.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+    Last axis is ``(lower, upper)`` with
+    ``lower = q_lo - threshold`` and ``upper = q_hi + threshold``.
+
+Raises
+------
+ValueError
+    If ``prediction`` is not 4-D with a trailing axis of size 2.
+
+#### `QuantileScore.kind`
+
+```python
+kind: Literal['quantile'] = 'quantile'
+```
+
+#### `QuantileScore.score`
+
+```python
+score(prediction, truth)
+```
+
+Compute the CQR nonconformity scores.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon, 2)
+    Quantile forecasts. The last axis is ``(q_lo, q_hi)``.
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+scores : NDArray, shape (n_series, n_samples, horizon)
+
+Raises
+------
+ValueError
+    If ``prediction`` is not 4-D with a trailing axis of size 2, or
+    if ``truth`` does not match ``prediction.shape[:-1]``.
+
+
+### `ScoreField`
+
+```python
+ScoreField = Annotated[SerializeAsAny[ScoreFunction] | None, BeforeValidator(_from_registry), WithJsonSchema({'anyOf': score_options(BUILTIN_KINDS), 'default': None})]
+```
+
+A nonconformity score as method config, or ``None`` for the method's default.
+
+Accepts a :class:`~conformalforecast.base.ScoreFunction` instance or its dump.
+``SerializeAsAny`` makes a subclass dump its own fields (and its own ``kind``),
+and the before-validator rebuilds a dump as the class its ``kind`` names, so a
+configured score -- custom ones included, once their module is imported --
+survives ``model_validate(model_dump())``.
+
+The schema here lists every built-in kind; ``ConformalMethod`` narrows it to the
+kinds each method accepts.
+

@@ -1,0 +1,171 @@
+---
+title: Quantile regressors
+description: Conditional quantile estimators, used by SPCI
+---
+
+### `QuantileRegressor`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Quantile regression model used by SPCI.
+
+Trained on autoregressive residual data: given the last ``w`` residuals,
+predict the quantile distribution of the next residual. Subclasses can
+wrap any quantile-regression library (QRF, LightGBM quantile, neural
+quantile networks, etc.).
+
+#### `QuantileRegressor.fit`
+
+```python
+fit(X, y)
+```
+
+Fit the regressor.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, w)
+    Training features. Each row is a window of ``w`` past residuals.
+y : NDArray, shape (n_samples,)
+    Training targets (the next residual after each window).
+
+#### `QuantileRegressor.predict_quantile`
+
+```python
+predict_quantile(X, q)
+```
+
+Predict the ``q``-quantile of the conditional distribution.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, w)
+q : float in (0, 1)
+
+Returns
+-------
+NDArray, shape (n_samples,)
+
+#### `QuantileRegressor.predict_quantiles`
+
+```python
+predict_quantiles(X, qs)
+```
+
+Predict several quantiles at once.
+
+SPCI asks for ``2 * beta_grid_size`` quantiles per ``(series, horizon)``
+cell while searching for the width-minimizing ``beta``. Most quantile
+libraries answer a whole list in one traversal of the fitted model, which
+is dramatically cheaper than one call per level -- for
+``quantile-forest``, 42 separate calls measured 52.2 ms against 1.23 ms
+batched. That loop dominated SPCI's ``interval()`` outright: the
+measured ~53 ms per cell was essentially all quantile calls.
+
+The default implementation loops over :meth:`predict_quantile`, so a
+custom regressor only has to implement the scalar method. Override this
+when the backend can do better.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, w)
+qs : NDArray, shape (n_quantiles,)
+    Levels in ``(0, 1)``.
+
+Returns
+-------
+NDArray, shape (n_samples, n_quantiles)
+    Column ``j`` is the ``qs[j]``-quantile.
+
+
+### `QRFQuantileRegressor`
+
+Bases: <code>[QuantileRegressor](#conformalforecast.quantile_regressors.base.QuantileRegressor)</code>
+
+Quantile Random Forest regressor (Meinshausen 2006).
+
+Default quantile estimator for SPCI per Xu & Xie (2023). Wraps the
+``quantile-forest`` package, exposing a clean two-method interface.
+
+Notes
+-----
+The ``quantile-forest`` package is an optional dependency. The import is
+deferred to :meth:`fit` (not construction) so that a
+:class:`QRFQuantileRegressor` -- including one built as
+:class:`~conformalforecast.methods.spci.SequentialPredictiveConformalInference`'s
+default ``regressor`` -- can be constructed, and its schema generated via
+``model_json_schema()``, without ``quantile-forest`` installed. Calling
+:meth:`fit` without it installed raises :class:`ImportError`.
+
+#### `QRFQuantileRegressor.fit`
+
+```python
+fit(X, y)
+```
+
+Fit the forest on autoregressive residual windows.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, n_features)
+    Training features. Each row is a window of past residuals,
+    optionally concatenated with exogenous features.
+y : NDArray, shape (n_samples,)
+    The next residual after each window.
+
+Raises
+------
+ImportError
+    If ``quantile-forest`` is not installed. Deferred to here (rather
+    than construction) so this class stays constructible -- and its
+    schema generable -- without the ``[spci]`` extra.
+
+#### `QRFQuantileRegressor.predict_quantile`
+
+```python
+predict_quantile(X, q)
+```
+
+Predict the ``q``-quantile of the conditional residual distribution.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, n_features)
+q : float in (0, 1)
+
+Returns
+-------
+NDArray, shape (n_samples,)
+
+Raises
+------
+RuntimeError
+    If called before :meth:`fit`.
+
+#### `QRFQuantileRegressor.predict_quantiles`
+
+```python
+predict_quantiles(X, qs)
+```
+
+Predict several quantiles in a single traversal of the forest.
+
+``quantile-forest`` accepts a list of levels and answers them from one
+pass over the leaf distributions, which is why this override exists:
+SPCI's beta search asks for ~42 levels per cell, and one call per level
+measured 42x slower on a fitted forest.
+
+Parameters
+----------
+X : NDArray, shape (n_samples, n_features)
+qs : NDArray, shape (n_quantiles,)
+
+Returns
+-------
+NDArray, shape (n_samples, n_quantiles)
+
+Raises
+------
+RuntimeError
+    If called before :meth:`fit`.
+

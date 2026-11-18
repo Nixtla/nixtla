@@ -1,0 +1,150 @@
+---
+title: Capabilities
+description: Optional adapter features, declared as mixins and checked when a forecaster is bound
+---
+
+### `SupportsRefit`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Adapter can retrain its underlying model on new data.
+
+#### `SupportsRefit.refit`
+
+```python
+refit(history)
+```
+
+Refit the underlying model on `history`.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+
+
+### `SupportsQuantiles`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Adapter can produce quantile forecasts directly (needed for CQR).
+
+#### `SupportsQuantiles.predict_quantiles`
+
+```python
+predict_quantiles(history, quantiles)
+```
+
+Predict requested quantiles.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+quantiles : NDArray, shape (n_quantiles,)
+    Values in (0, 1).
+
+Returns
+-------
+Forecast, shape (n_series, n_quantiles, horizon)
+    Quantile forecasts. Note the middle axis indexes quantiles, not samples.
+
+
+### `SupportsBootstrap`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Adapter can produce bootstrap ensemble forecasts (needed for EnbPI).
+
+#### `SupportsBootstrap.bootstrap_predict`
+
+```python
+bootstrap_predict(history, n_bootstraps, seed=0)
+```
+
+Produce `n_bootstraps` predictions from bootstrap resamples of training data.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+n_bootstraps : int
+seed : int, default 0
+    Never ``None``: resampling must be reproducible given the same
+    fitted state and inputs.
+
+Returns
+-------
+Forecast, shape (n_series, n_bootstraps, horizon)
+
+
+### `SupportsCrossValidation`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Adapter can run rolling-origin cross-validation natively.
+
+#### `SupportsCrossValidation.cross_validate`
+
+```python
+cross_validate(n_windows, step_size, refit=False, *, aligned=False)
+```
+
+Run rolling-origin cross-validation on the adapter's training data.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows.
+step_size : int
+    Number of time steps between successive windows.
+refit : bool or int
+    Whether (or how often) to refit the model between windows.
+aligned : bool, default False
+    ``False`` returns dense per-series arrays (window axis = k steps
+    before each series' own end). ``True`` returns calendar-aligned
+    cutoffs with NaN cells for late-starting series.
+
+Returns
+-------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+truths : Forecast, shape (n_series, n_windows, horizon)
+
+
+### `SupportsCrossValidationQuantiles`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Adapter can produce quantile forecasts via cross-validation.
+
+This is the fast calibration path for CQR (and any future quantile-based
+conformal method). Adapters with this capability avoid the per-sample loop
+of ``predict_quantiles``, instead leveraging the underlying library's
+cross-validation API to produce all calibration samples in a single call.
+
+#### `SupportsCrossValidationQuantiles.cross_validate_quantiles`
+
+```python
+cross_validate_quantiles(n_windows, step_size, quantiles, refit=False)
+```
+
+Run rolling-origin cross-validation producing quantile forecasts.
+
+Parameters
+----------
+n_windows : int
+    Number of evaluation windows.
+step_size : int
+    Number of time steps between successive windows.
+quantiles : NDArray, shape (n_quantiles,)
+    Values in (0, 1).
+refit : bool or int, default False
+    Same semantics as :meth:`SupportsCrossValidation.cross_validate`.
+
+Returns
+-------
+quantile_predictions : Forecast, shape (n_series, n_windows, horizon, n_quantiles)
+    Quantiles are on the **last axis**, matching :class:`QuantileScore`'s
+    expected input. This differs from :meth:`SupportsQuantiles.predict_quantiles`,
+    where quantiles are on axis 1 (because ``predict_quantiles`` produces a
+    single sample per call). The intentional axis difference avoids an
+    extra transpose in the CQR fast path.
+truths : Forecast, shape (n_series, n_windows, horizon)
+

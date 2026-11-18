@@ -1,0 +1,214 @@
+---
+title: Panel helpers
+description: DataFrame-free long/panel conversion, CV assembly and level/quantile helpers
+---
+
+### `PanelIndex`
+
+```python
+PanelIndex(series_ids, start_offsets, lengths, timestamps)
+```
+
+Inversion metadata for a ``(n_series, T)`` panel.
+
+Attributes
+----------
+series_ids : tuple
+    Series identifiers in panel-row order (axis 0). Sorted ascending.
+start_offsets : NDArray[np.integer], shape (n_series,)
+    Column index of each series' first non-NaN observation.
+lengths : NDArray[np.integer], shape (n_series,)
+    Per-series effective (non-NaN) observation count.
+timestamps : tuple or None
+    Length-``T`` time labels for the columns, or ``None`` when the panel
+    was built positionally.
+
+#### `PanelIndex.lengths`
+
+```python
+lengths: NDArray[np.integer]
+```
+
+#### `PanelIndex.series_ids`
+
+```python
+series_ids: tuple[object, ...]
+```
+
+#### `PanelIndex.start_offsets`
+
+```python
+start_offsets: NDArray[np.integer]
+```
+
+#### `PanelIndex.timestamps`
+
+```python
+timestamps: tuple[object, ...] | None
+```
+
+
+### `long_to_panel`
+
+```python
+long_to_panel(values, series_ids, time_index, *, dtype=np.float64)
+```
+
+Pivot long-format observations into a left-NaN-padded panel.
+
+Parameters
+----------
+values : sequence of float, shape (n_obs,)
+    Observation values.
+series_ids : sequence, shape (n_obs,)
+    Series identifier for each observation.
+time_index : sequence, shape (n_obs,)
+    Time label for each observation. Labels must be mutually comparable
+    (e.g. all timestamps, or all ints).
+dtype : numpy float dtype, default float64
+    Output panel dtype.
+
+Returns
+-------
+panel : NDArray, shape (n_series, T)
+    Left-NaN-padded panel; ``T`` is the number of distinct timestamps.
+index : PanelIndex
+    Inversion metadata.
+
+Raises
+------
+ValueError
+    If the input lengths mismatch, or a series has an interior gap
+    (a missing interior timestamp, which would produce an interior NaN).
+
+
+### `panel_to_long`
+
+```python
+panel_to_long(panel, index)
+```
+
+Flatten a panel back to long-format non-NaN rows.
+
+Parameters
+----------
+panel : NDArray, shape (n_series, T)
+index : PanelIndex
+    Metadata from :func:`long_to_panel`. When ``index.timestamps`` is
+    ``None``, column positions ``0..T-1`` are used as time labels.
+
+Returns
+-------
+row_series_ids : list, shape (n_rows,)
+row_timestamps : list, shape (n_rows,)
+row_values : NDArray, shape (n_rows,)
+    Non-NaN cells in ``(series, time)`` order.
+
+
+### `cv_frames_to_arrays`
+
+```python
+cv_frames_to_arrays(cubes, *, aligned)
+```
+
+Assemble calendar-cutoff CV cubes into per-series or aligned arrays.
+
+Parameters
+----------
+cubes : sequence of NDArray, each shape (n_series, n_windows, horizon)
+    CV outputs sharing a NaN pattern (e.g. ``[predictions, truths]``). A
+    ``(series, window)`` cell is valid iff it is non-NaN across the whole
+    horizon in **every** cube.
+aligned : bool
+    ``True`` returns the cubes unchanged (NaN cells preserved for the
+    ragged calibration path). ``False`` returns dense per-series arrays: each
+    series keeps only its valid windows, right-aligned, truncated to the
+    minimum valid-window count across series.
+
+Returns
+-------
+list of NDArray
+    One array per input cube, in the same order.
+
+Raises
+------
+ValueError
+    If ``cubes`` is empty, shapes disagree, or (``aligned=False``) any
+    series has zero valid windows.
+
+
+### `exog_to_long`
+
+```python
+exog_to_long(exog, series_ids)
+```
+
+Flatten a 4-D exogenous array to long-format rows.
+
+Parameters
+----------
+exog : NDArray, shape (n_series, n_samples, horizon, n_features)
+series_ids : sequence, shape (n_series,)
+
+Returns
+-------
+row_series_ids : list, shape (n_rows,)
+row_sample_idx : list of int, shape (n_rows,)
+row_step_idx : list of int, shape (n_rows,)
+    Zero-based horizon step.
+features : NDArray, shape (n_rows, n_features)
+    Rows in ``(series, sample, step)`` order.
+
+Raises
+------
+ValueError
+    If ``exog`` is not 4-D or its leading axis mismatches ``series_ids``.
+
+
+### `level_to_quantiles`
+
+```python
+level_to_quantiles(level)
+```
+
+Convert a symmetric Nixtla interval level to a (lo, hi) quantile pair.
+
+Parameters
+----------
+level : int
+    Interval level in (0, 100), e.g. ``80``.
+
+Returns
+-------
+tuple of float
+    ``((100 - level) / 200, 1 - (100 - level) / 200)`` — e.g. ``(0.1, 0.9)``.
+
+Raises
+------
+ValueError
+    If ``level`` is not in (0, 100).
+
+
+### `quantiles_to_level`
+
+```python
+quantiles_to_level(q_lo, q_hi)
+```
+
+Convert a symmetric (lo, hi) quantile pair to a Nixtla interval level.
+
+Parameters
+----------
+q_lo, q_hi : float
+    Quantiles in (0, 1) symmetric about 0.5 (``q_lo + q_hi == 1``).
+
+Returns
+-------
+int
+    The interval level, e.g. ``(0.1, 0.9) -> 80``.
+
+Raises
+------
+ValueError
+    If the pair is out of range or not symmetric about 0.5.
+

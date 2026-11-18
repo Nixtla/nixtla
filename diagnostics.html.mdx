@@ -1,0 +1,734 @@
+---
+title: Diagnostics
+description: Coverage and interval-quality metrics for calibrated forecasts
+---
+
+### `Report`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>
+
+Output of :func:`evaluate` and :func:`evaluate_calibration`.
+
+Carries generic coverage and scoring metrics plus method-specific state,
+along with the raw intervals/truths/points for callers who want to run
+further analysis.
+
+Notes
+-----
+``extra="forbid"``, for the same reason as :class:`~conformalforecast.base.CalibrationResult`
+and :class:`~conformalforecast.base.PredictionResult`: a ``Report`` is
+returned to callers rather than constructed by them, and its only writers
+are :func:`evaluate` and :func:`evaluate_calibration` in this module — a
+mistyped keyword there is a bug worth failing on.
+
+Like those two result types, ``Report.model_json_schema()`` raises
+``PydanticInvalidForJsonSchema`` rather than generating a schema: a bare
+``NDArray`` field reaches pydantic as an ``IsInstanceSchema``, which has
+no JSON schema, and a result type is all array payload, so there is
+nothing left to hide behind ``SkipJsonSchema``. For the same reason it is
+excluded from the round-trip table in ``test_pydantic_conversion.py``.
+
+#### `Report.alpha`
+
+```python
+alpha: float
+```
+
+#### `Report.coverage_by_horizon`
+
+```python
+coverage_by_horizon: NDArray[np.floating]
+```
+
+#### `Report.coverage_by_series`
+
+```python
+coverage_by_series: NDArray[np.floating]
+```
+
+#### `Report.coverage_per_cell`
+
+```python
+coverage_per_cell: NDArray[np.floating]
+```
+
+#### `Report.intervals`
+
+```python
+intervals: NDArray[np.floating] = Field(default_factory=(lambda: np.empty((0, 0, 0, 2), dtype=(np.float64))))
+```
+
+#### `Report.marginal_coverage`
+
+```python
+marginal_coverage: float
+```
+
+#### `Report.mean_interval_width`
+
+```python
+mean_interval_width: float
+```
+
+#### `Report.mean_winkler_score`
+
+```python
+mean_winkler_score: float
+```
+
+#### `Report.method_name`
+
+```python
+method_name: str
+```
+
+#### `Report.method_state`
+
+```python
+method_state: dict[str, Any] = Field(default_factory=dict)
+```
+
+#### `Report.n_evaluated_cells`
+
+```python
+n_evaluated_cells: int = 0
+```
+
+#### `Report.n_holdout_samples`
+
+```python
+n_holdout_samples: int
+```
+
+#### `Report.n_total_cells`
+
+```python
+n_total_cells: int = 0
+```
+
+#### `Report.points`
+
+```python
+points: NDArray[np.floating] = Field(default_factory=(lambda: np.empty((0, 0, 0), dtype=(np.float64))))
+```
+
+#### `Report.summary`
+
+```python
+summary()
+```
+
+Human-readable, multi-line summary for notebooks.
+
+#### `Report.truths`
+
+```python
+truths: NDArray[np.floating] = Field(default_factory=(lambda: np.empty((0, 0, 0), dtype=(np.float64))))
+```
+
+
+### `evaluate`
+
+```python
+evaluate(fitted, holdout_histories, holdout_truths, update_online=True)
+```
+
+Run a fitted conformal method on a holdout set and compute Mode 2 diagnostics.
+
+For each ``(history, truth)`` pair, calls ``fitted.predict(history)``. For
+online methods (``IS_ONLINE = True``), also calls
+``fitted.update(prediction, truth)`` between iterations unless
+``update_online=False`` -- which mutates ``fitted`` in place, exactly as a
+deployment would. Pass ``fitted.model_copy(deep=True)`` to keep the
+original untouched.
+
+Parameters
+----------
+fitted : ConformalForecaster
+    The object a method's ``calibrate`` / ``calibrate_cv`` returned.
+holdout_histories : list of Series
+    Each ``Series`` has shape ``(n_series, T_i)``. The list length
+    determines ``n_holdout_samples``.
+holdout_truths : Forecast, shape (n_series, n_holdout_samples, horizon)
+    Ground truth for each history's forecast horizon.
+update_online : bool, default True
+    If the method is online, whether to call ``fitted.update()`` after
+    each prediction. Default ``True`` simulates real online deployment;
+    set ``False`` to evaluate the calibration-time snapshot.
+
+Returns
+-------
+Report
+
+Raises
+------
+CalibrationError
+    If given the method rather than a fitted object.
+ValueError
+    If ``holdout_truths`` is not 3-D, or if the number of samples does
+    not match ``len(holdout_histories)``.
+
+
+### `evaluate_calibration`
+
+```python
+evaluate_calibration(fitted)
+```
+
+Compute diagnostics using the fitted object's stored calibration data (Mode 1).
+
+Reconstructs the intervals the method's own calibration implied at each
+window, then runs Mode 2-style diagnostics on them against the calibration
+truths.
+
+This differs from :func:`evaluate` in two ways:
+
+1. No holdout is required — uses stored calibration data.
+2. It is **in-sample**. The calibration windows are the ones the method's
+   state was derived from, so coverage here is optimistic and is not a
+   substitute for :func:`evaluate` on data the method has not seen.
+
+Each fitted class supplies the sequence via
+:meth:`~conformalforecast.methods.base.ConformalForecaster.calibration_intervals`.
+For methods whose offsets are a constant of the whole calibration set
+(Split, CQR, WeightedSplit, ACI, NexCP, AgACI) that is the fitted state
+applied to every window. SPCI overrides it, because its offsets are
+conditional on the preceding residual window and broadcasting the final one
+would measure nothing.
+
+Windows a method cannot evaluate — an online warm-up, or a window that does
+not exist for a series — come back with NaN bounds and are **excluded** from
+the averages rather than scored as misses. ``Report.n_evaluated_cells`` and
+``Report.n_total_cells`` report how many were used.
+
+Parameters
+----------
+fitted : ConformalForecaster
+    The object a method's ``calibrate`` / ``calibrate_cv`` returned, with
+    ``predictions_calibration_`` and ``truths_calibration_`` populated.
+
+Returns
+-------
+Report
+    Same shape as the report from :func:`evaluate`. The ``method_name``
+    field is suffixed with ``" (calibration)"`` to make the data source
+    clear.
+
+Raises
+------
+CalibrationError
+    If given the method rather than a fitted object.
+RuntimeError
+    If ``predictions_calibration_`` or ``truths_calibration_`` is None —
+    an object returned by a bare ``fit`` never populates them.
+
+
+## Coverage
+
+### `marginal_coverage`
+
+```python
+marginal_coverage(interval, truth)
+```
+
+Overall fraction of cells covered by their interval.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+float
+    Mean of the cell-wise coverage indicator over all axes. Cells that are
+    not evaluable (NaN bound or NaN truth) are excluded from the mean, not
+    counted as misses; see :func:`_coverage_indicator`. NaN if no cell is
+    evaluable.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent (see :func:`_coverage_indicator`).
+
+
+### `coverage_per_cell`
+
+```python
+coverage_per_cell(interval, truth)
+```
+
+Coverage averaged across samples, per (series, horizon).
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+NDArray, shape (n_series, horizon)
+    Coverage per (series, horizon) cell, over evaluable samples only. A
+    cell with no evaluable sample is NaN.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent.
+
+
+### `coverage_by_series`
+
+```python
+coverage_by_series(interval, truth)
+```
+
+Coverage averaged across samples and horizon, per series.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+NDArray, shape (n_series,)
+    Coverage per series, over evaluable cells only. A series with no
+    evaluable cell is NaN.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent.
+
+
+### `coverage_by_horizon`
+
+```python
+coverage_by_horizon(interval, truth)
+```
+
+Coverage averaged across series and samples, per horizon step.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+
+Returns
+-------
+NDArray, shape (horizon,)
+    Coverage per horizon step, over evaluable cells only. A step with no
+    evaluable cell is NaN.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent.
+
+
+### `coverage_by_group`
+
+```python
+coverage_by_group(interval, truth, groups)
+```
+
+Coverage by user-supplied group label.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+groups : NDArray, shape (n_series, n_samples, horizon)
+    Group label for each cell. Any dtype that supports :func:`np.unique`
+    (int, str, etc.).
+
+Returns
+-------
+dict with keys:
+    ``"groups"`` : NDArray, shape (n_groups,)
+        Unique group values, sorted.
+    ``"coverage_per_group"`` : NDArray, shape (n_groups,)
+        Over evaluable cells only; NaN for a group with none.
+    ``"mean_width_per_group"`` : NDArray, shape (n_groups,)
+    ``"n_per_group"`` : NDArray of int, shape (n_groups,)
+        Number of **evaluable** cells per group -- cells with a NaN bound
+        or NaN truth are excluded, since they contribute to neither mean.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, in particular if
+    ``groups.shape != truth.shape``.
+
+
+### `coverage_by_magnitude_bin`
+
+```python
+coverage_by_magnitude_bin(interval, truth, n_bins=10, by='truth')
+```
+
+Coverage by magnitude bin.
+
+Bins all cells by either ``|truth|`` or by ``|interval midpoint|``,
+then computes coverage and mean width per bin. Useful for catching the
+case where intervals are well-calibrated on average but fail on extreme
+values.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+n_bins : int, default 10
+    Number of equal-frequency (quantile) bins. Must be ``>= 2``.
+by : &#123;"truth", "midpoint"&#125;, default "truth"
+    Whether to bin by the absolute truth value or by the absolute
+    interval midpoint.
+
+Returns
+-------
+dict with keys:
+    ``"bin_edges"`` : NDArray, shape (n_bins + 1,)
+        Monotonically increasing bin edges.
+    ``"coverage_per_bin"`` : NDArray, shape (n_bins,)
+        Coverage per bin, over evaluable cells only. Empty bins receive
+        ``np.nan``.
+    ``"mean_width_per_bin"`` : NDArray, shape (n_bins,)
+        Mean interval width per bin. Empty bins receive ``np.nan``.
+    ``"n_per_bin"`` : NDArray of int, shape (n_bins,)
+        Number of **evaluable** cells in each bin -- cells with a NaN bound
+        or NaN truth are excluded, since they contribute to neither mean.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, if ``n_bins < 2``, or if ``by`` is not one
+    of the supported options.
+
+
+### `rolling_coverage`
+
+```python
+rolling_coverage(interval, truth, window)
+```
+
+Rolling coverage averaged across the samples axis.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+window : int
+    Rolling window size in samples. Must satisfy
+    ``1 <= window <= n_samples``.
+
+Returns
+-------
+NDArray, shape (n_series, n_samples - window + 1, horizon)
+    Rolling-mean coverage. Output index ``t`` corresponds to coverage
+    over samples ``[t, t + window)`` along the sample axis, counting
+    evaluable cells only. A window with none is NaN.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, or if ``window`` is out of range.
+
+
+## Interval quality
+
+### `mean_interval_width`
+
+```python
+mean_interval_width(interval)
+```
+
+Mean interval width per (series, horizon), averaged over samples.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+
+Returns
+-------
+NDArray, shape (n_series, horizon)
+    Mean width per cell, over samples whose bounds are both non-NaN. A
+    cell with no such sample is NaN.
+
+```
+Note this is a wider set than :func:`winkler_score` and the coverage
+metrics average over: a width needs no observed target, so a sample
+whose truth is NaN still contributes here. Compare
+``Report.n_evaluated_cells`` when the two need to agree.
+```
+
+Raises
+------
+ValueError
+    If ``interval`` does not have shape ``(n_series, n_samples, horizon, 2)``.
+
+
+### `coverage_width_summary`
+
+```python
+coverage_width_summary(interval, truth, alpha)
+```
+
+One-line summary of coverage and interval quality.
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+alpha : float
+    Target miscoverage level in ``(0, 1)``.
+
+Returns
+-------
+dict
+    Keys:
+
+```
+* ``"marginal_coverage"`` : float
+* ``"target_coverage"`` : float (``1 - alpha``)
+* ``"mean_width"`` : float, averaged over cells with two finite bounds
+* ``"mean_winkler"`` : float, averaged over evaluable cells
+```
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, or if ``alpha`` is not in ``(0, 1)``.
+
+
+### `winkler_score`
+
+```python
+winkler_score(interval, truth, alpha)
+```
+
+Per-cell Winkler interval score.
+
+The Winkler / interval score (Winkler 1972) is the standard proper
+scoring rule for prediction intervals. Lower is better. The score equals
+the interval width plus a penalty for misses, scaled by ``1 / alpha`` so
+that misses are more costly at smaller ``alpha``.
+
+.. math::
+
+```
+W_\alpha(C, y) = (u - l)
+    + \frac{2}{\alpha} (l - y) \mathbb{1}\{y < l\}
+    + \frac{2}{\alpha} (y - u) \mathbb{1}\{y > u\}
+```
+
+Parameters
+----------
+interval : Interval, shape (n_series, n_samples, horizon, 2)
+truth : Forecast, shape (n_series, n_samples, horizon)
+alpha : float
+    Target miscoverage level in ``(0, 1)``.
+
+Returns
+-------
+NDArray, shape (n_series, n_samples, horizon)
+    Per-cell Winkler scores. Non-negative, and NaN wherever a bound or the
+    truth is NaN -- a cell that does not exist is not scored. Aggregate
+    with :func:`numpy.nanmean`.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, or if ``alpha`` is not in ``(0, 1)``.
+
+
+### `pinball_loss`
+
+```python
+pinball_loss(prediction, truth, quantile)
+```
+
+Per-cell pinball loss at a single quantile level.
+
+.. math::
+
+```
+\rho_q(y, \hat y) = \max\bigl(q (y - \hat y),\;
+    (q - 1)(y - \hat y)\bigr)
+```
+
+Used when the user has access to a point or quantile prediction and wants
+to evaluate calibration at a specific level. At ``quantile = 0.5`` this
+reduces to ``|y - y_hat| / 2``.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, n_samples, horizon)
+    Single-quantile forecast.
+truth : Forecast, shape (n_series, n_samples, horizon)
+quantile : float
+    Quantile level in ``(0, 1)``.
+
+Returns
+-------
+NDArray, shape (n_series, n_samples, horizon)
+    Per-cell pinball losses. Non-negative.
+
+Raises
+------
+ValueError
+    If shapes are inconsistent, or if ``quantile`` is not in ``(0, 1)``.
+
+
+## Method state
+
+### `method_state`
+
+```python
+method_state(fitted)
+```
+
+Dispatch to the appropriate method-specific state function.
+
+Parameters
+----------
+fitted : ConformalForecaster
+
+Returns
+-------
+dict
+    Result of :func:`aci_state` / :func:`agaci_state` / :func:`nexcp_state`
+    / :func:`spci_state`, or an empty dict for methods without
+    method-specific diagnostics (e.g. the
+    :class:`~conformalforecast.methods.fixed_offset.FixedOffsetForecaster`
+    split conformal and CQR return).
+
+
+### `aci_state`
+
+```python
+aci_state(fitted)
+```
+
+Snapshot of ACI's adaptive state.
+
+Parameters
+----------
+fitted : ACIForecaster
+
+Returns
+-------
+dict with keys:
+    ``"alpha_t"`` : NDArray, shape (n_series, horizon)
+        Current adaptive miscoverage rate per cell.
+    ``"alpha_t_minus_alpha"`` : NDArray, shape (n_series, horizon)
+        How far the adaptive rate has drifted from the target.
+        Magnitude indicates how much adaptation occurred.
+    ``"n_observations"`` : int
+        Total observations (calibration + updates).
+    ``"gamma"`` : float
+        Learning rate.
+
+Raises
+------
+TypeError
+    If ``fitted`` is not an :class:`ACIForecaster`.
+
+
+### `agaci_state`
+
+```python
+agaci_state(fitted)
+```
+
+Snapshot of AgACI's per-expert state and aggregator weights.
+
+Parameters
+----------
+fitted : AgACIForecaster
+
+Returns
+-------
+dict with keys:
+    ``"alpha_t_per_expert"`` : NDArray, shape (n_experts, n_series, horizon)
+    ``"gammas"`` : tuple of float
+    ``"weights_lower"`` : NDArray, shape (n_experts, n_series, horizon)
+        Current normalized weights of the lower-bound aggregator.
+    ``"weights_upper"`` : NDArray, shape (n_experts, n_series, horizon)
+    ``"best_expert_per_cell_lower"`` : NDArray of int, shape (n_series, horizon)
+        Index of the expert with highest weight per cell, for the
+        lower-bound aggregator.
+    ``"best_expert_per_cell_upper"`` : NDArray of int, shape (n_series, horizon)
+    ``"n_observations"`` : int
+
+Raises
+------
+TypeError
+    If ``fitted`` is not an :class:`AgACIForecaster`.
+
+
+### `nexcp_state`
+
+```python
+nexcp_state(fitted)
+```
+
+Snapshot of NexCP's weighting state.
+
+Parameters
+----------
+fitted : NexCPForecaster
+
+Returns
+-------
+dict with keys:
+    ``"rho"`` : float
+    ``"n_observations"`` : int
+    ``"effective_sample_size"`` : float
+        ``ESS = (sum w)^2 / sum(w^2)``. With ``rho = 1`` this equals
+        ``n_observations``; with smaller ``rho`` it's less.
+    ``"weights_minimum"`` : float
+        Smallest weight in the buffer (the oldest sample's weight).
+    ``"weights_maximum"`` : float
+        Largest weight (the newest sample's weight = 1).
+    ``"score_quantile"`` : NDArray, shape (n_series, horizon)
+        Current weighted quantile threshold.
+
+Raises
+------
+TypeError
+    If ``fitted`` is not a :class:`NexCPForecaster`.
+
+
+### `spci_state`
+
+```python
+spci_state(fitted)
+```
+
+Snapshot of SPCI's regressor inventory.
+
+Parameters
+----------
+fitted : SPCIForecaster
+
+Returns
+-------
+dict with keys:
+    ``"window_size"`` : int
+    ``"n_observations"`` : int
+    ``"n_regressors"`` : int
+        Should equal ``n_series * horizon``.
+    ``"regressor_class"`` : str
+    ``"refit_every"`` : int
+    ``"steps_since_refit"`` : int
+        Where in the refit cycle we are.
+    ``"residuals_shape"`` : tuple
+        Shape of the residual buffer
+        ``(n_series, n_observations, horizon)``.
+
+Raises
+------
+TypeError
+    If ``fitted`` is not an :class:`SPCIForecaster`.
+

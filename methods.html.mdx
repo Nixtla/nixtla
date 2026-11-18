@@ -1,0 +1,1851 @@
+---
+title: Methods
+description: Each conformal method is a declarative config whose fit returns a fitted forecaster
+---
+
+## Contracts
+
+### `ConformalMethod`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>, <code>[Generic](#typing.Generic)[[F](#conformalforecast.methods.base.F)]</code>
+
+A conformal prediction method: declarative config plus the fitting math.
+
+Subclasses implement ``_default_score`` and ``fit``, and declare
+``REQUIRED_CAPABILITIES`` / ``CONSUMES_QUANTILES`` / ``SCORE_TYPE`` /
+``IS_ONLINE``. ``calibrate`` and ``calibrate_cv`` are concrete here and are
+never overridden. The type parameter ``F`` is the fitted class ``fit``
+returns, so ``SplitConformal(...).calibrate(...)`` is typed precisely.
+
+<details class="lifecycle" open markdown="1">
+<summary>Lifecycle</summary>
+
+1. Construct with ``alpha`` and, optionally, ``score`` and per-method
+   config. There is no forecaster at construction.
+2. ``fitted = calibrate(forecaster, histories, truths)`` (any adapter)
+   **or** ``fitted = calibrate_cv(forecaster, n_windows)`` (native
+   cross-validation) — or ``fitted = fit(predictions, truths)``
+   directly on arrays. Each call returns a **new**
+   :class:`ConformalForecaster` and leaves the method untouched.
+3. ``fitted.predict(history)`` repeatedly (or
+   ``fitted.interval(predictions)`` on the array surface).
+4. Online methods (``IS_ONLINE = True``): ``fitted.update(prediction,
+   truth)`` after each realized step, mutating ``fitted`` in place.
+
+</details>
+
+The score is **config**: ``score`` is a constructor field, ``None`` meaning
+:meth:`_default_score`. Compatibility with the method is checked at
+construction against ``SCORE_TYPE`` and raises ``pydantic.ValidationError``.
+``fit`` deep-copies the score before fitting it, so the fitted object never
+shares a score with the method or with another fitted object.
+
+The forecaster is **bound at calibration**: capabilities are checked where
+it is bound, and it is stored on the returned object as ``forecaster_``.
+``predict`` never raises ``UnsupportedCapability``.
+
+This is a pydantic model, so construction is **keyword-only**
+(``SplitConformal(alpha=0.1)``, never ``SplitConformal(0.1)``) and an
+out-of-range ``alpha`` raises ``pydantic.ValidationError`` (a subclass of
+``ValueError``). ``model_json_schema()`` describes the config only:
+``REQUIRED_CAPABILITIES`` / ``CONSUMES_QUANTILES`` / ``SCORE_TYPE`` /
+``IS_ONLINE`` are ``ClassVar`` class metadata rather than fields.
+
+Parameters
+----------
+alpha : float
+    Miscoverage level in (0, 1). Target coverage is ``1 - alpha``.
+seed : int, default 0
+    Determinism seed. Never ``None``.
+score : ScoreFunction or None, default None
+    Nonconformity score. ``None`` takes the method's default. Must be an
+    instance of the method's ``SCORE_TYPE``.
+
+Raises
+------
+pydantic.ValidationError
+    If ``alpha`` is not in (0, 1), if ``seed`` is negative, if ``score``
+    does not fit the method, or if an unknown keyword is passed.
+
+Invariants
+----------
+- Identical config + identical arrays -> identical output.
+- A method has no fitted state; config fields carry no trailing underscore.
+- All shape conventions are panel-aware (``n_series`` leading).
+
+#### `ConformalMethod.alpha`
+
+```python
+alpha: float = Field(gt=0.0, lt=1.0, description='Miscoverage level, strictly between 0 and 1. The intervals target a coverage of 1 - alpha, so alpha=0.1 asks for 90% coverage. Smaller alpha means wider intervals, and needs more calibration windows: at least ceil(1 / alpha) per series.')
+```
+
+#### `ConformalMethod.seed`
+
+```python
+seed: int = Field(default=0, ge=0, description='Seed for any randomness a method uses, so that the same config on the same arrays gives the same intervals. Deterministic methods such as split conformal ignore it; it exists so every method has the same knob.')
+```
+
+#### `ConformalMethod.score`
+
+```python
+score: ScoreField = Field(default=None, description="Nonconformity score, given by its kind tag: 'absolute' (|truth - prediction|, symmetric intervals), 'signed' (truth - prediction, asymmetric intervals) or 'quantile' (for quantile forecasts, CQR only). Leave it null to use the method's default, which is almost always the right choice.")
+```
+
+#### `ConformalMethod.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Fit the conformal correction on calibration arrays.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    Calibration-window forecasts. NaN cells mark windows that do
+    not exist for a series. A method that ``CONSUMES_QUANTILES``
+    takes the quantile cube instead, shape
+    ``(n_series, n_windows, horizon, 2)``.
+truths : Forecast, shape (n_series, n_windows, horizon)
+    Realized values aligned with ``predictions``.
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+Returns
+-------
+ConformalForecaster
+    A new fitted object. The method itself is not modified.
+
+#### `ConformalMethod.calibrate`
+
+```python
+calibrate(forecaster, histories=None, truths=None, *, X=None)
+```
+
+Fit the conformal correction on an explicit calibration set.
+
+Loops over ``histories`` via ``forecaster.predict_batch`` (or
+``predict_quantiles`` when the method ``CONSUMES_QUANTILES``) and hands
+the resulting arrays to :meth:`fit`. Works with any adapter.
+
+Parameters
+----------
+forecaster : ForecasterAdapter
+    Adapter providing every mixin in ``REQUIRED_CAPABILITIES``.
+    Retained on the returned object as ``forecaster_``.
+histories : list of Series
+    Each shape ``(n_series, T)``.
+truths : Forecast, shape (n_series, len(histories), horizon)
+    Realized values aligned with each forecast window.
+X : Exog or None, shape (n_series, len(histories), horizon, n_features)
+    Exogenous features, forwarded to ``forecaster.predict_batch`` and
+    :meth:`fit`. Methods that do not use them ignore ``X``. Not
+    supported for quantile-consuming methods (CQR).
+
+Returns
+-------
+ConformalForecaster
+    A new fitted object with ``forecaster_`` bound and
+    ``calibration_.diagnostics["path"] == "loop"``.
+
+Raises
+------
+UnsupportedCapability
+    If ``forecaster`` is missing a required capability.
+ValueError
+    If either ``histories`` or ``truths`` is missing.
+NotImplementedError
+    If ``X`` is not None and the method is quantile-consuming.
+InsufficientCalibrationSamples
+    If any series has too few effective calibration samples (raised by
+    :meth:`fit`, per series).
+
+#### `ConformalMethod.calibrate_cv`
+
+```python
+calibrate_cv(forecaster, n_windows, *, step_size=1, refit=False, aligned=False, X=None)
+```
+
+Fit the conformal correction via the adapter's native cross-validation.
+
+Delegates to ``forecaster.cross_validate`` (or
+``cross_validate_quantiles`` when the method ``CONSUMES_QUANTILES``) to
+produce all calibration windows in a single library-native call, then
+hands the arrays to :meth:`fit`. For libraries with a real CV
+implementation this is dramatically faster than :meth:`calibrate`.
+
+Parameters
+----------
+forecaster : ForecasterAdapter
+    Adapter providing every mixin in ``REQUIRED_CAPABILITIES`` plus the
+    cross-validation capability the chosen path needs. Retained on the
+    returned object as ``forecaster_``.
+n_windows : int
+    Number of cross-validation windows.
+step_size : int, default 1
+    Step size between successive CV windows.
+refit : bool or int, default False
+    Whether (or how often) to refit the model between windows.
+aligned : bool, default False
+    Forwarded to the point-CV path (``forecaster.cross_validate``)
+    only. ``False`` returns dense per-series arrays (window axis = k
+    steps before each series' own end); ``True`` returns
+    calendar-aligned cutoffs with NaN cells for series that do not
+    reach every cutoff. The quantile-CV path (CQR) ignores this flag:
+    it always densifies, so ragged panels calibrate but the aligned
+    cube is not available there.
+X : Exog or None
+    Exogenous features. Not supported: exogenous cross-validation is
+    out of scope in v0.1. Passing a non-None value always raises. Use
+    :meth:`calibrate` with an explicit loop instead.
+
+Returns
+-------
+ConformalForecaster
+    A new fitted object with ``forecaster_`` bound and
+    ``calibration_.diagnostics["path"] == "cross_validation"``.
+
+Raises
+------
+NotImplementedError
+    If ``X`` is not None.
+UnsupportedCapability
+    If the adapter does not provide the required cross-validation
+    capability.
+InsufficientCalibrationSamples
+    If any series has too few effective calibration samples (raised by
+    :meth:`fit`, per series).
+
+
+### `ConformalForecaster`
+
+Bases: <code>[ArrayModel](#conformalforecast._model.ArrayModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+A fitted conformal method: calibration state plus the interval it implies.
+
+Returned by :meth:`ConformalMethod.fit`, :meth:`ConformalMethod.calibrate`
+and :meth:`ConformalMethod.calibrate_cv`; never constructed by hand.
+Subclasses implement ``interval`` and, when the method is online,
+``_update``. ``update``, ``predict`` and ``recalibrate`` are concrete here
+and never overridden; ``calibration_intervals`` is overridden only when the
+interval is conditional on query-time state (SPCI).
+
+Every subclass field is required: the object exists only once fitted, so
+there is no "not yet fitted" state. ``forecaster_`` and the retained
+calibration arrays are the exception — a bare ``fit`` never sets them.
+
+Online methods mutate this object in place through ``update``. Take a
+snapshot with ``model_copy(deep=True)``; nothing a fitted object mutates is
+shared with its method or with another fitted object.
+
+Attributes
+----------
+method_ : ConformalMethod
+    Deep copy of the config this object was fitted under. Fitted code reads
+    config through it.
+score_fn_ : ScoreFunction
+    The score this object was fitted under; ``interval`` and the online
+    update invert with it.
+n_calibration_samples_ : NDArray, shape (n_series,)
+    Effective calibration samples per series.
+calibration_ : CalibrationResult
+    Snapshot taken at fit. ``diagnostics["path"]`` names the entry point.
+forecaster_ : ForecasterAdapter or None
+    The adapter bound by ``calibrate`` / ``calibrate_cv``; ``None`` after a
+    bare ``fit``.
+predictions_calibration_ : NDArray or None, shape (n_series, n_windows, horizon)
+    Calibration forecasts retained by ``calibrate`` / ``calibrate_cv`` for
+    in-sample diagnostics (a defensive copy). ``None`` after a bare
+    ``fit``.
+truths_calibration_ : NDArray or None, shape (n_series, n_windows, horizon)
+    Realized values aligned with ``predictions_calibration_``; same
+    lifecycle.
+quantile_predictions_calibration_ : NDArray or None, shape (n_series, n_windows, horizon, 2)
+    Retained quantile predictions, quantile-consuming methods (CQR) only.
+
+#### `ConformalForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Produce calibrated intervals for new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+    A method that ``CONSUMES_QUANTILES`` takes quantile forecasts
+    instead, shape ``(n_series, n_samples, horizon, 2)``.
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+    Last axis is (lower, upper).
+
+#### `ConformalForecaster.update`
+
+```python
+update(prediction, truth, *, X=None)
+```
+
+Online update step, mutating this object in place.
+
+Concrete here and never overridden: it delegates to the :meth:`_update`
+algorithm hook, which is a no-op for offline methods.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, 1, horizon)
+    The point forecast that produced the interval being reported on —
+    typically the ``point`` field of the most recent
+    :class:`PredictionResult`.
+truth : Forecast, shape (n_series, 1, horizon)
+    The realized values for the same horizon.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+#### `ConformalForecaster.predict`
+
+```python
+predict(history, *, X=None)
+```
+
+Produce a calibrated point forecast and prediction interval.
+
+Parameters
+----------
+history : Series, shape (n_series, T)
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features, forwarded to ``forecaster_.predict`` and
+    :meth:`interval`. Methods that do not use them ignore ``X``.
+    Not supported for quantile-consuming methods (CQR).
+
+Returns
+-------
+PredictionResult
+    ``point`` has shape ``(n_series, 1, horizon)``.
+    ``interval`` has shape ``(n_series, 1, horizon, 2)``.
+
+Raises
+------
+CalibrationError
+    If no forecaster is bound (the object came from a bare ``fit``).
+NotImplementedError
+    If ``X`` is not None and the method is quantile-consuming.
+
+#### `ConformalForecaster.recalibrate`
+
+```python
+recalibrate(target_histories=None, target_truths=None, *, X=None)
+```
+
+Fit the same method on a target-domain panel, with the same forecaster.
+
+This is ``method_.calibrate(forecaster_, ...)`` pointed at a different
+panel: the forecaster is never refitted, so looping ``predict_batch``
+over target-domain histories and scoring against target truths *is*
+the frozen backtest transfer learning needs. The score carries over
+because it is config on ``method_``.
+
+Returns a **new** object; this one is left untouched. For online
+methods the new object's state comes from the target panel's own
+trajectory, so adaptation accumulated here through ``update()`` does
+not carry over. For a method supporting ``adapt`` the new object starts
+from uniform weights: target labels supersede the unlabelled proxy.
+
+Parameters
+----------
+target_histories : list of Series, each shape (n_series, T)
+    Target-domain histories, one per calibration window.
+target_truths : Forecast, shape (n_series, n_windows, horizon)
+    Realized target-domain values.
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Target-domain features, forwarded to ``predict_batch`` and ``fit``.
+
+Returns
+-------
+ConformalForecaster
+    Same class as ``self``; ``calibration_.diagnostics["path"]`` is
+    ``"recalibrate"``.
+
+Raises
+------
+CalibrationError
+    If no forecaster is bound (the object came from a bare ``fit``).
+ValueError
+    If either argument is missing, or the target panel's ``n_series``
+    differs from the adapter's. Adapters fix ``n_series`` at
+    construction; build a fresh adapter for a target panel with a
+    different series count.
+NotImplementedError
+    From ``calibrate`` if ``X`` is supplied for a quantile-consuming
+    method.
+
+#### `ConformalForecaster.calibration_intervals`
+
+```python
+calibration_intervals(predictions, *, X=None)
+```
+
+The intervals this object's own fit implies at each calibration window.
+
+Aligned window-for-window with the arrays ``fit`` was given: entry ``t``
+is the interval the fitted state implies *at* window ``t``. Windows the
+method cannot evaluate are ``(NaN, NaN)``, which
+:func:`conformalforecast.diagnostics.evaluate_calibration` excludes from
+its averages rather than scoring as misses.
+
+The default broadcasts :meth:`interval` over every window. That is exact
+whenever the offsets ``interval`` applies are a constant of the whole
+calibration set, which holds for every method shipped here except SPCI:
+Split, CQR and WeightedSplit take a fixed quantile, and ACI, NexCP and
+AgACI take a quantile of the full score history at their final adapted
+level.
+
+A method whose ``interval`` is instead conditional on **query-time
+state** must override this. SPCI is the shipped example -- it
+conditions on the most recent residual window, so broadcasting its
+final answer over past windows measures nothing.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    The point forecasts ``fit`` was calibrated on (the quantile cube,
+    shape ``(n_series, n_windows, horizon, 2)``, for a method that
+    ``CONSUMES_QUANTILES``).
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+
+Returns
+-------
+Interval, shape (n_series, n_windows, horizon, 2)
+
+#### `ConformalForecaster.method_`
+
+```python
+method_: SkipValidation[ConformalMethod[Any]]
+```
+
+#### `ConformalForecaster.score_fn_`
+
+```python
+score_fn_: ScoreFunction
+```
+
+#### `ConformalForecaster.n_calibration_samples_`
+
+```python
+n_calibration_samples_: NDArray[np.integer]
+```
+
+#### `ConformalForecaster.calibration_`
+
+```python
+calibration_: CalibrationResult
+```
+
+#### `ConformalForecaster.forecaster_`
+
+```python
+forecaster_: ForecasterAdapter | None = None
+```
+
+#### `ConformalForecaster.predictions_calibration_`
+
+```python
+predictions_calibration_: NDArray[np.floating] | None = None
+```
+
+#### `ConformalForecaster.truths_calibration_`
+
+```python
+truths_calibration_: NDArray[np.floating] | None = None
+```
+
+#### `ConformalForecaster.quantile_predictions_calibration_`
+
+```python
+quantile_predictions_calibration_: NDArray[np.floating] | None = None
+```
+
+
+## Offline methods
+
+### `SplitConformal`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)[[FixedOffsetForecaster](#conformalforecast.methods.fixed_offset.FixedOffsetForecaster)]</code>
+
+Classic split conformal prediction adapted for panel time series.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict lifecycle and the ``calibrate`` / ``calibrate_cv`` split.
+
+Algorithm
+---------
+1. **fit**: score ``(predictions, truths)`` with the nonconformity score
+   and store the per-(series, horizon) exact conformal quantile
+   (``k = ceil((1 - alpha)(n + 1))`` order statistic, NaN-aware). When
+   ``symmetric=False``, the score is signed and two one-sided conformal
+   quantiles are taken instead — one of the signed residual, one of its
+   negation — so the interval can shift as well as widen.
+2. **interval** (on the returned
+   :class:`~conformalforecast.methods.fixed_offset.FixedOffsetForecaster`):
+   apply ``score_fn_.invert`` with the stored quantile.
+
+Any adapter works — no special capabilities required. Bind one with
+``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``. Construction is keyword-only:
+``SplitConformal(alpha=0.1)``.
+
+Parameters
+----------
+alpha : float
+    Miscoverage level in (0, 1). The target coverage is ``1 - alpha``.
+symmetric : bool, default True
+    True (the default) gives an equal-width interval ``ŷ ± q``, with
+    ``q`` one conformal quantile of the absolute residual. It targets
+    total coverage ``1 - alpha`` and makes no per-tail guarantee: with
+    skewed residuals one tail can take nearly all the misses. False
+    scores signed residuals and sets each tail explicitly through
+    ``alpha_lo`` / ``alpha_hi``, which both become mandatory.
+    ``symmetric=False`` with ``alpha_lo=alpha/2, alpha_hi=1 - alpha/2``
+    is the equal-tailed interval: ``alpha/2`` per tail, and it can shift
+    as well as widen. It needs at least ``ceil(2 / alpha)`` calibration
+    windows per series instead of ``ceil(1 / alpha)``, and its upper
+    bound on coverage is slightly looser.
+alpha_lo : float, optional
+    Lower-tail miscoverage budget, used only when ``symmetric=False``,
+    where it is required alongside ``alpha_hi``. Under exchangeability
+    the lower tail misses at most ``alpha_lo`` of the time.
+alpha_hi : float, optional
+    Upper-tail level, used only when ``symmetric=False``, where it is
+    required alongside ``alpha_lo``. Under exchangeability the upper
+    tail misses at most ``1 - alpha_hi`` of the time. Both levels must
+    be left None when ``symmetric=True``, even when they equal
+    ``(alpha/2, 1 - alpha/2)``: a pair specifies per-tail coverage, which
+    the equal-width symmetric interval does not provide. This
+    deliberately differs from :class:`ConformalizedQuantileRegression`,
+    where the pair only names the quantiles requested from the
+    forecaster.
+
+```
+Paths that skip validation (``model_copy(update=...)``, attribute
+assignment, ``model_construct``) can leave a stale ``alpha_lo`` /
+``alpha_hi`` after switching to ``symmetric=True``. ``fit`` ignores
+them, but ``model_validate(m.model_dump())`` then refuses the
+config; rebuild through the constructor or ``model_validate``.
+```
+seed : int, default 0
+    Unused (kept for a uniform constructor signature); split conformal
+    is deterministic by construction.
+score : ScoreFunction or None, default None
+    Defaults to :class:`AbsoluteResidual` when ``symmetric=True`` and
+    :class:`SignedResidual` otherwise. ``symmetric=False`` requires a
+    ``SignedResidual`` (or a subclass): the two tails are separate
+    one-sided quantiles, so the score must keep the residual's sign.
+
+#### `SplitConformal.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Fit the conformal quantile on calibration arrays.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    NaN cells mark windows that do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Ignored by this method.
+
+Returns
+-------
+FixedOffsetForecaster
+    ``score_quantile_`` has shape ``(n_series, horizon)``, or
+    ``(n_series, horizon, 2)`` — last axis ``(lower_offset,
+    upper_offset)`` — when ``symmetric=False``.
+    ``calibration_.diagnostics`` contains ``"score_quantile"``, a
+    defensive copy of it.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched, or if ``symmetric=False``
+    but ``alpha_lo`` or ``alpha_hi`` is unset, which only a path that
+    skips validation (``model_copy``, attribute assignment,
+    ``model_construct``) can produce.
+InsufficientCalibrationSamples
+    When ``symmetric=True``, if any series has fewer than
+    ``ceil(1 / alpha)`` effective (non-NaN) calibration windows. When
+    ``symmetric=False``, the lower and upper offsets are each their
+    own one-sided conformal quantile — at ``alpha_lo`` and
+    ``1 - alpha_hi`` respectively — so each enforces its own floor,
+    and the binding requirement is the stricter
+    ``max(ceil(1 / alpha_lo), ceil(1 / (1 - alpha_hi)))`` rather than
+    ``ceil(1 / alpha)``.
+
+#### `SplitConformal._default_score`
+
+```python
+_default_score()
+```
+
+A signed residual is what carries an asymmetric interval.
+
+
+### `ConformalizedQuantileRegression`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)[[FixedOffsetForecaster](#conformalforecast.methods.fixed_offset.FixedOffsetForecaster)]</code>
+
+Conformalized Quantile Regression (Romano, Patterson, Candès 2019)
+adapted for panel time series.
+
+Wraps a quantile-producing forecaster and calibrates its quantile interval
+so that empirical coverage matches the target ``1 - alpha``.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict lifecycle and the ``calibrate`` / ``calibrate_cv`` split.
+
+Algorithm
+---------
+1. **fit**: score the calibration quantile pair ``(q_lo, q_hi)`` against
+   ``truths`` with :class:`QuantileScore` (``E = max(q_lo - y, y - q_hi)``)
+   and store the exact per-(series, horizon) conformal quantile
+   (``k = ceil((1 - alpha)(n + 1))`` order statistic, NaN-aware).
+2. **interval** (on the returned
+   :class:`~conformalforecast.methods.fixed_offset.FixedOffsetForecaster`):
+   widen a new quantile pair by that stored quantile.
+
+Unlike the other methods, the ``predictions`` that ``fit`` and the fitted
+``interval`` take are a **quantile cube**, shape
+``(n_series, n_windows | n_samples, horizon, 2)`` with last axis
+``(q_lo, q_hi)``, not point forecasts. ``CONSUMES_QUANTILES`` advertises
+this so the orchestration entry points query the forecaster for quantiles.
+Choosing *which* quantile levels to query at is this class's
+responsibility (from ``alpha`` / ``symmetric`` / ``alpha_lo`` /
+``alpha_hi``), exposed as :attr:`quantile_levels`.
+
+The bound adapter must implement :class:`SupportsQuantiles`, checked when
+it is bound by ``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``.
+
+The score must be a :class:`QuantileScore` **or a subclass** (the default is
+a plain ``QuantileScore``); anything else is a ``pydantic.ValidationError``
+at construction. A point score would fail anyway, on the trailing axis of
+the quantile cube, but with an opaque broadcast error. The gate also
+**narrows** what is accepted: a custom score honouring the 4-D layout must
+subclass ``QuantileScore``.
+
+Construction is a pydantic model, so it is **keyword-only**
+(``ConformalizedQuantileRegression(alpha=0.1)``) and an invalid
+``alpha`` / ``symmetric`` / level combination raises
+``pydantic.ValidationError`` (a subclass of ``ValueError``).
+
+Parameters
+----------
+alpha : float
+    Target miscoverage in ``(0, 1)``. The target coverage is ``1 - alpha``.
+symmetric : bool, default True
+    If True, the forecaster is queried at ``(alpha/2, 1 - alpha/2)``,
+    derived from ``alpha`` by :attr:`quantile_levels`, and ``alpha_lo`` /
+    ``alpha_hi`` must be None. A matching pair is accepted and stored as
+    None, because it restates the quantiles already requested. If False,
+    the user must supply both ``alpha_lo`` and ``alpha_hi``.
+alpha_lo : float, optional
+    Lower quantile level requested from the forecaster. Required when
+    ``symmetric=False``.
+alpha_hi : float, optional
+    Upper quantile level requested from the forecaster. Required when
+    ``symmetric=False``.
+
+```
+The levels shape the interval's width and position, not its
+validity. One conformal quantile of the CQR score is added to both
+sides, so the guarantee is joint coverage ``1 - alpha`` (under
+exchangeability) whatever the levels are, and there is no per-tail
+coverage guarantee. The constraints
+``alpha_lo + (1 - alpha_hi) == alpha`` and
+``0 < alpha_lo < 0.5 < alpha_hi < 1`` are a convention that keeps the
+requested quantiles consistent with ``alpha``; validity does not need
+them.
+```
+seed : int, default 0
+    Inert (kept for a uniform constructor signature); CQR is deterministic.
+score : QuantileScore or None, default None
+    Defaults to :class:`QuantileScore`.
+
+#### `ConformalizedQuantileRegression.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Fit the conformal quantile on calibration quantile forecasts.
+
+Parameters
+----------
+predictions : NDArray, shape (n_series, n_windows, horizon, 2)
+    Quantile forecasts; last axis is ``(q_lo, q_hi)``. NaN cells mark
+    windows that do not exist.
+truths : Forecast, shape (n_series, n_windows, horizon)
+    Realized values.
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Ignored by this method.
+
+Returns
+-------
+FixedOffsetForecaster
+    ``score_quantile_`` has shape ``(n_series, horizon)``;
+    ``calibration_.diagnostics`` carries ``"score_quantile"``, a
+    defensive copy of it.
+
+Raises
+------
+ValueError
+    If ``predictions`` is malformed or shape-mismatched with ``truths``.
+InsufficientCalibrationSamples
+    If any series has fewer than ``ceil(1 / alpha)`` effective windows.
+
+#### `ConformalizedQuantileRegression.quantile_levels`
+
+```python
+quantile_levels: NDArray[np.floating]
+```
+
+The quantile levels the forecaster is queried at.
+
+Returns
+-------
+NDArray, shape (2,)
+    ``(alpha / 2, 1 - alpha / 2)`` when ``symmetric=True``, derived from
+    ``alpha`` on every access; ``(alpha_lo, alpha_hi)`` otherwise.
+
+Raises
+------
+ValueError
+    If ``symmetric=False`` but ``alpha_lo`` or ``alpha_hi`` is unset. Only a
+    path that skips validation (``model_copy``, attribute assignment,
+    ``model_construct``) can produce this, and such paths can leave the
+    level fields inconsistent the other way too: switching to
+    ``symmetric=True`` keeps a stale ``alpha_lo`` / ``alpha_hi`` that
+    ``model_validate(m.model_dump())`` then refuses. Rebuild through the
+    constructor or ``model_validate``.
+
+#### `ConformalizedQuantileRegression._default_score`
+
+```python
+_default_score()
+```
+
+
+### `FixedOffsetForecaster`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>
+
+A fitted split-conformal or CQR method.
+
+Once fitted, both methods are the same thing: a per-(series, horizon)
+conformal quantile that never changes, inverted through the score. Only
+the input differs — point forecasts for
+:class:`~conformalforecast.methods.split.SplitConformal`, a quantile pair
+for :class:`~conformalforecast.methods.cqr.ConformalizedQuantileRegression`
+(whose method sets ``CONSUMES_QUANTILES``).
+
+Attributes
+----------
+score_quantile_ : NDArray
+    The fitted conformal quantile. Shape ``(n_series, horizon)``, or
+    ``(n_series, horizon, 2)`` — last axis ``(lower_offset,
+    upper_offset)`` — for asymmetric split conformal.
+
+#### `FixedOffsetForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Apply the fitted quantile to new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+    Point forecasts — or, for CQR, quantile forecasts of shape
+    ``(n_series, n_samples, horizon, 2)``, last axis ``(q_lo, q_hi)``.
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+    Ignored.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If the input is malformed, or its ``(n_series, horizon)`` does not
+    match the fitted ``score_quantile_``.
+
+#### `FixedOffsetForecaster.score_quantile_`
+
+```python
+score_quantile_: NDArray[np.floating]
+```
+
+
+### `WeightedSplit`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)['WeightedSplitForecaster']</code>
+
+Split conformal prediction with per-calibration-point weights.
+
+Implements weighted conformal prediction under covariate shift (Tibshirani
+et al., 2019): calibration scores are weighted by an estimate of the
+density ratio ``d_target(x) / d_source(x)``, and the normalization includes
+the test point's own weight.
+
+Until ``adapt`` binds a weight function this is exactly
+:class:`~conformalforecast.methods.split.SplitConformal`: ``fit`` binds
+``UniformWeights``, which recovers the unweighted quantile.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict lifecycle. ``fit`` returns a
+:class:`WeightedSplitForecaster`, which offers ``adapt`` (see
+:class:`~conformalforecast.methods.transfer.SupportsTransfer`).
+Construction is keyword-only: ``WeightedSplit(alpha=0.1)``.
+
+Parameters
+----------
+alpha : float
+    Miscoverage level in (0, 1). Target coverage is ``1 - alpha``.
+seed : int, default 0
+    Inert (kept for a uniform constructor signature).
+pooling : &#123;"per_series", "global"&#125;, default "per_series"
+    ``"global"`` pools scale-normalized calibration scores across the
+    series axis into one quantile per horizon step, which is what lets a
+    target series absent from the source panel be served — but only once
+    ``adapt(target_series=...)`` has widened that pooled quantile to one
+    row per target series. Until then ``interval`` still requires the
+    source panel's series count (or a single-series source, whose
+    length-1 quantile broadcasts). It **requires** ``scale_estimator``,
+    because pooling residuals across series of different scales is
+    unsound without normalizing first.
+scale_estimator : &#123;"mad", "std", "iqr"&#125; or None
+    Enables scale alignment through ``adapt(target_series=...)``. Required
+    when ``pooling="global"``.
+
+Notes
+-----
+A custom ``score`` is deliberately narrow: the weighted per-test-point path
+builds the interval as ``prediction +/- q``, correct only for a symmetric
+residual score, so ``score=`` must be an :class:`AbsoluteResidual` (or a
+subclass) -- anything else is a ``pydantic.ValidationError`` at
+construction.
+
+References
+----------
+Tibshirani, R. J., Barber, R. F., Candes, E. J., & Ramdas, A. (2019).
+Conformal prediction under covariate shift. NeurIPS 32.
+
+#### `WeightedSplit.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Fit the weighted conformal quantile on source-domain arrays.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    NaN cells mark windows that do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Source-domain features, retained as ``X_calibration_`` for the
+    weight function ``adapt`` later binds.
+
+Returns
+-------
+WeightedSplitForecaster
+    Bound to ``UniformWeights``; ``calibration_.diagnostics`` carries
+    ``"score_quantile"`` and ``"pooling"``.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched.
+InsufficientCalibrationSamples
+    If any series' effective sample size is below ``ceil(1 / alpha)``.
+
+#### `WeightedSplit._default_score`
+
+```python
+_default_score()
+```
+
+
+### `WeightedSplitForecaster`
+
+Bases: <code>[SupportsTransfer](#conformalforecast.methods.transfer.SupportsTransfer)</code>
+
+A fitted :class:`WeightedSplit`.
+
+Attributes
+----------
+method_ : WeightedSplit
+score_quantile_ : NDArray, shape (n_series, horizon)
+    The fitted per-cell quantile, in target units. Under
+    ``pooling="global"`` these rows come from the scale ratio
+    (``target_scales_`` once adapted, else the ``source_scales_``
+    fallback), so ``n_series`` here follows the target panel after
+    ``adapt(target_series=...)``, not the source panel ``fit`` ran on.
+base_quantile_ : NDArray, shape (n_series, horizon)
+    The quantile before the scale ratio is applied. Under
+    ``pooling="global"`` the leading axis is 1 (pooled across series),
+    broadcast against the scale ratio to produce ``score_quantile_``.
+
+#### `WeightedSplitForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Apply the weighted quantile to new predictions.
+
+Under ``pooling="per_series"``, when the weighting function is adapted
+and ``X`` is supplied, the normalization includes each test point's own
+weight, per Tibshirani et al. (2019). Otherwise — including every
+``pooling="global"`` call, where the quantile is pooled across the
+series axis and so has no per-series score panel to reweight — the
+fitted per-cell quantile is applied directly.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If the predictions shape does not match the fitted state.
+
+#### `WeightedSplitForecaster.base_quantile_`
+
+```python
+base_quantile_: NDArray[np.floating]
+```
+
+#### `WeightedSplitForecaster.score_quantile_`
+
+```python
+score_quantile_: NDArray[np.floating]
+```
+
+
+### `SupportsTransfer`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>, <code>[ABC](#abc.ABC)</code>
+
+A fitted method that can be adapted to a target domain after source calibration.
+
+``adapt()`` exists because several transfer strategies have no target-domain
+``(prediction, truth)`` pairs to calibrate on: density-ratio weighting needs
+only target features, scale alignment only target history. Methods with
+target labels use ``recalibrate()`` on
+:class:`~conformalforecast.methods.base.ConformalForecaster` instead.
+
+This is an intermediate ABC rather than a standalone mixin because
+``adapt`` reads ``scores_`` and ``n_calibration_samples_``: a mixin would
+have to re-declare fields ``ConformalForecaster`` already owns.
+Implementors provide ``_scale_estimator`` (the configured estimator, read
+from ``method_``) and ``_recompute_quantile()``, which rebuilds fitted
+state from the stored source scores plus the current weights and scale
+ratio.
+
+``adapt`` returns a **new** object and leaves the receiver untouched, and it
+always recomputes from stored source state -- so it is idempotent and never
+compounds onto a previously adapted quantile.
+
+Attributes
+----------
+weighting_ : WeightFunction
+    The weight function in force: ``UniformWeights`` after ``fit``, or the
+    one bound by the ``adapt`` call that produced this object.
+scores_ : NDArray, shape (n_series, n_windows, horizon)
+    Source-domain nonconformity scores, retained so ``adapt`` can recompute.
+X_calibration_ : NDArray or None, shape (n_series, n_windows, horizon, n_features)
+    Source-domain features handed to ``fit``, retained for the weighting
+    function's ``fit_source``.
+source_scales_, target_scales_ : NDArray or None, shape (n_series,)
+    Per-series scales of the source and target domains. ``source_scales_``
+    is ``None`` when no scale estimator is configured; ``target_scales_``
+    until ``adapt(target_series=...)``.
+scale_ratio_ : NDArray or None, shape (n_series,)
+    The multiplier applied to the base quantile.
+
+#### `SupportsTransfer.adapt`
+
+```python
+adapt(*, weighting=None, target_X=None, target_series=None)
+```
+
+Adapt this source-fitted object to a target domain.
+
+Parameters
+----------
+weighting : WeightFunction or None
+    Weight function to bind, e.g.
+    :class:`~conformalforecast.weighting.DensityRatio`. A copy is fitted
+    against the retained source features and score shape and kept as
+    the new object's ``weighting_``; the instance passed in is not
+    modified. None keeps the current weighting.
+target_X : Exog or None, shape (n_series, n_samples, horizon, n_features)
+    Target-domain features. Fits the weighting function.
+target_series : Series or None, shape (n_series, T)
+    Target-domain observations. Sets the scale ratio.
+
+Returns
+-------
+SupportsTransfer
+    A new object of the same class. ``calibration_.diagnostics`` carries
+    ``"path": "adapt"``, ``"scale_ratio"`` and ``"weight_summary"``
+    (min / median / max of calibration weights).
+
+Raises
+------
+ValueError
+    If all three arguments are None; if ``target_series`` is given
+    without a ``scale_estimator`` configured; or if ``target_X`` is
+    given but the bound weighting function does not declare
+    ``CONSUMES_TARGET_X`` (``UniformWeights`` and
+    ``PrecomputedWeights`` both ignore target features, so passing
+    them would silently discard it).
+
+#### `SupportsTransfer.weighting_`
+
+```python
+weighting_: WeightFunction
+```
+
+#### `SupportsTransfer.scores_`
+
+```python
+scores_: NDArray[np.floating]
+```
+
+#### `SupportsTransfer.X_calibration_`
+
+```python
+X_calibration_: NDArray[np.floating] | None
+```
+
+#### `SupportsTransfer.source_scales_`
+
+```python
+source_scales_: NDArray[np.floating] | None
+```
+
+#### `SupportsTransfer.target_scales_`
+
+```python
+target_scales_: NDArray[np.floating] | None = None
+```
+
+#### `SupportsTransfer.scale_ratio_`
+
+```python
+scale_ratio_: NDArray[np.floating] | None = None
+```
+
+
+## Online methods
+
+### `AdaptiveConformalInference`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)['ACIForecaster']</code>
+
+Online Adaptive Conformal Inference on panel time series.
+
+Maintains a time-varying miscoverage rate ``alpha_t`` per
+``(series, horizon)`` cell. Each realized step nudges it toward the target
+``alpha`` by ``alpha_t <- alpha_t + gamma * (alpha - 1{miss})``, which
+guarantees long-run coverage of ``1 - alpha`` without exchangeability.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict/update lifecycle and the ``calibrate`` / ``calibrate_cv``
+split. ``fit`` returns an :class:`ACIForecaster`, whose ``update`` advances
+``alpha_t_`` in place.
+
+Any adapter works — no special capabilities required. Bind one with
+``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``. Construction is keyword-only:
+``AdaptiveConformalInference(alpha=0.1)``.
+
+Parameters
+----------
+alpha : float
+    Miscoverage in (0, 1). Target coverage is ``1 - alpha``.
+gamma : float, default 0.05
+    Learning rate for the ``alpha_t`` recursion. Gibbs & Candès recommend
+    ``[0.005, 0.05]``; values > 0.1 warn.
+seed : int, default 0
+    Unused (kept for a uniform constructor signature); ACI is
+    deterministic by construction.
+score : ScoreFunction or None, default None
+    Defaults to :class:`AbsoluteResidual`.
+
+#### `AdaptiveConformalInference.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Roll ``alpha_t`` forward over the calibration windows.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    Chronological on axis 1 (oldest first). NaN cells mark windows
+    that do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+ACIForecaster
+    ``calibration_.diagnostics`` carries ``"gamma"`` and a copy of
+    ``alpha_t_``.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched.
+InsufficientCalibrationSamples
+    If any series has fewer than ``ceil(1 / alpha)`` effective
+    (non-NaN) calibration windows.
+
+#### `AdaptiveConformalInference._default_score`
+
+```python
+_default_score()
+```
+
+
+### `ACIForecaster`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>
+
+A fitted :class:`AdaptiveConformalInference`. ``update`` mutates it in place.
+
+Attributes
+----------
+method_ : AdaptiveConformalInference
+alpha_t_ : NDArray, shape (n_series, horizon)
+    The current time-varying miscoverage rate.
+n_observations_ : int
+    Number of windows seen so far (grows by one per :meth:`update`).
+scores_ : NDArray, shape (n_series, n_windows, horizon)
+    Nonconformity scores retained for the online ``update`` step.
+
+#### `ACIForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Apply the current ``alpha_t_`` threshold to new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If predictions shape (n_series, horizon) does not match fitted state.
+
+#### `ACIForecaster.update`
+
+```python
+update(prediction, truth, *, X=None)
+```
+
+Online update step, mutating this object in place.
+
+Concrete here and never overridden: it delegates to the :meth:`_update`
+algorithm hook, which is a no-op for offline methods.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, 1, horizon)
+    The point forecast that produced the interval being reported on —
+    typically the ``point`` field of the most recent
+    :class:`PredictionResult`.
+truth : Forecast, shape (n_series, 1, horizon)
+    The realized values for the same horizon.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+#### `ACIForecaster.alpha_t_`
+
+```python
+alpha_t_: NDArray[np.floating]
+```
+
+#### `ACIForecaster.n_observations_`
+
+```python
+n_observations_: int
+```
+
+#### `ACIForecaster.scores_`
+
+```python
+scores_: NDArray[np.floating]
+```
+
+
+### `AggregatedAdaptiveConformalInference`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)['AgACIForecaster']</code>
+
+Aggregated Adaptive Conformal Inference on panel time series.
+
+Runs ``K = len(gammas)`` parallel ACI experts with different learning rates
+and aggregates their interval bounds via online expert aggregation. Lower
+and upper bounds use independent aggregators driven by per-expert pinball
+loss at ``beta_lower = alpha / 2`` and ``beta_upper = 1 - alpha / 2``, so the
+interval is generally asymmetric.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict/update lifecycle and the ``calibrate`` / ``calibrate_cv``
+split. ``fit`` returns an :class:`AgACIForecaster`, whose ``update`` advances
+the experts and both aggregators in place.
+
+Any adapter works — no special capabilities required. Bind one with
+``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``. Construction is keyword-only:
+``AggregatedAdaptiveConformalInference(alpha=0.1)``.
+
+Parameters
+----------
+alpha : float
+    Miscoverage in (0, 1). Target coverage is ``1 - alpha``.
+gammas : tuple of float, default (0.001, 0.005, 0.01, 0.05, 0.1, 0.2)
+    Grid of ACI learning rates. Non-empty; each value > 0.
+aggregator : EWA, default ``EWA()``
+    Prototype aggregator, deep-copied and initialized once per bound
+    (lower, upper) at fit time. **Typed as the concrete** :class:`EWA`
+    rather than the abstract
+    :class:`~conformalforecast.aggregators.base.OnlineAggregator`, so that
+    ``EWA.eta`` shows up as nested config in
+    ``model_json_schema()`` — a field typed as an ABC produces an empty
+    nested schema. An :class:`EWA` subclass is accepted; an
+    ``OnlineAggregator`` subclass that does *not* inherit from
+    :class:`EWA` is rejected with ``pydantic.ValidationError``. That
+    narrowing is deliberate.
+interval_clip_lower, interval_clip_upper : float or None
+    Clip thresholds. Both-or-neither; ``lower < upper``. When None, computed
+    at fit as ``min(truths) -/+ 5 * std(truths)`` and held on the fitted
+    object's ``interval_clip_lower_`` / ``interval_clip_upper_``.
+seed : int, default 0
+    Unused (kept for a uniform constructor signature); AgACI is
+    deterministic by construction.
+score : ScoreFunction or None, default None
+    Defaults to :class:`AbsoluteResidual`.
+
+Attributes
+----------
+n_experts : int
+    ``len(gammas)``, read-only — derived from the grid rather than
+    settable alongside it.
+
+#### `AggregatedAdaptiveConformalInference.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Run the online AgACI loop over the calibration windows.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    NaN cells mark windows that do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+AgACIForecaster
+    ``calibration_.diagnostics`` carries ``"gammas"`` and a copy of
+    ``alpha_t_per_expert_``.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched.
+InsufficientCalibrationSamples
+    If any series has fewer than ``ceil(1 / alpha)`` effective windows.
+
+#### `AggregatedAdaptiveConformalInference.n_experts`
+
+```python
+n_experts: int
+```
+
+Number of ACI experts, ``len(gammas)``.
+
+#### `AggregatedAdaptiveConformalInference._default_score`
+
+```python
+_default_score()
+```
+
+
+### `AgACIForecaster`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>
+
+A fitted :class:`AggregatedAdaptiveConformalInference`. ``update`` mutates it in place.
+
+Attributes
+----------
+method_ : AggregatedAdaptiveConformalInference
+alpha_t_per_expert_ : NDArray, shape (n_experts, n_series, horizon)
+    Per-expert time-varying miscoverage rate.
+aggregator_lower_, aggregator_upper_ : EWA
+    The two independent aggregators, deep-copied from the method's
+    prototype at fit and never shared with it.
+interval_clip_lower_, interval_clip_upper_ : float
+    The *resolved* clips actually applied to emitted bounds — equal to the
+    config values when those were given, otherwise computed at fit from the
+    calibration truths.
+n_observations_ : int
+    Number of windows seen so far (grows by one per :meth:`update`).
+scores_ : NDArray, shape (n_series, n_windows, horizon)
+    Nonconformity scores retained for the online ``update`` step.
+
+#### `AgACIForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Aggregate per-expert bounds for new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If predictions shape (n_series, horizon) does not match fitted state.
+
+#### `AgACIForecaster.update`
+
+```python
+update(prediction, truth, *, X=None)
+```
+
+Online update step, mutating this object in place.
+
+Concrete here and never overridden: it delegates to the :meth:`_update`
+algorithm hook, which is a no-op for offline methods.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, 1, horizon)
+    The point forecast that produced the interval being reported on —
+    typically the ``point`` field of the most recent
+    :class:`PredictionResult`.
+truth : Forecast, shape (n_series, 1, horizon)
+    The realized values for the same horizon.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+#### `AgACIForecaster.alpha_t_per_expert_`
+
+```python
+alpha_t_per_expert_: NDArray[np.floating]
+```
+
+#### `AgACIForecaster.aggregator_lower_`
+
+```python
+aggregator_lower_: EWA
+```
+
+#### `AgACIForecaster.aggregator_upper_`
+
+```python
+aggregator_upper_: EWA
+```
+
+#### `AgACIForecaster.interval_clip_lower_`
+
+```python
+interval_clip_lower_: float
+```
+
+#### `AgACIForecaster.interval_clip_upper_`
+
+```python
+interval_clip_upper_: float
+```
+
+#### `AgACIForecaster.n_observations_`
+
+```python
+n_observations_: int
+```
+
+#### `AgACIForecaster.scores_`
+
+```python
+scores_: NDArray[np.floating]
+```
+
+
+### `NonexchangeableConformalPrediction`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)['NexCPForecaster']</code>
+
+Recency-weighted (nonexchangeable) conformal prediction on panel time series.
+
+Each calibration window gets an exponential weight ``rho ** (age)``; the
+newest window has weight 1 and older windows decay by ``rho``. The
+conformal threshold is the exact weighted order statistic of the scores
+(see :func:`weighted_conformal_quantile`). ``rho == 1`` recovers split CP.
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict/update lifecycle and the ``calibrate`` / ``calibrate_cv``
+split. ``fit`` returns a :class:`NexCPForecaster`, whose ``update`` appends
+to the score history in place.
+
+Any adapter works — no special capabilities required. Bind one with
+``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``.
+
+Parameters
+----------
+alpha : float
+    Miscoverage level in (0, 1). The target coverage is ``1 - alpha``.
+rho : float, default 0.99
+    Decay factor in (0, 1]. Smaller values weight recent windows more.
+    ``rho == 1`` recovers the unweighted (split conformal) quantile.
+seed : int, default 0
+    Unused (kept for a uniform constructor signature); NexCP is
+    deterministic by construction.
+score : ScoreFunction or None, default None
+    Defaults to :class:`AbsoluteResidual`.
+
+#### `NonexchangeableConformalPrediction.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Fit the weighted conformal quantile on calibration arrays.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    Chronological on axis 1 (oldest first). NaN cells mark windows that
+    do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+NexCPForecaster
+    ``calibration_.diagnostics`` carries ``"rho"`` and a copy of
+    ``score_quantile_``.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched.
+InsufficientCalibrationSamples
+    If any series' effective sample size is below ``ceil(1 / alpha)``.
+
+#### `NonexchangeableConformalPrediction._default_score`
+
+```python
+_default_score()
+```
+
+
+### `NexCPForecaster`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>
+
+A fitted :class:`NonexchangeableConformalPrediction`. ``update`` mutates it in place.
+
+Attributes
+----------
+method_ : NonexchangeableConformalPrediction
+score_quantile_ : NDArray, shape (n_series, horizon)
+    The current per-(series, horizon) weighted conformal quantile.
+n_observations_ : int
+    Number of windows seen so far (grows by one per :meth:`update`).
+scores_ : NDArray, shape (n_series, n_windows, horizon)
+    Nonconformity scores retained for the online ``update`` step.
+
+#### `NexCPForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Apply the fitted weighted quantile to new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+X : Exog or None
+    Ignored by this method.
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If predictions shape (n_series, horizon) does not match fitted state.
+
+#### `NexCPForecaster.update`
+
+```python
+update(prediction, truth, *, X=None)
+```
+
+Online update step, mutating this object in place.
+
+Concrete here and never overridden: it delegates to the :meth:`_update`
+algorithm hook, which is a no-op for offline methods.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, 1, horizon)
+    The point forecast that produced the interval being reported on —
+    typically the ``point`` field of the most recent
+    :class:`PredictionResult`.
+truth : Forecast, shape (n_series, 1, horizon)
+    The realized values for the same horizon.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+#### `NexCPForecaster.score_quantile_`
+
+```python
+score_quantile_: NDArray[np.floating]
+```
+
+#### `NexCPForecaster.n_observations_`
+
+```python
+n_observations_: int
+```
+
+#### `NexCPForecaster.scores_`
+
+```python
+scores_: NDArray[np.floating]
+```
+
+
+### `SequentialPredictiveConformalInference`
+
+Bases: <code>[ConformalMethod](#conformalforecast.methods.base.ConformalMethod)['SPCIForecaster']</code>
+
+Sequential Predictive Conformal Inference on panel time series.
+
+Per ``(series, horizon)`` cell, a quantile regressor predicts the
+conditional distribution of the next signed residual from the previous
+``window_size`` residuals (and, optionally, exogenous features aligned to
+the target step). The interval is
+``[point + Q(beta_hat), point + Q(1 - alpha + beta_hat)]`` where ``beta_hat``
+minimizes the width ``Q(1 - alpha + beta) - Q(beta)`` over ``beta`` in
+``[0, alpha]``.
+
+Determinism is controlled by ``seed``: the default regressor is
+:class:`QRFQuantileRegressor` with ``random_state=seed``. A user-supplied
+``regressor`` is left exactly as passed and is responsible for its own
+determinism.
+
+.. warning::
+
+   ``regressor`` is typed as the **concrete**
+   :class:`~conformalforecast.quantile_regressors.qrf.QRFQuantileRegressor`,
+   not the abstract
+   :class:`~conformalforecast.quantile_regressors.base.QuantileRegressor`,
+   so that the QRF knobs (``n_estimators``, ``min_samples_leaf``,
+   ``random_state``) appear as nested config in ``model_json_schema()`` —
+   an ABC-typed pydantic field produces an *empty* nested schema. The
+   deliberate consequence is a narrowing: a ``QRFQuantileRegressor``
+   subclass is accepted, but a ``QuantileRegressor`` subclass that does not
+   inherit from ``QRFQuantileRegressor`` is rejected with
+   ``pydantic.ValidationError``, and so is a duck-typed object implementing
+   only ``fit`` + ``predict_quantile``. Both used to work. Subclass
+   ``QRFQuantileRegressor`` to plug in a different backend, and override
+   **all three** of ``fit``, ``predict_quantile`` and ``predict_quantiles``.
+   Overriding only the first two leaves the inherited forest-backed
+   ``predict_quantiles``, which checks for a fitted forest that a custom
+   ``fit`` never built and fails inside :meth:`interval` with
+   ``RuntimeError: QRFQuantileRegressor must be fit before
+   predict_quantiles`` — a message that claims the regressor was not fitted
+   when it was. If the base-class loop over ``predict_quantile`` is what
+   you want, take it explicitly::
+
+```
+class MyRegressor(QRFQuantileRegressor):
+    predict_quantiles = QuantileRegressor.predict_quantiles
+
+    def fit(self, X, y): ...
+    def predict_quantile(self, X, quantile): ...
+```
+
+See :class:`~conformalforecast.methods.base.ConformalMethod` for the
+calibrate/predict/update lifecycle and the ``calibrate`` / ``calibrate_cv``
+split. ``fit`` returns an :class:`SPCIForecaster`, whose ``update`` appends
+residuals and refits in place.
+
+Any adapter works — no special capabilities required. Bind one with
+``calibrate(forecaster, histories, truths)`` or
+``calibrate_cv(forecaster, n_windows)``.
+
+The score must be a :class:`SignedResidual` **or a subclass** (the default is
+a plain ``SignedResidual``); anything else is a ``pydantic.ValidationError``
+at construction. This is narrower than the array contract: a custom score
+that inverts a two-sided ``(n_series, horizon, 2)`` threshold must subclass
+``SignedResidual`` to be accepted.
+
+Parameters
+----------
+alpha : float
+    Miscoverage in (0, 1). Target coverage is ``1 - alpha``.
+window_size : int, default 100
+    Number of lagged residuals used as autoregressive features.
+regressor : QRFQuantileRegressor or None
+    Prototype regressor, deep-copied once per ``(series, horizon)`` cell at
+    fit time. Defaults to ``QRFQuantileRegressor(random_state=seed)``. See
+    the warning above for the type narrowing this field carries.
+beta_grid_size : int, default 21
+    Number of ``beta`` grid points over ``[0, alpha]``.
+refit_every : int, default 1
+    Refit all regressors every this many :meth:`update` calls.
+seed : int, default 0
+    Threaded into the default QRF regressor for determinism. Ignored when
+    ``regressor`` is given.
+score : SignedResidual or None, default None
+    Defaults to :class:`SignedResidual`. Must be a ``SignedResidual`` or a
+    subclass: the regressors predict the *signed* residual quantiles the
+    interval offsets the point forecast by, so a symmetric or quantile
+    score would make the offsets meaningless.
+
+#### `SequentialPredictiveConformalInference.fit`
+
+```python
+fit(predictions, truths, *, X=None)
+```
+
+Score residuals and fit one quantile regressor per cell.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    NaN cells mark windows that do not exist for a series.
+truths : Forecast, shape (n_series, n_windows, horizon)
+X : Exog or None, shape (n_series, n_windows, horizon, n_features)
+    Optional exogenous features. When given, each training row is the
+    ``window_size`` lagged residuals concatenated with the exog features
+    aligned to the target step.
+
+Returns
+-------
+SPCIForecaster
+    ``calibration_.diagnostics`` carries ``"window_size"``,
+    ``"beta_grid_size"`` and ``"refit_every"``.
+
+Raises
+------
+ValueError
+    If array shapes are invalid or mismatched.
+InsufficientCalibrationSamples
+    If any series has too few effective residuals (need at least
+    ``max(window_size + 1, ceil(1 / alpha))``).
+
+#### `SequentialPredictiveConformalInference._default_score`
+
+```python
+_default_score()
+```
+
+
+### `SPCIForecaster`
+
+Bases: <code>[ConformalForecaster](#conformalforecast.methods.base.ConformalForecaster)</code>
+
+A fitted :class:`SequentialPredictiveConformalInference`. ``update`` mutates it in place.
+
+Attributes
+----------
+method_ : SequentialPredictiveConformalInference
+quantile_regressors_ : dict
+    One fitted clone of the method's ``regressor`` per ``(series, horizon)``
+    cell, keyed by that pair. Each refit replaces the whole dict.
+residuals_ : NDArray, shape (n_series, n_windows, horizon)
+    Signed residuals retained for the online ``update`` step and for
+    building each cell's query row.
+X_ : NDArray or None, shape (n_series, n_windows, horizon, n_features)
+    Exogenous buffer, ``None`` when fit without exog.
+n_observations_ : int
+    Number of windows seen so far (grows by one per :meth:`update`).
+steps_since_refit_ : int
+    :meth:`update` calls since the regressors were last refit; they refit
+    when this reaches the method's ``refit_every``.
+
+#### `SPCIForecaster.interval`
+
+```python
+interval(predictions, *, X=None)
+```
+
+Produce asymmetric intervals for new predictions.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_samples, horizon)
+X : Exog or None
+    Ignored at interval time; the query reuses the most recent
+    calibration exog row (adapter-side future-exog threading is not
+    implemented).
+
+Returns
+-------
+Interval, shape (n_series, n_samples, horizon, 2)
+
+Raises
+------
+ValueError
+    If predictions shape (n_series, horizon) does not match fitted state.
+
+#### `SPCIForecaster.calibration_intervals`
+
+```python
+calibration_intervals(predictions, *, X=None)
+```
+
+Per-window in-sample intervals, each queried with its own residual history.
+
+SPCI's offsets are conditional on the ``window_size`` residuals
+immediately preceding the step being predicted, so -- unlike every other
+method here -- :meth:`interval` cannot serve as its own in-sample
+replay. Broadcasting the final query's answer over earlier windows
+places each interval against a residual history it was not conditioned
+on; the resulting coverage is an artifact, not a measurement.
+
+This slides the query instead: window ``t`` is answered from the
+residuals before ``t``. Those query rows are exactly the training design
+matrix :meth:`_train_arrays` already builds, so each cell costs one
+batched regressor call rather than one per window.
+
+The result is still **in sample with respect to the quantile
+regressors** -- they were fit on these very rows, and on later residuals
+after any :meth:`update` -- so coverage here is optimistic. It is no
+longer anachronistic.
+
+Parameters
+----------
+predictions : Forecast, shape (n_series, n_windows, horizon)
+    The point forecasts :meth:`fit` was calibrated on.
+X : Exog or None
+    Ignored; each window's exogenous row comes from the fitted buffer.
+
+Returns
+-------
+Interval, shape (n_series, n_windows, horizon, 2)
+    ``(NaN, NaN)`` for the first ``window_size`` **valid** windows of
+    each cell, which have too little history to query, and for windows
+    that do not exist for that series.
+
+Raises
+------
+ValueError
+    If ``predictions`` does not match the fitted ``(n_series, n_windows,
+    horizon)``.
+
+#### `SPCIForecaster.update`
+
+```python
+update(prediction, truth, *, X=None)
+```
+
+Online update step, mutating this object in place.
+
+Concrete here and never overridden: it delegates to the :meth:`_update`
+algorithm hook, which is a no-op for offline methods.
+
+Parameters
+----------
+prediction : Forecast, shape (n_series, 1, horizon)
+    The point forecast that produced the interval being reported on —
+    typically the ``point`` field of the most recent
+    :class:`PredictionResult`.
+truth : Forecast, shape (n_series, 1, horizon)
+    The realized values for the same horizon.
+X : Exog or None, shape (n_series, 1, horizon, n_features)
+    Exogenous features. Methods that do not use them ignore ``X``.
+
+#### `SPCIForecaster.quantile_regressors_`
+
+```python
+quantile_regressors_: dict[tuple[int, int], QRFQuantileRegressor]
+```
+
+#### `SPCIForecaster.residuals_`
+
+```python
+residuals_: NDArray[np.floating]
+```
+
+#### `SPCIForecaster.X_`
+
+```python
+X_: NDArray[np.floating] | None
+```
+
+#### `SPCIForecaster.n_observations_`
+
+```python
+n_observations_: int
+```
+
+#### `SPCIForecaster.steps_since_refit_`
+
+```python
+steps_since_refit_: int
+```
+
