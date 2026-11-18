@@ -1,0 +1,79 @@
+---
+title: Sample weights
+---
+
+> Provide a column to pass through to the underlying models as sample
+> weights
+
+## Data setup
+
+```python
+import numpy as np
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(2)
+series['weight'] = np.random.default_rng(seed=0).random(series.shape[0])
+series.head(2)
+```
+
+|     | unique_id | ds         | y        | weight   |
+|-----|-----------|------------|----------|----------|
+| 0   | id_0      | 2000-01-01 | 0.357595 | 0.636962 |
+| 1   | id_0      | 2000-01-02 | 1.301382 | 0.269787 |
+
+## Creating forecast object
+
+```python
+import lightgbm as lgb
+from sklearn.linear_model import LinearRegression
+
+from mlforecast import MLForecast
+```
+
+
+```python
+fcst = MLForecast(
+    models={
+        'lr': LinearRegression(),
+        'lgbm': lgb.LGBMRegressor(verbosity=-1),
+    },
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek'],
+)
+```
+
+## Forecasting
+
+You can provide the `weight_col` argument to `MLForecast.fit` to
+indicate which column should be used as the sample weights.
+
+```python
+fcst.fit(series, weight_col='weight').predict(1)
+```
+
+|     | unique_id | ds         | lr       | lgbm     |
+|-----|-----------|------------|----------|----------|
+| 0   | id_0      | 2000-08-10 | 3.336019 | 5.283677 |
+| 1   | id_1      | 2000-04-07 | 3.300786 | 4.230655 |
+
+## Cross validation
+
+You can provide the `weight_col` argument to
+`MLForecast.cross_validation` to indicate which column should be used as
+the sample weights.
+
+```python
+fcst.cross_validation(series, n_windows=2, h=1, weight_col='weight')
+```
+
+|     | unique_id | ds         | cutoff     | y        | lr       | lgbm     |
+|-----|-----------|------------|------------|----------|----------|----------|
+| 0   | id_0      | 2000-08-08 | 2000-08-07 | 3.436325 | 2.770717 | 3.242790 |
+| 1   | id_1      | 2000-04-05 | 2000-04-04 | 2.430276 | 2.687932 | 2.075247 |
+| 2   | id_0      | 2000-08-09 | 2000-08-08 | 4.136771 | 3.095140 | 4.239010 |
+| 3   | id_1      | 2000-04-06 | 2000-04-05 | 3.363522 | 3.016661 | 3.436962 |
+

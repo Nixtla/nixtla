@@ -1,0 +1,36 @@
+---
+output-file: callbacks.html
+title: Callbacks
+description: Utility functions use in the predict step.
+---
+
+##
+
+### `SaveFeatures`
+
+```python
+SaveFeatures()
+```
+
+Saves the features in every timestamp.
+
+#### `SaveFeatures.get_features`
+
+```python
+get_features(with_step=False)
+```
+
+Retrieves the input features for every timestep
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`with_step` | <code>[bool](#bool)</code> | Add a column indicating the step. Defaults to False. | <code>False</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>pandas or polars DataFrame</code> | DataFrame with input features
+

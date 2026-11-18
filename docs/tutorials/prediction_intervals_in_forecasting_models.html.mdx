@@ -1,0 +1,1004 @@
+---
+title: Prediction intervals
+---
+
+The objective of the following article is to provide a step-by-step
+guide on building `Prediction intervals in forecasting models` using
+`mlforecast`.
+
+During this walkthrough, we will become familiar with the main
+`MlForecast` class and some relevant methods such as `MLForecast.fit`,
+`MLForecast.predict` and `MLForecast.cross_validation` in other.
+
+Let’s start!!!
+
+# Table of contents
+
+1.  [Introduction](#introduction)
+2.  [Forecasts and prediction
+    intervals](#forecasts-and-prediction-intervals)
+3.  [Installing mlforecast](#installing-mlforecast)
+4.  [Loading libraries and data](#loading-libraries-and-data)
+5.  [Explore Data with the plot
+    method](#explore-data-with-the-plot-method)
+6.  [Split the data into training and
+    testing](#split-the-data-into-training-and-testing)
+7.  [Modeling with mlforecast](#modeling-with-mlforecast)
+8.  [References](#references)
+
+# Introduction
+
+The target of our prediction is something unknown (otherwise we wouldn’t
+be making a prediction), so we can think of it as a random variable. For
+example, the total sales for the next month could have different
+possible values, and we won’t know what the exact value will be until we
+get the actual sales at the end of the month. Until next month’s sales
+are known, this is a random amount.
+
+By the time the next month draws near, we usually have a pretty good
+idea of possible sales values. However, if we are forecasting sales for
+the same month next year, the possible values can vary much more. In
+most forecasting cases, the variability associated with what we are
+forecasting reduces as we get closer to the event. In other words, the
+further back in time we make the prediction, the more uncertainty there
+is.
+
+We can imagine many possible future scenarios, each yielding a different
+value for what we are trying to forecast.
+
+When we obtain a forecast, we are estimating the middle of the range of
+possible values the random variable could take. Often, a forecast is
+accompanied by a prediction interval giving a range of values the random
+variable could take with relatively high probability. For example, a 95%
+prediction interval contains a range of values which should include the
+actual future value with probability 95%.
+
+Rather than plotting individual possible futures , we usually show these
+prediction intervals instead.
+
+When we generate a forecast, we usually produce a single value known as
+the point forecast. This value, however, doesn’t tell us anything about
+the uncertainty associated with the forecast. To have a measure of this
+uncertainty, we need prediction intervals.
+
+A prediction interval is a range of values that the forecast can take
+with a given probability. Hence, a 95% prediction interval should
+contain a range of values that include the actual future value with
+probability 95%. Probabilistic forecasting aims to generate the full
+forecast distribution. Point forecasting, on the other hand, usually
+returns the mean or the median or said distribution. However, in
+real-world scenarios, it is better to forecast not only the most
+probable future outcome, but many alternative outcomes as well.
+
+The problem is that some timeseries models provide forecast
+distributions, but some other ones only provide point forecasts. How can
+we then estimate the uncertainty of predictions?
+
+# Forecasts and prediction intervals
+
+There are at least four sources of uncertainty in forecasting using time
+series models:
+
+1.  The random error term;
+2.  The parameter estimates;
+3.  The choice of model for the historical data;
+4.  The continuation of the historical data generating process into the
+    future.
+
+When we produce prediction intervals for time series models, we
+generally only take into account the first of these sources of
+uncertainty. It would be possible to account for 2 and 3 using
+simulations, but that is almost never done because it would take too
+much time to compute. As computing speeds increase, it might become a
+viable approach in the future.
+
+Even if we ignore the model uncertainty and the DGP uncertainty (sources
+3 and 4), and just try to allow for parameter uncertainty as well as the
+random error term (sources 1 and 2), there are no closed form solutions
+apart from some simple special cases. see full article [Rob J
+Hyndman](https://robjhyndman.com/hyndsight/narrow-pi/)
+
+## Forecast distributions
+
+We use forecast distributions to express the uncertainty in our
+predictions. These probability distributions describe the probability of
+observing different future values using the fitted model. The point
+forecast corresponds to the mean of this distribution. Most time series
+models generate forecasts that follow a normal distribution, which
+implies that we assume that possible future values follow a normal
+distribution. However, later in this section we will look at some
+alternatives to normal distributions.
+
+### Importance of Confidence Interval Prediction in Time Series:
+
+1.  Uncertainty Estimation: The confidence interval provides a measure
+    of the uncertainty associated with time series predictions. It
+    enables variability and the range of possible future values to be
+    quantified, which is essential for making informed decisions.
+
+2.  Precision evaluation: By having a confidence interval, the precision
+    of the predictions can be evaluated. If the interval is narrow, it
+    indicates that the forecast is more accurate and reliable. On the
+    other hand, if the interval is wide, it indicates greater
+    uncertainty and less precision in the predictions.
+
+3.  Risk management: The confidence interval helps in risk management by
+    providing information about possible future scenarios. It allows
+    identifying the ranges in which the real values could be located and
+    making decisions based on those possible scenarios.
+
+4.  Effective communication: The confidence interval is a useful tool
+    for communicating predictions clearly and accurately. It allows the
+    variability and uncertainty associated with the predictions to be
+    conveyed to the stakeholders, avoiding a wrong or overly optimistic
+    interpretation of the results.
+
+Therefore, confidence interval prediction in time series is essential to
+understand and manage uncertainty, assess the accuracy of predictions,
+and make informed decisions based on possible future scenarios.
+
+## Prediction intervals
+
+A prediction interval gives us a range in which we expect $y_t$ to lie
+with a specified probability. For example, if we assume that the
+distribution of future observations follows a normal distribution, a 95%
+prediction interval for the forecast of step h would be represented by
+the range
+
+$$\hat{y}_{T+h|T} \pm 1.96 \hat\sigma_h,$$
+
+Where $\hat\sigma_h$ is an estimate of the standard deviation of the h
+-step forecast distribution.
+
+More generally, a prediction interval can be written as
+
+$$\hat{y}_{T+h|T} \pm c \hat\sigma_h$$
+
+In this context, the term “multiplier c” is associated with the
+probability of coverage. In this article, intervals of 80% and 95% are
+typically calculated, but any other percentage can be used. The table
+below shows the values of c corresponding to different coverage
+probabilities, assuming a normal forecast distribution.
+
+| Percentage | Multiplier |
+|------------|------------|
+| 50         | 0.67       |
+| 55         | 0.76       |
+| 60         | 0.84       |
+| 65         | 0.93       |
+| 70         | 1.04       |
+| 75         | 1.15       |
+| 80         | 1.28       |
+| 85         | 1.44       |
+| 90         | 1.64       |
+| 95         | 1.96       |
+| 96         | 2.05       |
+| 97         | 2.17       |
+| 98         | 2.33       |
+| 99         | 2.58       |
+
+Prediction intervals are valuable because they reflect the uncertainty
+in the predictions. If we only generate point forecasts, we cannot
+assess how accurate those forecasts are. However, by providing
+prediction intervals, the amount of uncertainty associated with each
+forecast becomes apparent. For this reason, point forecasts may lack
+significant value without the inclusion of corresponding forecast
+intervals.
+
+## One-step prediction intervals
+
+When making a prediction for a future step, it is possible to estimate
+the standard deviation of the forecast distribution using the standard
+deviation of the residuals, which is calculated by
+
+where $K$ is the number of parameters estimated in the forecasting
+method, and $M$ is the number of missing values in the residuals. (For
+example, $M=1$ for a naive forecast, because we can’t forecast the first
+observation.)
+
+## Multi-step prediction intervals
+
+A typical feature of forecast intervals is that they tend to increase in
+length as the forecast horizon lengthens. As we move further out in
+time, there is greater uncertainty associated with the prediction,
+resulting in wider prediction intervals. In general, σh tends to
+increase as h increases (although there are some nonlinear forecasting
+methods that do not follow this property).
+
+To generate a prediction interval, it is necessary to have an estimate
+of σh. As mentioned above, for one-step forecasts (h=1), equation (1)
+provides a good estimate of the standard deviation of the forecast, σ1.
+However, for multi-step forecasts, a more complex calculation method is
+required. These calculations assume that the residuals are uncorrelated
+with each other.
+
+## Benchmark methods
+
+For the four benchmark methods, it is possible to mathematically derive
+the forecast standard deviation under the assumption of uncorrelated
+residuals. If $\hat{\sigma}_h$ denotes the standard deviation of the $h$
+-step forecast distribution, and $\hat{\sigma}$ is the residual standard
+deviation given by (1), then we can use the expressions shown in next
+Table. Note that when $h=1$ and $T$ is large, these all give the same
+approximate value $\hat{\sigma}$.
+
+| Method                   | h-step forecast standard deviation         |
+|--------------------------|--------------------------------------------|
+| Mean forecasts           | $\hat\sigma_h = \hat\sigma\sqrt{1 + 1/T}$  |
+| Naïve forecasts          | $\hat\sigma_h = \hat\sigma\sqrt{h}$        |
+| Seasonal naïve forecasts | $\hat\sigma_h = \hat\sigma\sqrt{k+1}$      |
+| Drift forecasts          | $\hat\sigma_h = \hat\sigma\sqrt{h(1+h/T)}$ |
+
+Note that when $h=1$ and $T$ is large, these all give the same
+approximate value $\hat{\sigma}$.
+
+## Prediction intervals from bootstrapped residuals
+
+When a normal distribution for the residuals is an unreasonable
+assumption, one alternative is to use bootstrapping, which only assumes
+that the residuals are uncorrelated with constant variance. We will
+illustrate the procedure using a naïve forecasting method.
+
+A one-step forecast error is defined as $e_t = y_t - \hat{y}_{t|t-1}$.
+For a naïve forecasting method, $\hat{y}_{t|t-1} = y_{t-1}$, so we can
+rewrite this as $$y_t = y_{t-1} + e_t.$$
+
+Assuming future errors will be similar to past errors, when $t>T$ we can
+replace $e_{t}$ by sampling from the collection of errors we have seen
+in the past (i.e., the residuals). So we can simulate the next
+observation of a time series using
+
+$$y^*_{T+1} = y_{T} + e^*_{T+1}$$
+
+where $e^*_{T+1}$ is a randomly sampled error from the past, and
+$y^*_{T+1}$ is the possible future value that would arise if that
+particular error value occurred. We use We use a \* to indicate that
+this is not the observed $y_{T+1}$ value, but one possible future that
+could occur. Adding the new simulated observation to our data set, we
+can repeat the process to obtain
+
+$$y^*_{T+2} = y_{T+1}^* + e^*_{T+2},$$
+
+where $e^*_{T+2}$ is another draw from the collection of residuals.
+Continuing in this way, we can simulate an entire set of future values
+for our time series.
+
+## Conformal Prediction
+
+Multi-quantile losses and statistical models can provide prediction
+intervals, but the problem is that these are uncalibrated, meaning that
+the actual frequency of observations falling within the interval does
+not align with the confidence level associated with it. For example, a
+calibrated 95% prediction interval should contain the true value 95% of
+the time in repeated sampling. An uncalibrated 95% prediction interval,
+on the other hand, might contain the true value only 80% of the time, or
+perhaps 99% of the time. In the first case, the interval is too narrow
+and underestimates the uncertainty, while in the second case, it is too
+wide and overestimates the uncertainty.
+
+Statistical methods also assume normality. Here, we talk about another
+method called conformal prediction that doesn’t require any
+distributional assumptions.
+
+Conformal prediction intervals use cross-validation on a point
+forecaster model to generate the intervals. This means that no prior
+probabilities are needed, and the output is well-calibrated. No
+additional training is needed, and the model is treated as a black box.
+The approach is compatible with any model
+
+[mlforecast](https://github.com/nixtla/mlforecast) now supports
+Conformal Prediction on all available models.
+
+# Installing mlforecast
+
+-   using pip: `pip install mlforecast`
+
+-   using with conda: `conda install -c conda-forge mlforecast`
+
+# Loading libraries and data
+
+```python
+# Handling and processing of Data
+# ==============================================================================
+import numpy as np
+import pandas as pd
+
+import scipy.stats as stats
+
+# Handling and processing of Data for Date (time)
+# ==============================================================================
+import datetime
+import time
+from datetime import datetime, timedelta
+
+#
+# ==============================================================================
+from statsmodels.tsa.stattools import adfuller
+import statsmodels.api as sm
+import statsmodels.tsa.api as smt
+from statsmodels.tsa.seasonal import seasonal_decompose
+#
+# ==============================================================================
+from utilsforecast.plotting import plot_series
+
+```
+
+
+```python
+import xgboost as xgb
+
+from mlforecast import MLForecast
+from mlforecast.lag_transforms import ExpandingMean, ExponentiallyWeightedMean, RollingMean
+from mlforecast.target_transforms import Differences
+from mlforecast.utils import PredictionIntervals
+```
+
+
+```python
+# Plot
+# ==============================================================================
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+```
+
+## Read Data
+
+```python
+data_url = "https://raw.githubusercontent.com/Naren8520/Serie-de-tiempo-con-Machine-Learning/main/Data/nyc_taxi.csv"
+df = pd.read_csv(data_url, parse_dates=["timestamp"])
+df.head()
+```
+
+|     | timestamp           | value |
+|-----|---------------------|-------|
+| 0   | 2014-07-01 00:00:00 | 10844 |
+| 1   | 2014-07-01 00:30:00 | 8127  |
+| 2   | 2014-07-01 01:00:00 | 6210  |
+| 3   | 2014-07-01 01:30:00 | 4656  |
+| 4   | 2014-07-01 02:00:00 | 3820  |
+
+The input to MlForecast is always a data frame in long format with three
+columns: unique_id, ds and y:
+
+-   The `unique_id` (string, int or category) represents an identifier
+    for the series.
+
+-   The `ds` (datestamp) column should be of a format expected by
+    Pandas, ideally YYYY-MM-DD for a date or YYYY-MM-DD HH:MM:SS for a
+    timestamp.
+
+-   The `y` (numeric) represents the measurement we wish to forecast.
+
+```python
+df["unique_id"] = "1"
+df.columns=["ds", "y", "unique_id"]
+df.head()
+```
+
+|     | ds                  | y     | unique_id |
+|-----|---------------------|-------|-----------|
+| 0   | 2014-07-01 00:00:00 | 10844 | 1         |
+| 1   | 2014-07-01 00:30:00 | 8127  | 1         |
+| 2   | 2014-07-01 01:00:00 | 6210  | 1         |
+| 3   | 2014-07-01 01:30:00 | 4656  | 1         |
+| 4   | 2014-07-01 02:00:00 | 3820  | 1         |
+
+```python
+df.info()
+```
+
+``` text
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 10320 entries, 0 to 10319
+Data columns (total 3 columns):
+ #   Column     Non-Null Count  Dtype         
+---  ------     --------------  -----         
+ 0   ds         10320 non-null  datetime64[ns]
+ 1   y          10320 non-null  int64         
+ 2   unique_id  10320 non-null  object        
+dtypes: datetime64[ns](1), int64(1), object(1)
+memory usage: 242.0+ KB
+```
+
+# Explore Data with the plot method
+
+Plot some series using the plot method from the StatsForecast class.
+This method prints 8 random series from the dataset and is useful for
+basic EDA.
+
+```python
+fig = plot_series(df)
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__eda.png)
+
+## The Augmented Dickey-Fuller Test
+
+The Augmented Dickey-Fuller (ADF) test is a type of statistical test
+that determines whether a unit root is present in time series data. Unit
+roots can cause unpredictable results in time series analysis. A null
+hypothesis is formed in the unit root test to determine how strongly
+time series data is affected by a trend. By accepting the null
+hypothesis, we accept the evidence that the time series data is not
+stationary. By rejecting the null hypothesis or accepting the
+alternative hypothesis, we accept the evidence that the time series data
+is generated by a stationary process. This process is also known as
+stationary trend. The values of the ADF test statistic are negative.
+Lower ADF values indicate a stronger rejection of the null hypothesis.
+
+Augmented Dickey-Fuller Test is a common statistical test used to test
+whether a given time series is stationary or not. We can achieve this by
+defining the null and alternate hypothesis.
+
+-   Null Hypothesis: Time Series is non-stationary. It gives a
+    time-dependent trend.
+
+-   Alternate Hypothesis: Time Series is stationary. In another term,
+    the series doesn’t depend on time.
+
+-   ADF or t Statistic \< critical values: Reject the null hypothesis,
+    time series is stationary.
+
+-   ADF or t Statistic \> critical values: Failed to reject the null
+    hypothesis, time series is non-stationary.
+
+```python
+def augmented_dickey_fuller_test(series , column_name):
+    print (f'Dickey-Fuller test results for columns: {column_name}')
+    dftest = adfuller(series, autolag='AIC')
+    dfoutput = pd.Series(dftest[0:4], index=['Test Statistic','p-value','No Lags Used','Number of observations used'])
+    for key,value in dftest[4].items():
+       dfoutput['Critical Value (%s)'%key] = value
+    print (dfoutput)
+    if dftest[1] <= 0.05:
+        print("Conclusion:====>")
+        print("Reject the null hypothesis")
+        print("The data is stationary")
+    else:
+        print("Conclusion:====>")
+        print("The null hypothesis cannot be rejected")
+        print("The data is not stationary")
+```
+
+
+```python
+augmented_dickey_fuller_test(df["y"],'Ads')
+```
+
+``` text
+Dickey-Fuller test results for columns: Ads
+Test Statistic                -1.076452e+01
+p-value                        2.472132e-19
+No Lags Used                   3.900000e+01
+Number of observations used    1.028000e+04
+Critical Value (1%)           -3.430986e+00
+Critical Value (5%)           -2.861821e+00
+Critical Value (10%)          -2.566920e+00
+dtype: float64
+Conclusion:====>
+Reject the null hypothesis
+The data is stationary
+```
+
+## Autocorrelation plots
+
+### Autocorrelation Function
+
+**Definition 1.** Let $\{x_t;1 ≤ t ≤ n\}$ be a time series sample of
+size n from $\{X_t\}$. 1. $\bar x = \sum_{t=1}^n \frac{x_t}{n}$ is
+called the sample mean of $\{X_t\}$. 2.
+$c_k =\sum_{t=1}^{n−k} (x_{t+k}- \bar x)(x_t−\bar x)/n$ is known as the
+sample autocovariance function of $\{X_t\}$. 3. $r_k = c_k /c_0$ is said
+to be the sample autocorrelation function of $\{X_t\}$.
+
+Note the following remarks about this definition:
+
+-   Like most literature, this guide uses ACF to denote the sample
+    autocorrelation function as well as the autocorrelation function.
+    What is denoted by ACF can easily be identified in context.
+
+-   Clearly c0 is the sample variance of $\{X_t\}$. Besides,
+    $r_0 = c_0/c_0 = 1$ and for any integer $k, |r_k| ≤ 1$.
+
+-   When we compute the ACF of any sample series with a fixed length
+    $n$, we cannot put too much confidence in the values of $r_k$ for
+    large k’s, since fewer pairs of $(x_{t +k }, x_t )$ are available
+    for calculating $r_k$ as $k$ is large. One rule of thumb is not to
+    estimate $r_k$ for $k > n/3$, and another is $n ≥ 50, k ≤ n/4$. In
+    any case, it is always a good idea to be careful.
+
+-   We also compute the ACF of a nonstationary time series sample by
+    Definition 1. In this case, however, the ACF or $r_k$ very slowly or
+    hardly tapers off as $k$ increases.
+
+-   Plotting the ACF $(r_k)$ against lag $k$ is easy but very helpful in
+    analyzing time series sample. Such an ACF plot is known as a
+    correlogram.
+
+-   If $\{X_t\}$ is stationary with $E(X_t)=0$ and $\rho_k =0$ for all
+    $k \neq 0$, that is, it is a white noise series, then the sampling
+    distribution of $r_k$ is asymptotically normal with the mean 0 and
+    the variance of $1/n$. Hence, there is about 95% chance that $r_k$
+    falls in the interval $[−1.96/√n, 1.96/√n]$.
+
+Now we can give a summary that (1) if the time series plot of a time
+series clearly shows a trend or/and seasonality, it is surely
+nonstationary; (2) if the ACF $r_k$ very slowly or hardly tapers off as
+lag $k$ increases, the time series should also be nonstationary.
+
+```python
+fig, axs = plt.subplots(nrows=1, ncols=2)
+
+plot_acf(df["y"],  lags=30, ax=axs[0],color="fuchsia")
+axs[0].set_title("Autocorrelation");
+
+# Grafico
+plot_pacf(df["y"],  lags=30, ax=axs[1],color="lime")
+axs[1].set_title('Partial Autocorrelation')
+plt.savefig("../../figs/prediction_intervals_in_forecasting_models__autocorrelation.png", bbox_inches='tight')
+plt.close();
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__autocorrelation.png)
+
+## Decomposition of the time series
+
+How to decompose a time series and why?
+
+In time series analysis to forecast new values, it is very important to
+know past data. More formally, we can say that it is very important to
+know the patterns that values follow over time. There can be many
+reasons that cause our forecast values to fall in the wrong direction.
+Basically, a time series consists of four components. The variation of
+those components causes the change in the pattern of the time series.
+These components are:
+
+-   **Level:** This is the primary value that averages over time.
+-   **Trend:** The trend is the value that causes increasing or
+    decreasing patterns in a time series.
+-   **Seasonality:** This is a cyclical event that occurs in a time
+    series for a short time and causes short-term increasing or
+    decreasing patterns in a time series.
+-   **Residual/Noise:** These are the random variations in the time
+    series.
+
+Combining these components over time leads to the formation of a time
+series. Most time series consist of level and noise/residual and trend
+or seasonality are optional values.
+
+If seasonality and trend are part of the time series, then there will be
+effects on the forecast value. As the pattern of the forecasted time
+series may be different from the previous time series.
+
+The combination of the components in time series can be of two types: \*
+Additive \* multiplicative
+
+Additive time series
+
+If the components of the time series are added to make the time series.
+Then the time series is called the additive time series. By
+visualization, we can say that the time series is additive if the
+increasing or decreasing pattern of the time series is similar
+throughout the series. The mathematical function of any additive time
+series can be represented by:
+$$y(t) = \text{level} + \text{trend} + \text{seasonality} + \text{noise}$$
+
+## Multiplicative time series
+
+If the components of the time series are multiplicative together, then
+the time series is called a multiplicative time series. For
+visualization, if the time series is having exponential growth or
+decline with time, then the time series can be considered as the
+multiplicative time series. The mathematical function of the
+multiplicative time series can be represented as.
+
+$$y(t) = \text{level} * \text{trend} * \text{seasonality} * \text{noise}$$
+
+### Additive
+
+```python
+a = seasonal_decompose(df["y"], model = "additive", period=24).plot()
+a.savefig('../../figs/prediction_intervals_in_forecasting_models__seasonal_decompose_aditive.png', bbox_inches='tight')
+plt.close()
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__seasonal_decompose_aditive.png)
+
+### Multiplicative
+
+```python
+b = seasonal_decompose(df["y"], model = "Multiplicative", period=24).plot()
+b.savefig('../../figs/prediction_intervals_in_forecasting_models__seasonal_decompose_multiplicative.png', bbox_inches='tight')
+plt.close();
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__seasonal_decompose_multiplicative.png)
+
+# Split the data into training and testing
+
+Let’s divide our data into sets 1. Data to train our model. 2. Data to
+test our model
+
+For the test data we will use the last 500 hours to test and evaluate
+the performance of our model.
+
+```python
+train = df[df.ds<='2015-01-21 13:30:00']
+test = df[df.ds>'2015-01-21 13:30:00']
+```
+
+
+```python
+train.shape, test.shape
+```
+
+``` text
+((9820, 3), (500, 3))
+```
+
+Now let’s plot the training data and the test data.
+
+```python
+fig = plot_series(train,test)
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__train_test.png)
+
+# Modeling with mlforecast
+
+## Building Model
+
+We define the model that we want to use, for our example we are going to
+use the `XGBoost model`.
+
+```python
+model1 = [xgb.XGBRegressor()]
+```
+
+We can use the `MLForecast.preprocess` method to explore different
+transformations.
+
+If it is true that the series we are working with is a stationary series
+see (Dickey fuller test), however for the sake of practice and
+instruction in this guide, we will apply the difference to our series,
+we will do this using the `target_transforms parameter` and calling the
+diff function like: `mlforecast.target_transforms.Differences`
+
+```python
+mlf = MLForecast(models=model1,
+                 freq='30min',
+                 target_transforms=[Differences([1])],
+                 )
+```
+
+It is important to take into account when we use the parameter
+`target_transforms=[Differences([1])]` in case the series is stationary
+we can use a difference, or in the case that the series is not
+stationary, we can use more than one difference so that the series is
+constant over time, that is, that it is constant in mean and in
+variance.
+
+```python
+prep = mlf.preprocess(df)
+prep
+```
+
+|       | ds                  | y       | unique_id |
+|-------|---------------------|---------|-----------|
+| 1     | 2014-07-01 00:30:00 | -2717.0 | 1         |
+| 2     | 2014-07-01 01:00:00 | -1917.0 | 1         |
+| 3     | 2014-07-01 01:30:00 | -1554.0 | 1         |
+| 4     | 2014-07-01 02:00:00 | -836.0  | 1         |
+| 5     | 2014-07-01 02:30:00 | -947.0  | 1         |
+| ...   | ...                 | ...     | ...       |
+| 10315 | 2015-01-31 21:30:00 | 951.0   | 1         |
+| 10316 | 2015-01-31 22:00:00 | 1051.0  | 1         |
+| 10317 | 2015-01-31 22:30:00 | 1588.0  | 1         |
+| 10318 | 2015-01-31 23:00:00 | -718.0  | 1         |
+| 10319 | 2015-01-31 23:30:00 | -303.0  | 1         |
+
+This has subtracted the lag 1 from each value, we can see what our
+series look like now.
+
+```python
+fig = plot_series(prep)
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__plot_values.png)
+
+## Adding features
+
+### Lags
+
+Looks like the seasonality is gone, we can now try adding some lag
+features.
+
+```python
+mlf = MLForecast(models=model1,
+                 freq='30min',
+                 lags=[1,24],
+                 target_transforms=[Differences([1])],
+                 )
+```
+
+
+```python
+prep = mlf.preprocess(df)
+prep
+```
+
+|       | ds                  | y      | unique_id | lag1   | lag24   |
+|-------|---------------------|--------|-----------|--------|---------|
+| 25    | 2014-07-01 12:30:00 | -22.0  | 1         | 445.0  | -2717.0 |
+| 26    | 2014-07-01 13:00:00 | -708.0 | 1         | -22.0  | -1917.0 |
+| 27    | 2014-07-01 13:30:00 | 1281.0 | 1         | -708.0 | -1554.0 |
+| 28    | 2014-07-01 14:00:00 | 87.0   | 1         | 1281.0 | -836.0  |
+| 29    | 2014-07-01 14:30:00 | 1045.0 | 1         | 87.0   | -947.0  |
+| ...   | ...                 | ...    | ...       | ...    | ...     |
+| 10315 | 2015-01-31 21:30:00 | 951.0  | 1         | 428.0  | 4642.0  |
+| 10316 | 2015-01-31 22:00:00 | 1051.0 | 1         | 951.0  | -519.0  |
+| 10317 | 2015-01-31 22:30:00 | 1588.0 | 1         | 1051.0 | 2411.0  |
+| 10318 | 2015-01-31 23:00:00 | -718.0 | 1         | 1588.0 | 214.0   |
+| 10319 | 2015-01-31 23:30:00 | -303.0 | 1         | -718.0 | 2595.0  |
+
+```python
+prep.drop(columns=['unique_id', 'ds']).corr()['y']
+```
+
+``` text
+y        1.000000
+lag1     0.663082
+lag24    0.155366
+Name: y, dtype: float64
+```
+
+### Lag transforms
+
+Lag transforms are defined as a dictionary where the keys are the lags
+and the values are lists of the transformations that we want to apply to
+that lag. You can refer to the [lag transformations
+guide](../how-to-guides/lag_transforms_guide.html) for more details.
+
+```python
+mlf = MLForecast(models=model1,
+                 freq='30min',
+                 lags=[1,24],
+                 lag_transforms={1: [ExpandingMean()], 24: [RollingMean(window_size=7)]},
+                 target_transforms=[Differences([1])],
+                 )
+```
+
+
+```python
+prep = mlf.preprocess(df)
+prep
+```
+
+|       | ds                  | y       | unique_id | lag1    | lag24  | expanding_mean_lag1 | rolling_mean_lag24_window_size7 |
+|-------|---------------------|---------|-----------|---------|--------|---------------------|---------------------------------|
+| 31    | 2014-07-01 15:30:00 | -836.0  | 1         | -1211.0 | -305.0 | 284.533325          | -1254.285767                    |
+| 32    | 2014-07-01 16:00:00 | -2316.0 | 1         | -836.0  | 157.0  | 248.387100          | -843.714294                     |
+| 33    | 2014-07-01 16:30:00 | -1215.0 | 1         | -2316.0 | -63.0  | 168.250000          | -578.857117                     |
+| 34    | 2014-07-01 17:00:00 | 2190.0  | 1         | -1215.0 | 357.0  | 126.333336          | -305.857147                     |
+| 35    | 2014-07-01 17:30:00 | 2322.0  | 1         | 2190.0  | 1849.0 | 187.029419          | 77.714287                       |
+| ...   | ...                 | ...     | ...       | ...     | ...    | ...                 | ...                             |
+| 10315 | 2015-01-31 21:30:00 | 951.0   | 1         | 428.0   | 4642.0 | 1.248303            | 2064.285645                     |
+| 10316 | 2015-01-31 22:00:00 | 1051.0  | 1         | 951.0   | -519.0 | 1.340378            | 1873.428589                     |
+| 10317 | 2015-01-31 22:30:00 | 1588.0  | 1         | 1051.0  | 2411.0 | 1.442129            | 2179.000000                     |
+| 10318 | 2015-01-31 23:00:00 | -718.0  | 1         | 1588.0  | 214.0  | 1.595910            | 1888.714233                     |
+| 10319 | 2015-01-31 23:30:00 | -303.0  | 1         | -718.0  | 2595.0 | 1.526168            | 2071.714355                     |
+
+You can see that both approaches get to the same result, you can use
+whichever one you feel most comfortable with.
+
+## Date features
+
+If your time column is made of timestamps then it might make sense to
+extract features like week, dayofweek, quarter, etc. You can do that by
+passing a list of strings with pandas time/date components. You can also
+pass functions that will take the time column as input, as we’ll show
+here.
+
+```python
+mlf = MLForecast(models=model1,
+                 freq='30min',
+                 lags=[1,24],
+                 lag_transforms={1: [ExpandingMean()], 24: [RollingMean(window_size=7)]},
+                 target_transforms=[Differences([1])],
+                 date_features=["year", "month", "day", "hour"]) # Seasonal data
+```
+
+
+```python
+prep = mlf.preprocess(df)
+prep
+```
+
+|       | ds                  | y       | unique_id | lag1    | lag24  | expanding_mean_lag1 | rolling_mean_lag24_window_size7 | year | month | day | hour |
+|-------|---------------------|---------|-----------|---------|--------|---------------------|---------------------------------|------|-------|-----|------|
+| 31    | 2014-07-01 15:30:00 | -836.0  | 1         | -1211.0 | -305.0 | 284.533325          | -1254.285767                    | 2014 | 7     | 1   | 15   |
+| 32    | 2014-07-01 16:00:00 | -2316.0 | 1         | -836.0  | 157.0  | 248.387100          | -843.714294                     | 2014 | 7     | 1   | 16   |
+| 33    | 2014-07-01 16:30:00 | -1215.0 | 1         | -2316.0 | -63.0  | 168.250000          | -578.857117                     | 2014 | 7     | 1   | 16   |
+| 34    | 2014-07-01 17:00:00 | 2190.0  | 1         | -1215.0 | 357.0  | 126.333336          | -305.857147                     | 2014 | 7     | 1   | 17   |
+| 35    | 2014-07-01 17:30:00 | 2322.0  | 1         | 2190.0  | 1849.0 | 187.029419          | 77.714287                       | 2014 | 7     | 1   | 17   |
+| ...   | ...                 | ...     | ...       | ...     | ...    | ...                 | ...                             | ...  | ...   | ... | ...  |
+| 10315 | 2015-01-31 21:30:00 | 951.0   | 1         | 428.0   | 4642.0 | 1.248303            | 2064.285645                     | 2015 | 1     | 31  | 21   |
+| 10316 | 2015-01-31 22:00:00 | 1051.0  | 1         | 951.0   | -519.0 | 1.340378            | 1873.428589                     | 2015 | 1     | 31  | 22   |
+| 10317 | 2015-01-31 22:30:00 | 1588.0  | 1         | 1051.0  | 2411.0 | 1.442129            | 2179.000000                     | 2015 | 1     | 31  | 22   |
+| 10318 | 2015-01-31 23:00:00 | -718.0  | 1         | 1588.0  | 214.0  | 1.595910            | 1888.714233                     | 2015 | 1     | 31  | 23   |
+| 10319 | 2015-01-31 23:30:00 | -303.0  | 1         | -718.0  | 2595.0 | 1.526168            | 2071.714355                     | 2015 | 1     | 31  | 23   |
+
+## Fit the Model
+
+```python
+# fit the models
+mlf.fit(df,
+ fitted=True,
+prediction_intervals=PredictionIntervals(n_windows=5, h=30, method="conformal_distribution" )  )
+```
+
+``` text
+MLForecast(models=[XGBRegressor], freq=30min, lag_features=['lag1', 'lag24', 'expanding_mean_lag1', 'rolling_mean_lag24_window_size7'], date_features=['year', 'month', 'day', 'hour'], num_threads=1)
+```
+
+Let’s see the results of our model in this case the `XGBoost model`. We
+can observe it with the following instruction:
+
+Let us now visualize the fitted values of our models.
+
+```python
+result = mlf.forecast_fitted_values()
+result = result.set_index("unique_id")
+result
+```
+
+|           | ds                  | y       | XGBRegressor |
+|-----------|---------------------|---------|--------------|
+| unique_id |                     |         |              |
+| 1         | 2014-07-01 15:30:00 | 18544.0 | 18441.443359 |
+| 1         | 2014-07-01 16:00:00 | 16228.0 | 16391.152344 |
+| 1         | 2014-07-01 16:30:00 | 15013.0 | 15260.714844 |
+| 1         | 2014-07-01 17:00:00 | 17203.0 | 17066.148438 |
+| 1         | 2014-07-01 17:30:00 | 19525.0 | 19714.404297 |
+| ...       | ...                 | ...     | ...          |
+| 1         | 2015-01-31 21:30:00 | 24670.0 | 24488.646484 |
+| 1         | 2015-01-31 22:00:00 | 25721.0 | 25868.865234 |
+| 1         | 2015-01-31 22:30:00 | 27309.0 | 27290.125000 |
+| 1         | 2015-01-31 23:00:00 | 26591.0 | 27123.226562 |
+| 1         | 2015-01-31 23:30:00 | 26288.0 | 26241.205078 |
+
+```python
+from statsmodels.stats.diagnostic import normal_ad
+from scipy import stats
+```
+
+
+```python
+sw_result = stats.shapiro(result["XGBRegressor"])
+ad_result = normal_ad(np.array(result["XGBRegressor"]), axis=0)
+dag_result = stats.normaltest(result["XGBRegressor"], axis=0, nan_policy='propagate')
+```
+
+It’s important to note that we can only use this method if we assume
+that the residuals of our validation predictions are normally
+distributed. To see if this is the case, we will use a PP-plot and test
+its normality with the Anderson-Darling, Kolmogorov-Smirnov, and
+D’Agostino $K^2$ tests.
+
+The PP-plot(Probability-to-Probability) plots the data sample against
+the normal distribution plot in such a way that if normally distributed,
+the data points will form a straight line.
+
+The three normality tests determine how likely a data sample is from a
+normally distributed population using p-values. The null hypothesis for
+each test is that “the sample came from a normally distributed
+population”. This means that if the resulting p-values are below a
+chosen alpha value, then the null hypothesis is rejected. Thus there is
+evidence to suggest that the data comes from a non-normal distribution.
+For this article, we will use an Alpha value of 0.01.
+
+```python
+result=mlf.forecast_fitted_values()
+fig, axs = plt.subplots(nrows=2, ncols=2)
+
+# plot[1,1]
+result["XGBRegressor"].plot(ax=axs[0,0])
+axs[0,0].set_title("Residuals model");
+
+# plot
+axs[0,1].hist(result["XGBRegressor"], density=True,bins=50, alpha=0.5 )
+axs[0,1].set_title("Density plot - Residual");
+
+# plot
+stats.probplot(result["XGBRegressor"], dist="norm", plot=axs[1,0])
+axs[1,0].set_title('Plot Q-Q')
+axs[1,0].annotate("SW p-val: {:.4f}".format(sw_result[1]), xy=(0.05,0.9), xycoords='axes fraction', fontsize=15,
+            bbox=dict(boxstyle="round", fc="none", ec="gray", pad=0.6))
+
+axs[1,0].annotate("AD p-val: {:.4f}".format(ad_result[1]), xy=(0.05,0.8), xycoords='axes fraction', fontsize=15,
+            bbox=dict(boxstyle="round", fc="none", ec="gray", pad=0.6))
+
+axs[1,0].annotate("DAG p-val: {:.4f}".format(dag_result[1]), xy=(0.05,0.7), xycoords='axes fraction', fontsize=15,
+            bbox=dict(boxstyle="round", fc="none", ec="gray", pad=0.6))
+# plot
+plot_acf(result["XGBRegressor"],  lags=35, ax=axs[1,1],color="fuchsia")
+axs[1,1].set_title("Autocorrelation");
+
+plt.savefig("../../figs/prediction_intervals_in_forecasting_models__plot_residual_model.png", bbox_inches='tight')
+plt.close();
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__plot_residual_model.png)
+
+## Predict method with prediction intervals
+
+To generate forecasts use the predict method.
+
+```python
+forecast_df = mlf.predict(h=30, level=[80,95])
+forecast_df.head()
+```
+
+|     | unique_id | ds                  | XGBRegressor | XGBRegressor-lo-95 | XGBRegressor-lo-80 | XGBRegressor-hi-80 | XGBRegressor-hi-95 |
+|-----|-----------|---------------------|--------------|--------------------|--------------------|--------------------|--------------------|
+| 0   | 1         | 2015-02-01 00:00:00 | 26320.298828 | 25559.884241       | 25680.228369       | 26960.369287       | 27080.713416       |
+| 1   | 1         | 2015-02-01 00:30:00 | 26446.472656 | 24130.429614       | 25195.461621       | 27697.483691       | 28762.515698       |
+| 2   | 1         | 2015-02-01 01:00:00 | 24909.970703 | 23094.950537       | 23579.583398       | 26240.358008       | 26724.990869       |
+| 3   | 1         | 2015-02-01 01:30:00 | 24405.402344 | 21548.628296       | 22006.662598       | 26804.142090       | 27262.176392       |
+| 4   | 1         | 2015-02-01 02:00:00 | 22292.390625 | 20666.736963       | 21130.215430       | 23454.565820       | 23918.044287       |
+
+## Plot prediction intervals
+
+Now let’s visualize the result of our forecast and the historical data
+of our time series, also let’s draw the confidence interval that we have
+obtained when making the prediction with 95% confidence.
+
+```python
+fig = plot_series(df, forecast_df, level=[80,95], max_insample_length=200,engine="matplotlib")
+fig.get_axes()[0].set_title("Prediction intervals")
+fig.savefig('../../figs/prediction_intervals_in_forecasting_models__plot_forecasting_intervals.png', bbox_inches='tight')
+```
+
+![](../../figs/prediction_intervals_in_forecasting_models__plot_forecasting_intervals.png)
+
+The confidence interval is a range of values that has a high probability
+of containing the true value of a variable. In machine learning time
+series models, the confidence interval is used to estimate the
+uncertainty in the predictions.
+
+One of the main benefits of using the confidence interval is that it
+allows users to understand the accuracy of the predictions. For example,
+if the confidence interval is very wide, it means that the prediction is
+less accurate. Conversely, if the confidence interval is very narrow, it
+means that the prediction is more accurate.
+
+Another benefit of the confidence interval is that it helps users make
+informed decisions. For example, if a prediction is within the
+confidence interval, it means that it is likely to come true.
+Conversely, if a prediction is outside the confidence interval, it means
+that it is less likely to come true.
+
+In general, the confidence interval is an important tool for machine
+learning time series models. It helps users understand the accuracy of
+the forecasts and make informed decisions.
+
+# References
+
+1.  Changquan Huang • Alla Petukhina. Springer series (2022). Applied
+    Time Series Analysis and Forecasting with Python.
+2.  Ivan Svetunkov. [Forecasting and Analytics with the Augmented
+    Dynamic Adaptive Model (ADAM)](https://openforecast.org/adam/)
+3.  [James D. Hamilton. Time Series Analysis Princeton University Press,
+    Princeton, New Jersey, 1st Edition,
+    1994.](https://press.princeton.edu/books/hardcover/9780691042893/time-series-analysis)
+4.  [Nixtla Parameters for
+    Mlforecast](https://nixtlaverse.nixtla.io/mlforecast/forecast.html)
+5.  [Pandas available
+    frequencies](https://pandas.pydata.org/pandas-docs/stable/user_guide/timeseries.html#offset-aliases).
+6.  [Rob J. Hyndman and George Athanasopoulos (2018). “Forecasting
+    principles and practice, Time series
+    cross-validation”.](https://otexts.com/fpp3/tscv.html).
+7.  [Seasonal periods- Rob J
+    Hyndman](https://robjhyndman.com/hyndsight/seasonal-periods/).
+

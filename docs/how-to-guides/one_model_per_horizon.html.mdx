@@ -1,0 +1,239 @@
+---
+title: One model per step
+---
+
+> Train one model to predict each step of the forecasting horizon
+
+By default mlforecast uses the recursive strategy, i.e. a model is
+trained to predict the next value and if we’re predicting several values
+we do it one at a time and then use the model’s predictions as the new
+target, recompute the features and predict the next step.
+
+There’s another approach called **direct forecasting** where if we want
+to predict 10 steps ahead we train 10 different models, where each model
+is trained to predict the value at each specific step, i.e. one model
+predicts the next value, another one predicts the value two steps ahead
+and so on. This can be very time consuming but can also provide better
+results.
+
+mlforecast provides two ways to use direct forecasting:
+
+1.  **`max_horizon`**: Train models for all horizons from 1 to
+    `max_horizon`. For example, `max_horizon=10` trains 10 models (for
+    steps 1, 2, 3, …, 10).
+
+2.  **`horizons`**: Train models only for specific horizons. For
+    example, `horizons=[7, 14]` trains only 2 models (for steps 7 and
+    14), which reduces computational cost when you only need predictions
+    at certain steps.
+
+Both parameters are mutually exclusive - you can use one or the other,
+but not both.
+
+## Setup
+
+```python
+import random
+import lightgbm as lgb
+import pandas as pd
+from datasetsforecast.m4 import M4, M4Info
+from utilsforecast.evaluation import evaluate
+from utilsforecast.losses import smape
+
+from mlforecast import MLForecast
+from mlforecast.lag_transforms import ExponentiallyWeightedMean, RollingMean
+from mlforecast.target_transforms import Differences
+```
+
+### Data
+
+We will use four random series from the M4 dataset
+
+```python
+group = 'Hourly'
+await M4.async_download('data', group=group)
+df, *_ = M4.load(directory='data', group=group)
+df['ds'] = df['ds'].astype('int')
+ids = df['unique_id'].unique()
+random.seed(0)
+sample_ids = random.choices(ids, k=4)
+sample_df = df[df['unique_id'].isin(sample_ids)]
+info = M4Info[group]
+horizon = info.horizon
+valid = sample_df.groupby('unique_id').tail(horizon)
+train = sample_df.drop(valid.index)
+```
+
+
+```python
+def avg_smape(df):
+    """Computes the SMAPE by series and then averages it across all series."""
+    full = df.merge(valid)
+    return (
+        evaluate(full, metrics=[smape])
+        .drop(columns='metric')
+        .set_index('unique_id')
+        .squeeze()
+    )
+```
+
+## Using `max_horizon` (all horizons)
+
+```python
+fcst = MLForecast(
+    models=lgb.LGBMRegressor(random_state=0, verbosity=-1),
+    freq=1,
+    lags=[24 * (i+1) for i in range(7)],
+    lag_transforms={
+        1: [RollingMean(window_size=24)],
+        24: [RollingMean(window_size=24)],
+        48: [ExponentiallyWeightedMean(alpha=0.3)],
+    },
+    num_threads=1,
+    target_transforms=[Differences([24])],
+)
+```
+
+
+```python
+horizon = 24
+
+# Train 24 models using max_horizon (one for each step from 1 to 24)
+individual_fcst = fcst.fit(train, max_horizon=horizon)
+individual_preds = individual_fcst.predict(horizon)
+avg_smape_individual = avg_smape(individual_preds).rename('direct')
+
+# Train a single model using the recursive strategy
+recursive_fcst = fcst.fit(train)
+recursive_preds = recursive_fcst.predict(horizon)
+avg_smape_recursive = avg_smape(recursive_preds).rename('recursive')
+
+# Compare results
+print('Average SMAPE per method and series')
+avg_smape_individual.to_frame().join(avg_smape_recursive).applymap('{:.1%}'.format)
+```
+
+``` text
+Average SMAPE per method and series
+```
+
+``` text
+/var/folders/cc/cylsfhls0hb_9wg0wh8tvpyh0000gn/T/ipykernel_4013/3601618158.py:15: FutureWarning: DataFrame.applymap has been deprecated. Use DataFrame.map instead.
+  avg_smape_individual.to_frame().join(avg_smape_recursive).applymap('{:.1%}'.format)
+```
+
+|           | direct | recursive |
+|-----------|--------|-----------|
+| unique_id |        |           |
+| H196      | 0.3%   | 0.3%      |
+| H256      | 0.4%   | 0.3%      |
+| H381      | 19.5%  | 9.5%      |
+| H413      | 11.9%  | 13.6%     |
+
+## Using `horizons` (specific horizons only)
+
+When you only need predictions at specific time steps (e.g., weekly and
+bi-weekly forecasts), you can use the `horizons` parameter to train
+models only for those steps. This significantly reduces computational
+cost.
+
+For example, if you have hourly data and only need 12-hour and 24-hour
+ahead predictions:
+
+```python
+# Train models only for horizons 12 and 24 (instead of all 1-24)
+sparse_fcst = fcst.fit(train, horizons=[12, 24])
+sparse_preds = sparse_fcst.predict(h=24)
+
+# Note: predictions are only returned for trained horizons
+print(f"Number of predictions per series: {len(sparse_preds) // sparse_preds['unique_id'].nunique()}")
+sparse_preds.head(8)
+```
+
+``` text
+Number of predictions per series: 2
+```
+
+|     | unique_id | ds  | LGBMRegressor |
+|-----|-----------|-----|---------------|
+| 0   | H196      | 972 | 16.095804     |
+| 1   | H196      | 984 | 15.696618     |
+| 2   | H256      | 972 | 13.295804     |
+| 3   | H256      | 984 | 12.696618     |
+| 4   | H381      | 972 | 12.271730     |
+| 5   | H381      | 984 | 49.347744     |
+| 6   | H413      | 972 | 23.099708     |
+| 7   | H413      | 984 | 17.449030     |
+
+Notice that with `horizons=[12, 24]`, the output only contains 2
+predictions per series (at steps 12 and 24), not 24. This is the
+**sparse output** behavior - you only get predictions for the horizons
+you trained.
+
+### Partial predictions
+
+If you call `predict(h=N)` where `N` is less than some of your trained
+horizons, you’ll only get predictions for horizons up to `N`:
+
+```python
+# With horizons=[12, 24], calling predict(h=15) only returns horizon 12
+partial_preds = sparse_fcst.predict(h=15)
+print(f"Number of predictions per series: {len(partial_preds) // partial_preds['unique_id'].nunique()}")
+partial_preds.head(4)
+```
+
+``` text
+Number of predictions per series: 1
+```
+
+|     | unique_id | ds  | LGBMRegressor |
+|-----|-----------|-----|---------------|
+| 0   | H196      | 972 | 16.095804     |
+| 1   | H256      | 972 | 13.295804     |
+| 2   | H381      | 972 | 12.271730     |
+| 3   | H413      | 972 | 23.099708     |
+
+### Cross-validation with specific horizons
+
+The `horizons` parameter also works with `cross_validation`:
+
+```python
+# Cross-validation with specific horizons
+cv_results = fcst.cross_validation(
+    train,
+    n_windows=2,
+    h=24,
+    horizons=[12, 24],
+)
+print(f"CV results shape: {cv_results.shape}")
+cv_results.head(8)
+```
+
+``` text
+CV results shape: (16, 5)
+```
+
+|     | unique_id | ds  | cutoff | y     | LGBMRegressor |
+|-----|-----------|-----|--------|-------|---------------|
+| 0   | H196      | 924 | 912    | 22.7  | 15.770231     |
+| 1   | H196      | 936 | 912    | 16.4  | 15.317588     |
+| 2   | H256      | 924 | 912    | 17.9  | 13.270231     |
+| 3   | H256      | 936 | 912    | 13.3  | 12.617588     |
+| 4   | H381      | 924 | 912    | 166.0 | 18.920395     |
+| 5   | H381      | 936 | 912    | 50.0  | 51.129478     |
+| 6   | H413      | 924 | 912    | 45.0  | 26.609079     |
+| 7   | H413      | 936 | 912    | 31.0  | 24.801567     |
+
+## Summary
+
+| Approach                   | Parameter                | Use case                                                                          |
+|-----------------------|--------------------------|-----------------------|
+| Recursive                  | (default)                | General purpose, good when you need all horizons and want faster training         |
+| Direct (all horizons)      | `max_horizon=N`          | When you need predictions for all steps 1 to N and can afford training N models   |
+| Direct (specific horizons) | `horizons=[h1, h2, ...]` | When you only need predictions at specific steps (e.g., weekly/monthly forecasts) |
+
+Key points: - `max_horizon` and `horizons` are mutually exclusive - With
+`horizons`, the output only contains predictions for the specified
+horizons (sparse output) - Both direct forecasting approaches work with
+`cross_validation` and exogenous features
+

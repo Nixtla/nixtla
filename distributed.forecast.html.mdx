@@ -1,0 +1,211 @@
+---
+title: Distributed Forecast
+description: Distributed pipeline encapsulation
+---
+
+**This interface is only tested on Linux**
+
+##
+
+### `DistributedMLForecast`
+
+```python
+DistributedMLForecast(models, freq, lags=None, lag_transforms=None, date_features=None, num_threads=1, target_transforms=None, engine=None, num_partitions=None, lag_transforms_namer=None, date_features_as_dummies=False)
+```
+
+Multi backend distributed pipeline
+
+Create distributed forecast object
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`models` | <code>regressor or list of regressors</code> | Models that will be trained and used to compute the forecasts. | *required*
+`freq` | <code>[str](#str) or [int](#int)</code> | Pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series. | *required*
+`lags` | <code>list of int</code> | Lags of the target to use as features. Defaults to None. | <code>None</code>
+`lag_transforms` | <code>dict of int to list of functions</code> | Mapping of target lags to their transformations. Defaults to None. | <code>None</code>
+`date_features` | <code>list of str, callable or CalendarFeature</code> | Features computed from the dates. Can be calendar features from `mlforecast.date_features` (listed by `mlforecast.date_features.available()`), date attributes of the dataframe backend or functions that will take the dates as input. Defaults to None. | <code>None</code>
+`num_threads` | <code>[int](#int)</code> | Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1. | <code>1</code>
+`target_transforms` | <code>list of transformers</code> | Transformations that will be applied to the target before computing the features and restored after the forecasting step. Defaults to None. | <code>None</code>
+`engine` | <code>fugue execution engine</code> | Dask Client, Spark Session, etc to use for the distributed computation. If None will infer depending on the input type. Defaults to None. | <code>None</code>
+`num_partitions` | <code>number of data partitions to use</code> | If None, the default partitions provided by the AnyDataFrame used by the `fit` and `cross_validation` methods will be used. If a Ray Dataset is provided and `num_partitions` is None, the partitioning will be done by the `id_col`. Defaults to None. | <code>None</code>
+`lag_transforms_namer` | <code>[callable](#callable)</code> | Function that takes a transformation (either function or class), a lag and extra arguments and produces a name. Defaults to None. | <code>None</code>
+`date_features_as_dummies` | <code>[bool](#bool)</code> | If True, date features with a known finite range (e.g. `mlforecast.date_features.month`, 'dayofweek') are expanded into binary indicator columns named '{feature}_{value}' instead of being kept as ordinal integers. Defaults to False. | <code>False</code>
+
+#### `DistributedMLForecast.fit`
+
+```python
+fit(df, id_col='unique_id', time_col='ds', target_col='y', static_features=None, dropna=True, keep_last_n=None, weight_col=None)
+```
+
+Apply the feature engineering and train the models.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>dask, spark or ray DataFrame</code> | Series data in long format. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DistributedMLForecast](#mlforecast.distributed.forecast.DistributedMLForecast)</code> | Forecast object with series values and trained models.
+
+#### `DistributedMLForecast.predict`
+
+```python
+predict(h, before_predict_callback=None, after_predict_callback=None, X_df=None, new_df=None, ids=None)
+```
+
+Compute the predictions for the next `horizon` steps.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`h` | <code>[int](#int)</code> | Forecast horizon. | *required*
+`before_predict_callback` | <code>[callable](#callable)</code> | Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`after_predict_callback` | <code>[callable](#callable)</code> | Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`X_df` | <code>pandas, Dask, Spark or Ray DataFrame</code> | Dataframe with the future exogenous features. Should have the id column and the time column. Distributed DataFrames (Dask, Spark, Ray) are processed per-partition so that no single node needs to hold the entire X_df in memory at once. Defaults to None. | <code>None</code>
+`new_df` | <code>dask or spark DataFrame</code> | Series data of new observations for which forecasts are to be generated. This dataframe should have the same structure as the one used to fit the model, including any features and time series data. If `new_df` is not None, the method will generate forecasts for the new observations. Defaults to None. | <code>None</code>
+`ids` | <code>list of str</code> | List with subset of ids seen during training for which the forecasts should be computed. Defaults to None. | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>dask, spark or ray DataFrame</code> | Predictions for each serie and timestep, with one column per model.
+
+#### `DistributedMLForecast.save`
+
+```python
+save(path)
+```
+
+Save forecast object
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`path` | <code>[str](#str)</code> | Directory where artifacts will be stored. | *required*
+
+#### `DistributedMLForecast.load`
+
+```python
+load(path, engine)
+```
+
+Load forecast object
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`path` | <code>[str](#str)</code> | Directory with saved artifacts. | *required*
+`engine` | <code>fugue execution engine</code> | Dask Client, Spark Session, etc to use for the distributed computation. | *required*
+
+#### `DistributedMLForecast.update`
+
+```python
+update(df)
+```
+
+Update the values of the stored series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas DataFrame</code> | Dataframe with new observations. | *required*
+
+#### `DistributedMLForecast.to_local`
+
+```python
+to_local()
+```
+
+Convert this distributed forecast object into a local one
+
+This pulls all the data from the remote machines, so you have to be sure that
+it fits in the scheduler/driver. If you're not sure use the save method instead.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Local forecast object.
+
+#### `DistributedMLForecast.preprocess`
+
+```python
+preprocess(df, id_col='unique_id', time_col='ds', target_col='y', static_features=None, dropna=True, keep_last_n=None, weight_col=None)
+```
+
+Add the features to `data`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>dask, spark or ray DataFrame</code> | Series data in long format. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>same type as df</code> | `df` with added features.
+
+#### `DistributedMLForecast.cross_validation`
+
+```python
+cross_validation(df, n_windows, h, id_col='unique_id', time_col='ds', target_col='y', step_size=None, static_features=None, dropna=True, keep_last_n=None, refit=True, before_predict_callback=None, after_predict_callback=None, input_size=None, weight_col=None)
+```
+
+Perform time series cross validation.
+Creates `n_windows` splits where each window has `h` test periods,
+trains the models, computes the predictions and merges the actuals.
+The trained models are stored in `cv_models_`, so call `fit` before predicting.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>dask, spark or ray DataFrame</code> | Series data in long format. | *required*
+`n_windows` | <code>[int](#int)</code> | Number of windows to evaluate. | *required*
+`h` | <code>[int](#int)</code> | Number of test periods in each window. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`step_size` | <code>[int](#int)</code> | Step size between each cross validation window. If None it will be equal to `h`. Defaults to None. | <code>None</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`refit` | <code>[bool](#bool)</code> | Retrain model for each cross validation window. If False, the models are trained at the beginning and then used to predict each window. Defaults to True. | <code>True</code>
+`before_predict_callback` | <code>[callable](#callable)</code> | Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`after_predict_callback` | <code>[callable](#callable)</code> | Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`input_size` | <code>[int](#int)</code> | Maximum training samples per serie in each window. If None, will use an expanding window. Defaults to None. | <code>None</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>dask, spark or ray DataFrame</code> | Predictions for each window with the series id, timestamp, target value and predictions from each model.
+

@@ -1,0 +1,21 @@
+---
+description: spark LightGBM forecaster
+output-file: distributed.models.spark.lgb.html
+title: SparkLGBMForecast
+---
+
+
+Wrapper of `synapse.ml.lightgbm.LightGBMRegressor` that adds an
+`extract_local_model` method to get a local version of the trained model
+and broadcast it to the workers.
+
+### `SparkLGBMForecast`
+
+Bases: <code>[LightGBMRegressor](#synapse.ml.lightgbm.LightGBMRegressor)</code>
+
+#### `SparkLGBMForecast.extract_local_model`
+
+```python
+extract_local_model(trained_model)
+```
+

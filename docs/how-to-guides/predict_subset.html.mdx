@@ -1,0 +1,51 @@
+---
+title: Predicting a subset of ids
+---
+
+> Compute predictions for only a subset of the training ids
+
+```python
+from lightgbm import LGBMRegressor
+from fastcore.test import test_fail
+
+from mlforecast import MLForecast
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(5)
+fcst = MLForecast({'lgb': LGBMRegressor(verbosity=-1)}, freq='D', date_features=['dayofweek'])
+fcst.fit(series)
+all_preds = fcst.predict(1)
+all_preds
+```
+
+|     | unique_id | ds         | lgb      |
+|-----|-----------|------------|----------|
+| 0   | id_0      | 2000-08-10 | 3.728396 |
+| 1   | id_1      | 2000-04-07 | 4.749133 |
+| 2   | id_2      | 2000-06-16 | 4.749133 |
+| 3   | id_3      | 2000-08-30 | 2.758949 |
+| 4   | id_4      | 2001-01-08 | 3.331394 |
+
+By default all series seen during training will be forecasted with the
+predict method. If you’re only interested in predicting a couple of them
+you can use the `ids` argument.
+
+```python
+fcst.predict(1, ids=['id_0', 'id_4'])
+```
+
+|     | unique_id | ds         | lgb      |
+|-----|-----------|------------|----------|
+| 0   | id_0      | 2000-08-10 | 3.728396 |
+| 1   | id_4      | 2001-01-08 | 3.331394 |
+
+Note that the ids must’ve been seen during training, if you try to
+predict an id that wasn’t there you’ll get an error.
+
+```python
+test_fail(lambda: fcst.predict(1, ids=['fake_id']), contains='fake_id')
+```
+

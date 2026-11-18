@@ -1,0 +1,66 @@
+---
+description: Backend-agnostic calendar features
+output-file: date_features.html
+title: Date features
+---
+
+##
+
+The `mlforecast.date_features` module provides **calendar features** that you
+pass to `MLForecast` through the `date_features` argument. They compute the
+same values with the same dtypes for pandas and polars dataframes, including
+timezone-aware dates.
+
+```python
+from mlforecast import MLForecast
+from mlforecast import date_features as dtf
+
+fcst = MLForecast(
+    models=[...],
+    freq='D',
+    date_features=[dtf.day_of_week, dtf.month, dtf.is_month_end],
+)
+```
+
+`dtf.available()` lists every calendar feature:
+
+| Feature | Values | dtype | One-hot encoded with `date_features_as_dummies=True` |
+|---------|--------|-------|------------------------------------------------------|
+| `year` | Year. | `uint16` | no |
+| `quarter` | Quarter of the year, from 1 to 4. | `uint8` | yes |
+| `month` | Month of the year, from 1 to 12. | `uint8` | yes |
+| `week_of_year` | ISO week of the year, from 1 to 53. | `uint8` | yes |
+| `day` | Day of the month, from 1 to 31. | `uint8` | yes |
+| `day_of_week` | Day of the week, from 0 (Monday) to 6 (Sunday). | `uint8` | yes |
+| `day_of_year` | Day of the year, from 1 to 366. | `uint16` | yes |
+| `days_in_month` | Number of days in the month, from 28 to 31. | `uint8` | yes |
+| `hour` | Hour of the day, from 0 to 23. | `uint8` | yes |
+| `minute` | Minute of the hour, from 0 to 59. | `uint8` | yes |
+| `second` | Second of the minute, from 0 to 59. | `uint8` | yes |
+| `is_month_start` | 1 on the first day of the month, 0 otherwise. | `uint8` | no |
+| `is_month_end` | 1 on the last day of the month, 0 otherwise. | `uint8` | no |
+| `is_quarter_start` | 1 on the first day of the quarter, 0 otherwise. | `uint8` | no |
+| `is_quarter_end` | 1 on the last day of the quarter, 0 otherwise. | `uint8` | no |
+| `is_year_start` | 1 on January 1st, 0 otherwise. | `uint8` | no |
+| `is_year_end` | 1 on December 31st, 0 otherwise. | `uint8` | no |
+
+Strings (e.g. `'dayofweek'`) are still accepted and use the date attributes of
+the dataframe backend, so their names and values can differ between pandas and
+polars. Functions that take the dates and return the feature values are also
+accepted; see the [custom date features](./docs/how-to-guides/custom_date_features.html)
+guide.
+
+### `available`
+
+```python
+available()
+```
+
+List the calendar features that can be used as `date_features`.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[List](#typing.List)[[CalendarFeature](#mlforecast.date_features.CalendarFeature)]</code> | list of CalendarFeature: Available features.
+

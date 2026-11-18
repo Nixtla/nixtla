@@ -1,0 +1,103 @@
+---
+title: Profile forecasting stages
+---
+
+> Find where MLForecast spends time and memory during fit and cross
+> validation
+
+Pass a `Profiler` through `hooks` to record the nested stages of every
+call.
+
+```python
+import lightgbm as lgb
+from sklearn.linear_model import LinearRegression
+
+from mlforecast import MLForecast
+from mlforecast.hooks import Profiler
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(10, min_length=100, max_length=200)
+```
+
+Setting `memory=True` also records the change in the process’ resident
+memory across each stage, which requires psutil.
+
+```python
+profiler = Profiler(memory=True)
+fcst = MLForecast(
+    models={'lr': LinearRegression(), 'lgb': lgb.LGBMRegressor(verbosity=-1)},
+    freq='D',
+    lags=[1, 7],
+    hooks=[profiler],
+)
+cv = fcst.cross_validation(series, n_windows=3, h=7)
+spans = profiler.to_df()
+spans[['stage', 'depth', 'seconds', 'rss_delta_bytes', 'model']]
+```
+
+|     | stage            | depth | seconds  | rss_delta_bytes | model |
+|-----|------------------|-------|----------|-----------------|-------|
+| 0   | cross_validation | 0     | 1.181554 | 13090816        | NaN   |
+| 1   | cv_window        | 1     | 0.382990 | 10969088        | NaN   |
+| 2   | fit              | 2     | 0.321295 | 10584064        | NaN   |
+| 3   | preprocess       | 3     | 0.007168 | 233472          | NaN   |
+| 4   | fit_models       | 3     | 0.313849 | 10350592        | NaN   |
+| 5   | fit_model        | 4     | 0.002115 | 819200          | lr    |
+| 6   | fit_model        | 4     | 0.311539 | 9527296         | lgb   |
+| 7   | predict          | 2     | 0.027988 | 40960           | NaN   |
+| 8   | predict_model    | 3     | 0.014054 | 32768           | lr    |
+| 9   | predict_model    | 3     | 0.013443 | 4096            | lgb   |
+| 10  | cv_window        | 1     | 0.365262 | 28672           | NaN   |
+| 11  | fit              | 2     | 0.335136 | 12288           | NaN   |
+| 12  | preprocess       | 3     | 0.006203 | 4096            | NaN   |
+| 13  | fit_models       | 3     | 0.328721 | 8192            | NaN   |
+| 14  | fit_model        | 4     | 0.001564 | 0               | lr    |
+| 15  | fit_model        | 4     | 0.326985 | 8192            | lgb   |
+| 16  | predict          | 2     | 0.026273 | 12288           | NaN   |
+| 17  | predict_model    | 3     | 0.012916 | 0               | lr    |
+| 18  | predict_model    | 3     | 0.012918 | 8192            | lgb   |
+| 19  | cv_window        | 1     | 0.354426 | 16384           | NaN   |
+| 20  | fit              | 2     | 0.323433 | 12288           | NaN   |
+| 21  | preprocess       | 3     | 0.005996 | 12288           | NaN   |
+| 22  | fit_models       | 3     | 0.317225 | 0               | NaN   |
+| 23  | fit_model        | 4     | 0.001517 | 0               | lr    |
+| 24  | fit_model        | 4     | 0.315535 | 0               | lgb   |
+| 25  | predict          | 2     | 0.027117 | 4096            | NaN   |
+| 26  | predict_model    | 3     | 0.013033 | 0               | lr    |
+| 27  | predict_model    | 3     | 0.013621 | 4096            | lgb   |
+
+To compare model fit costs, select only the `fit_model` rows:
+
+```python
+spans.query("stage == 'fit_model'").groupby('model')['seconds'].sum()
+```
+
+``` text
+model
+lgb    0.954059
+lr     0.005196
+Name: seconds, dtype: float64
+```
+
+The `predict_model` rows do the same for prediction. They cover each
+model’s feature updates as well as its `predict` calls:
+
+```python
+spans.query("stage == 'predict_model'").groupby('model')['seconds'].sum()
+```
+
+``` text
+model
+lgb    0.039982
+lr     0.040003
+Name: seconds, dtype: float64
+```
+
+Each stage’s duration includes its child stages, so summing every row
+double counts. Failed stages remain in the table with an `error` value.
+To profile another run, call `profiler.reset()` after the first run
+finishes.
+

@@ -1,0 +1,152 @@
+---
+title: Using scikit-learn pipelines
+---
+
+> Leverage scikit-learn’s composability to define pipelines as models
+
+mlforecast takes scikit-learn estimators as models, which means you can
+provide [scikit-learn’s
+pipelines](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html)
+as models in order to further apply transformations to the data before
+passing it to the model.
+
+## Data setup
+
+```python
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(5)
+series.head()
+```
+
+|     | unique_id | ds         | y        |
+|-----|-----------|------------|----------|
+| 0   | id_0      | 2000-01-01 | 0.428973 |
+| 1   | id_0      | 2000-01-02 | 1.423626 |
+| 2   | id_0      | 2000-01-03 | 2.311782 |
+| 3   | id_0      | 2000-01-04 | 3.192191 |
+| 4   | id_0      | 2000-01-05 | 4.148767 |
+
+## Pipelines definition
+
+Suppose that you want to use a linear regression model with the lag1 and
+the day of the week as features. mlforecast returns the day of the week
+as a single column, however, that’s not the optimal format for a linear
+regression model, which benefits more from having indicator columns for
+each day of the week (removing one to avoid colinearity). We can achieve
+this by using [scikit-learn’s
+OneHotEncoder](https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html)
+and then fitting our linear regression model, which we can do in the
+following way:
+
+```python
+from mlforecast import MLForecast
+from sklearn.compose import ColumnTransformer
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder
+```
+
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek']
+)
+X, y = fcst.preprocess(series, return_X_y=True)
+X.head()
+```
+
+|     | lag1     | dayofweek |
+|-----|----------|-----------|
+| 1   | 0.428973 | 6         |
+| 2   | 1.423626 | 0         |
+| 3   | 2.311782 | 1         |
+| 4   | 3.192191 | 2         |
+| 5   | 4.148767 | 3         |
+
+This is what will be passed to our model, so we’d like to get the
+`dayofweek` column and perform one hot encoding, leaving the `lag1`
+column untouched. We can achieve that with the following:
+
+```python
+ohe = ColumnTransformer(
+    transformers=[
+        ('encoder', OneHotEncoder(drop='first'), ['dayofweek'])
+    ],
+    remainder='passthrough',
+)
+X_transformed = ohe.fit_transform(X)
+X_transformed.shape
+```
+
+``` text
+(1096, 7)
+```
+
+We can see that our data now has 7 columns, 1 for the lag plus 6 for the
+days of the week (we dropped the first one).
+
+```python
+ohe.get_feature_names_out()
+```
+
+``` text
+array(['encoder__dayofweek_1', 'encoder__dayofweek_2',
+       'encoder__dayofweek_3', 'encoder__dayofweek_4',
+       'encoder__dayofweek_5', 'encoder__dayofweek_6', 'remainder__lag1'],
+      dtype=object)
+```
+
+## Training
+
+We can now build a pipeline that does this and then passes it to our
+linear regression model.
+
+```python
+model = make_pipeline(ohe, LinearRegression())
+```
+
+And provide this as a model to mlforecast
+
+```python
+fcst = MLForecast(
+    models={'ohe_lr': model},
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek']
+)
+fcst.fit(series)
+```
+
+``` text
+MLForecast(models=[ohe_lr], freq=<Day>, lag_features=['lag1'], date_features=['dayofweek'], num_threads=1)
+```
+
+## Forecasting
+
+Finally, we compute the forecasts.
+
+```python
+fcst.predict(1)
+```
+
+|     | unique_id | ds         | ohe_lr   |
+|-----|-----------|------------|----------|
+| 0   | id_0      | 2000-08-10 | 4.312748 |
+| 1   | id_1      | 2000-04-07 | 4.537019 |
+| 2   | id_2      | 2000-06-16 | 4.160505 |
+| 3   | id_3      | 2000-08-30 | 3.777040 |
+| 4   | id_4      | 2001-01-08 | 2.676933 |
+
+## Summary
+
+You can provide complex scikit-learn pipelines as models to mlforecast,
+which allows you to perform different transformations depending on the
+model and use any of scikit-learn’s compatible estimators.
+

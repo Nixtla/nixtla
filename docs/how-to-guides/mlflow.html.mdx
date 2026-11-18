@@ -1,0 +1,300 @@
+---
+title: MLflow | MLForecast
+---
+
+> Log your metrics and models
+
+## Libraries
+
+```python
+import copy
+import subprocess
+import time
+
+import lightgbm as lgb
+import mlflow
+import pandas as pd
+import requests
+from sklearn.linear_model import LinearRegression
+from utilsforecast.data import generate_series
+from utilsforecast.losses import rmse, smape
+from utilsforecast.evaluation import evaluate
+from utilsforecast.feature_engineering import fourier
+
+import mlforecast.flavor
+from mlforecast import MLForecast
+from mlforecast.lag_transforms import ExponentiallyWeightedMean
+from mlforecast.utils import PredictionIntervals
+```
+
+## Data setup
+
+```python
+freq = 'h'
+h = 10
+series = generate_series(5, freq=freq)
+valid = series.groupby('unique_id', observed=True).tail(h)
+train = series.drop(valid.index)
+train, X_df = fourier(train, freq=freq, season_length=24, k=2, h=h)
+```
+
+## Parameters
+
+```python
+params = {
+    'init': {
+        'models': {
+            'lgb': lgb.LGBMRegressor(
+                n_estimators=50, num_leaves=16, verbosity=-1
+            ),
+            'lr': LinearRegression(),
+        },
+        'freq': freq,
+        'lags': [24],
+        'lag_transforms': {
+            1: [ExponentiallyWeightedMean(0.9)],
+        },
+        'num_threads': 2,
+    },
+    'fit': {
+        'static_features': ['unique_id'],
+        'prediction_intervals': PredictionIntervals(n_windows=2, h=h),
+    }
+}
+```
+
+## Logging
+
+If you have a tracking server, you can run
+`mlflow.set_tracking_uri(your_server_uri)` to connect to it.
+
+```python
+mlflow.set_experiment("mlforecast")
+with mlflow.start_run() as run:
+    train_ds = mlflow.data.from_pandas(train)
+    valid_ds = mlflow.data.from_pandas(valid)
+    mlflow.log_input(train_ds, context="training")
+    mlflow.log_input(valid_ds, context="validation")
+    logged_params = copy.deepcopy(params)
+    logged_params['init']['models'] = {
+        k: (v.__class__.__name__, v.get_params())
+        for k, v in params['init']['models'].items()
+    }
+    mlflow.log_params(logged_params)
+    mlf = MLForecast(**params['init'])
+    mlf.fit(train, **params['fit'])
+    preds = mlf.predict(h, X_df=X_df)
+    eval_result = evaluate(
+        valid.merge(preds, on=['unique_id', 'ds']),
+        metrics=[rmse, smape],
+        agg_fn='mean',
+    )
+    models = mlf.models_.keys()
+    logged_metrics = {}
+    for _, row in eval_result.iterrows():
+        metric = row['metric']
+        for model in models:
+            logged_metrics[f'{metric}_{model}'] = row[model]
+    mlflow.log_metrics(logged_metrics)
+    mlforecast.flavor.log_model(model=mlf, artifact_path="model", registered_model_name=None)
+    model_uri = mlflow.get_artifact_uri("model")
+    run_id = run.info.run_id
+```
+
+## Load model
+
+```python
+mlflow.get_artifact_uri()
+```
+
+``` text
+'file:///Users/deven367/projects/public/mlforecast/nbs/docs/how-to-guides/mlruns/135880152043890861/2a94793bbbe244f09dd68961d5883f5b/artifacts'
+```
+
+```python
+fallback_uri = f"runs:/{run_id}/model"
+
+loaded_model = mlforecast.flavor.load_model(model_uri=fallback_uri)
+print("Model loaded successfully from run artifacts!")
+
+results = loaded_model.predict(h=h, X_df=X_df, ids=[3])
+results.head(2)
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+```
+
+``` text
+Model loaded successfully from run artifacts!
+```
+
+|     | unique_id | ds                  | lgb       | lr        |
+|-----|-----------|---------------------|-----------|-----------|
+| 0   | 3         | 2000-01-10 16:00:00 | 22.187576 | 22.168456 |
+| 1   | 3         | 2000-01-10 17:00:00 | 23.204075 | 23.413620 |
+
+```python
+# Load model using the model URI from the registry
+fallback_uri = f"runs:/{run_id}/model"
+try:
+    loaded_model = mlforecast.flavor.load_model(model_uri=model_uri)
+    print("Model loaded successfully from registry!")
+except Exception as e:
+    print(f"Failed to load from registry URI: {e}")
+    # Fallback: try loading from run artifacts
+    print(f"Trying fallback URI: {fallback_uri}")
+    loaded_model = mlforecast.flavor.load_model(model_uri=fallback_uri)
+    print("Model loaded successfully from run artifacts!")
+
+results = loaded_model.predict(h=h, X_df=X_df, ids=[3])
+results.head(2)
+```
+
+
+```python
+# Load model using the model URI from the registry
+fallback_uri = f"runs:/{run_id}/model"
+try:
+    loaded_model = mlforecast.flavor.load_model(model_uri=model_uri)
+    print("Model loaded successfully from registry!")
+except Exception as e:
+    print(f"Failed to load from registry URI: {e}")
+    # Fallback: try loading from run artifacts
+    print(f"Trying fallback URI: {fallback_uri}")
+    loaded_model = mlforecast.flavor.load_model(model_uri=fallback_uri)
+    print("Model loaded successfully from run artifacts!")
+
+results = loaded_model.predict(h=h, X_df=X_df, ids=[3])
+results.head(2)
+```
+
+``` text
+Failed to load from registry URI: No such file or directory: '/Users/deven367/projects/public/mlforecast/nbs/docs/how-to-guides/mlruns/135880152043890861/6ddb20bc3ccf4c048ede20b2c331f9c0/artifacts/model'
+Trying fallback URI: runs:/6ddb20bc3ccf4c048ede20b2c331f9c0/model
+Model loaded successfully from run artifacts!
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+```
+
+|     | unique_id | ds                  | lgb       | lr        |
+|-----|-----------|---------------------|-----------|-----------|
+| 0   | 3         | 2000-01-10 16:00:00 | 22.187576 | 22.168456 |
+| 1   | 3         | 2000-01-10 17:00:00 | 23.204075 | 23.413620 |
+
+## PyFunc
+
+```python
+fallback_uri = f"runs:/{run_id}/model"
+try:
+    loaded_pyfunc = mlforecast.flavor.pyfunc.load_model(model_uri=model_uri)
+except Exception as e:
+    print(f"Failed to load from registry URI: {e}")
+    loaded_pyfunc = mlforecast.flavor.pyfunc.load_model(model_uri=fallback_uri)
+# single row dataframe
+predict_conf = pd.DataFrame(
+    [
+        {
+            "h": h,
+            "ids": [0, 2],
+            "X_df": X_df,
+            "level": [80]
+        }
+    ]
+)
+pyfunc_result = loaded_pyfunc.predict(predict_conf)
+pyfunc_result.head(2)
+```
+
+``` text
+Failed to load from registry URI: No such file or directory: '/Users/deven367/projects/public/mlforecast/nbs/docs/how-to-guides/mlruns/135880152043890861/6ddb20bc3ccf4c048ede20b2c331f9c0/artifacts/model'
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/7 [00:00<?, ?it/s]
+```
+
+|     | unique_id | ds                  | lgb       | lr        | lgb-lo-80 | lgb-hi-80 | lr-lo-80  | lr-hi-80  |
+|-----|-----------|---------------------|-----------|-----------|-----------|-----------|-----------|-----------|
+| 0   | 0         | 2000-01-09 20:00:00 | 20.214914 | 20.095987 | 20.074128 | 20.355699 | 19.951723 | 20.240250 |
+| 1   | 0         | 2000-01-09 21:00:00 | 21.180581 | 21.099920 | 20.943417 | 21.417746 | 20.755529 | 21.444311 |
+
+## Model serving
+
+```python
+host = 'localhost'
+port = '5001'
+
+fallback_uri = f"runs:/{run_id}/model"
+cmd = f'mlflow models serve -m {fallback_uri} -h {host} -p {port} --env-manager local'
+print(f"Serving model from runs: {fallback_uri}")
+
+# initialize server
+process = subprocess.Popen(cmd.split())
+time.sleep(5)
+
+# single row dataframe. must be JSON serializable
+predict_conf = pd.DataFrame(
+    [
+        {
+            "h": h,
+            "ids": [3, 4],
+            "X_df": X_df.astype({'ds': 'str'}).to_dict(orient='list'),
+            "level": [95]
+        }
+    ]
+)
+payload = {'dataframe_split': predict_conf.to_dict(orient='split', index=False)}
+
+try:
+    resp = requests.post(f'http://{host}:{port}/invocations', json=payload)
+    print(pd.DataFrame(resp.json()['predictions']).head(2))
+except Exception as e:
+    print(f"Error making prediction request: {e}")
+    print(f"Response status: {resp.status_code if 'resp' in locals() else 'No response'}")
+finally:
+    process.terminate()
+    process.wait(timeout=10)
+```
+
+``` text
+Serving model from runs: runs:/6ddb20bc3ccf4c048ede20b2c331f9c0/model
+INFO:     ::1:52011 - "POST /invocations HTTP/1.1" 200 OK
+   unique_id                   ds        lgb         lr  lgb-lo-95  lgb-hi-95  \
+0          3  2000-01-10T16:00:00  22.187576  22.168456  21.973679  22.401473   
+1          3  2000-01-10T17:00:00  23.204075  23.413620  23.012538  23.395612   
+
+    lr-lo-95   lr-hi-95  
+0  21.884265  22.452647  
+1  22.994313  23.832926  
+```
+
+``` text
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 5180.89it/s] 
+2025/08/04 09:39:36 INFO mlflow.models.flavor_backend_registry: Selected backend for flavor 'python_function'
+Downloading artifacts:   0%|          | 0/1 [00:00<?, ?it/s]
+Downloading artifacts: 100%|██████████| 7/7 [00:00<00:00, 6882.36it/s] 
+2025/08/04 09:39:36 INFO mlflow.pyfunc.backend: === Running command 'exec uvicorn --host localhost --port 5001 --workers 1 mlflow.pyfunc.scoring_server.app:app'
+INFO:     Started server process [10158]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://localhost:5001 (Press CTRL+C to quit)
+/Users/deven367/miniforge3/envs/nixtla/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+```
+

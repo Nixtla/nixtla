@@ -1,0 +1,170 @@
+---
+title: Transforming exogenous features
+---
+
+> Compute transformations on your exogenous features for MLForecast
+
+The MLForecast class allows you to compute lag transformations on your
+target, however, sometimes you want to also compute transformations on
+your dynamic exogenous features. This guide shows you how to accomplish
+that.
+
+## Data setup
+
+```python
+from mlforecast.utils import generate_series, generate_prices_for_series
+```
+
+
+```python
+series = generate_series(10, equal_ends=True)
+prices = generate_prices_for_series(series)
+prices.head(2)
+```
+
+|     | ds         | unique_id | price    |
+|-----|------------|-----------|----------|
+| 0   | 2000-10-05 | 0         | 0.548814 |
+| 1   | 2000-10-06 | 0         | 0.715189 |
+
+Suppose that you have some series along with their prices for each id
+and date and you want to compute forecasts for the next 7 days. Since
+the price is a dynamic feature you have to provide the future values
+through `X_df` in `MLForecast.predict`.
+
+If you want to use not only the price but the lag7 of the price and the
+expanding mean of the lag1 for example, you can compute them before
+training, merge them with your series and then provide the future values
+through `X_df`. Consider the following example.
+
+## Computing the transformations
+
+```python
+from mlforecast.lag_transforms import ExpandingMean
+
+from mlforecast.feature_engineering import transform_exog
+```
+
+
+```python
+transformed_prices = transform_exog(prices, lags=[7], lag_transforms={1: [ExpandingMean()]})
+transformed_prices.head(10)
+```
+
+|     | ds         | unique_id | price    | price_lag7 | price_expanding_mean_lag1 |
+|-----|------------|-----------|----------|------------|---------------------------|
+| 0   | 2000-10-05 | 0         | 0.548814 | NaN        | NaN                       |
+| 1   | 2000-10-06 | 0         | 0.715189 | NaN        | 0.548814                  |
+| 2   | 2000-10-07 | 0         | 0.602763 | NaN        | 0.632001                  |
+| 3   | 2000-10-08 | 0         | 0.544883 | NaN        | 0.622255                  |
+| 4   | 2000-10-09 | 0         | 0.423655 | NaN        | 0.602912                  |
+| 5   | 2000-10-10 | 0         | 0.645894 | NaN        | 0.567061                  |
+| 6   | 2000-10-11 | 0         | 0.437587 | NaN        | 0.580200                  |
+| 7   | 2000-10-12 | 0         | 0.891773 | 0.548814   | 0.559827                  |
+| 8   | 2000-10-13 | 0         | 0.963663 | 0.715189   | 0.601320                  |
+| 9   | 2000-10-14 | 0         | 0.383442 | 0.602763   | 0.641580                  |
+
+You can now merge this with your original series
+
+```python
+series_with_prices = series.merge(transformed_prices, on=['unique_id', 'ds'])
+series_with_prices.head(10)
+```
+
+|     | unique_id | ds         | y        | price    | price_lag7 | price_expanding_mean_lag1 |
+|-----|-----------|------------|----------|----------|------------|---------------------------|
+| 0   | 0         | 2000-10-05 | 0.322947 | 0.548814 | NaN        | NaN                       |
+| 1   | 0         | 2000-10-06 | 1.218794 | 0.715189 | NaN        | 0.548814                  |
+| 2   | 0         | 2000-10-07 | 2.445887 | 0.602763 | NaN        | 0.632001                  |
+| 3   | 0         | 2000-10-08 | 3.481831 | 0.544883 | NaN        | 0.622255                  |
+| 4   | 0         | 2000-10-09 | 4.191721 | 0.423655 | NaN        | 0.602912                  |
+| 5   | 0         | 2000-10-10 | 5.395863 | 0.645894 | NaN        | 0.567061                  |
+| 6   | 0         | 2000-10-11 | 6.264447 | 0.437587 | NaN        | 0.580200                  |
+| 7   | 0         | 2000-10-12 | 0.284022 | 0.891773 | 0.548814   | 0.559827                  |
+| 8   | 0         | 2000-10-13 | 1.462798 | 0.963663 | 0.715189   | 0.601320                  |
+| 9   | 0         | 2000-10-14 | 2.035518 | 0.383442 | 0.602763   | 0.641580                  |
+
+You can then define your forecast object. Note that you can still
+compute lag features based on the target as you normally would.
+
+```python
+from sklearn.linear_model import LinearRegression
+
+from mlforecast import MLForecast
+```
+
+
+```python
+fcst = MLForecast(
+    models=[LinearRegression()],
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek'],
+)
+fcst.preprocess(series_with_prices, dropna=True).head()
+```
+
+|     | unique_id | ds         | y        | price    | price_lag7 | price_expanding_mean_lag1 | lag1     | dayofweek |
+|-----|-----------|------------|----------|----------|------------|---------------------------|----------|-----------|
+| 1   | 0         | 2000-10-06 | 1.218794 | 0.715189 | NaN        | 0.548814                  | 0.322947 | 4         |
+| 2   | 0         | 2000-10-07 | 2.445887 | 0.602763 | NaN        | 0.632001                  | 1.218794 | 5         |
+| 3   | 0         | 2000-10-08 | 3.481831 | 0.544883 | NaN        | 0.622255                  | 2.445887 | 6         |
+| 4   | 0         | 2000-10-09 | 4.191721 | 0.423655 | NaN        | 0.602912                  | 3.481831 | 0         |
+| 5   | 0         | 2000-10-10 | 5.395863 | 0.645894 | NaN        | 0.567061                  | 4.191721 | 1         |
+
+It’s important to note that the `dropna` argument only considers the
+null values generated by the lag features based on the target. If you
+want to drop all rows containing null values you have to do that in your
+original series.
+
+```python
+series_with_prices2 = series_with_prices.dropna()
+fcst.preprocess(series_with_prices2, dropna=True).head()
+```
+
+|     | unique_id | ds         | y        | price    | price_lag7 | price_expanding_mean_lag1 | lag1     | dayofweek |
+|-----|-----------|------------|----------|----------|------------|---------------------------|----------|-----------|
+| 8   | 0         | 2000-10-13 | 1.462798 | 0.963663 | 0.715189   | 0.601320                  | 0.284022 | 4         |
+| 9   | 0         | 2000-10-14 | 2.035518 | 0.383442 | 0.602763   | 0.641580                  | 1.462798 | 5         |
+| 10  | 0         | 2000-10-15 | 3.043565 | 0.791725 | 0.544883   | 0.615766                  | 2.035518 | 6         |
+| 11  | 0         | 2000-10-16 | 4.010109 | 0.528895 | 0.423655   | 0.631763                  | 3.043565 | 0         |
+| 12  | 0         | 2000-10-17 | 5.416310 | 0.568045 | 0.645894   | 0.623190                  | 4.010109 | 1         |
+
+You can now train the model.
+
+```python
+fcst.fit(series_with_prices2)
+```
+
+``` text
+MLForecast(models=[LinearRegression], freq=D, lag_features=['lag1'], date_features=['dayofweek'], num_threads=1)
+```
+
+And predict using the prices. Note that you can provide the dataframe
+with the full history and mlforecast will filter the required dates for
+the forecasting horizon.
+
+```python
+fcst.predict(1, X_df=transformed_prices).head()
+```
+
+|     | unique_id | ds         | LinearRegression |
+|-----|-----------|------------|------------------|
+| 0   | 0         | 2001-05-15 | 3.803967         |
+| 1   | 1         | 2001-05-15 | 3.512489         |
+| 2   | 2         | 2001-05-15 | 3.170019         |
+| 3   | 3         | 2001-05-15 | 4.307121         |
+| 4   | 4         | 2001-05-15 | 3.018758         |
+
+In this example we have prices for the next 7 days, if you try to
+forecast a longer horizon you’ll get an error.
+
+```python
+from fastcore.test import test_fail
+```
+
+
+```python
+test_fail(lambda: fcst.predict(8, X_df=transformed_prices), contains='Found missing inputs in X_df')
+```
+

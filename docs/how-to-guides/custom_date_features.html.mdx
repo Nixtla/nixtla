@@ -1,0 +1,56 @@
+---
+title: Custom date features
+---
+
+> Define your own functions to be used as date features
+
+```python
+from mlforecast import MLForecast
+from mlforecast.utils import generate_daily_series
+```
+
+The `date_features` argument of MLForecast can take [calendar
+features](../../date_features.html), pandas date attributes as well as
+functions that take a [pandas
+DatetimeIndex](https://pandas.pydata.org/docs/reference/api/pandas.DatetimeIndex.html)
+and return a numeric value. The name of the function is used as the name
+of the feature, so please use unique and descriptive names.
+
+```python
+series = generate_daily_series(1, min_length=6, max_length=6)
+```
+
+
+```python
+def even_day(dates):
+    """Day of month is even"""
+    return dates.day % 2 == 0
+
+def month_start_or_end(dates):
+    """Date is month start or month end"""
+    return dates.is_month_start | dates.is_month_end
+
+def is_monday(dates):
+    """Date is monday"""
+    return dates.dayofweek == 0
+```
+
+
+```python
+fcst = MLForecast(
+    [],
+    freq='D',
+    date_features=['dayofweek', 'dayofyear', even_day, month_start_or_end, is_monday]
+)
+fcst.preprocess(series)
+```
+
+|     | unique_id | ds         | y        | dayofweek | dayofyear | even_day | month_start_or_end | is_monday |
+|-----|-----------|------------|----------|-----------|-----------|----------|--------------------|-----------|
+| 0   | id_0      | 2000-01-01 | 0.274407 | 5         | 1         | False    | True               | False     |
+| 1   | id_0      | 2000-01-02 | 1.357595 | 6         | 2         | True     | False              | False     |
+| 2   | id_0      | 2000-01-03 | 2.301382 | 0         | 3         | False    | False              | True      |
+| 3   | id_0      | 2000-01-04 | 3.272442 | 1         | 4         | True     | False              | False     |
+| 4   | id_0      | 2000-01-05 | 4.211827 | 2         | 5         | False    | False              | False     |
+| 5   | id_0      | 2000-01-06 | 5.322947 | 3         | 6         | True     | False              | False     |
+

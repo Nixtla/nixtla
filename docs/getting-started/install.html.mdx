@@ -1,0 +1,84 @@
+---
+title: Install | MLForecast
+---
+
+> Instructions to install the package from different sources.
+
+## Released versions
+
+### PyPI
+
+#### Latest release
+
+To install the latest release of mlforecast from
+[PyPI](https://pypi.org/project/mlforecast/) you just have to run the
+following in a terminal:
+
+`pip install mlforecast`
+
+#### Specific version
+
+If you want a specific version you can include a filter, for example:
+
+-   `pip install "mlforecast==0.3.0"` to install the 0.3.0 version
+-   `pip install "mlforecast<0.4.0"` to install any version prior to
+    0.4.0
+
+#### Extras
+
+**polars**
+
+Using polars dataframes: `pip install "mlforecast[polars]"`
+
+**Saving to remote storages**
+
+If you want to save your forecast artifacts to a remote storage like S3
+or GCS you can use the following extras:
+
+-   Saving to S3: `pip install "mlforecast[aws]"`
+-   Saving to Google Cloud Storage: `pip install "mlforecast[gcp]"`
+-   Saving to Azure Data Lake: `pip install "mlforecast[azure]"`
+
+**Distributed training**
+
+If you want to perform distributed training you can use either dask, ray
+or spark. Once you know which framework you want to use you can include
+its extra:
+
+-   dask: `pip install "mlforecast[dask]"`
+-   ray: `pip install "mlforecast[ray]"`
+-   spark: `pip install "mlforecast[spark]"`
+
+### Conda
+
+#### Latest release
+
+The mlforecast package is also published to
+[conda-forge](https://anaconda.org/conda-forge/mlforecast), which you
+can install by running the following in a terminal:
+
+`conda install -c conda-forge mlforecast`
+
+Note that this happens about a day later after it is published to PyPI,
+so you may have to wait to get the latest release.
+
+#### Specific version
+
+If you want a specific version you can include a filter, for example:
+
+-   `conda install -c conda-forge "mlforecast==0.3.0"` to install the
+    0.3.0 version
+-   `conda install -c conda-forge "mlforecast<0.4.0"` to install any
+    version prior to 0.4.0
+
+## Development version
+
+If you want to try out a new feature that hasn’t made it into a release
+yet you have the following options:
+
+-   Install from github:
+    `pip install git+https://github.com/Nixtla/mlforecast`
+-   Clone and install:
+    `git clone https://github.com/Nixtla/mlforecast mlforecast-dev && pip install mlforecast-dev/`,
+    which will install the version from the current main branch.
+

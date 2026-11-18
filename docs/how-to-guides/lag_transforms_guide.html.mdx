@@ -1,0 +1,239 @@
+---
+title: Lag transformations | MLForecast
+---
+
+> Compute features based on lags
+
+mlforecast allows you to define transformations on the lags to use as
+features. These are provided through the `lag_transforms` argument,
+which is a dict where the keys are the lags and the values are a list of
+transformations to apply to that lag.
+
+## Data setup
+
+```python
+import numpy as np
+
+from mlforecast import MLForecast
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+data = generate_daily_series(10)
+```
+
+## Built-in transformations
+
+The built-in lag transformations are in the `mlforecast.lag_transforms`
+module.
+
+```python
+from mlforecast.lag_transforms import RollingMean, ExpandingStd
+```
+
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lag_transforms={
+        1: [ExpandingStd()],
+        7: [RollingMean(window_size=7, min_samples=1), RollingMean(window_size=14)]
+    },
+)
+```
+
+Once you define your transformations you can see what they look like
+with `MLForecast.preprocess`.
+
+```python
+fcst.preprocess(data).head(2)
+```
+
+|     | unique_id | ds         | y        | expanding_std_lag1 | rolling_mean_lag7_window_size7_min_samples1 | rolling_mean_lag7_window_size14 |
+|-----|-----------|------------|----------|--------------------|---------------------------------------------|---------------------------------|
+| 20  | id_0      | 2000-01-21 | 6.319961 | 1.956363           | 3.234486                                    | 3.283064                        |
+| 21  | id_0      | 2000-01-22 | 0.071677 | 2.028545           | 3.256055                                    | 3.291068                        |
+
+### Extending the built-in transformations
+
+You can compose the built-in transformations by using the `Combine`
+class, which takes two transformations and an operator.
+
+```python
+import operator
+
+from mlforecast.lag_transforms import Combine
+```
+
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lag_transforms={
+        1: [
+            RollingMean(window_size=7),
+            RollingMean(window_size=14),
+            Combine(
+                RollingMean(window_size=7),
+                RollingMean(window_size=14),
+                operator.truediv,
+            )
+        ],
+    },
+)
+prep = fcst.preprocess(data)
+prep.head(2)
+```
+
+|     | unique_id | ds         | y        | rolling_mean_lag1_window_size7 | rolling_mean_lag1_window_size14 | rolling_mean_lag1_window_size7_truediv_rolling_mean_lag1_window_size14 |
+|-----|-----------|------------|----------|--------------------------------|---------------------------------|------------------------------------------------------------------------|
+| 14  | id_0      | 2000-01-15 | 0.435006 | 3.234486                       | 3.283064                        | 0.985204                                                               |
+| 15  | id_0      | 2000-01-16 | 1.489309 | 3.256055                       | 3.291068                        | 0.989361                                                               |
+
+```python
+np.testing.assert_allclose(
+    prep['rolling_mean_lag1_window_size7'] / prep['rolling_mean_lag1_window_size14'],
+    prep['rolling_mean_lag1_window_size7_truediv_rolling_mean_lag1_window_size14']
+)
+```
+
+If you want one of the transformations in `Combine` to be applied to a
+different lag you can use the `Offset` class, which will apply the
+offset first and then the transformation.
+
+```python
+from mlforecast.lag_transforms import Offset
+```
+
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lag_transforms={
+        1: [
+            RollingMean(window_size=7),
+            Combine(
+                RollingMean(window_size=7),
+                Offset(RollingMean(window_size=7), n=1),
+                operator.truediv,
+            )
+        ],
+        2: [RollingMean(window_size=7)]
+    },
+)
+prep = fcst.preprocess(data)
+prep.head(2)
+```
+
+|     | unique_id | ds         | y        | rolling_mean_lag1_window_size7 | rolling_mean_lag1_window_size7_truediv_rolling_mean_lag2_window_size7 | rolling_mean_lag2_window_size7 |
+|-----|-----------|------------|----------|--------------------------------|-----------------------------------------------------------------------|--------------------------------|
+| 8   | id_0      | 2000-01-09 | 1.462798 | 3.326081                       | 0.998331                                                              | 3.331641                       |
+| 9   | id_0      | 2000-01-10 | 2.035518 | 3.360938                       | 1.010480                                                              | 3.326081                       |
+
+```python
+np.testing.assert_allclose(
+    prep['rolling_mean_lag1_window_size7'] / prep['rolling_mean_lag2_window_size7'],
+    prep['rolling_mean_lag1_window_size7_truediv_rolling_mean_lag2_window_size7']
+)
+```
+
+## Cross-series features: `global_` and `partition_by`
+
+Every built-in rolling, expanding, seasonal-rolling, and exponentially
+weighted transform also accepts `global_=True` (compute across all
+series) or `partition_by=["col", ...]` (compute within the buckets
+defined by the listed columns, e.g. `["brand"]` for the series of each
+brand, or `["unique_id", "promo"]` to split each series by `promo`).
+This is useful when a single series has too little history to support
+per-series rolling statistics, or when cross-series aggregates carry
+more signal than any single series’ lag.
+
+These **pooled** transforms use SQL `RANGE BETWEEN ... PRECEDING`
+semantics over actual timestamps, so they handle staggered series starts
+correctly and treat `min_samples` as a coverage threshold across the
+bucket. Key columns not listed in `static_features` may vary over time,
+like `promo` or `regime`, and are supplied via `X_df` at prediction
+time. See the [Pooled lag transforms](./pooled_lag_transforms.html)
+guide for a full walkthrough.
+
+## numba-based transformations
+
+The [window-ops package](https://github.com/jmoralez/window_ops)
+provides transformations defined as [numba](https://numba.pydata.org/)
+[JIT compiled](https://en.wikipedia.org/wiki/Just-in-time_compilation)
+functions. We use numba because it makes them really fast and can also
+bypass [python’s
+GIL](https://wiki.python.org/moin/GlobalInterpreterLock), which allows
+running them concurrently with multithreading.
+
+The main benefit of using these transformations is that they’re very
+easy to implement. However, when we need to update their values on the
+predict step they can very slow, because we have to call the function
+again on the complete history and just keep the last value, so if
+performance is a concern you should try to use the built-in ones or set
+`keep_last_n` in `MLForecast.preprocess` or `MLForecast.fit` to the
+minimum number of samples that your transformations require.
+
+
+```python
+from numba import njit
+from window_ops.expanding import expanding_mean
+from window_ops.shift import shift_array
+```
+
+
+
+```python
+@njit
+def ratio_over_previous(x, offset=1):
+    """Computes the ratio between the current value and its `offset` lag"""
+    return x / shift_array(x, offset=offset)
+
+@njit
+def diff_over_previous(x, offset=1):
+    """Computes the difference between the current value and its `offset` lag"""
+    return x - shift_array(x, offset=offset)
+```
+
+
+If your function takes more arguments than the input array you can
+provide a tuple like: `(func, arg1, arg2, ...)`
+
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lags=[1, 2, 3],
+    lag_transforms={
+        1: [expanding_mean, ratio_over_previous, (ratio_over_previous, 2)],  # the second ratio sets offset=2
+        2: [diff_over_previous],
+    },
+)
+prep = fcst.preprocess(data)
+prep.head(2)
+```
+
+|     | unique_id | ds         | y        | lag1     | lag2     | lag3     | expanding_mean_lag1 | ratio_over_previous_lag1 | ratio_over_previous_lag1_offset2 | diff_over_previous_lag2 |
+|-----|-----------|------------|----------|----------|----------|----------|---------------------|--------------------------|----------------------------------|-------------------------|
+| 3   | id_0      | 2000-01-04 | 3.481831 | 2.445887 | 1.218794 | 0.322947 | 1.329209            | 2.006809                 | 7.573645                         | 0.895847                |
+| 4   | id_0      | 2000-01-05 | 4.191721 | 3.481831 | 2.445887 | 1.218794 | 1.867365            | 1.423546                 | 2.856785                         | 1.227093                |
+
+
+As you can see the name of the function is used as the transformation
+name plus the `_lag` suffix. If the function has other arguments and
+they’re not set to their default values they’re included as well, as is
+done with `offset=2` here.
+
+
+```python
+np.testing.assert_allclose(prep['lag1'] / prep['lag2'], prep['ratio_over_previous_lag1'])
+np.testing.assert_allclose(prep['lag1'] / prep['lag3'], prep['ratio_over_previous_lag1_offset2'])
+np.testing.assert_allclose(prep['lag2'] - prep['lag3'], prep['diff_over_previous_lag2'])
+```
+
+

@@ -1,0 +1,150 @@
+---
+output-file: hooks.html
+title: Stage hooks
+description: Observe forecast stages and profile their time and memory use.
+---
+
+`MLForecast` accepts `hooks=[...]` to observe preprocessing, fit, prediction,
+and cross validation stages. Hooks receive the live arguments passed to each
+stage; changing those objects inside a hook is unsupported.
+
+```python
+from mlforecast import MLForecast
+from mlforecast.hooks import Profiler
+
+profiler = Profiler(memory=True)
+fcst = MLForecast(models=..., freq="D", lags=[1], hooks=[profiler])
+cv = fcst.cross_validation(df, n_windows=3, h=7)
+model_times = (
+    profiler.to_df()
+    .query("stage == 'fit_model'")
+    .groupby("model")["seconds"]
+    .sum()
+)
+```
+
+`fit_model` and `predict_model` are emitted once per model, and `fit_model` once
+per horizon for direct models. `predict_model` covers each model's feature
+updates as well as its `predict` calls.
+
+Each span's duration includes its children, so summing durations across every
+stage counts nested work more than once. During interval calibration, nested
+stages use a scratch forecaster. A hook can distinguish them from the original
+forecaster with `fcst is original_fcst`. Call `profiler.reset()` only between runs.
+
+### `Hook`
+
+Observe the stages of an :class:`mlforecast.MLForecast` object.
+
+Subclass this, override the hooks you need and pass instances through
+``MLForecast(hooks=[...])``. Stages nest: a ``fit`` with prediction
+intervals runs a ``cross_validation``, which runs a ``fit`` and a ``predict``
+per window. The hooks are called for every level, so a hook can build a
+tree of what happened, react only to top-level calls or filter by stage.
+Hook arguments are live objects; mutating them is unsupported. Internal
+calibration uses a scratch forecaster, distinguishable by identity from
+the original ``MLForecast`` instance.
+
+Stages and the keyword arguments they carry:
+
+- ``preprocess``, ``fit``, ``fit_models``, ``predict``, ``cross_validation``: the bound arguments of the method call.
+- ``fit_model``: ``name``, ``model``, ``X``, ``y``, ``fit_kwargs`` and ``h`` (0-indexed horizon for direct models, None otherwise). Emitted once per estimator ``fit`` call.
+- ``predict_model``: ``name`` and ``model`` (a dict keyed by horizon index for direct models). Emitted once per model and covers its feature updates too. Its result is the model's predictions as a flat array ordered by series and then step, before target transforms are inverted.
+- ``cv_window``: ``i_window`` and ``cutoffs``.
+
+Hooks that started a stage get its ``on_end`` or ``on_error``, in reverse order, even if another one raises, and the first
+hook error then propagates in place of the stage's own: a stage whose ``on_end`` raises still ended, and the
+error reaches the enclosing stages as their ``on_error``.
+
+#### `Hook.on_end`
+
+```python
+on_end(stage, fcst, result, **kwargs)
+```
+
+Called right after ``stage`` returns ``result``.
+
+#### `Hook.on_error`
+
+```python
+on_error(stage, fcst, error, **kwargs)
+```
+
+Called when ``stage`` raises ``error``, right before it propagates.
+
+#### `Hook.on_start`
+
+```python
+on_start(stage, fcst, **kwargs)
+```
+
+Called right before ``stage`` runs.
+
+
+### `Profiler`
+
+```python
+Profiler(memory=False)
+```
+
+Bases: <code>[Hook](#mlforecast.hooks.Hook)</code>
+
+Record how long each stage takes and, optionally, its memory delta.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`memory` | <code>[bool](#bool)</code> | Record the change in the process' resident memory across each stage. Requires psutil. Defaults to False. | <code>False</code>
+
+Top-level calls end up in ``spans`` with everything that ran inside them as
+``children``; ``to_df`` flattens them. A parent's seconds include its
+children, so summing all stages double counts. For example, the time spent fitting
+each model across a whole cross validation is
+``profiler.to_df().query("stage == 'fit_model'").groupby("model")["seconds"].sum()``.
+Call ``reset()`` only between runs; it clears active spans too.
+
+#### `Profiler.memory`
+
+```python
+memory = memory
+```
+
+#### `Profiler.on_end`
+
+```python
+on_end(stage, fcst, result, **kwargs)
+```
+
+#### `Profiler.on_error`
+
+```python
+on_error(stage, fcst, error, **kwargs)
+```
+
+#### `Profiler.on_start`
+
+```python
+on_start(stage, fcst, **kwargs)
+```
+
+#### `Profiler.reset`
+
+```python
+reset()
+```
+
+#### `Profiler.spans`
+
+```python
+spans: List[Span] = []
+```
+
+#### `Profiler.to_df`
+
+```python
+to_df()
+```
+
+Flatten the recorded spans into one row per stage, in execution order.
+

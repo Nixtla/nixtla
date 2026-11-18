@@ -1,0 +1,165 @@
+---
+title: Training with numpy arrays
+---
+
+> Convert your dataframes to arrays to use less memory and train faster
+
+Most of the machine learning libraries use numpy arrays, even when you
+provide a dataframe it ends up being converted into a numpy array. By
+providing an array to those models we can make the process faster, since
+the conversion will only happen once.
+
+## Data setup
+
+```python
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(5)
+```
+
+## fit and cross_validation methods
+
+```python
+import numpy as np
+from lightgbm import LGBMRegressor
+from sklearn.linear_model import LinearRegression
+
+from mlforecast import MLForecast
+```
+
+
+```python
+fcst = MLForecast(
+    models={'lr': LinearRegression(), 'lgbm': LGBMRegressor(verbosity=-1)},
+    freq='D',
+    lags=[7, 14],
+    date_features=['dayofweek'],
+)
+```
+
+If you’re using the fit/cross_validation methods from `MLForecast` all
+you have to do to train with numpy arrays is provide the `as_numpy`
+argument, which will cast the features to an array before passing them
+to the models.
+
+```python
+fcst.fit(series, as_numpy=True)
+```
+
+``` text
+MLForecast(models=[lr, lgbm], freq=<Day>, lag_features=['lag7', 'lag14'], date_features=['dayofweek'], num_threads=1)
+```
+
+When predicting, the new features will also be cast to arrays, so it can
+also be faster.
+
+```python
+fcst.predict(1)
+```
+
+|     | unique_id | ds         | lr       | lgbm     |
+|-----|-----------|------------|----------|----------|
+| 0   | id_0      | 2000-08-10 | 5.268787 | 6.322262 |
+| 1   | id_1      | 2000-04-07 | 4.437316 | 5.213255 |
+| 2   | id_2      | 2000-06-16 | 3.246518 | 4.373904 |
+| 3   | id_3      | 2000-08-30 | 0.144860 | 1.285219 |
+| 4   | id_4      | 2001-01-08 | 2.211318 | 3.236700 |
+
+For cross_validation we also just need to specify `as_numpy=True`.
+
+```python
+cv_res = fcst.cross_validation(series, n_windows=2, h=2, as_numpy=True)
+```
+
+## preprocess method
+
+Having the features as a numpy array can also be helpful in cases where
+you have categorical columns and the library doesn’t support them, for
+example LightGBM with polars. In order to use categorical features with
+LightGBM and polars we have to convert them to their integer
+representation and tell LightGBM to treat those features as categorical,
+which we can achieve in the following way:
+
+```python
+series_pl = generate_daily_series(5, n_static_features=1, engine='polars')
+series_pl.head(2)
+```
+
+| unique_id | ds                  | y          | static_0 |
+|-----------|---------------------|------------|----------|
+| cat       | datetime\[ns\]      | f64        | cat      |
+| "id_0"    | 2000-01-01 00:00:00 | 36.462689  | "84"     |
+| "id_0"    | 2000-01-02 00:00:00 | 121.008199 | "84"     |
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq='1d',
+    lags=[7, 14],
+    date_features=['weekday'],
+)
+```
+
+In order to get the features as an array with the preprocess method we
+also have to ask for the X, y tuple.
+
+```python
+X, y = fcst.preprocess(
+    series_pl, static_features=['static_0'], return_X_y=True, as_numpy=True
+)
+X[:2]
+```
+
+``` text
+array([[  0.        ,  20.30076749,  36.46268875,   6.        ],
+       [  0.        , 119.51717097, 121.0081989 ,   7.        ]])
+```
+
+The feature names are available in `fcst.ts.features_order_`
+
+```python
+fcst.ts.features_order_
+```
+
+``` text
+['static_0', 'lag7', 'lag14', 'weekday']
+```
+
+Now we can just train a LightGBM model specifying the feature names and
+which features should be treated as categorical.
+
+```python
+model = LGBMRegressor(verbosity=-1)
+model.fit(
+    X=X,
+    y=y,
+    feature_name=fcst.ts.features_order_,
+    categorical_feature=['static_0', 'weekday'],
+);
+```
+
+We can now add this model to our models dict, as described in the
+[custom training guide](./custom_training.html).
+
+```python
+fcst.models_ = {'lgbm': model}
+```
+
+And use it to predict.
+
+```python
+fcst.predict(1)
+```
+
+| unique_id | ds                  | lgbm       |
+|-----------|---------------------|------------|
+| cat       | datetime\[ns\]      | f64        |
+| "id_0"    | 2000-08-10 00:00:00 | 448.796188 |
+| "id_1"    | 2000-04-07 00:00:00 | 81.058211  |
+| "id_2"    | 2000-06-16 00:00:00 | 4.450549   |
+| "id_3"    | 2000-08-30 00:00:00 | 14.219603  |
+| "id_4"    | 2001-01-08 00:00:00 | 87.361881  |
+

@@ -1,0 +1,188 @@
+---
+title: Custom training
+---
+
+> Customize the training procedure for your models
+
+mlforecast abstracts away most of the training details, which is useful
+for iterating quickly. However, sometimes you want more control over the
+fit parameters, the data that goes into the model, etc. This guide shows
+how you can train a model in a specific way and then giving it back to
+mlforecast to produce forecasts with it.
+
+## Data setup
+
+```python
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(5)
+```
+
+## Creating forecast object
+
+```python
+import lightgbm as lgb
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+from mlforecast import MLForecast
+```
+
+Suppose we want to train a linear regression with the default settings.
+
+```python
+fcst = MLForecast(
+    models={'lr': LinearRegression()},
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek'],
+)
+```
+
+## Generate training set
+
+Use `MLForecast.preprocess` to generate the training data.
+
+```python
+prep = fcst.preprocess(series)
+prep.head()
+```
+
+|     | unique_id | ds         | y        | lag1     | dayofweek |
+|-----|-----------|------------|----------|----------|-----------|
+| 1   | id_0      | 2000-01-02 | 1.423626 | 0.428973 | 6         |
+| 2   | id_0      | 2000-01-03 | 2.311782 | 1.423626 | 0         |
+| 3   | id_0      | 2000-01-04 | 3.192191 | 2.311782 | 1         |
+| 4   | id_0      | 2000-01-05 | 4.148767 | 3.192191 | 2         |
+| 5   | id_0      | 2000-01-06 | 5.028356 | 4.148767 | 3         |
+
+```python
+X = prep.drop(columns=['unique_id', 'ds', 'y'])
+y = prep['y']
+```
+
+## Regular training
+
+Since we don’t want to do anything special in our training process for
+the linear regression, we can just call `MLForecast.fit_models`
+
+```python
+fcst.fit_models(X, y)
+```
+
+``` text
+MLForecast(models=[lr], freq=D, lag_features=['lag1'], date_features=['dayofweek'], num_threads=1)
+```
+
+This has trained the linear regression model and is now available in the
+`MLForecast.models_` attribute.
+
+```python
+fcst.models_
+```
+
+``` text
+{'lr': LinearRegression()}
+```
+
+## Custom training
+
+Now suppose you also want to train a LightGBM model on the same data,
+but treating the day of the week as a categorical feature and logging
+the train loss.
+
+```python
+model = lgb.LGBMRegressor(n_estimators=100, verbosity=-1)
+model.fit(
+    X,
+    y,
+    eval_set=[(X, y)],
+    categorical_feature=['dayofweek'],
+    callbacks=[lgb.log_evaluation(20)],
+);
+```
+
+``` text
+[20]    training's l2: 0.0823528
+[40]    training's l2: 0.0230292
+[60]    training's l2: 0.0207829
+[80]    training's l2: 0.019675
+[100]   training's l2: 0.018778
+```
+
+## Computing forecasts
+
+Now we just assign this model to the `MLForecast.models_` dictionary.
+Note that you can assign as many models as you want.
+
+```python
+fcst.models_['lgbm'] = model
+fcst.models_
+```
+
+``` text
+{'lr': LinearRegression(), 'lgbm': LGBMRegressor(verbosity=-1)}
+```
+
+And now when calling `MLForecast.predict`, mlforecast will use those
+models to compute the forecasts.
+
+```python
+fcst.predict(1)
+```
+
+|     | unique_id | ds         | lr       | lgbm     |
+|-----|-----------|------------|----------|----------|
+| 0   | id_0      | 2000-08-10 | 3.549124 | 5.166797 |
+| 1   | id_1      | 2000-04-07 | 3.154285 | 4.252490 |
+| 2   | id_2      | 2000-06-16 | 2.880933 | 3.224506 |
+| 3   | id_3      | 2000-08-30 | 4.061801 | 0.245443 |
+| 4   | id_4      | 2001-01-08 | 2.904872 | 2.225106 |
+
+## Skipping preprocess: warming up from history
+
+The flow above ran `MLForecast.preprocess` because we needed the
+training features. If your models are already trained – for example you
+just unpickled them in a serving process, or trained them yourself like
+above – computing the features again just to restore the internal state
+would be wasted work. `MLForecast.history_warmup` is a cheaper
+alternative for that case: it runs the same state-building steps as
+`preprocess` (target transforms, lag transform buffers, pooled
+aggregates, feature order) but skips materializing the features
+dataframe. Like `fit`, it also keeps only the history required for the
+updates (`keep_last_n`, explicit or inferred from the transforms).
+
+```python
+fcst2 = MLForecast(
+    models=[],
+    freq='D',
+    lags=[1],
+    date_features=['dayofweek'],
+)
+fcst2.models_ = fcst.models_  # previously trained models
+fcst2.history_warmup(series)
+```
+
+``` text
+MLForecast(models=[], freq=D, lag_features=['lag1'], date_features=['dayofweek'], num_threads=1)
+```
+
+After warming up, `MLForecast.update` and `MLForecast.predict` can be
+used directly – without ever calling `fit` or `preprocess` – and produce
+the same forecasts as before.
+
+```python
+fcst2.predict(1)
+```
+
+|     | unique_id | ds         | lr       | lgbm     |
+|-----|-----------|------------|----------|----------|
+| 0   | id_0      | 2000-08-10 | 3.549124 | 5.166797 |
+| 1   | id_1      | 2000-04-07 | 3.154285 | 4.252490 |
+| 2   | id_2      | 2000-06-16 | 2.880933 | 3.224506 |
+| 3   | id_3      | 2000-08-30 | 4.061801 | 0.245443 |
+| 4   | id_4      | 2001-01-08 | 2.904872 | 2.225106 |
+

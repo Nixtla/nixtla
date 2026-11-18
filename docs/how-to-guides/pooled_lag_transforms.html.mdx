@@ -1,0 +1,661 @@
+---
+title: Pooled lag transforms
+---
+
+> Compute lag features across all series, or within groups of series,
+> using SQL-style RANGE semantics.
+
+Most lag transforms in `mlforecast` are computed **independently per
+series**: a rolling mean for series `A` only ever sees `A`’s own
+history. That works well when every series carries enough signal on its
+own, but it breaks down in two common situations:
+
+-   **Short-history series.** A newly launched product, store, or SKU
+    has too little history for per-series rolling statistics to
+    stabilise.
+-   **Cross-series signals.** Total demand across a brand, region, or
+    category at a given timestamp is often a stronger feature than any
+    one series’ lag.
+
+**Pooled lag transforms** address both. Pass `global_=True` (across all
+series) or `partition_by=["col", ...]` (one bucket per combination of
+the listed columns’ values) to any rolling, expanding, seasonal, or
+exponentially weighted transform to compute the statistic over a
+**bucket of observations** aggregated by timestamp. Every series in a
+bucket receives the bucket’s value as a feature.
+
+## Data setup
+
+```python
+import warnings
+
+import numpy as np
+import pandas as pd
+
+from mlforecast import MLForecast
+from mlforecast.lag_transforms import (
+    ExpandingMean,
+    ExponentiallyWeightedMean,
+    RollingMean,
+)
+from mlforecast.utils import generate_daily_series
+```
+
+We’ll start from a small synthetic panel and attach a static `brand`
+column so we have something to pool by.
+
+```python
+series = generate_daily_series(
+    n_series=6,
+    min_length=60,
+    max_length=60,
+    equal_ends=True,
+    static_as_categorical=False,
+    seed=0,
+)
+brand_map = {f"id_{i}": "A" if i < 3 else "B" for i in range(6)}
+series["brand"] = series["unique_id"].map(brand_map)
+series.head()
+```
+
+Every column besides the id, time and target is a feature. Columns
+listed in `static_features` are constant per series and taken from the
+training data; every other column is **dynamic** and must be provided in
+`X_df` at prediction. The default `static_features=None` means no static
+features, so static columns like `brand` have to be listed explicitly.
+
+The same list decides the kind of each `partition_by` column: a column
+listed in `static_features` is static, any other one is dynamic and is
+re-bucketed at every prediction step from `X_df` (it’s also required in
+`update`).
+
+## Global features with `global_=True`
+
+Set `global_=True` on any built-in lag transform to compute the
+statistic **across all series**, aggregated by timestamp. Every series
+receives the same value at a given timestamp.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=7, global_=True)],
+    },
+)
+prep = fcst.preprocess(series, static_features=["brand"])
+prep[prep["ds"] == prep["ds"].min()].head(6)
+```
+
+Notice that `global_rolling_mean_lag1_window_size7` is identical for
+every `unique_id` at a given `ds`: it’s the rolling mean of the
+**pooled** observations across all series, lagged by one day. The
+feature name is automatically prefixed with `global_` to make the
+pooling explicit.
+
+## Group features with `partition_by=[...]`
+
+Use `partition_by` to compute the statistic **within each level of one
+or more columns**. Series in the same group share the feature value at
+each timestamp; series in different groups get different values.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=7, partition_by=["brand"])],
+    },
+)
+prep = fcst.preprocess(series, static_features=["brand"])
+prep[prep["ds"] == prep["ds"].min()].sort_values(["brand", "unique_id"]).head(6)
+```
+
+Series within brand `A` share one rolling-mean value; series within
+brand `B` share another. The column name is prefixed with
+`partby_brand_` to record which columns drove the pooling.
+
+## RANGE semantics: staggered series and gaps
+
+Pooled transforms use **`RANGE BETWEEN ... PRECEDING`** semantics, the
+same model SQL window functions use. The window is defined by
+**timestamp distance**, not row position, and only **actual
+observations** are aggregated — no synthetic zeros are injected for
+series that haven’t started yet.
+
+Concretely, with `RollingMean(window_size=2, global_=True)` over the
+data below:
+
+| `unique_id` | `ds` | `y`  |
+|-------------|------|------|
+| a           | 1    | 1.0  |
+| a           | 2    | 2.0  |
+| a           | 3    | 3.0  |
+| b           | 2    | 20.0 |
+| b           | 3    | 30.0 |
+
+Series `b` starts at `ds=2`; it does **not** contribute a phantom zero
+at `ds=1`. At each timestamp the window looks back over the last two
+days of *real* values across all series, applied at lag 1.
+
+```python
+staggered = pd.DataFrame(
+    {
+        "unique_id": ["a", "a", "a", "b", "b"],
+        "ds": pd.to_datetime(
+            ["2024-01-01", "2024-01-02", "2024-01-03", "2024-01-02", "2024-01-03"]
+        ),
+        "y": [1.0, 2.0, 3.0, 20.0, 30.0],
+    }
+)
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={1: [RollingMean(window_size=2, global_=True, min_samples=1)]},
+)
+fcst.preprocess(staggered, dropna=False)
+```
+
+Because pooled transforms assume a **continuous, gap-free time grid**
+within each series, you should validate your data (the default) before
+relying on these features. We come back to this in the `validate_data`
+section below.
+
+## `min_samples` in pooled mode
+
+There’s an important semantic divergence between per-series and pooled
+transforms:
+
+-   **Per series**: `min_samples` is capped at `window_size` by
+    `coreforecast`. It controls how many *non-NaN values in the window*
+    the series needs.
+-   **Pooled** (`global_=True` or `partition_by=...`): `min_samples`
+    counts the **total non-NaN observations across all series in the
+    bucket**, with no capping at `window_size`.
+
+This makes it useful as a *coverage threshold*. For example,
+`RollingMean(window_size=1, min_samples=2, partition_by=['brand'])` only
+produces a value when at least two series in the brand contributed an
+observation in the window — useful to suppress noise from sparsely
+populated groups.
+
+When `min_samples=None` it defaults to `window_size`, except when the id
+column is in `partition_by`, where it defaults to **1**: the bucket then
+holds the observations of a single series, and the window spans
+`window_size` calendar steps while only the bucket’s observations count
+toward `min_samples`, so requiring a full window is rarely attainable —
+`RollingMean(7, partition_by=['unique_id', 'promo'])` on a panel with
+interleaved promo days would otherwise be almost entirely NaN. This
+matches SQL `RANGE` window semantics, where the result is NULL only for
+empty windows.
+
+This also applies to keys like `["unique_id", "store"]` where `store` is
+constant but not listed in `static_features`: the key is treated as
+dynamic, gets `min_samples=1` and is re-bucketed every prediction step,
+which gives the same values.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=1, min_samples=2, partition_by=["brand"])],
+    },
+)
+prep = fcst.preprocess(series, static_features=["brand"], dropna=False)
+prep[
+    [
+        "unique_id",
+        "ds",
+        "brand",
+        "partby_brand_rolling_mean_lag1_window_size1_min_samples2",
+    ]
+].head(6)
+```
+
+## Aggregating rows per timestamp with `time_agg`
+
+By default a pooled transform treats every observation as an individual
+sample: `RollingMean(window_size=7, partition_by=['brand'])` pools *all
+rows* of the brand that fall in the window and averages them, weighting
+a timestamp by how many series reported on it. Sometimes you instead
+want to first collapse all rows sharing a timestamp into a single value
+— for example the brand’s **daily total** — and then apply the transform
+over that per-timestamp series.
+
+`time_agg` does exactly that. Set it to one of `'sum'`, `'count'`,
+`'mean'`, `'min'`, or `'max'` and each `(bucket, timestamp)` is reduced
+to one value before the rolling/expanding/seasonal/EWM statistic runs:
+
+-   `time_agg='sum'` — rolling mean of the brand’s daily *sums* (total
+    demand)
+-   `time_agg='count'` — e.g. expanding max of the number of active
+    series per day
+-   `time_agg='max'` — rolling max of the daily *peak* across the brand
+
+`time_agg` requires `global_=True` or a `partition_by` without the id
+column. It is rejected when the id is in the key, where each
+`(bucket, timestamp)` already has a single row and the aggregation would
+be a no-op. With `time_agg=None`, each observation remains an individual
+pooled sample. `ExponentiallyWeightedMean` is the exception: its
+`time_agg` defaults to `'mean'`, and `None` is not accepted.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=3, partition_by=["brand"], time_agg="sum")],
+    },
+)
+prep = fcst.preprocess(series, static_features=["brand"], dropna=False)
+prep[
+    [
+        "unique_id",
+        "ds",
+        "brand",
+        "partby_brand_rolling_mean_lag1_window_size3_time_aggsum",
+    ]
+].head(6)
+```
+
+Two semantics worth calling out:
+
+-   With `time_agg`, `min_samples` counts **observed timestamps** in the
+    window (each timestamp contributes at most one aggregated value),
+    not rows.
+    `RollingMean(window_size=3, min_samples=3, partition_by=['brand'], time_agg='sum')`
+    needs three distinct timestamps of history, regardless of how many
+    series reported on each.
+-   `RollingMean(..., time_agg='mean')` differs from `RollingMean(...)`
+    without `time_agg`: the former is an unweighted mean of the
+    per-timestamp means, the latter a row-weighted pooled mean (they
+    coincide only when every timestamp has the same number of
+    observations). On `ExponentiallyWeightedMean`, `time_agg='mean'` is
+    the default because pooled EWM consumes each timestamp’s
+    bucket-aggregate mean exactly once.
+
+## Disabling validation: the `validate_data=False` warning
+
+Pooled transforms are correctness-sensitive to timestamp gaps because
+they rely on the *actual* timestamps when computing RANGE windows. If
+you bypass validation (`validate_data=False`) and your data has gaps,
+the features will be silently wrong.
+
+To make this hazard explicit, `mlforecast` emits a `UserWarning` when
+you combine `validate_data=False` with any pooled transform:
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={1: [RollingMean(window_size=7, global_=True)]},
+)
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    fcst.preprocess(series, static_features=["brand"], validate_data=False)
+[str(w.message) for w in caught if issubclass(w.category, UserWarning)]
+```
+
+If you genuinely need to skip validation (e.g. on a very large
+pre-cleaned dataset), make sure your time grid is continuous and
+gap-free before doing so.
+
+## Pooling over time-varying columns
+
+`partition_by` columns don’t need to be static. They can vary across
+timestamps for the same `unique_id` — typically a feature whose value
+changes over time (e.g. `promo`, `regime`, `store_format` flips). At
+each timestamp, every row goes to the bucket of its current values, and
+the statistic is computed per bucket. Write the id column out explicitly
+when the buckets should stay within each series:
+
+| `partition_by`           | Buckets                                                |
+|------------------------------------|------------------------------------|
+| `["unique_id", "promo"]` | each series split by `promo`                           |
+| `["promo"]`              | all series sharing the same `promo` value              |
+| `["brand", "promo"]`     | the series of each brand, separately per `promo` value |
+
+The order of the columns doesn’t matter: `["promo", "brand"]` is the
+same key as `["brand", "promo"]`, and transforms with the same key share
+one pooled state. The feature name keeps the order you wrote.
+
+Let’s add a time-varying `promo` column to our panel and walk through
+these keys.
+
+```python
+rng = np.random.default_rng(0)
+series["promo"] = rng.choice([0, 1], size=len(series), p=[0.7, 0.3])
+series.head()
+```
+
+### Per-series partitions: `["unique_id", "promo"]`
+
+With the id in the key, each `(unique_id, promo)` combination becomes
+its own bucket. The rolling window is computed within that bucket only —
+so a series sees a different rolling history depending on which `promo`
+regime it is currently in.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={1: [RollingMean(window_size=7, partition_by=["unique_id", "promo"])]},
+)
+fcst.preprocess(series, static_features=["brand"]).head(8)
+```
+
+The feature name is prefixed `partby_unique_id__promo_` to indicate the
+key. Each row’s feature is the 7-day rolling mean of `y` lagged by 1,
+restricted to rows of the same series with the same `promo` value.
+
+### Cross-series partitions: `["promo"]`
+
+Leave the id out to aggregate across all series, separately for each
+`promo` value:
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={1: [RollingMean(window_size=7, partition_by=["promo"])]},
+)
+fcst.preprocess(series, static_features=["brand"]).head(8)
+```
+
+Every series with `promo=0` at a given timestamp sees the same
+`partby_promo_...` value; every series with `promo=1` sees a different
+(also shared) value.
+
+### Static and dynamic columns: `["brand", "promo"]`
+
+Combine a static column with a dynamic one to aggregate per group
+(e.g. per `brand`), separately for each partition value:
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=7, partition_by=["brand", "promo"])]
+    },
+)
+fcst.preprocess(series, static_features=["brand"]).head(8)
+```
+
+The bucket key here is `(brand, promo)`, and the feature is prefixed
+`partby_brand__promo_`. There are at most `n_brands × n_promo_values`
+buckets.
+
+## Dynamic partition values at prediction time
+
+Dynamic columns must have their future values supplied when forecasting.
+Pass an `X_df` containing `unique_id`, `ds`, and every dynamic column
+for every series and horizon step:
+
+```python
+from sklearn.linear_model import LinearRegression
+
+fcst = MLForecast(
+    models=[LinearRegression()],
+    freq="D",
+    lag_transforms={
+        1: [RollingMean(window_size=7, partition_by=["promo"])]
+    },
+)
+# `brand` plays no role in this example, so we drop it
+# rather than feed a raw string column to LinearRegression
+fcst.fit(series.drop(columns="brand"))
+
+last_date = series["ds"].max()
+unique_ids = sorted(series["unique_id"].unique())
+future_promo = pd.DataFrame(
+    [
+        {
+            "unique_id": uid,
+            "ds": last_date + pd.Timedelta(days=h),
+            "promo": int(rng.integers(0, 2)),
+        }
+        for uid in unique_ids
+        for h in range(1, 4)
+    ]
+)
+fcst.predict(h=3, X_df=future_promo).head()
+```
+
+A few notes on dynamic prediction:
+
+-   If `X_df` introduces a partition value never seen during fit or
+    `update`, that bucket has no history, so its feature is `NaN` at
+    those steps.
+-   `X_df` must have a row for every series and horizon step; a partial
+    `X_df` raises.
+-   Subset prediction (`predict(ids=[...])`) works when every pooled key
+    includes the id column (e.g. `["unique_id", "promo"]`). It’s
+    rejected when some key pools across series (`global_=True`,
+    `["promo"]`, …), since the missing series would still contribute to
+    the bucket aggregates. The same applies to `forecast_fitted_values`
+    with `h > 1`.
+
+## Understanding ordinals and the shared calendar
+
+A `partition_by` bucket only contains the rows where the partition value
+is active. When the partition is sparse — e.g. `promo=1` is only on at
+timestamps `[1, 3, 5]` while the shared calendar is `[1, 2, 3, 4, 5]` —
+the bucket’s *ordinals* come from the shared calendar:
+
+-   Bucket has observations at calendar positions `[0, 2, 4]`, not
+    `[0, 1, 2]`.
+-   `RollingMean(window_size=2)` at calendar position 4 looks back to
+    positions `[3, 4]`. The bucket has no observation at position 3, so
+    only position 4 contributes to the window.
+
+This preserves SQL `RANGE BETWEEN ...` semantics across gaps: the window
+is defined in *time*, not in *number of rows*. Without calendar
+ordinals, a partition with gaps would silently collapse to row-based
+semantics, mixing observations across non-adjacent timestamps.
+
+## Aligned-end requirement
+
+All pooled transforms — `global_=True` and every `partition_by` key,
+including those with the id — require every series to **end at the same
+timestamp**. This is checked at `fit` and `predict` time and raises if
+violated:
+
+``` text
+ValueError: Pooled lag transforms require all series to end at the same timestamp (recursive prediction advances all series in lockstep).
+```
+
+Keys with the id share this requirement because all buckets advance in
+lockstep during recursive prediction. If your series have ragged ends,
+pre-align them (pad to a common last timestamp, or drop series that end
+early) before fitting.
+
+## Exponentially Weighted Mean with partitions
+
+`ExponentiallyWeightedMean` with `partition_by` has subtly different
+semantics from a regular EWM:
+
+-   The decay is applied across the bucket’s **observed timestamp
+    aggregates** (one contribution per timestamp, regardless of how many
+    rows the aggregate covered).
+-   Timestamps where the partition bucket has **no observation** are
+    skipped — they do not contribute to the running EWM and do not
+    advance the decay step.
+
+This means EWM treats each observed timestamp uniformly and ignores
+gaps. When the key has a dynamic column (any column not listed in
+`static_features`), mlforecast emits a `UserWarning` at `fit` /
+`preprocess` to make this explicit.
+
+```python
+fcst = MLForecast(
+    models=[],
+    freq="D",
+    lag_transforms={
+        1: [ExponentiallyWeightedMean(alpha=0.3, partition_by=["unique_id", "promo"])]
+    },
+)
+with warnings.catch_warnings(record=True) as caught:
+    warnings.simplefilter("always")
+    fcst.preprocess(series, static_features=["brand"])
+[str(w.message) for w in caught if issubclass(w.category, UserWarning)]
+```
+
+## `keep_last_n` and pooled history
+
+`keep_last_n` controls how much history is carried into the recursive
+prediction loop. It applies to pooled transforms too, **per state** (one
+state per bucket key):
+
+Each transform declares the trailing history its update step still needs
+after the initial pass, and a state is trimmed to
+`max(keep_last_n, R_state)` calendar ordinals, where `R_state` is the
+largest such requirement among its transforms:
+
+-   `Rolling*` and `RollingQuantile` need `lag - 1 + window_size`;
+    `SeasonalRolling*` need the span of their `window_size` seasonal
+    cells. The dropped prefix can never enter a window.
+-   `Expanding*` and `ExponentiallyWeightedMean` need only `lag`,
+    because they carry a running accumulator that already folds in
+    everything older. Their state is trimmed too, and predictions are
+    unchanged.
+-   `ExpandingQuantile` and `LookupLag` keep their **full** history: a
+    quantile can’t be recovered from an accumulator and a matching
+    occurrence can be arbitrarily far back, so both re-read the raw
+    observations from the beginning.
+
+Those two keep only their raw observations. The per-timestamp channels
+of any other transform sharing the state’s bucket key are still trimmed,
+since the row-reading transforms never touch them.
+
+This applies whether `keep_last_n` is set explicitly or inferred — when
+you leave it unset it is inferred as the largest window across all
+transforms — mirroring how the per-series arrays used by local
+transforms are trimmed.
+
+### Divergence from local transforms
+
+Pooled trimming is **floored at the state’s widest window** (`W_state`).
+A local rolling transform survives an explicit `keep_last_n` *smaller*
+than its window because coreforecast keeps a separate per-transform
+window buffer. Pooled mode has no such buffer — the per-timestamp
+aggregates *are* the buffer — so a `keep_last_n` below a pooled window
+is raised to that window for the affected state, keeping predictions
+correct. When `keep_last_n` is left to be inferred it already equals the
+largest window, so the floor never changes anything.
+
+## Occurrence lookups with `LookupLag`
+
+`LookupLag` returns the target from the **previous matching occurrence**
+within each `partition_by` bucket, regardless of the calendar gap
+between occurrences. This is useful for moving events — e.g. “last
+year’s Easter value” — where the relevant previous target is not a fixed
+calendar lag.
+
+`partition_by` is required, defines the buckets and must include the id
+column. The other key columns may change over time; dynamic ones must be
+supplied via `X_df` at prediction. Since the lookup is computed inside
+`mlforecast`, it stays aligned with any target transforms
+(e.g. `LocalStandardScaler`).
+
+```python
+from mlforecast.lag_transforms import LookupLag
+
+fcst = MLForecast(
+    models=[],
+    freq='D',
+    lag_transforms={1: [LookupLag(partition_by=['unique_id', 'promo'])]},
+)
+prep = fcst.preprocess(series, static_features=['brand'])
+prep.head()
+```
+
+## Constraints to keep in mind
+
+-   `global_=True` is the empty key and can’t be combined with
+    `partition_by`. Use two separate transforms if you want both feature
+    families.
+-   The kind of each key column comes from `static_features`: listed
+    columns are static, any other column is dynamic, supplied via `X_df`
+    at prediction and required in `update`.
+-   Some keys are rejected at `fit` / `preprocess`:
+    `partition_by=["unique_id"]` alone and the id together with only
+    static columns (both are the per-series transform, so drop the
+    argument and pass `min_samples=1` to keep the id-key default), and a
+    `LookupLag` key without the id.
+-   `Combine` children must have the same key (in any order) or both be
+    per series.
+-   `min_samples=0` in pooled mode produces NaN for timestamps with no
+    observations in the window and triggers a warning at construction
+    time — prefer `min_samples=1` if you want “as soon as there is any
+    observation”.
+-   All pooled transforms require **series to end at the same
+    timestamp**.
+-   Subset prediction (`predict(ids=[...])`) is rejected when some
+    pooled key doesn’t include the id: omitted series would still
+    contribute to the bucket aggregates.
+-   All supported rolling, expanding, seasonal-rolling, and
+    exponentially weighted transforms accept `global_` and
+    `partition_by`. `Offset` and `Combine` delegate to their wrapped
+    transforms.
+-   **Performance**: the quantile transforms (`RollingQuantile`,
+    `ExpandingQuantile`, `SeasonalRollingQuantile`) and `LookupLag`
+    gather the raw observations of each window — a quantile can’t be
+    recovered from sums and counts — so their cost grows with
+    `rows × window` rather than with the per-timestamp cells the
+    mean/std/min/max/EWM transforms read. All of them locate every
+    window across every bucket at once, at fit and at each prediction
+    step.
+-   **Memory**: pooled states are trimmed under `keep_last_n` just like
+    the per-series arrays (see the [`keep_last_n` and pooled
+    history](#keep_last_n-and-pooled-history) section above). Only
+    `ExpandingQuantile` and `LookupLag` keep the full training history,
+    as raw observations; the channels of other transforms sharing their
+    bucket key are still trimmed. Each `predict` call also backs up the
+    pooled state per model to isolate recursive mutations. Expect higher
+    peak memory with those two on large panels.
+-   `time_agg` (`'sum'`/`'count'`/`'mean'`/`'min'`/`'max'`)
+    pre-aggregates rows sharing a timestamp within each bucket before
+    the transform runs; it requires `global_` or a key without the id
+    and counts observed timestamps for `min_samples`. All pooled-capable
+    transforms support it, including the quantile and seasonal ones (via
+    the row-level path).
+
+## End-to-end example
+
+Pooled transforms behave like any other lag transform in the full
+`MLForecast` lifecycle: `fit`, `predict`, and `cross_validation` all
+carry the pooled features through automatically.
+
+```python
+from sklearn.linear_model import LinearRegression
+
+fcst = MLForecast(
+    models=[LinearRegression()],
+    freq="D",
+    lags=[1, 7],
+    lag_transforms={
+        1: [
+            RollingMean(window_size=7, global_=True),
+            RollingMean(window_size=7, partition_by=["brand"]),
+            ExpandingMean(partition_by=["brand"]),
+            ExponentiallyWeightedMean(alpha=0.3, global_=True),
+        ],
+    },
+)
+# `promo` was only needed for the examples above; this model doesn't use it,
+# so drop it to keep predict X_df-free
+fcst.fit(series.drop(columns="promo"), static_features=["brand"])
+fcst.predict(h=7).head(6)
+```
+
+## Where to next
+
+-   The general [Lag transformations](./lag_transforms_guide.html) guide
+    covers the built-in transforms, `Combine`, `Offset`, and custom
+    numba-based transforms.
+-   The [`mlforecast.lag_transforms`](../../lag_transforms.html) API
+    reference documents every parameter, including `global_`,
+    `partition_by`, and `min_samples`, for each transform class.
+

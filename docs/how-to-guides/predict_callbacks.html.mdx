@@ -1,0 +1,152 @@
+---
+title: Predict callbacks
+---
+
+> Get access to the input features and predictions in each forecasting
+> horizon
+
+If you want to do something to the input before predicting or something
+to the output before it gets used to update the target (and thus the
+next features that rely on lags), you can pass a function to run at any
+of these times.
+
+Here are a couple of examples:
+
+```python
+import copy
+
+import lightgbm as lgb
+import numpy as np
+from IPython.display import display
+
+from mlforecast import MLForecast
+from mlforecast.utils import generate_daily_series
+```
+
+
+```python
+series = generate_daily_series(1)
+```
+
+## Before predicting
+
+### Inspecting the input
+
+We can define a function that displays our input dataframe before
+predicting.
+
+```python
+def inspect_input(new_x):
+    """Displays the model inputs to inspect them"""
+    display(new_x)
+    return new_x
+```
+
+And now we can pass this function to the `before_predict_callback`
+argument of `MLForecast.predict`.
+
+```python
+fcst = MLForecast(lgb.LGBMRegressor(verbosity=-1), freq='D', lags=[1, 2])
+fcst.fit(series, static_features=['unique_id'])
+preds = fcst.predict(2, before_predict_callback=inspect_input)
+preds
+```
+
+|     | unique_id | lag1    | lag2     |
+|-----|-----------|---------|----------|
+| 0   | id_0      | 4.15593 | 3.000028 |
+
+|     | unique_id | lag1     | lag2    |
+|-----|-----------|----------|---------|
+| 0   | id_0      | 5.250205 | 4.15593 |
+
+|     | unique_id | ds         | LGBMRegressor |
+|-----|-----------|------------|---------------|
+| 0   | id_0      | 2000-08-10 | 5.250205      |
+| 1   | id_0      | 2000-08-11 | 6.241739      |
+
+### Saving the input features
+
+Saving the features that are sent as input to the model in each
+timestamp can be helpful, for example to estimate SHAP values. This can
+be easily achieved with the `SaveFeatures` callback.
+
+```python
+from mlforecast.callbacks import SaveFeatures
+```
+
+
+```python
+fcst = MLForecast(lgb.LGBMRegressor(verbosity=-1), freq='D', lags=[1])
+fcst.fit(series, static_features=['unique_id'])
+save_features_cbk = SaveFeatures()
+fcst.predict(2, before_predict_callback=save_features_cbk);
+```
+
+Once we’ve called predict we can just retrieve the features.
+
+```python
+save_features_cbk.get_features()
+```
+
+|     | unique_id | lag1     |
+|-----|-----------|----------|
+| 0   | id_0      | 4.155930 |
+| 1   | id_0      | 5.281643 |
+
+## After predicting
+
+When predicting with the recursive strategy (the default) the
+predictions for each timestamp are used to update the target and
+recompute the features. If you want to do something to these predictions
+before that happens you can use the `after_predict_callback` argument of
+`MLForecast.predict`.
+
+### Increasing predictions values
+
+Suppose we know that our model always underestimates and we want to
+prevent that from happening by making our predictions 10% higher. We can
+achieve that with the following:
+
+```python
+def increase_predictions(predictions):
+    """Increases all predictions by 10%"""
+    return 1.1 * predictions
+```
+
+
+```python
+fcst = MLForecast(
+    {'model': lgb.LGBMRegressor(verbosity=-1)},
+    freq='D',
+    date_features=['dayofweek'],
+)
+fcst.fit(series)
+original_preds = fcst.predict(2)
+scaled_preds = fcst.predict(2, after_predict_callback=increase_predictions)
+np.testing.assert_array_less(
+    original_preds['model'].values,
+    scaled_preds['model'].values,
+)
+```
+
+
+```python
+fcst.ts._uids = fcst.ts.uids
+fcst.ts._idxs = None
+fcst.ts._static_features = fcst.ts.static_features_
+fcst.ts._ga = copy.copy(fcst.ts.ga)
+fcst.ts._predict_setup()
+
+for attr in ('head', 'tail'):
+    new_x = fcst.ts._get_features_for_next_step(None)
+    original_preds = fcst.models_['model'].predict(new_x)
+
+    expected = 1.1 * original_preds
+    actual = getattr(scaled_preds.groupby('unique_id')['model'], attr)(1).values
+    np.testing.assert_equal(expected, actual)
+
+    fcst.ts._update_y(actual)
+```
+
+

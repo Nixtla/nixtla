@@ -1,0 +1,372 @@
+---
+description: Full pipeline encapsulation
+output-file: forecast.html
+title: MLForecast
+---
+
+##
+
+### `MLForecast`
+
+```python
+MLForecast(models, freq, lags=None, lag_transforms=None, date_features=None, num_threads=1, target_transforms=None, lag_transforms_namer=None, date_features_as_dummies=False, drop_auxiliary_columns=True, hooks=None)
+```
+
+Forecasting pipeline
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`models` | <code>regressor or list of regressors</code> | Models that will be trained and used to compute the forecasts. | *required*
+`freq` | <code>[str](#str) or [int](#int) or [BaseOffset](#pandas.offsets.BaseOffset)</code> | Pandas offset, pandas offset alias, e.g. 'D', 'W-THU' or integer denoting the frequency of the series. | *required*
+`lags` | <code>list of int</code> | Lags of the target to use as features. Defaults to None. | <code>None</code>
+`lag_transforms` | <code>dict of int to list of functions</code> | Mapping of target lags to their transformations. Defaults to None. | <code>None</code>
+`date_features` | <code>list of str, callable or CalendarFeature</code> | Features computed from the dates. Can be calendar features from `mlforecast.date_features` (listed by `mlforecast.date_features.available()`), date attributes of the dataframe backend or functions that will take the dates as input. Defaults to None. | <code>None</code>
+`num_threads` | <code>[int](#int)</code> | Number of threads to use when computing the features. Use -1 to use all available CPU cores. Defaults to 1. | <code>1</code>
+`target_transforms` | <code>list of transformers</code> | Transformations that will be applied to the target before computing the features and restored after the forecasting step. Defaults to None. | <code>None</code>
+`lag_transforms_namer` | <code>[callable](#callable)</code> | Function that takes a transformation (either function or class), a lag and extra arguments and produces a name. Defaults to None. | <code>None</code>
+`date_features_as_dummies` | <code>[bool](#bool)</code> | If True, date features with a known finite range (e.g. `mlforecast.date_features.month`, 'dayofweek') are expanded into binary indicator columns named '{feature}_{value}' instead of being kept as ordinal integers. Defaults to False. | <code>False</code>
+`drop_auxiliary_columns` | <code>bool or list of str</code> | Controls which columns used solely for grouping are excluded from the model feature matrix. True (default) drops every column, other than the id, referenced in the `partition_by` of a pooled lag transform. False keeps all columns. A list of strings drops only the named columns explicitly. | <code>True</code>
+`hooks` | <code>sequence of Hook</code> | Objects notified when each stage (preprocess, fit, fit_model, predict, cross_validation, ...) starts, ends or fails, e.g. `mlforecast.hooks.Profiler`. They're dropped when the forecaster is pickled or deep-copied. Defaults to None. | <code>None</code>
+
+#### `MLForecast.fit`
+
+```python
+fit(df, id_col='unique_id', time_col='ds', target_col='y', static_features=None, dropna=True, keep_last_n=None, max_horizon=None, horizons=None, horizon_features=None, horizon_feature_templates=None, prediction_intervals=None, fitted=False, as_numpy=False, weight_col=None, models_fit_kwargs=None, validate_data=True, cache_train_df=True)
+```
+
+Apply the feature engineering and train the models.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Series data in long format. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`max_horizon` | <code>[int](#int)</code> | Train this many models, where each model will predict a specific horizon. Defaults to None. | <code>None</code>
+`horizons` | <code>list of int</code> | Train models only for specific horizons (1-indexed). For example, `horizons=[7, 14]` trains models only for steps 7 and 14. Mutually exclusive with max_horizon. Defaults to None. | <code>None</code>
+`horizon_features` | <code>dict of int to list of str</code> | Explicit mapping of 1-indexed horizons to dynamic exogenous columns. Only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`horizon_feature_templates` | <code>list of str</code> | Template patterns for horizon-specific dynamic exogenous features. Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}']. Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`prediction_intervals` | <code>[PredictionIntervals](#mlforecast.conformal_prediction.PredictionIntervals)</code> | Configuration to calibrate prediction intervals (Conformal Prediction). Defaults to None. | <code>None</code>
+`fitted` | <code>[bool](#bool)</code> | Save in-sample predictions. Defaults to False. | <code>False</code>
+`as_numpy` | <code>[bool](#bool)</code> | Cast features to numpy array. Defaults to False. | <code>False</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+`models_fit_kwargs` | <code>[dict](#dict)</code> | Keyword arguments for each model's fit method. Defaults to None. | <code>None</code>
+`validate_data` | <code>[bool](#bool)</code> | Run data quality validations before fitting. Warns about missing dates and raises on duplicate rows. Defaults to True. | <code>True</code>
+`cache_train_df` | <code>[bool](#bool)</code> | Cache a copy of the training data when `fitted=True` so `forecast_fitted_values(h>1)` can be called later for recursive models without passing `train_df`. Disable this to avoid the memory overhead and pass `train_df` directly to `forecast_fitted_values` when needed. Defaults to True. | <code>True</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`MLForecast` | <code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Forecast object with series values and trained models.
+
+#### `MLForecast.save`
+
+```python
+save(path)
+```
+
+Save forecast object
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`path` | <code>[str](#str) or [Path](#pathlib.Path)</code> | Directory where artifacts will be stored. | *required*
+
+#### `MLForecast.load`
+
+```python
+load(path)
+```
+
+Load forecast object
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`path` | <code>[str](#str) or [Path](#pathlib.Path)</code> | Directory with saved artifacts. | *required*
+
+#### `MLForecast.update`
+
+```python
+update(df, validate_new_data=False)
+```
+
+Update the values of the stored series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Dataframe with new observations. | *required*
+`validate_new_data` | <code>[bool](#bool)</code> | If True, validate continuity, start dates, and frequency. | <code>False</code>
+
+#### `MLForecast.make_future_dataframe`
+
+```python
+make_future_dataframe(h)
+```
+
+Create a dataframe with all ids and future times in the forecasting horizon.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`h` | <code>[int](#int)</code> | Number of periods to predict. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DataFrame](#utilsforecast.compat.DataFrame)</code> | pandas or polars DataFrame: DataFrame with expected ids and future times
+
+#### `MLForecast.get_missing_future`
+
+```python
+get_missing_future(h, X_df)
+```
+
+Get the missing id and time combinations in `X_df`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`h` | <code>[int](#int)</code> | Number of periods to predict. | *required*
+`X_df` | <code>pandas or polars DataFrame</code> | Dataframe with the future exogenous features. Should have the id column and the time column. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DFType](#utilsforecast.compat.DFType)</code> | pandas or polars DataFrame: DataFrame with expected ids and future times missing in `X_df`
+
+#### `MLForecast.transfer`
+
+```python
+transfer(df, method=None)
+```
+
+Forecaster that uses the trained models to continue the series in `df`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Series data to continue from. Should have the same structure as the one used to fit the model, including any features. | *required*
+`method` | <code>([Recalibration](#mlforecast.conformal_prediction.Recalibration), [ErrorScaling](#mlforecast.conformal_prediction.ErrorScaling) or [ScaleAlignment](#ScaleAlignment))</code> | How to compute the prediction intervals of the series in `df`, from `df` when `transfer` is called. The backtest windows of series seen during training (matched by id) must start after the end of their training data. Defaults to None (no prediction intervals). | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`MLForecast` | <code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Forecast object for the series in `df` that shares the trained models. This instance is not modified.
+
+#### `MLForecast.predict`
+
+```python
+predict(h, before_predict_callback=None, after_predict_callback=None, level=None, X_df=None, ids=None)
+```
+
+Compute the predictions for the next `h` steps.
+
+To forecast other series with the trained models use `transfer`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`h` | <code>[int](#int)</code> | Number of periods to predict. | *required*
+`before_predict_callback` | <code>[callable](#callable)</code> | Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`after_predict_callback` | <code>[callable](#callable)</code> | Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`level` | <code>list of ints or floats</code> | Confidence levels between 0 and 100 for prediction intervals. Defaults to None. | <code>None</code>
+`X_df` | <code>pandas or polars DataFrame</code> | Dataframe with the future exogenous features. Should have the id column and the time column. Defaults to None. | <code>None</code>
+`ids` | <code>list of str</code> | List with subset of ids seen during training for which the forecasts should be computed. Defaults to None. | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DFType](#utilsforecast.compat.DFType)</code> | pandas or polars DataFrame: Predictions for each serie and timestep, with one column per model.
+
+#### `MLForecast.preprocess`
+
+```python
+preprocess(df, id_col='unique_id', time_col='ds', target_col='y', static_features=None, dropna=True, keep_last_n=None, max_horizon=None, horizons=None, horizon_features=None, horizon_feature_templates=None, return_X_y=False, as_numpy=False, weight_col=None, validate_data=True)
+```
+
+Add the features to `data`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas DataFrame</code> | Series data in long format. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`max_horizon` | <code>[int](#int)</code> | Train this many models, where each model will predict a specific horizon. Defaults to None. | <code>None</code>
+`horizons` | <code>list of int</code> | Train models only for specific horizons (1-indexed). Mutually exclusive with max_horizon. Defaults to None. | <code>None</code>
+`horizon_features` | <code>dict of int to list of str</code> | Explicit mapping of 1-indexed horizons to dynamic exogenous columns. Only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`horizon_feature_templates` | <code>list of str</code> | Template patterns for horizon-specific dynamic exogenous features. Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}']. Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`return_X_y` | <code>[bool](#bool)</code> | Return a tuple with the features and the target. If False will return a single dataframe. Defaults to False. | <code>False</code>
+`as_numpy` | <code>[bool](#bool)</code> | Cast features to numpy array. Only works for `return_X_y=True`. Defaults to False. | <code>False</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+`validate_data` | <code>[bool](#bool)</code> | Run data quality validations before preprocessing. Warns about missing dates and raises on duplicate rows. Defaults to True. | <code>True</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[Union](#typing.Union)[[DFType](#utilsforecast.compat.DFType), [Tuple](#typing.Tuple)[[DFType](#utilsforecast.compat.DFType), [ndarray](#numpy.ndarray)]]</code> | DataFrame or tuple of pandas Dataframe and a numpy array: `df` plus added features and target(s).
+
+#### `MLForecast.history_warmup`
+
+```python
+history_warmup(df, id_col='unique_id', time_col='ds', target_col='y', static_features=None, keep_last_n=None, weight_col=None, max_horizon=None, horizons=None, horizon_features=None, horizon_feature_templates=None, as_numpy=None, validate_data=True)
+```
+
+Build the internal state from `df` without computing the features.
+
+Runs the same state-building steps as `preprocess` (series storage,
+target transforms, lag-transform buffers, pooled aggregates, feature
+order) but skips materializing the features dataframe, which makes it
+much cheaper when the features themselves aren't needed. Use it to warm
+an instance whose models are already trained -- e.g. after unpickling,
+`MLForecast.load`, or assigning externally trained models to `models_`
+-- so that `update` and `predict` can be used without calling `fit` or
+`preprocess` first.
+
+History is trimmed like in `fit`: `keep_last_n` (explicit or inferred
+from the transforms) is applied after the transform states are warmed,
+so only the observations required for updates are kept.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Series data in long format. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Inferred from the transforms when None. Defaults to None. | <code>None</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+`max_horizon` | <code>[int](#int)</code> | Horizon the models were trained for when using one model per horizon. Leave None for recursive models; when None, any value from a previous fit is preserved. Defaults to None. | <code>None</code>
+`horizons` | <code>list of int</code> | Specific 1-indexed horizons the models were trained for. Mutually exclusive with max_horizon. Defaults to None. | <code>None</code>
+`horizon_features` | <code>dict of int to list of str</code> | Explicit mapping of 1-indexed horizons to dynamic exogenous columns the models were trained with. When None, any mapping from a previous fit is preserved. Defaults to None. | <code>None</code>
+`horizon_feature_templates` | <code>list of str</code> | Template patterns for horizon-specific dynamic exogenous features, e.g. ['feature_h{h}']. Defaults to None. | <code>None</code>
+`as_numpy` | <code>[bool](#bool)</code> | Whether prediction passes a numpy array to the model instead of a dataframe. When None, any value from a previous fit is preserved (False for a fresh instance). Defaults to None. | <code>None</code>
+`validate_data` | <code>[bool](#bool)</code> | Run data quality validations before warming up. Warns about missing dates and raises on duplicate rows. Defaults to True. | <code>True</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`MLForecast` | <code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Forecast object with the internal state built from `df`.
+
+#### `MLForecast.fit_models`
+
+```python
+fit_models(X=None, y=None, models_fit_kwargs=None, generator_factory=None)
+```
+
+Manually train models. Use this if you called `MLForecast.preprocess` beforehand.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`X` | <code>pandas or polars DataFrame or numpy array</code> | Features (for recursive forecasting). | <code>None</code>
+`y` | <code>numpy array</code> | Target (for recursive forecasting). | <code>None</code>
+`models_fit_kwargs` | <code>[dict](#dict)</code> | Keyword arguments for each model's fit method. | <code>None</code>
+`generator_factory` | <code>[callable](#callable)</code> | Factory function that returns an iterator yielding (h, X_h, y_h) tuples per horizon. | <code>None</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`MLForecast` | <code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Forecast object with trained models.
+
+#### `MLForecast.cross_validation`
+
+```python
+cross_validation(df, n_windows, h, id_col='unique_id', time_col='ds', target_col='y', step_size=None, static_features=None, dropna=True, keep_last_n=None, refit=True, max_horizon=None, horizons=None, horizon_features=None, horizon_feature_templates=None, before_predict_callback=None, after_predict_callback=None, prediction_intervals=None, level=None, input_size=None, fitted=False, as_numpy=False, weight_col=None, validate_data=True)
+```
+
+Perform time series cross validation.
+Creates `n_windows` splits where each window has `h` test periods,
+trains the models, computes the predictions and merges the actuals.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`df` | <code>pandas or polars DataFrame</code> | Series data in long format. | *required*
+`n_windows` | <code>[int](#int)</code> | Number of windows to evaluate. | *required*
+`h` | <code>[int](#int)</code> | Forecast horizon. | *required*
+`id_col` | <code>[str](#str)</code> | Column that identifies each serie. Defaults to 'unique_id'. | <code>'unique_id'</code>
+`time_col` | <code>[str](#str)</code> | Column that identifies each timestep, its values can be timestamps or integers. Defaults to 'ds'. | <code>'ds'</code>
+`target_col` | <code>[str](#str)</code> | Column that contains the target. Defaults to 'y'. | <code>'y'</code>
+`step_size` | <code>[int](#int)</code> | Step size between each cross validation window. If None it will be equal to `h`. Defaults to None. | <code>None</code>
+`static_features` | <code>list of str</code> | Names of the features that are constant for each serie and will be repeated when forecasting. Other columns are dynamic and must be provided in `X_df` when predicting. Defaults to None (no static features). | <code>None</code>
+`dropna` | <code>[bool](#bool)</code> | Drop rows with missing values produced by the transformations. Defaults to True. | <code>True</code>
+`keep_last_n` | <code>[int](#int)</code> | Keep only these many records from each serie for the forecasting step. Can save time and memory if your features allow it. Pooled lag transforms (global_/partition_by) with a window wider than this keep that wider window instead, since their shared aggregates have no per-series buffer to trim below it. Defaults to None. | <code>None</code>
+`max_horizon` | <code>[int](#int)</code> | Train this many models, where each model will predict a specific horizon. Defaults to None. | <code>None</code>
+`horizons` | <code>list of int</code> | Train models only for specific horizons (1-indexed). Mutually exclusive with max_horizon. Defaults to None. | <code>None</code>
+`horizon_features` | <code>dict of int to list of str</code> | Explicit mapping of 1-indexed horizons to dynamic exogenous columns. Only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`horizon_feature_templates` | <code>list of str</code> | Template patterns for horizon-specific dynamic exogenous features. Each template must include exactly one '{h}' placeholder (1-indexed), for example: ['feature_h{h}']. Acts as shorthand for `horizon_features` and is only supported when using `max_horizon` or `horizons`. Defaults to None. | <code>None</code>
+`refit` | <code>[bool](#bool) or [int](#int)</code> | Retrain model for each cross validation window. If False, the models are trained at the beginning and then used to predict each window. If positive int, the models are retrained every `refit` windows. The windows that aren't retrained use the prediction intervals of the last fit. Defaults to True. | <code>True</code>
+`before_predict_callback` | <code>[callable](#callable)</code> | Function to call on the features before computing the predictions. This function will take the input dataframe that will be passed to the model for predicting and should return a dataframe with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`after_predict_callback` | <code>[callable](#callable)</code> | Function to call on the predictions before updating the targets. This function will take a pandas Series with the predictions and should return another one with the same structure. The series identifier is on the index. Defaults to None. | <code>None</code>
+`prediction_intervals` | <code>[PredictionIntervals](#mlforecast.conformal_prediction.PredictionIntervals)</code> | Configuration to calibrate prediction intervals (Conformal Prediction). Defaults to None. | <code>None</code>
+`level` | <code>list of ints or floats</code> | Confidence levels between 0 and 100 for prediction intervals. Defaults to None. | <code>None</code>
+`input_size` | <code>[int](#int)</code> | Maximum training samples per serie in each window. If None, will use an expanding window. Defaults to None. | <code>None</code>
+`fitted` | <code>[bool](#bool)</code> | Store the in-sample predictions. Defaults to False. | <code>False</code>
+`as_numpy` | <code>[bool](#bool)</code> | Cast features to numpy array. Defaults to False. | <code>False</code>
+`weight_col` | <code>[str](#str)</code> | Column that contains the sample weights. Defaults to None. | <code>None</code>
+`validate_data` | <code>[bool](#bool)</code> | Run data quality validations on the full dataset before cross-validation. Warns about missing dates and raises on duplicate rows. Defaults to True. | <code>True</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[DFType](#utilsforecast.compat.DFType)</code> | pandas or polars DataFrame: Predictions for each window with the series id, timestamp, last train date, target value and predictions from each model.
+
+#### `MLForecast.from_cv`
+
+```python
+from_cv(cv)
+```
+
+Create a forecaster from a fitted `LightGBMCV`.
+
+The forecaster uses the same features and `params` as the CV object, with the number of estimators set to its best iteration
+and the same `categorical_feature`, which `fit` uses unless `models_fit_kwargs` provides one for the model.
+Feature names in `categorical_feature` need the features as a DataFrame, so they can't be combined with `as_numpy=True`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`cv` | <code>[LightGBMCV](#mlforecast.lgb_cv.LightGBMCV)</code> | Fitted CV object. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`MLForecast` | <code>[MLForecast](#mlforecast.forecast.MLForecast)</code> | Forecaster with a single `LGBMRegressor` model, named 'LGBMRegressor'.
+
