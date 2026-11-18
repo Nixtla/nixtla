@@ -760,6 +760,11 @@ body .code-group {
   margin-top: 0 !important;
 }
 
+/* Mintlify's prose default is 1.75; body copy and lists inherit this instead */
+.prose {
+  line-height: var(--lh-prose) !important;
+}
+
 .prose :where(h1):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 .prose :where(h4):not(:where([class~="not-prose"], [class~="not-prose"] *)),
 .prose :where(ul):not(:where([class~="not-prose"], [class~="not-prose"] *)),
@@ -1360,6 +1365,12 @@ details.expandable .primitive-param-field {
 
 [data-component-part="step-title"] {
   margin: 0 !important;
+  /* Center the first line of the title on the step number */
+  padding-top: calc(var(--step-indicator-center) - var(--lh-base) / 2) !important;
+  font-size: var(--fs-base) !important;
+  line-height: var(--lh-base) !important;
+  font-weight: var(--font-weight-step-title) !important;
+  color: var(--foreground) !important;
 }
 
 [data-component-part="step-line"] {
