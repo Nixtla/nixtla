@@ -48,10 +48,9 @@ statsforecast, mlforecast, neuralforecast, utilsforecast ─► conformalforecas
 `synforecast` has no in-repo runtime dependencies; its dev and docs groups use
 `statsforecast`, `utilsforecast` and `datasetsforecast` from PyPI.
 
-Published packages depend on each other through ordinary PyPI version ranges.
-For local development each dependent also declares a `[tool.uv.sources]` path
-entry, so `uv sync` builds its in-repo siblings from source and a change to
-`utilsforecast` is exercised by every package that uses it, before release.
+Packages depend on each other through ordinary PyPI version ranges, in
+development as well as when published, so each one is tested against the
+released versions of its siblings.
 
 ## Releases
 

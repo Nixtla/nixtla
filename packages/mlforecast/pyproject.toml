@@ -120,10 +120,3 @@ addopts = [
     "--cov-report=html",
     "--cov-fail-under=75", #TODO: adds tests to increase coverage to 80
 ]
-
-# In-repo path sources: dev/test only. The version ranges in [project]
-# dependencies are unchanged and are what gets published; uv strips
-# [tool.uv.sources] from distribution metadata.
-[tool.uv.sources]
-coreforecast          = { path = "../coreforecast", editable = true }
-utilsforecast         = { path = "../utilsforecast", editable = true }

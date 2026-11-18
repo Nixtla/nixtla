@@ -107,12 +107,6 @@ integration-docs = [
 # docs never train on GPU, so pull the CPU build everywhere except macOS (which
 # has no separate CPU index).
 torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
-# In-repo siblings the integration tests import; dev-only, uv strips sources
-# from the published metadata.
-mlforecast            = { path = "../mlforecast", editable = true }
-neuralforecast        = { path = "../neuralforecast", editable = true }
-statsforecast         = { path = "../statsforecast", editable = true }
-utilsforecast         = { path = "../utilsforecast", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
