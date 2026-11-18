@@ -53,7 +53,7 @@ jobs:
           - [ubuntu-latest, manylinux_x86_64]
           - [ubuntu-latest, manylinux_aarch64]
           - [windows-latest, win_amd64]
-          - [macos-latest, macosx_arm64]
+          - [macos-15, macosx_arm64]
     steps:
       - name: Clone repo
         uses: actions/checkout@v7
@@ -81,7 +81,7 @@ jobs:
           CIBW_ENABLE: cpython-prerelease
           CIBW_TEST_SKIP: "*linux_aarch64 *cp315*"
           CIBW_BEFORE_BUILD_MACOS: brew install libomp
-          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=14.0
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=15.0
           CIBW_BEFORE_TEST: >
             cd {package} && uv pip install datasetsforecast "statsforecast>=1.0.0"
             scipy "polars[numpy]<=1.32.0" pytest pytest-benchmark pytest-cov
