@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-latest, windows-latest]
+        os: [macos-15, ubuntu-latest, windows-latest]
         python-version: ["3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
@@ -39,6 +39,14 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
           python-version: ${{ matrix.python-version }}
+
+      # Spark/Hadoop calls Subject.getSubject, which JDK 24+ removed; ubuntu-latest ships a newer JDK
+      - name: Set up java
+        if: runner.os == 'Linux'
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup devenv
         run: >
