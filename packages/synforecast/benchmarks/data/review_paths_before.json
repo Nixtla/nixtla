@@ -1,0 +1,99 @@
+{
+  "label": "before-9231f35",
+  "environment": {
+    "command": "/home/osprangers/Repositories/synforecast/benchmarks/benchmark_review_paths.py --label before-9231f35 --save /home/osprangers/Repositories/synforecast/benchmarks/data/review_paths_before.json",
+    "timestamp_utc": "2026-09-08T15:21:10+00:00",
+    "python": "3.10.12",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "cpu_count": 20,
+    "package_versions": {
+      "synforecast": "0.1.0",
+      "numpy": "2.2.6",
+      "pandas": "2.3.3",
+      "polars": "1.35.2",
+      "scipy": "1.15.3",
+      "scikit-learn": "1.7.2",
+      "statsforecast": "2.1.1",
+      "mlforecast": "1.1.0",
+      "neuralforecast": "3.1.7",
+      "utilsforecast": "0.2.15",
+      "datasetsforecast": "1.0.1",
+      "torch": "2.13.0+cpu"
+    },
+    "git_commit": "9231f352af6979627702b85af26047c8d5489367",
+    "git_dirty": true,
+    "git_diff_sha256": "7293cafc7ab8f231cb2d6aa952d1ba1a59c69ea3780b60437722370dc3401a5b"
+  },
+  "package_path": "/tmp/pr55-before/synforecast/__init__.py",
+  "thread_env": {
+    "RAYON_NUM_THREADS": "4",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "measurements": {
+    "target_period12": {
+      "median_seconds": 0.06976644403766841,
+      "samples_seconds": [
+        0.06851334206294268,
+        0.07066813902929425,
+        0.06976644403766841
+      ]
+    },
+    "target_period24": {
+      "median_seconds": 0.6297090550651774,
+      "samples_seconds": [
+        0.6596296429634094,
+        0.6297090550651774,
+        0.6294796318979934
+      ]
+    },
+    "stationarity_order26": {
+      "median_seconds": 0.0301748919300735,
+      "samples_seconds": [
+        0.03006848692893982,
+        0.030706100980751216,
+        0.0301748919300735
+      ]
+    },
+    "mbb_400x96_3copies": {
+      "median_seconds": 1.3448511069873348,
+      "samples_seconds": [
+        1.3448511069873348,
+        1.3565575700486079,
+        1.3001946969889104
+      ]
+    },
+    "dba_24x96_5copies": {
+      "median_seconds": 0.14030816801823676,
+      "samples_seconds": [
+        0.1464722480159253,
+        0.14030816801823676,
+        0.13799284596461803
+      ]
+    },
+    "dba_16x1024_4copies": {
+      "median_seconds": 0.8620519749820232,
+      "samples_seconds": [
+        0.8557220250368118,
+        0.8620519749820232,
+        0.8807581219589338
+      ]
+    },
+    "features_4095_200calls": {
+      "median_seconds": 0.018341828952543437,
+      "samples_seconds": [
+        0.018341828952543437,
+        0.017625267966650426,
+        0.018750788061879575
+      ]
+    },
+    "features_4096_200calls": {
+      "median_seconds": 0.03012190095614642,
+      "samples_seconds": [
+        0.02816087903920561,
+        0.030202334048226476,
+        0.03012190095614642
+      ]
+    }
+  }
+}

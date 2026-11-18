@@ -1,9 +1,8 @@
-Apache License
+                                 Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
 
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION FOR THE PYTHON SDK 
-(FOR TERMS AND CONDITIONS OF TIME GPT VISIT https://docs.nixtla.io/docs/terms-and-conditions)
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
    1. Definitions.
 
@@ -187,7 +186,7 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION FOR THE PYTHON SDK
       same "printed page" as the copyright notice for easier
       identification within third-party archives.
 
-   Copyright 2022 Nixtla
+   Copyright 2021 Nixtla
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.

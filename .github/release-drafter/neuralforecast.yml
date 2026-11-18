@@ -1,0 +1,37 @@
+name-template: 'neuralforecast v$NEXT_PATCH_VERSION'
+tag-template: 'neuralforecast/v$NEXT_PATCH_VERSION'
+# Scopes both the draft this config updates and the previous release it diffs against.
+tag-prefix: 'neuralforecast/v'
+categories:
+  - type: pre-include
+    when:
+      paths:
+        - 'packages/neuralforecast/**'
+  - title: 'New Features'
+    when:
+      label: 'feature'
+  - title: 'Breaking Change'
+    when:
+      label: 'breaking change'
+  - title: 'Bug Fixes'
+    when:
+      label: 'fix'
+  - title: 'Performance'
+    when:
+      label: 'performance'
+  - title: 'Documentation'
+    when:
+      label: 'documentation'
+  - title: 'Maintenance'
+    when:
+      label: 'chore'
+  - title: 'Dependencies'
+    when:
+      label: 'dependencies'
+  - title: 'Enhancement'
+    when:
+      label: 'enhancement'
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+template: |
+  ## Changes
+  $CHANGES

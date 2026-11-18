@@ -1,0 +1,1394 @@
+"""Pre-configured generator pools for balanced time series generation."""
+
+from __future__ import annotations
+
+import math
+import operator
+import warnings
+from collections.abc import Callable, Iterable
+from functools import partial
+from typing import Any
+
+import numpy as np
+import pandas as pd
+from pandas.tseries import offsets as _offsets
+
+from synforecast.base import BaseGenerator
+from synforecast.generators.bounded_process import BoundedProcessGenerator
+from synforecast.generators.chaotic_system import ChaoticSystemGenerator
+from synforecast.generators.clickstream import ClickstreamGenerator
+from synforecast.generators.cyclic import CyclicGenerator
+from synforecast.generators.daily_active_users import DailyActiveUsersGenerator
+from synforecast.generators.energy_load import EnergyLoadGenerator
+from synforecast.generators.ets import ETSGenerator
+from synforecast.generators.fractional_brownian_motion import (
+    FractionalBrownianMotionGenerator,
+)
+from synforecast.generators.garch import GARCHGenerator
+from synforecast.generators.gaussian_process import GaussianProcessGenerator
+from synforecast.generators.geometric_brownian_motion import (
+    GeometricBrownianMotionGenerator,
+)
+from synforecast.generators.hawkes_process import HawkesProcessGenerator
+from synforecast.generators.inar import INARGenerator
+from synforecast.generators.intermittent_demand import IntermittentDemandGenerator
+from synforecast.generators.iot_sensor import IoTSensorGenerator
+from synforecast.generators.jump_diffusion import JumpDiffusionGenerator
+from synforecast.generators.kernel_synth import KernelSynthGenerator
+from synforecast.generators.levy_process import LevyProcessGenerator
+from synforecast.generators.mar import MARGenerator
+from synforecast.generators.ornstein_uhlenbeck import OrnsteinUhlenbeckGenerator
+from synforecast.generators.poisson_process import PoissonProcessGenerator
+from synforecast.generators.random_walk import RandomWalkGenerator
+from synforecast.generators.regime_switching import RegimeSwitchingGenerator
+from synforecast.generators.sarima import SARIMAGenerator
+from synforecast.generators.seasonal import SeasonalGenerator
+from synforecast.generators.state_space import StateSpaceGenerator
+from synforecast.generators.stochastic_volatility import StochasticVolatilityGenerator
+from synforecast.generators.tcm import TCMGenerator
+from synforecast.generators.tsi import TSIGenerator
+from synforecast.generators.vital_signs import VitalSignsGenerator
+from synforecast.overlays import (
+    Anomalies,
+    AnomalyType,
+    Calendar,
+    CalendarCycle,
+    Changepoints,
+    Missing,
+    Observation,
+    OverlayConfig,
+    Waveform,
+    WaveShape,
+    WaveTiming,
+)
+
+# Steps per unit of the next-larger calendar cycle for each pandas offset
+# family. Matching on offset classes rather than alias strings keeps the lookup
+# stable across pandas versions, whose rule codes differ ("H"/"h", "T"/"min",
+# "A-DEC"/"YE-DEC").
+_CYCLE_STEPS: list[tuple[tuple[type[_offsets.BaseOffset], ...], int]] = [
+    ((_offsets.Second,), 60),  # seconds per minute
+    ((_offsets.Minute,), 60),  # minutes per hour
+    ((_offsets.Hour,), 24),  # hours per day
+    ((_offsets.Day,), 7),  # days per week
+    ((_offsets.BusinessDay, _offsets.CustomBusinessDay), 5),  # per week
+    ((_offsets.Week,), 52),  # weeks per year
+    ((_offsets.SemiMonthEnd, _offsets.SemiMonthBegin), 24),  # per year
+    (
+        (
+            _offsets.MonthEnd,
+            _offsets.MonthBegin,
+            _offsets.BusinessMonthEnd,
+            _offsets.BusinessMonthBegin,
+            _offsets.CustomBusinessMonthEnd,
+            _offsets.CustomBusinessMonthBegin,
+        ),
+        12,  # months per year
+    ),
+    (
+        (
+            _offsets.QuarterEnd,
+            _offsets.QuarterBegin,
+            _offsets.BQuarterEnd,
+            _offsets.BQuarterBegin,
+        ),
+        4,  # quarters per year
+    ),
+    (
+        (_offsets.YearEnd, _offsets.YearBegin, _offsets.BYearEnd, _offsets.BYearBegin),
+        1,  # no sub-annual cycle
+    ),
+]
+
+_DEFAULT_SEASONAL_PERIOD = 12
+
+# An unbuilt pool entry; Callable (not partial) because its return type is covariant.
+_Spec = Callable[[], BaseGenerator]
+
+
+# Univariate generators outside the interpretable and meta pools, appended by pretraining_pool(include_extended=True).
+# The price processes use a daily step (dt = 1/252): their annual-rate defaults with dt = 1 compound past float range over long series.
+_EXTENDED: tuple[tuple[type[BaseGenerator], dict[str, Any]], ...] = (
+    (ClickstreamGenerator, {}),
+    (DailyActiveUsersGenerator, {}),
+    (GeometricBrownianMotionGenerator, {"dt": 1 / 252}),
+    (HawkesProcessGenerator, {}),
+    (JumpDiffusionGenerator, {"dt": 1 / 252, "lambda_jump": 25.0, "jump_std": 0.05}),
+    (OrnsteinUhlenbeckGenerator, {}),
+    (PoissonProcessGenerator, {}),
+    (RandomWalkGenerator, {}),
+    (SeasonalGenerator, {}),
+    (StateSpaceGenerator, {}),
+    (StochasticVolatilityGenerator, {}),
+)
+
+
+def pretraining_overlays(rng: np.random.Generator) -> dict[str, Any]:
+    """Draw one random overlay configuration for a pretraining series.
+
+    Each overlay is switched on independently, so a series can combine a base
+    mechanism with heavy-tailed noise, structural breaks, anomalies and gaps:
+
+    - heavy-tailed innovations (probability 0.3): Student's t with
+      ``df ~ U(2.5, 8)``, Laplace, or skew-normal with ``alpha ~ U(-6, 6)``;
+    - changepoints (0.3): 1-3 breaks of type level, trend, variance or mixed,
+      with relative magnitudes;
+    - anomalies (0.25): a non-empty subset of spike, dip and level shift at a
+      log-uniform fraction in [0.002, 0.03]; spikes and dips of 3-10 standard
+      deviations, level shifts of 1-4 standard deviations lasting 5-50 steps;
+    - missing data (0.1): a random or block pattern at a rate in [0.02, 0.2]
+      with blocks of 2-20 steps.
+
+    Changepoint and anomaly magnitudes use ``scale="relative"`` so they are
+    sized on each series. Innovation settings only affect generators that draw
+    innovations; the others ignore them.
+
+    Args:
+        rng: Random stream that determines the configuration.
+
+    Returns:
+        Generator keyword arguments: innovation settings and an ``overlays``
+        :class:`~synforecast.overlays.OverlayConfig`; empty when nothing is drawn.
+    """
+    kwargs: dict[str, Any] = {}
+    if rng.random() < 0.3:
+        dist = ("t", "laplace", "skew_normal")[int(rng.integers(3))]
+        kwargs["innovation_distribution"] = dist
+        if dist == "t":
+            kwargs["innovation_params"] = {"df": float(rng.uniform(2.5, 8.0))}
+        elif dist == "skew_normal":
+            kwargs["innovation_params"] = {"alpha": float(rng.uniform(-6.0, 6.0))}
+    stages: dict[str, Any] = {}
+    if rng.random() < 0.3:
+        stages["changepoints"] = _relative_changepoints(rng)
+    if rng.random() < 0.25:
+        stages["anomalies"] = _relative_anomalies(rng)
+    if rng.random() < 0.1:
+        stages["missing"] = _missing_data(rng)
+    if stages:
+        kwargs["overlays"] = OverlayConfig(**stages)
+    return kwargs
+
+
+def _log_uniform(rng: np.random.Generator, low: float, high: float) -> float:
+    return float(np.exp(rng.uniform(np.log(low), np.log(high))))
+
+
+def _relative_changepoints(rng: np.random.Generator) -> Changepoints:
+    """Changepoints of :func:`pretraining_overlays`."""
+    return Changepoints(
+        count=int(rng.integers(1, 4)),
+        kind=("level", "trend", "variance", "mixed")[int(rng.integers(4))],
+        scale="relative",
+    )
+
+
+def _relative_anomalies(rng: np.random.Generator) -> Anomalies:
+    """Anomalies of :func:`pretraining_overlays`."""
+    types = [t for t in _ANOMALY_TYPES if rng.random() < 0.6]
+    return Anomalies(
+        types=types or ["spike"],
+        fraction=_log_uniform(rng, 0.002, 0.03),
+        spike_magnitude=float(rng.uniform(3.0, 10.0)),
+        dip_magnitude=-float(rng.uniform(3.0, 10.0)),
+        level_shift_magnitude=float(rng.choice((-1.0, 1.0)) * rng.uniform(1.0, 4.0)),
+        level_shift_duration=int(rng.integers(5, 51)),
+        scale="relative",
+    )
+
+
+def _missing_data(rng: np.random.Generator) -> Missing:
+    """Missing data of :func:`pretraining_overlays`."""
+    return Missing(
+        rate=float(rng.uniform(0.02, 0.2)),
+        pattern=("random", "block")[int(rng.integers(2))],
+        block_size=int(rng.integers(2, 21)),
+    )
+
+
+def calendar_overlays(rng: np.random.Generator) -> Calendar:
+    """Draw one random calendar for a pretraining series.
+
+    - mode: additive or multiplicative with equal probability; additive peaks
+      (also used by multiplicative draws on series with negative values) are
+      log-uniform in [1.25, 10] standard deviations of the base series,
+      multiplicative peaks uniform in [0.2, 0.9] of the level. The additive
+      range is chosen so that, with changepoints and anomalies drawn after
+      the calendar, sub-daily draws keep the daily seasonal strength of the
+      first version of this prior, which added the calendar last;
+    - time of day: a Fourier profile of 1-5 harmonics, drawn per series;
+    - day of week: none with probability 0.3, otherwise weekday levels with a
+      weekend contrast of random sign and size uniform in [0.5, 1.5] (drawn
+      per call) plus per-series noise of standard deviation 0.25, weighted
+      log-uniform in [0.2, 2] relative to the time of day.
+
+    Cycles that cannot show at the generator's frequency are skipped
+    silently: on daily data only the weekday cycle remains, and coarser data
+    gets no calendar.
+
+    Args:
+        rng: Random stream that determines the configuration.
+
+    Returns:
+        The calendar, for ``OverlayConfig(calendar=...)``.
+    """
+    multiplicative = rng.random() < 0.5
+    amplitude = _log_uniform(rng, 1.25, 10.0)
+    swing = float(rng.uniform(0.2, 0.9))
+    weekly = 0.0 if rng.random() < 0.3 else _log_uniform(rng, 0.2, 2.0)
+    cycles = [CalendarCycle(phase="day", harmonics=int(rng.integers(1, 6)))]
+    if weekly > 0:
+        weekend = float(rng.choice((-1.0, 1.0)) * rng.uniform(0.5, 1.5))
+        cycles.append(
+            CalendarCycle(
+                phase="week",
+                profile="levels",
+                values=[0.0] * 5 + [weekend] * 2,
+                jitter=0.25,
+                weight=weekly,
+            )
+        )
+    return Calendar(
+        cycles=cycles,
+        mode="multiplicative" if multiplicative else "additive",
+        amplitude=amplitude,
+        swing=swing,
+        on_unsupported="skip",
+    )
+
+
+_ANOMALY_TYPES: tuple[AnomalyType, ...] = ("spike", "dip", "level_shift")
+_WAVEFORM_SHAPES: tuple[WaveShape, ...] = (
+    "pulse",
+    "spike",
+    "sawtooth",
+    "trapezoid",
+    "levels",
+    "staircase",
+)
+_WAVEFORM_TIMINGS: tuple[WaveTiming, ...] = ("periodic", "jitter", "renewal")
+_WAVEFORM_SHAPE_WEIGHTS = (0.25, 0.2, 0.15, 0.15, 0.15, 0.1)
+_OBSERVABILITY_COMPONENTS = ("clean", "mild", "layered")
+_OBSERVABILITY_WEIGHTS = (0.4, 0.35, 0.25)
+
+
+def observability_overlays(
+    rng: np.random.Generator, max_period: int = 720
+) -> OverlayConfig:
+    """Draw one random waveform and observation configuration for a pretraining series.
+
+    Targets observability-style data: sharp-edged periodic templates (square
+    pulses, spikes, ramp-and-reset, trapezoids) and piecewise-constant,
+    quantized dynamics (level switching, staircases, floors with bursts,
+    saturation, held readings). Each draw is one of three components:
+
+    - clean (probability 0.4): the waveform over a base weight of 0 (a
+      quarter of clean draws) or log-uniform in [0.01, 0.1], so the template
+      dominates; quantized with probability 0.5; no changepoints, anomalies
+      or missing data;
+    - mild (0.35): the clean setup plus one or two perturbations drawn from:
+      a re-weighted base (uniform in [0.3, 1]), quantization, saturation,
+      sample-and-hold, frozen windows, anomalies and missing data;
+    - layered (0.25): a base weight uniform in [0.5, 1], changepoints,
+      anomalies, at least one observation effect (each of saturation,
+      quantization, sample-and-hold and frozen windows with probability 0.5)
+      and missing data with probability 0.5.
+
+    The waveform: shape pulse 0.25, spike 0.2, sawtooth 0.15, trapezoid 0.15,
+    levels 0.15, staircase 0.1; period log-uniform in [12, ``max_period``]
+    steps; timing periodic 0.5, jittered 0.25 (standard deviation 1-10% of
+    the period), renewal 0.25 (gamma or lognormal durations, coefficient of
+    variation uniform in [0.2, 1]); duty log-uniform in [0.01, 0.5]; spikes
+    1-3 steps wide; 2-6 levels; peaks 0.7, dips 0.3; additive 0.75 with peaks
+    log-uniform in [1, 8] standard deviations, otherwise multiplicative with
+    swing uniform in [0.3, 0.9]. Observation effects: saturation below a
+    floor in [0.02, 0.3] and/or above a cap in [0.7, 0.98] of the way from
+    the series' minimum to its maximum, a grid step log-uniform in
+    [0.02, 0.5] standard deviations, holds of 2-10 steps (at most the
+    nominal on-time of a pulse), and frozen windows covering about 2-20% of
+    the series, with mean length 5-100 steps.
+
+    Changepoint and anomaly magnitudes are relative, as in
+    :func:`pretraining_overlays`. The returned config sets every stage it
+    draws and leaves the others off, so it replaces the waveform, base
+    weight, observation, changepoint, anomaly and missing-data stages of a
+    :func:`pretraining_overlays` draw.
+
+    Args:
+        rng: Random stream that determines the configuration.
+        max_period: Longest waveform period in steps, at least 12. Pass about
+            a third of the shortest series so most draws show three cycles.
+
+    Returns:
+        The drawn stages; the calendar is left off.
+    """
+    if max_period < 12:
+        raise ValueError(f"max_period must be >= 12, got {max_period}")
+    component = _OBSERVABILITY_COMPONENTS[int(rng.choice(3, p=_OBSERVABILITY_WEIGHTS))]
+    shape = _WAVEFORM_SHAPES[int(rng.choice(6, p=_WAVEFORM_SHAPE_WEIGHTS))]
+    timing = _WAVEFORM_TIMINGS[int(rng.choice(3, p=(0.5, 0.25, 0.25)))]
+    multiplicative = rng.random() < 0.25
+    waveform = Waveform(
+        shape=shape,
+        period=int(round(_log_uniform(rng, 12, max_period))),
+        duty=_log_uniform(rng, 0.01, 0.5),
+        width=int(rng.integers(1, 4)),
+        ramp=float(rng.uniform(0.05, 0.3)),
+        levels=int(rng.integers(2, 7)),
+        timing=timing,
+        jitter=float(rng.uniform(0.01, 0.1)),
+        renewal=("gamma", "lognormal")[int(rng.integers(2))],
+        cv=float(rng.uniform(0.2, 1.0)),
+        direction="peak" if rng.random() < 0.7 else "dip",
+        mode="multiplicative" if multiplicative else "additive",
+        amplitude=_log_uniform(rng, 1.0, 8.0),
+        swing=float(rng.uniform(0.3, 0.9)),
+    )
+    stages: dict[str, Any] = {
+        "waveform": waveform,
+        "base_weight": 0.0 if rng.random() < 0.25 else _log_uniform(rng, 0.01, 0.1),
+    }
+    observation: dict[str, Any] = {}
+
+    def floor_and_cap() -> None:
+        sides = int(rng.integers(3))
+        if sides != 1:
+            observation["floor"] = float(rng.uniform(0.02, 0.3))
+        if sides != 0:
+            observation["cap"] = float(rng.uniform(0.7, 0.98))
+
+    def hold() -> None:
+        # A hold longer than the on-time can skip every pulse and flatten the series, so it is capped there.
+        observation["hold"] = max(1, min(int(rng.integers(2, 11)), waveform.on_steps))
+
+    def freeze() -> None:
+        observation["stuck_fraction"] = float(rng.uniform(0.02, 0.2))
+        observation["stuck_length"] = int(rng.integers(5, 101))
+
+    effects: dict[str, Callable[[], None]] = {
+        "saturate": floor_and_cap,
+        "quantize": lambda: observation.update(quantum=_log_uniform(rng, 0.02, 0.5)),
+        "hold": hold,
+        "freeze": freeze,
+    }
+    perturbations: dict[str, Callable[[], None]] = {
+        "base": lambda: stages.update(base_weight=float(rng.uniform(0.3, 1.0))),
+        **effects,
+        "anomalies": lambda: stages.update(anomalies=_relative_anomalies(rng)),
+        "missing": lambda: stages.update(missing=_missing_data(rng)),
+    }
+    chosen: list[str] = []
+    if component == "clean":
+        if rng.random() < 0.5:
+            chosen = ["quantize"]
+    elif component == "mild":
+        names = list(perturbations)
+        picks = rng.choice(len(names), size=int(rng.integers(1, 3)), replace=False)
+        chosen = [names[int(i)] for i in picks]
+    else:
+        stages["base_weight"] = float(rng.uniform(0.5, 1.0))
+        stages["changepoints"] = _relative_changepoints(rng)
+        stages["anomalies"] = _relative_anomalies(rng)
+        chosen = [name for name in effects if rng.random() < 0.5]
+        if not chosen:
+            chosen = [list(effects)[int(rng.integers(len(effects)))]]
+        if rng.random() < 0.5:
+            chosen.append("missing")
+    for name in chosen:
+        perturbations[name]()
+    if observation:
+        stages["observation"] = Observation(**observation)
+    return OverlayConfig(**stages)
+
+
+def _build(
+    specs: list[_Spec],
+    members: Iterable[int] | None,
+    overlay_seed: int | None = None,
+    calendar_rate: float = 0.0,
+    observability_rate: float = 0.0,
+    max_period: int = 720,
+) -> list[BaseGenerator]:
+    """Instantiate every spec, or only the selected indices in the given order, optionally with drawn overlays."""
+    chosen = (
+        list(range(len(specs)))
+        if members is None
+        else [operator.index(i) for i in members]
+    )
+    bad = [i for i in chosen if not 0 <= i < len(specs)]
+    if bad:
+        raise IndexError(f"members {bad} out of range for a pool of {len(specs)}")
+    if overlay_seed is None:
+        return [specs[i]() for i in chosen]
+    built = []
+    for i in chosen:
+        # Overlays depend only on (overlay_seed, index), so a member built alone matches the full pool's entry.
+        kwargs = pretraining_overlays(np.random.default_rng([overlay_seed, i]))
+        drawn = kwargs.pop("overlays", OverlayConfig())
+        # The observability and calendar priors have their own streams, so pools without them draw exactly as before.
+        observability_rng = np.random.default_rng([overlay_seed, i, 2])
+        if observability_rate > 0 and observability_rng.random() < observability_rate:
+            drawn = observability_overlays(observability_rng, max_period)
+        calendar_rng = np.random.default_rng([overlay_seed, i, 1])
+        if calendar_rate > 0 and calendar_rng.random() < calendar_rate:
+            drawn = drawn.model_copy(
+                update={"calendar": calendar_overlays(calendar_rng)}
+            )
+        if drawn.active:
+            kwargs["overlays"] = _merge_overlays(specs[i], drawn)
+        built.append(specs[i](**kwargs))
+    return built
+
+
+def _merge_overlays(spec: _Spec, drawn: OverlayConfig) -> OverlayConfig:
+    """Fill the stages an entry leaves off with drawn ones.
+
+    An entry that sets its own changepoints or anomalies keeps them and takes
+    no drawn changepoints or anomalies, whose relative sizes would not match
+    its own.
+    """
+    own = getattr(spec, "keywords", {}).get("overlays")
+    own = OverlayConfig() if own is None else OverlayConfig.model_validate(own)
+    if own.changepoints is not None or own.anomalies is not None:
+        drawn = drawn.model_copy(update={"changepoints": None, "anomalies": None})
+    return own.fill(drawn)
+
+
+def _seasonal_period_from_freq(
+    freq: str | int, default: int = _DEFAULT_SEASONAL_PERIOD
+) -> int:
+    """Conventional seasonal period, in time steps, for a frequency.
+
+    The period is the number of steps in the next-larger calendar cycle:
+    seconds per minute, minutes per hour, hours per day, days per week, and
+    weeks, months or quarters per year. Multiples divide the unit period, so
+    ``"15min"`` gives 4, ``"2h"`` gives 12 and ``"3MS"`` gives 4. Yearly data
+    has no sub-annual cycle and gives 1.
+
+    Args:
+        freq: Pandas offset alias or integer step.
+        default: Period for integer frequencies and offsets without a calendar
+            convention (e.g. milliseconds, business hours).
+
+    Returns:
+        Seasonal period, at least 1.
+    """
+    if isinstance(freq, int):
+        return default
+    offset = pd.tseries.frequencies.to_offset(freq)
+    for classes, unit_period in _CYCLE_STEPS:
+        if isinstance(offset, classes):
+            return max(1, round(unit_period / offset.n))
+    return default
+
+
+def interpretable_pool(
+    min_length: int = 200,
+    max_length: int = 200,
+    freq: str | int = "D",
+    seed: int | None = 42,
+    seasonal_period: int | None = None,
+    members: Iterable[int] | None = None,
+    **base_kwargs: Any,
+) -> list[BaseGenerator]:
+    """Create a pool of interpretable single-mechanism generators.
+
+    Returns 42 pre-configured generator instances across 15 behavioral niches,
+    with allocation proportional to each generator's behavioral range, so no
+    domain dominates. Every instance is one named data-generating process;
+    the meta-generators that randomize their own composition per series are
+    left to :func:`pretraining_pool`. Until version 0.2 this function was
+    called ``balanced_pool``; that name remains available as a deprecated alias.
+
+    The list is ordered round-robin across the niches (one variant of every
+    niche, then second variants, and so on), so any prefix spans as many
+    distinct behaviors as possible: the first 15 entries cover all 15 niches.
+    Consumers that use only the first k generators — such as
+    ``generate_series`` with ``n_series < 42`` — therefore still get a
+    behaviorally diverse panel.
+
+    Behavioral niches covered:
+        - ARMA + seasonality (SARIMA, 5 variants)
+        - Exponential smoothing (ETS, 4 variants)
+        - Long-range memory (Fractional Brownian Motion, 3 Hurst regimes)
+        - Structural breaks (Regime Switching, 2 variants)
+        - Volatility clustering (GARCH, 2 persistence levels)
+        - Irregular cycles (Cyclic, 2 regularity levels)
+        - Sparse/intermittent (Intermittent Demand, 3 patterns)
+        - Multi-seasonal (Energy Load, 2 load types)
+        - Sensor artifacts (IoT Sensor, 3 health states)
+        - Physiological (Vital Signs, 3 patient types)
+        - Smooth/rough functions (Gaussian Process, 4 kernels)
+        - Deterministic chaos (Chaotic System, 3 systems)
+        - Count time series (INAR, 2 innovation types)
+        - Bounded/proportion data (Bounded Process, 2 models)
+        - Heavy-tailed processes (Levy Process, 2 stability levels)
+
+    The seasonal variants (seasonal SARIMA, Holt-Winters ETS, seasonal
+    intermittent demand and the periodic Gaussian process) share one seasonal
+    period, which also sets the mean period of the two cyclic variants. Unless
+    ``seasonal_period`` is given it is derived from ``freq`` as the number of
+    steps in the next-larger calendar cycle: hourly data
+    gets 24, daily 7, business-daily 5, weekly 52, monthly 12, quarterly 4,
+    and multiples divide accordingly (``"15min"`` gives 4, ``"2h"`` gives 12).
+    Integer frequencies and offsets without a calendar convention fall back
+    to 12. Yearly data has no sub-annual cycle, so its period is 1 and the
+    seasonal variants reduce to their non-seasonal counterparts.
+
+    Args:
+        min_length: Minimum time series length for all generators.
+        max_length: Maximum time series length for all generators.
+        freq: Frequency for all generators, as a pandas offset alias or integer.
+        seed: Base random seed. Each generator gets seed + i for reproducibility.
+            Set to None for random seeds.
+        seasonal_period: Seasonal period, in time steps, for the seasonal
+            variants. Defaults to None, which derives it from ``freq``.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds all 42. Each selected instance is
+            identical to the same entry of the full pool, and the others are
+            never constructed.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
+        **base_kwargs: Additional keyword arguments passed to all generators
+            (e.g., engine, id_col, time_col, target_col).
+
+    Returns:
+        List of 42 BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
+
+    Examples:
+        >>> from synforecast import SynSet, interpretable_pool
+        >>> dataset = SynSet(
+        ...     interpretable_pool(min_length=100, max_length=100, freq="D")
+        ... )
+        >>> df = dataset.generate(n_series_per_generator=1)
+    """
+    specs = _interpretable_specs(
+        min_length, max_length, freq, seed, seasonal_period, base_kwargs
+    )
+    return _build(specs, members)
+
+
+def _interpretable_specs(
+    min_length: int,
+    max_length: int,
+    freq: str | int,
+    seed: int | None,
+    seasonal_period: int | None,
+    base_kwargs: dict[str, Any],
+) -> list[_Spec]:
+    """Unbuilt constructors of :func:`interpretable_pool`, in pool order."""
+    base: dict[str, Any] = {
+        "min_length": min_length,
+        "max_length": max_length,
+        "freq": freq,
+    }
+    base.update(base_kwargs)
+
+    if seasonal_period is None:
+        season = _seasonal_period_from_freq(freq)
+    elif seasonal_period < 1:
+        raise ValueError(f"seasonal_period must be >= 1, got {seasonal_period}")
+    else:
+        season = seasonal_period
+
+    cycle_period = (
+        float(season)
+        if season > 1
+        else CyclicGenerator.model_fields["cycle_period_mean"].default
+    )
+
+    def _seed(i: int) -> int | None:
+        return seed + i if seed is not None else None
+
+    # Generators are declared grouped by behavioral niche and returned
+    # interleaved round-robin across niches, so any prefix of the pool spans
+    # as many distinct behaviors as possible. generate_series draws from the
+    # front when n_series < len(pool), so the interleaving is what makes a
+    # small panel diverse. Seed offsets are fixed per variant at declaration.
+    niches: list[list[_Spec]] = [
+        # --- SARIMA: 5 variants covering stationary, integrated, seasonal ---
+        [
+            # Stationary AR(1)
+            partial(
+                SARIMAGenerator,
+                **base,
+                seed=_seed(0),
+                p=1,
+                d=0,
+                q=0,
+                P=0,
+                D=0,
+                Q=0,
+                seasonal_period=1,
+            ),
+            # Integrated MA — random walk with smoothing
+            partial(
+                SARIMAGenerator,
+                **base,
+                seed=_seed(1),
+                p=0,
+                d=1,
+                q=1,
+                P=0,
+                D=0,
+                Q=0,
+                seasonal_period=1,
+            ),
+            # Seasonal AR
+            partial(
+                SARIMAGenerator,
+                **base,
+                seed=_seed(2),
+                p=1,
+                d=0,
+                q=0,
+                P=1,
+                D=0,
+                Q=0,
+                seasonal_period=season,
+            ),
+            # Airline model — classic seasonal integrated
+            partial(
+                SARIMAGenerator,
+                **base,
+                seed=_seed(3),
+                p=0,
+                d=1,
+                q=1,
+                P=0,
+                D=1,
+                Q=1,
+                seasonal_period=season,
+            ),
+            # Stationary ARMA(2,2) — complex short-range dynamics
+            partial(
+                SARIMAGenerator,
+                **base,
+                seed=_seed(4),
+                p=2,
+                d=0,
+                q=2,
+                P=0,
+                D=0,
+                Q=0,
+                seasonal_period=1,
+            ),
+        ],
+        # --- ETS: 4 combos spanning the error/trend/season taxonomy ---
+        [
+            # Simple exponential smoothing (no trend, no season)
+            partial(
+                ETSGenerator,
+                **base,
+                seed=_seed(5),
+                error_type="add",
+                trend_type=None,
+                seasonal_type=None,
+            ),
+            # Damped trend, no season
+            partial(
+                ETSGenerator,
+                **base,
+                seed=_seed(6),
+                error_type="add",
+                trend_type="add",
+                seasonal_type=None,
+                damped=True,
+            ),
+            # Additive Holt-Winters
+            partial(
+                ETSGenerator,
+                **base,
+                seed=_seed(7),
+                error_type="add",
+                trend_type="add",
+                seasonal_type="add",
+                seasonal_period=season,
+            ),
+            # Multiplicative Holt-Winters
+            partial(
+                ETSGenerator,
+                **base,
+                seed=_seed(8),
+                error_type="mul",
+                trend_type="mul",
+                seasonal_type="mul",
+                seasonal_period=season,
+                level=100.0,
+            ),
+        ],
+        # --- Fractional Brownian Motion: 3 Hurst regimes ---
+        [
+            # Mean-reverting (anti-persistent)
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(9), hurst=0.2
+            ),
+            # Standard Brownian motion
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(10), hurst=0.5
+            ),
+            # Trending (persistent, long memory)
+            partial(
+                FractionalBrownianMotionGenerator, **base, seed=_seed(11), hurst=0.85
+            ),
+        ],
+        # --- Regime Switching: 2 variants ---
+        [
+            # 2-regime (e.g., expansion/contraction)
+            partial(RegimeSwitchingGenerator, **base, seed=_seed(12), n_regimes=2),
+            # 3-regime with distinct dynamics
+            partial(RegimeSwitchingGenerator, **base, seed=_seed(13), n_regimes=3),
+        ],
+        # --- GARCH: 2 persistence levels ---
+        [
+            # Low persistence — mild volatility clustering
+            partial(
+                GARCHGenerator,
+                **base,
+                seed=_seed(14),
+                omega=0.1,
+                alpha=[0.1],
+                beta=[0.3],
+            ),
+            # High persistence — strong volatility clustering
+            partial(
+                GARCHGenerator,
+                **base,
+                seed=_seed(15),
+                omega=0.01,
+                alpha=[0.15],
+                beta=[0.8],
+            ),
+        ],
+        # --- Cyclic: 2 regularity levels ---
+        [
+            # Nearly regular single cycle
+            partial(
+                CyclicGenerator,
+                **base,
+                seed=_seed(16),
+                num_cycles=1,
+                cycle_period_mean=cycle_period,
+                cycle_period_std=0.04 * cycle_period,
+            ),
+            # Highly irregular multi-cycle overlay
+            partial(
+                CyclicGenerator,
+                **base,
+                seed=_seed(17),
+                num_cycles=4,
+                cycle_period_mean=cycle_period,
+                cycle_period_std=0.2 * cycle_period,
+            ),
+        ],
+        # --- Intermittent Demand: 3 sparsity patterns ---
+        [
+            partial(
+                IntermittentDemandGenerator,
+                **base,
+                seed=_seed(18),
+                intermittent_pattern="random",
+            ),
+            partial(
+                IntermittentDemandGenerator,
+                **base,
+                seed=_seed(19),
+                intermittent_pattern="clustered",
+            ),
+            partial(
+                IntermittentDemandGenerator,
+                **base,
+                seed=_seed(20),
+                intermittent_pattern="seasonal",
+                seasonal_period=season,
+            ),
+        ],
+        # --- Energy Load: 2 consumption profiles ---
+        [
+            partial(
+                EnergyLoadGenerator, **base, seed=_seed(21), load_type="residential"
+            ),
+            partial(
+                EnergyLoadGenerator, **base, seed=_seed(22), load_type="industrial"
+            ),
+        ],
+        # --- IoT Sensor: 3 health states ---
+        [
+            # Healthy sensor
+            partial(
+                IoTSensorGenerator,
+                **base,
+                seed=_seed(23),
+                failure_probability=0.0,
+                drift_rate=0.0,
+            ),
+            # Degrading sensor
+            partial(
+                IoTSensorGenerator,
+                **base,
+                seed=_seed(24),
+                drift_rate=0.01,
+                battery_degradation_rate=0.001,
+            ),
+            # Failing sensor
+            partial(
+                IoTSensorGenerator,
+                **base,
+                seed=_seed(25),
+                failure_probability=0.05,
+                failure_type="intermittent",
+            ),
+        ],
+        # --- Vital Signs: 3 patient types ---
+        [
+            partial(
+                VitalSignsGenerator, **base, seed=_seed(26), patient_type="healthy"
+            ),
+            partial(
+                VitalSignsGenerator, **base, seed=_seed(27), patient_type="cardiac"
+            ),
+            partial(VitalSignsGenerator, **base, seed=_seed(28), patient_type="sepsis"),
+        ],
+        # --- Gaussian Process: 4 kernel variants ---
+        [
+            # RBF — infinitely smooth
+            partial(GaussianProcessGenerator, **base, seed=_seed(29), kernel="rbf"),
+            # Matern 0.5 — rough (exponential correlation)
+            partial(
+                GaussianProcessGenerator, **base, seed=_seed(30), kernel="matern_0.5"
+            ),
+            # Matern 2.5 — moderately smooth
+            partial(
+                GaussianProcessGenerator, **base, seed=_seed(31), kernel="matern_2.5"
+            ),
+            # Periodic — smooth exact periodicity
+            partial(
+                GaussianProcessGenerator,
+                **base,
+                seed=_seed(32),
+                kernel="periodic",
+                period=float(season),
+            ),
+        ],
+        # --- Chaotic System: 3 deterministic systems ---
+        [
+            partial(ChaoticSystemGenerator, **base, seed=_seed(33), system="lorenz"),
+            partial(ChaoticSystemGenerator, **base, seed=_seed(34), system="logistic"),
+            partial(
+                ChaoticSystemGenerator, **base, seed=_seed(35), system="mackey_glass"
+            ),
+        ],
+        # --- INAR: 2 innovation types ---
+        [
+            # Poisson innovations
+            partial(INARGenerator, **base, seed=_seed(36), innovation_type="poisson"),
+            # Negative binomial innovations (overdispersed)
+            partial(
+                INARGenerator,
+                **base,
+                seed=_seed(37),
+                innovation_type="negative_binomial",
+            ),
+        ],
+        # --- Bounded Process: 2 models ---
+        [
+            # Beta-AR — bounded with mean-reversion
+            partial(BoundedProcessGenerator, **base, seed=_seed(38), model="beta_ar"),
+            # Logit-normal — bounded random walk
+            partial(
+                BoundedProcessGenerator, **base, seed=_seed(39), model="logit_normal"
+            ),
+        ],
+        # --- Levy Process: 2 stability levels ---
+        [
+            # Moderate heavy tails (alpha=1.5)
+            partial(LevyProcessGenerator, **base, seed=_seed(40), alpha=1.5),
+            # Extreme heavy tails (alpha=1.0, Cauchy-like)
+            partial(LevyProcessGenerator, **base, seed=_seed(41), alpha=1.0),
+        ],
+    ]
+
+    # Round-robin across niches: first variant of every niche, then second
+    # variants, and so on.
+    specs: list[_Spec] = [
+        group[variant]
+        for variant in range(max(len(group) for group in niches))
+        for group in niches
+        if variant < len(group)
+    ]
+
+    return specs
+
+
+def balanced_pool(*args: Any, **kwargs: Any) -> list[BaseGenerator]:
+    """Deprecated alias of :func:`interpretable_pool`.
+
+    The pool is balanced across behavioral niches, but so is
+    :func:`pretraining_pool`; the distinguishing property is that every
+    instance is an interpretable single-mechanism process. Use
+    :func:`interpretable_pool`. This alias warns and will be removed in a
+    future release.
+    """
+    warnings.warn(
+        "balanced_pool is deprecated and will be removed in a future release; "
+        "use interpretable_pool, which returns the same generators.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return interpretable_pool(*args, **kwargs)
+
+
+def pretraining_pool(
+    min_length: int = 256,
+    max_length: int = 1024,
+    freq: str | int = "D",
+    seed: int | None = 42,
+    include_interpretable: bool = True,
+    n_meta_variants: int = 3,
+    seasonal_period: int | None = None,
+    include_seasonal: bool = False,
+    members: Iterable[int] | None = None,
+    include_extended: bool = False,
+    overlay_seed: int | None = None,
+    calendar_rate: float = 0.0,
+    observability_rate: float = 0.0,
+    **base_kwargs: Any,
+) -> list[BaseGenerator]:
+    """Create a breadth-maximizing pool for foundation-model pretraining.
+
+    This is the pretraining-oriented counterpart to :func:`interpretable_pool`.
+    It adds the diversity-targeted *meta-generators* that ``interpretable_pool``
+    deliberately excludes — ``TSIGenerator`` (randomized trend/seasonal/
+    irregular composition), ``TCMGenerator`` (random temporal causal graphs),
+    ``KernelSynthGenerator`` (samples from randomly composed GP kernels), and
+    ``MARGenerator`` (GRATIS-style mixtures of autoregressive components).
+    Each resamples a fresh configuration per series, so a handful of instances
+    spans a very wide distribution. By default it also includes the full
+    ``interpretable_pool`` so the corpus carries interpretable single-mechanism
+    behaviors alongside the meta-generators.
+
+    Unlike ``interpretable_pool``, the default length range is wide
+    (256-1024 steps), matching the longer contexts typical of pretraining.
+
+    Args:
+        min_length: Minimum series length for all generators.
+        max_length: Maximum series length for all generators.
+        freq: Frequency for all generators, as a pandas offset alias or integer.
+        seed: Base random seed. Each generator gets a distinct offset. Set to
+            None for random seeds.
+        include_interpretable: When True (default), prepend the full
+            :func:`interpretable_pool`; when False, return only the
+            meta-generators (a purely procedural pretraining corpus), plus the
+            seasonal instances if ``include_seasonal`` is also set. The former
+            keyword ``include_balanced`` is still accepted with a
+            ``DeprecationWarning``.
+        n_meta_variants: Number of independently-seeded instances of each
+            meta-generator (default 3). More instances give the meta-generators
+            a larger share when series are spread evenly across the pool, as in
+            :func:`generate_series`.
+        seasonal_period: Seasonal period for the seasonal variants of the
+            included :func:`interpretable_pool` and :func:`seasonal_pool`.
+            Defaults to None, which derives it from ``freq``.
+        include_seasonal: When True, append the eight :func:`seasonal_pool`
+            instances (strong seasonality on a moving level) at the same
+            period. Skipped with a warning when the period is below 2, as for
+            yearly data. Recommended for regularly seasonal quarterly and
+            monthly targets, where it raised feature-space coverage on every
+            panel tested that had a seasonal gap to fill; it does not help
+            intermittent monthly data, where displacing pool breadth cost
+            about three points. Leave it off for weekly, daily, hourly, and
+            intermittent targets. Default False.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds the whole pool. Each selected
+            instance is identical to the same entry of the full pool and the
+            others are never constructed. Order: interpretable entries, then
+            ``n_meta_variants`` each of TSI, TCM, KernelSynth and MAR, then
+            seasonal entries, then extended entries.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
+        include_extended: When True, append one instance of each univariate
+            generator outside the interpretable and meta pools (Clickstream,
+            DailyActiveUsers, GeometricBrownianMotion, HawkesProcess,
+            JumpDiffusion, OrnsteinUhlenbeck, PoissonProcess, RandomWalk,
+            Seasonal, StateSpace, StochasticVolatility), after all other
+            entries so existing indices are unchanged. All use defaults except
+            the two price processes, which step daily (``dt = 1/252``, and 25
+            jumps a year of log-size std 0.05 for JumpDiffusion) so long series
+            stay bounded. Default False.
+        overlay_seed: When set, each built entry gets the overlays that
+            :func:`pretraining_overlays` draws from ``(overlay_seed, index)``,
+            so a member built alone matches the full pool's entry. Drawn
+            stages only fill the stages an entry leaves off, and entries that
+            define their own changepoints or anomalies take no drawn ones.
+            Default None, which adds no overlays.
+        calendar_rate: Probability that an entry also gets a calendar drawn by
+            :func:`calendar_overlays` from its own stream of
+            ``(overlay_seed, index)``, so pools at rate 0 are unchanged.
+            Requires ``overlay_seed``. Default 0.0.
+        observability_rate: Probability that an entry gets a waveform and
+            observation configuration drawn by :func:`observability_overlays`
+            from its own stream of ``(overlay_seed, index)``, with periods up
+            to a third of ``min_length`` (between 12 and 720 steps). The draw
+            replaces the entry's drawn base weight, waveform, observation,
+            changepoint, anomaly and missing-data stages. Pools at rate 0 are
+            unchanged. Requires ``overlay_seed``. Default 0.0.
+        **base_kwargs: Additional keyword arguments passed to all generators
+            (e.g., engine, id_col, time_col, target_col).
+
+    Returns:
+        List of BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
+
+    Examples:
+        >>> from synforecast import SynSet, pretraining_pool
+        >>> pool = pretraining_pool(min_length=512, max_length=512, freq="h")
+        >>> df = SynSet(pool).generate(n_series_per_generator=1)
+
+        >>> # Purely procedural corpus (meta-generators only)
+        >>> meta = pretraining_pool(include_interpretable=False)
+
+        >>> # Add the strongly seasonal instances for monthly targets
+        >>> seasonal = pretraining_pool(freq="MS", include_seasonal=True)
+    """
+    if "include_balanced" in base_kwargs:
+        warnings.warn(
+            "include_balanced is deprecated and will be removed in a future "
+            "release; use include_interpretable.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        include_interpretable = base_kwargs.pop("include_balanced")
+    for name, rate in (
+        ("calendar_rate", calendar_rate),
+        ("observability_rate", observability_rate),
+    ):
+        if not 0.0 <= rate <= 1.0:
+            raise ValueError(f"{name} must be in [0, 1], got {rate}")
+        if rate > 0 and overlay_seed is None:
+            raise ValueError(f"{name} needs an overlay_seed")
+    if n_meta_variants < 1:
+        raise ValueError("n_meta_variants must be >= 1")
+    if seasonal_period is not None and seasonal_period < 1:
+        raise ValueError(f"seasonal_period must be >= 1, got {seasonal_period}")
+
+    base: dict[str, Any] = {
+        "min_length": min_length,
+        "max_length": max_length,
+        "freq": freq,
+    }
+    base.update(base_kwargs)
+
+    def _seed(i: int) -> int | None:
+        return seed + i if seed is not None else None
+
+    # Meta-generator seeds are offset well past interpretable_pool's 0..41 range so
+    # the two sets never collide when combined.
+    meta_classes = (TSIGenerator, TCMGenerator, KernelSynthGenerator, MARGenerator)
+    meta: list[_Spec] = [
+        partial(cls, **base, seed=_seed(1000 + 100 * family + variant))
+        for family, cls in enumerate(meta_classes)
+        for variant in range(n_meta_variants)
+    ]
+
+    seasonal: list[_Spec] = []
+    if include_seasonal:
+        period = (
+            _seasonal_period_from_freq(freq)
+            if seasonal_period is None
+            else seasonal_period
+        )
+        if period < 2:
+            source = (
+                f"freq={freq!r} yields a seasonal period of {period}"
+                if seasonal_period is None
+                else f"seasonal_period={seasonal_period} has no seasonal cycle"
+            )
+            hint = (
+                " Pass seasonal_period explicitly to add it anyway."
+                if seasonal_period is None
+                else ""
+            )
+            warnings.warn(
+                f"include_seasonal=True was ignored: {source}, and "
+                f"seasonal_pool needs a period of at least 2.{hint}",
+                UserWarning,
+                stacklevel=2,
+            )
+        else:
+            # Seed offsets 2000..2007 sit past both the 0..41 and 1000.. ranges.
+            seasonal = _seasonal_specs(
+                min_length, max_length, freq, _seed(2000), period, base_kwargs
+            )
+
+    interpretable = (
+        _interpretable_specs(
+            min_length, max_length, freq, seed, seasonal_period, base_kwargs
+        )
+        if include_interpretable
+        else []
+    )
+    # Seed offsets 3000.. sit past the interpretable, meta and seasonal ranges.
+    extended: list[_Spec] = (
+        [
+            partial(cls, **base, seed=_seed(3000 + k), **settings)
+            for k, (cls, settings) in enumerate(_EXTENDED)
+        ]
+        if include_extended
+        else []
+    )
+    return _build(
+        interpretable + meta + seasonal + extended,
+        members,
+        overlay_seed,
+        calendar_rate,
+        observability_rate,
+        min(720, max(12, min_length // 3)),
+    )
+
+
+def _seasonal_factors(period: int, sharpness: float) -> list[float]:
+    """Unit-mean multiplicative seasonal factors exp(sharpness * cos)."""
+    factors = [
+        math.exp(sharpness * math.cos(2 * math.pi * k / period)) for k in range(period)
+    ]
+    mean = sum(factors) / period
+    return [f / mean for f in factors]
+
+
+def seasonal_pool(
+    min_length: int = 200,
+    max_length: int = 200,
+    *,
+    freq: str | int,
+    seed: int | None = 42,
+    seasonal_period: int | None = None,
+    members: Iterable[int] | None = None,
+    **base_kwargs: Any,
+) -> list[BaseGenerator]:
+    """Create an opt-in pool of strongly seasonal series on a moving level.
+
+    Feature-space coverage benchmarks found that real quarterly and monthly
+    panels with a pronounced, regular seasonal cycle whose swing grows with
+    the level (tourism demand, hospital patient counts) have few near
+    neighbours in :func:`interpretable_pool`. This pool adds eight configured
+    instances of existing generators that fill that region: ``TSIGenerator``
+    with one harmonic at the seasonal period under moderate to heavy noise,
+    including persistent AR(1) and heavy-tailed variants and a weakly seasonal
+    variant; noisy multiplicative and additive Holt-Winters ``ETSGenerator``
+    instances with fast level adaptation; and ``SeasonalGenerator`` sines with
+    level or slope breaks.
+
+    It is meant to be **added on top of** ``interpretable_pool`` or
+    ``pretraining_pool``, never to replace them or any share of them. On
+    tourism, hospital, and M1 monthly panels, adding it raised the fraction of
+    real series with a close synthetic neighbour by 8 to 32 points; on M4
+    panels, which have no such gap, it was neutral; and on intermittent
+    car-parts sales it slightly lowered coverage when it displaced the
+    pretraining pool's share. As a standalone corpus it covers far fewer real
+    series than the pools. It was evaluated only at quarterly and monthly
+    periods; other periods are supported but untested, and its effect on
+    forecasting accuracy has not been measured.
+
+    Args:
+        min_length: Minimum series length for all generators.
+        max_length: Maximum series length for all generators.
+        freq: Frequency for all generators, as a pandas offset alias or
+            integer. Required, because the pool is meant to be combined with
+            another and its period derives from ``freq``: pass the same value
+            to :func:`interpretable_pool` or :func:`pretraining_pool`, whose
+            default is ``"D"``. Evaluated at ``"QS"`` and ``"MS"``.
+        seed: Base random seed; generator ``i`` receives ``seed + i``. Set to
+            None for random seeds.
+        seasonal_period: Seasonal period in time steps. Defaults to None,
+            which derives it from ``freq`` as in :func:`interpretable_pool`; it
+            must be at least 2, so yearly frequencies need an explicit value.
+        members: Indices of the pool entries to build, in the order given.
+            Defaults to None, which builds all 8. Each selected instance is
+            identical to the same entry of the full pool, and the others are
+            never constructed.
+            Entry seeds are ``seed`` plus a fixed offset, so for fresh draws
+            reuse built members or give each rebuild a random 64-bit seed.
+            Consecutive seeds alias: ``seed + 1`` rebuilds entries of ``seed``
+            under other indices, which repeats their series exactly.
+        **base_kwargs: Additional keyword arguments passed to all generators
+            (e.g., engine, id_col, time_col, target_col). Keys the pool sets
+            per generator, such as ``alias`` or ``level``, raise ValueError.
+
+    Returns:
+        List of 8 BaseGenerator instances ready for use with SynSet, or the
+        selected ``members``.
+
+    Examples:
+        >>> from synforecast import SynSet, interpretable_pool, seasonal_pool
+        >>> pool = interpretable_pool(freq="MS") + seasonal_pool(freq="MS")
+        >>> df = SynSet(pool).generate(n_series_per_generator=1)
+    """
+    specs = _seasonal_specs(
+        min_length, max_length, freq, seed, seasonal_period, base_kwargs
+    )
+    return _build(specs, members)
+
+
+def _seasonal_specs(
+    min_length: int,
+    max_length: int,
+    freq: str | int,
+    seed: int | None,
+    seasonal_period: int | None,
+    base_kwargs: dict[str, Any],
+) -> list[_Spec]:
+    """Unbuilt constructors of :func:`seasonal_pool`, in pool order."""
+    base: dict[str, Any] = {
+        "min_length": min_length,
+        "max_length": max_length,
+        "freq": freq,
+    }
+    base.update(base_kwargs)
+    period = (
+        _seasonal_period_from_freq(freq) if seasonal_period is None else seasonal_period
+    )
+    if period < 2:
+        raise ValueError(
+            "seasonal_pool needs a seasonal period of at least 2; pass "
+            "seasonal_period explicitly for frequencies without a sub-annual cycle"
+        )
+
+    def _seed(i: int) -> int | None:
+        return seed + i if seed is not None else None
+
+    def _make(
+        cls: type[BaseGenerator], **settings: Any
+    ) -> tuple[type[BaseGenerator], dict[str, Any]]:
+        return cls, settings
+
+    tsi: dict[str, Any] = {
+        "seasonal_periods": [float(period)],
+        "n_seasonal_range": (1, 1),
+        "seasonal_amplitude_range": (0.5, 3.0),
+        "harmonics_prob": 0.5,
+        "amplitude_modulation_prob": 0.5,
+        "trend_types": [
+            "linear",
+            "piecewise_linear",
+            "damped",
+            "logistic",
+            "exponential",
+        ],
+        "trend_slope_range": (-3.0, 6.0),
+        "multiplicative_prob": 1.0,
+        "noise_scale_range": (0.3, 3.0),
+        "irregular_types": ["gaussian", "ar1", "student_t"],
+        "ar1_phi_range": (0.5, 0.95),
+        "tail_df_range": (3.0, 8.0),
+        "level_range": (5.0, 10.0),
+        "scale_range": (1.0, 1.0),
+    }
+    ets: dict[str, Any] = {
+        "seasonal_period": period,
+        "level": 100.0,
+        "alpha": 0.3,
+        "beta": 0.02,
+        "phi": 0.9,
+    }
+    specs = [
+        _make(TSIGenerator, seed=_seed(0), alias="tsi_moderate_multiplicative", **tsi),
+        _make(
+            TSIGenerator,
+            seed=_seed(1),
+            alias="tsi_moderate_additive",
+            **{**tsi, "multiplicative_prob": 0.0, "trend_slope_range": (-3.0, 3.0)},
+        ),
+        _make(
+            TSIGenerator,
+            seed=_seed(2),
+            alias="tsi_persistent",
+            **{
+                **tsi,
+                "multiplicative_prob": 0.0,
+                "trend_slope_range": (-3.0, 3.0),
+                "noise_scale_range": (1.0, 4.0),
+                "irregular_types": ["ar1"],
+                "ar1_phi_range": (0.8, 0.97),
+            },
+        ),
+        _make(
+            TSIGenerator,
+            seed=_seed(3),
+            alias="tsi_weak_seasonal",
+            **{
+                **tsi,
+                "multiplicative_prob": 0.3,
+                "seasonal_amplitude_range": (0.2, 1.0),
+                "noise_scale_range": (1.0, 6.0),
+            },
+        ),
+        _make(
+            ETSGenerator,
+            seed=_seed(4),
+            alias="ets_MAdM_noisy",
+            error_type="mul",
+            trend_type="add",
+            seasonal_type="mul",
+            trend=0.3,
+            damped=True,
+            gamma=0.1,
+            noise_std=0.15,
+            seasonal=_seasonal_factors(period, 0.5),
+            **ets,
+        ),
+        _make(
+            ETSGenerator,
+            seed=_seed(5),
+            alias="ets_AAdA_noisy",
+            error_type="add",
+            trend_type="add",
+            seasonal_type="add",
+            trend=0.2,
+            damped=True,
+            gamma=0.1,
+            noise_std=10.0,
+            seasonal=[20 * math.cos(2 * math.pi * k / period) for k in range(period)],
+            **ets,
+        ),
+        _make(
+            SeasonalGenerator,
+            seed=_seed(6),
+            alias="seasonal_noisy_level_breaks",
+            seasonality_period=period,
+            seasonality_amplitude=1.0,
+            trend=0.008,
+            noise_level=0.6,
+            base_level=10.0,
+            overlays=OverlayConfig(
+                changepoints=Changepoints(
+                    count=2, kind="level", level_changes=[0.8, -0.7]
+                )
+            ),
+        ),
+        _make(
+            SeasonalGenerator,
+            seed=_seed(7),
+            alias="seasonal_noisy_trend_breaks",
+            seasonality_period=period,
+            seasonality_amplitude=1.0,
+            noise_level=0.6,
+            base_level=10.0,
+            overlays=OverlayConfig(
+                changepoints=Changepoints(
+                    count=2, kind="trend", trend_changes=[0.01, -0.015]
+                )
+            ),
+        ),
+    ]
+    clash = sorted(base_kwargs.keys() & set().union(*(spec[1] for spec in specs)))
+    if clash:
+        raise ValueError(
+            f"seasonal_pool sets {clash} per generator; do not pass them as "
+            "keyword arguments"
+        )
+    return [partial(cls, **base, **settings) for cls, settings in specs]

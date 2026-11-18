@@ -1,0 +1,99 @@
+{
+  "label": "after-review-fixes",
+  "environment": {
+    "command": "benchmarks/benchmark_review_paths.py --label after-review-fixes --save benchmarks/data/review_paths_after.json",
+    "timestamp_utc": "2026-09-08T19:02:51+00:00",
+    "python": "3.10.12",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "cpu_count": 20,
+    "package_versions": {
+      "synforecast": "0.1.0",
+      "numpy": "2.2.6",
+      "pandas": "2.3.3",
+      "polars": "1.35.2",
+      "scipy": "1.15.3",
+      "scikit-learn": "1.7.2",
+      "statsforecast": "2.1.1",
+      "mlforecast": "1.1.0",
+      "neuralforecast": "3.1.7",
+      "utilsforecast": "0.2.15",
+      "datasetsforecast": "1.0.1",
+      "torch": "2.13.0+cpu"
+    },
+    "git_commit": "9231f352af6979627702b85af26047c8d5489367",
+    "git_dirty": true,
+    "git_diff_sha256": "8e6fa53e8dc556c088a3cd160dcb28b0d1553f2b1b80d4b3ef2b8b33ec0d3e2c"
+  },
+  "package_path": "/home/osprangers/Repositories/synforecast/synforecast/__init__.py",
+  "thread_env": {
+    "RAYON_NUM_THREADS": "4",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "measurements": {
+    "target_period12": {
+      "median_seconds": 0.029128083027899265,
+      "samples_seconds": [
+        0.029128083027899265,
+        0.030399839975871146,
+        0.02521063294261694
+      ]
+    },
+    "target_period24": {
+      "median_seconds": 0.16427148005459458,
+      "samples_seconds": [
+        0.16427148005459458,
+        0.1759099840419367,
+        0.1564435170730576
+      ]
+    },
+    "stationarity_order26": {
+      "median_seconds": 0.000971358036622405,
+      "samples_seconds": [
+        0.0010011800331994891,
+        0.000971358036622405,
+        0.0009548949310556054
+      ]
+    },
+    "mbb_400x96_3copies": {
+      "median_seconds": 0.42329451895784587,
+      "samples_seconds": [
+        0.4867582459701225,
+        0.42329451895784587,
+        0.4115983840310946
+      ]
+    },
+    "dba_24x96_5copies": {
+      "median_seconds": 0.05839189700782299,
+      "samples_seconds": [
+        0.05793808097951114,
+        0.05839189700782299,
+        0.06187327695079148
+      ]
+    },
+    "dba_16x1024_4copies": {
+      "median_seconds": 0.21686423697974533,
+      "samples_seconds": [
+        0.21615507104434073,
+        0.2237585389520973,
+        0.21686423697974533
+      ]
+    },
+    "features_4095_200calls": {
+      "median_seconds": 0.01791630405932665,
+      "samples_seconds": [
+        0.01791630405932665,
+        0.01766505592968315,
+        0.017938975943252444
+      ]
+    },
+    "features_4096_200calls": {
+      "median_seconds": 0.01477944990620017,
+      "samples_seconds": [
+        0.014950526994653046,
+        0.01477944990620017,
+        0.014538035960868001
+      ]
+    }
+  }
+}

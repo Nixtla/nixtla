@@ -1,0 +1,324 @@
+name: CI (synforecast)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/synforecast/**"
+      - ".github/workflows/synforecast-*.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/synforecast/**"
+      - ".github/workflows/synforecast-*.yml"
+  workflow_dispatch:
+  # synforecast-publish.yml runs this suite on the tagged commit before building,
+  # in place of the old gate that polled the commit's check runs: with path
+  # filters a release commit need not have a run of this workflow at all.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-synforecast-ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+defaults:
+  run:
+    working-directory: packages/synforecast
+
+jobs:
+  lowest-direct-dependencies:
+    name: Test lowest direct dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Install lowest direct dependencies
+        run: |
+          uv venv --python 3.11 .venv-lowest
+          uv pip install --python .venv-lowest/bin/python --resolution lowest-direct --editable .
+          uv pip install --python .venv-lowest/bin/python 'pytest>=9.0.3'
+
+      - name: Verify runtime dependency floor
+        run: .venv-lowest/bin/python -I -c "import importlib.util, numpy; from synforecast import _lib; assert numpy.__version__ == '1.23.5'; assert importlib.util.find_spec('scipy') is None"
+
+      - name: Run core compatibility tests
+        run: >-
+          .venv-lowest/bin/python -m pytest -o addopts=''
+          tests/test_config_validation.py
+          tests/test_docs_navigation.py
+          tests/test_generate_series.py::test_returns_long_format
+          tests/test_notebook_examples.py
+          tests/test_mar_native_search.py
+          tests/test_presets.py
+
+  all-tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            packages/synforecast/pyproject.toml
+            packages/synforecast/uv.lock
+
+      - name: Setup devenv
+        run: uv sync --all-extras
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path rust/Cargo.toml
+
+      - name: Run Python tests
+        run: uv run pytest tests/ -v --cov=synforecast
+
+  benchmark-smoke:
+    name: Benchmark smoke run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            packages/synforecast/pyproject.toml
+            packages/synforecast/uv.lock
+
+      - name: Setup devenv
+        run: uv sync
+
+      # The model-free benchmark CLIs must keep running from a clean checkout.
+      # The augmentation and pretraining benchmarks need the integration-docs
+      # dependency group, dataset downloads, and model training; run those
+      # locally with --quick instead.
+      - name: Smoke-run benchmark CLIs
+        run: |
+          uv run python benchmarks/benchmark_performance.py --quick
+          uv run python benchmarks/benchmark_balanced_pool.py --quick
+          uv run python benchmarks/benchmark_batch_parallel.py --quick
+
+  optional-engines:
+    name: Optional dataframe engines
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            packages/synforecast/pyproject.toml
+            packages/synforecast/uv.lock
+
+      - name: Setup devenv
+        run: uv sync
+
+      # cuDF needs CUDA hardware and stays a documented local-only check.
+      - name: Install optional engines
+        run: uv pip install pyarrow "modin[dask]"
+
+      - name: Run optional-engine tests
+        run: uv run --no-sync pytest tests/test_optional_engines.py --no-cov -v
+
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@2e6429cdbcfb68a5450668dcab09d445af5704e8 # v1
+        with:
+          working-directory: packages/synforecast
+          args: --release --out dist --find-interpreter
+          manylinux: auto
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheels-${{ matrix.os }}
+          path: packages/synforecast/dist/*.whl
+
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@2e6429cdbcfb68a5450668dcab09d445af5704e8 # v1
+        with:
+          working-directory: packages/synforecast
+          command: sdist
+          args: --out dist
+
+      - name: Install and test sdist
+        run: |
+          uv venv .venv-sdist
+          uv pip install --python .venv-sdist/bin/python dist/*.tar.gz
+          .venv-sdist/bin/python -I -c "import synforecast; from synforecast import _lib; assert synforecast.__version__"
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdist
+          path: packages/synforecast/dist/*.tar.gz
+
+  # From the pre-monorepo lint.yml. The repo-wide lint workflow runs ruff from
+  # the merged pre-commit config but skips rust-licenses, which needs cargo and
+  # cargo-about; it runs here along with the checks that were never hooks.
+  lint:
+    name: Lint (rust-licenses, mypy, rustfmt, clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            packages/synforecast/pyproject.toml
+            packages/synforecast/uv.lock
+
+      - name: Setup Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Setup devenv
+        run: uv sync --all-groups
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.9.1 --locked --features cli
+
+      # pre-commit resolves its config against the repository root.
+      - name: Check Rust license notices are current
+        working-directory: .
+        run: >-
+          uv run --project packages/synforecast --no-sync
+          pre-commit run rust-licenses --all-files --show-diff-on-failure
+
+      # Typing is adopted incrementally: this list only grows. A module added
+      # here must stay mypy-clean (see [tool.mypy] in pyproject.toml).
+      - name: Run mypy on typed modules
+        run: >-
+          uv run mypy
+          synforecast/_fitting.py
+          synforecast/_coverage.py
+          synforecast/_features.py
+          synforecast/evaluation.py
+          synforecast/utils.py
+          synforecast/presets.py
+          synforecast/overlays.py
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets --all-features -- -D warnings
+
+  ci-complete:
+    name: CI complete
+    if: ${{ always() }}
+    needs:
+      - lowest-direct-dependencies
+      - all-tests
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Verify all CI jobs succeeded
+        env:
+          LOWEST_RESULT: ${{ needs['lowest-direct-dependencies'].result }}
+          TESTS_RESULT: ${{ needs['all-tests'].result }}
+          WHEELS_RESULT: ${{ needs['build-wheels'].result }}
+          SDIST_RESULT: ${{ needs['build-sdist'].result }}
+        run: |
+          printf 'lowest-direct-dependencies: %s\n' "$LOWEST_RESULT"
+          printf 'all-tests: %s\n' "$TESTS_RESULT"
+          printf 'build-wheels: %s\n' "$WHEELS_RESULT"
+          printf 'build-sdist: %s\n' "$SDIST_RESULT"
+
+          if [[ "$LOWEST_RESULT" != "success" ||
+                "$TESTS_RESULT" != "success" ||
+                "$WHEELS_RESULT" != "success" ||
+                "$SDIST_RESULT" != "success" ]]; then
+            echo "::error::One or more required CI jobs did not succeed."
+            exit 1
+          fi

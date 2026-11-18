@@ -1,0 +1,295 @@
+"""Utilities for processing data before training/analysis"""
+
+__all__ = ["id_time_grid", "fill_gaps"]
+
+
+import warnings
+from datetime import date, datetime
+from functools import partial
+from typing import Union
+
+import numpy as np
+import pandas as pd
+
+from .compat import DFType, pl, pl_DataFrame, pl_Series
+from .processing import group_by, repeat
+from .validation import _is_int_dtype, validate_format, validate_freq
+
+
+def _determine_bound(bound, freq, times_by_id, agg) -> np.ndarray:
+    if bound == "per_serie":
+        out = times_by_id[agg].to_numpy()
+    else:
+        # the following return a scalar
+        if bound == "global":
+            val = getattr(times_by_id[agg].to_numpy(), agg)()
+            if isinstance(freq, str):
+                val = np.datetime64(val)
+        else:
+            if isinstance(freq, str):
+                # this raises a nice error message if it isn't a valid datetime
+                if isinstance(bound, pd.Timestamp) and bound.tz is not None:
+                    bound = bound.tz_convert("UTC").tz_localize(None)
+                val = np.datetime64(bound)
+            else:
+                val = bound
+        out = np.full(times_by_id.shape[0], val)
+    if isinstance(freq, str):
+        out = out.astype(f"datetime64[{freq}]")
+    return out
+
+
+def _validate_bound_pl(
+    bound: Union[str, int, date, datetime],
+    name: str,
+    times: pl_Series,
+) -> None:
+    if isinstance(bound, str) and bound in ("per_serie", "global"):
+        return
+    if times.dtype.is_temporal():
+        expected = "a string, date or datetime"
+        valid = isinstance(bound, (str, date))
+    else:
+        expected = "an integer"
+        valid = isinstance(bound, (int, np.integer))
+    if not valid:
+        raise ValueError(
+            f"Time column has type {times.dtype} but `{name}` is {bound!r}. "
+            f"When using polars dataframes `{name}` must be 'per_serie', 'global' "
+            f"or {expected}."
+        )
+
+
+def _determine_bound_pl(
+    bound: Union[str, int, date, datetime],
+    times_by_id: pl_DataFrame,
+    agg: str,
+) -> pl_Series:
+    target_dtype = times_by_id[agg].dtype
+    if bound == "per_serie":
+        out = times_by_id[agg]
+    else:
+        if bound == "global":
+            val = getattr(times_by_id[agg], agg)()
+            val_s = pl_Series([val], dtype=target_dtype)
+        else:
+            val_s = pl_Series([bound])
+            if isinstance(bound, str):
+                val_s = val_s.str.to_datetime()
+            target_tz = getattr(target_dtype, "time_zone", None)
+            bound_tz = getattr(val_s.dtype, "time_zone", None)
+            if bound_tz is not None and target_tz is None:
+                raise ValueError(
+                    f"Bound {bound!r} is timezone-aware but the time column "
+                    f"has type {target_dtype}, which has no timezone."
+                )
+            if target_tz is not None and bound_tz is None:
+                # naive bounds are wall times in the column's timezone
+                if val_s.dtype == pl.Date:
+                    val_s = val_s.cast(pl.Datetime(target_dtype.time_unit))
+                val_s = val_s.dt.replace_time_zone(target_tz)
+            val_s = val_s.cast(target_dtype)
+        out = repeat(val_s, times_by_id.shape[0])
+    return out
+
+
+def id_time_grid(
+    df: DFType,
+    freq: Union[str, int],
+    start: Union[str, int, date, datetime] = "per_serie",
+    end: Union[str, int, date, datetime] = "global",
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> DFType:
+    """Generate all expected combiations of ids and times.
+
+    Args:
+        df (pandas or polars DataFrame): Input data
+        freq (str or int): Series' frequency
+        start (str, int, date or datetime, optional): Initial timestamp for the series.
+            * 'per_serie' uses each serie's first timestamp
+            * 'global' uses the first timestamp seen in the data
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            Defaults to "per_serie".
+        end (str, int, date or datetime, optional): Initial timestamp for the series.
+            * 'per_serie' uses each serie's last timestamp
+            * 'global' uses the last timestamp seen in the data
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            Defaults to "global".
+        id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
+        time_col (str, optional): Column that identifies each timestamp. Defaults to 'ds'.
+
+    Returns:
+        pandas or polars DataFrame: Dataframe with expected ids and times.
+    """
+    if isinstance(df, pl_DataFrame):
+        _validate_bound_pl(start, "start", df[time_col])
+        _validate_bound_pl(end, "end", df[time_col])
+        times_by_id = (
+            group_by(df, id_col)
+            .agg(
+                pl.col(time_col).min().alias("min"),
+                pl.col(time_col).max().alias("max"),
+            )
+            .sort(id_col)
+        )
+        starts = _determine_bound_pl(start, times_by_id, "min")
+        ends = _determine_bound_pl(end, times_by_id, "max")
+        grid = pl_DataFrame({id_col: times_by_id[id_col]})
+        if _is_int_dtype(starts):
+            grid = grid.with_columns(
+                pl.int_ranges(starts, ends + freq, step=freq, eager=True).alias(
+                    time_col
+                )
+            )
+        else:
+            if starts.dtype == pl.Date:
+                ranges_fn = pl.date_ranges
+            else:
+                ranges_fn = partial(
+                    pl.datetime_ranges,
+                    time_unit=df.schema[time_col].time_unit,
+                )
+            grid = grid.with_columns(
+                ranges_fn(
+                    starts,
+                    ends,
+                    interval=freq,
+                    eager=True,
+                ).alias(time_col)
+            )
+        return grid.explode(time_col)
+    if isinstance(freq, str):
+        offset = pd.tseries.frequencies.to_offset(freq)
+        n = offset.n
+        if isinstance(offset.base, pd.offsets.Minute):
+            # minutes are represented as 'm' in numpy
+            freq = "m"
+        elif isinstance(offset.base, pd.offsets.BusinessDay):
+            if n != 1:
+                raise NotImplementedError("Multiple of a business day")
+            freq = "D"
+        elif isinstance(offset.base, pd.offsets.Hour):
+            # hours are represented as 'h' in numpy
+            freq = "h"
+        elif isinstance(offset.base, (pd.offsets.QuarterBegin, pd.offsets.QuarterEnd)):
+            n = 3
+            freq = "M"
+        elif isinstance(offset.base, (pd.offsets.YearBegin, pd.offsets.YearEnd)):
+            freq = "Y"
+        elif isinstance(offset.base, pd.offsets.Second):
+            freq = "s"
+        elif isinstance(offset.base, pd.offsets.Milli):
+            freq = "ms"
+        elif isinstance(offset.base, pd.offsets.Micro):
+            freq = "us"
+        elif isinstance(offset.base, pd.offsets.Nano):
+            freq = "ns"
+        elif isinstance(offset.base, (pd.offsets.MonthBegin, pd.offsets.MonthEnd)):
+            freq = "M"
+        elif isinstance(offset.base, pd.offsets.Week):
+            freq = "W"
+        if n > 1:
+            freq = freq.replace(str(n), "")
+        try:
+            pd.Timedelta(offset)
+        except ValueError:
+            # irregular freq, try using first letter of abbreviation
+            # such as MS = 'Month Start' -> 'M', YS = 'Year Start' -> 'Y'
+            freq = freq[0]
+        delta: Union[np.timedelta64, int] = np.timedelta64(n, freq)
+        if df[time_col].dt.tz is not None:
+            df = df.copy(deep=False)
+            df[time_col] = df[time_col].dt.tz_convert("UTC").dt.tz_localize(None)
+    else:
+        delta = freq
+    times_by_id = df.groupby(id_col, observed=True)[time_col].agg(["min", "max"])
+    starts = _determine_bound(start, freq, times_by_id, "min")
+    ends = _determine_bound(end, freq, times_by_id, "max") + delta
+    sizes = ((ends - starts) / delta).astype(np.int64)
+    times = np.hstack(
+        [np.arange(start, end, delta) for start, end in zip(starts, ends)]
+    )
+    uids = np.repeat(times_by_id.index, sizes)
+    if isinstance(freq, str):
+        if isinstance(offset.base, pd.offsets.BusinessDay):
+            # data was generated daily, we need to keep only business days
+            bdays = np.is_busday(times)
+            uids = uids[bdays]
+            times = times[bdays]
+        times = pd.Index(times.astype("datetime64[ns]", copy=False))
+        first_time = np.datetime64(df.iloc[0][time_col])
+        was_truncated = first_time != first_time.astype(f"datetime64[{freq}]")
+        if was_truncated:
+            times += offset.base
+    return pd.DataFrame(
+        {
+            id_col: uids,
+            time_col: times,
+        }
+    )
+
+
+def fill_gaps(
+    df: DFType,
+    freq: Union[str, int],
+    start: Union[str, int, date, datetime] = "per_serie",
+    end: Union[str, int, date, datetime] = "global",
+    id_col: str = "unique_id",
+    time_col: str = "ds",
+) -> DFType:
+    """Enforce start and end datetimes for dataframe.
+
+    Args:
+        df (pandas or polars DataFrame): Input data
+        freq (str or int): Series' frequency
+        start (str, int, date or datetime, optional): Initial timestamp for the series.
+            * 'per_serie' uses each serie's first timestamp
+            * 'global' uses the first timestamp seen in the data
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            Defaults to "per_serie".
+        end (str, int, date or datetime, optional): Initial timestamp for the series.
+            * 'per_serie' uses each serie's last timestamp
+            * 'global' uses the last timestamp seen in the data
+            * Can also be a specific timestamp or integer, e.g. '2000-01-01', 2000 or datetime(2000, 1, 1)
+            Defaults to "global".
+        id_col (str, optional): Column that identifies each serie. Defaults to 'unique_id'.
+        time_col (str, optional): Column that identifies each timestamp. Defaults to 'ds'.
+
+    Returns:
+        pandas or polars DataFrame: Dataframe with gaps filled.
+    """
+    validate_format(df, id_col=id_col, time_col=time_col, target_col=None)
+    validate_freq(df[time_col], freq=freq)
+
+    grid = id_time_grid(
+        df=df,
+        freq=freq,
+        start=start,
+        end=end,
+        id_col=id_col,
+        time_col=time_col,
+    )
+    if isinstance(df, pl_DataFrame):
+        return grid.join(df, on=[id_col, time_col], how="left")
+    idx = pd.MultiIndex.from_frame(grid)
+    if isinstance(freq, str):
+        tz = df[time_col].dt.tz
+        if tz is not None:
+            df = df.copy(deep=False)
+            df[time_col] = df[time_col].dt.tz_convert("UTC").dt.tz_localize(None)
+    res = df.set_index([id_col, time_col]).reindex(idx).reset_index()
+    if isinstance(freq, str):
+        if tz is not None:
+            res[time_col] = res[time_col].dt.tz_localize("UTC").dt.tz_convert(tz)
+    extra_cols = df.columns.drop([id_col, time_col]).tolist()
+    if extra_cols:
+        check_col = extra_cols[0]
+        if res[check_col].count() < df[check_col].count():
+            warnings.warn(
+                "Some values were lost during filling, "
+                "please make sure that all your times meet the specified frequency.\n"
+                "For example if you have 'W-TUE' as your frequency, "
+                "make sure that all your times are actually Tuesdays."
+            )
+    return res

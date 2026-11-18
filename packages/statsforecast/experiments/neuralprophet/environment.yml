@@ -1,0 +1,15 @@
+name: exp_neuralprophet
+channels:
+  - conda-forge
+  - defaults
+  - anaconda
+dependencies:
+  - python=3.8
+  - pip==20.3.3
+  - numpy
+  - fire
+  - pip:
+    - git+https://github.com/ourownstory/neural_prophet.git@de24e5d
+    - git+https://github.com/nixtla/neuralforecast.git@main
+    - statsforecast
+    - jupyterlab

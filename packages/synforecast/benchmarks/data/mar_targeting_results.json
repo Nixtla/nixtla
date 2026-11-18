@@ -1,0 +1,257 @@
+{
+  "environment": {
+    "command": "benchmarks/benchmark_mar_targeting.py --save /tmp/pr55-perf/numpy-quality.json",
+    "timestamp_utc": "2026-09-08T19:03:30+00:00",
+    "python": "3.10.12",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "machine": "x86_64",
+    "cpu_count": 20,
+    "package_versions": {
+      "synforecast": "0.1.0",
+      "numpy": "2.2.6",
+      "pandas": "2.3.3",
+      "polars": "1.35.2",
+      "scipy": "1.15.3",
+      "scikit-learn": "1.7.2",
+      "statsforecast": "2.1.1",
+      "mlforecast": "1.1.0",
+      "neuralforecast": "3.1.7",
+      "utilsforecast": "0.2.15",
+      "datasetsforecast": "1.0.1",
+      "torch": "2.13.0+cpu"
+    },
+    "git_commit": "9231f352af6979627702b85af26047c8d5489367",
+    "git_dirty": true,
+    "git_diff_sha256": "fc8dad0b5990efdccc25b187064f19cfffced593dac9151038ba28e787b9bfd9"
+  },
+  "config": {
+    "min_length": 64,
+    "max_length": 128,
+    "freq": 1,
+    "seasonal_period": 12
+  },
+  "training_draws": 3,
+  "held_out_draws": 24,
+  "rows": [
+    {
+      "target": {
+        "acf1": 0.7
+      },
+      "seed": 31,
+      "candidate_budget": 60,
+      "evolution_training": 0.00021292668358918743,
+      "random_training": 0.05213168562617332,
+      "evolution_held_out": 0.005727515670928329,
+      "random_held_out": 0.10086539856357146
+    },
+    {
+      "target": {
+        "acf1": 0.7
+      },
+      "seed": 32,
+      "candidate_budget": 60,
+      "evolution_training": 0.001605750340644918,
+      "random_training": 0.0210424237191148,
+      "evolution_held_out": 0.051731125527210486,
+      "random_held_out": 0.014144519805696976
+    },
+    {
+      "target": {
+        "acf1": 0.7
+      },
+      "seed": 33,
+      "candidate_budget": 60,
+      "evolution_training": 0.0027925948351772423,
+      "random_training": 0.009725283113865335,
+      "evolution_held_out": 0.028852415181076396,
+      "random_held_out": 0.03367014637396337
+    },
+    {
+      "target": {
+        "acf1": 0.7
+      },
+      "seed": 34,
+      "candidate_budget": 60,
+      "evolution_training": 0.001117943815096889,
+      "random_training": 0.02169589971813113,
+      "evolution_held_out": 0.03906168401184973,
+      "random_held_out": 0.0982049483587073
+    },
+    {
+      "target": {
+        "acf1": 0.7
+      },
+      "seed": 35,
+      "candidate_budget": 60,
+      "evolution_training": 0.011740482541607977,
+      "random_training": 0.003332841278289256,
+      "evolution_held_out": 0.023295670757146447,
+      "random_held_out": 0.040298698323712245
+    },
+    {
+      "target": {
+        "spectral_entropy": 0.5
+      },
+      "seed": 31,
+      "candidate_budget": 60,
+      "evolution_training": 0.0010124680339139158,
+      "random_training": 0.0014660375549313542,
+      "evolution_held_out": 0.025221092680578427,
+      "random_held_out": 0.08514888293092271
+    },
+    {
+      "target": {
+        "spectral_entropy": 0.5
+      },
+      "seed": 32,
+      "candidate_budget": 60,
+      "evolution_training": 0.01550478064588201,
+      "random_training": 0.034311601227247523,
+      "evolution_held_out": 0.08521694847480354,
+      "random_held_out": 0.09922402310331047
+    },
+    {
+      "target": {
+        "spectral_entropy": 0.5
+      },
+      "seed": 33,
+      "candidate_budget": 60,
+      "evolution_training": 0.0006797804959622344,
+      "random_training": 0.0057124329485953584,
+      "evolution_held_out": 0.07973506072978342,
+      "random_held_out": 0.07791130898715393
+    },
+    {
+      "target": {
+        "spectral_entropy": 0.5
+      },
+      "seed": 34,
+      "candidate_budget": 60,
+      "evolution_training": 0.0005604439206869927,
+      "random_training": 0.013256378586035122,
+      "evolution_held_out": 0.02116198922308321,
+      "random_held_out": 0.05820635796809159
+    },
+    {
+      "target": {
+        "spectral_entropy": 0.5
+      },
+      "seed": 35,
+      "candidate_budget": 60,
+      "evolution_training": 0.00040159022164287794,
+      "random_training": 0.01647200305680452,
+      "evolution_held_out": 0.035475439247084795,
+      "random_held_out": 0.0021323061289176826
+    },
+    {
+      "target": {
+        "trend_strength": 0.5
+      },
+      "seed": 31,
+      "candidate_budget": 60,
+      "evolution_training": 0.01279660444204278,
+      "random_training": 0.012097023962369668,
+      "evolution_held_out": 0.06146107876864498,
+      "random_held_out": 0.03698492223588046
+    },
+    {
+      "target": {
+        "trend_strength": 0.5
+      },
+      "seed": 32,
+      "candidate_budget": 60,
+      "evolution_training": 0.0029090931994035785,
+      "random_training": 0.011139576368859039,
+      "evolution_held_out": 0.008886775580283057,
+      "random_held_out": 0.01048297496357753
+    },
+    {
+      "target": {
+        "trend_strength": 0.5
+      },
+      "seed": 33,
+      "candidate_budget": 60,
+      "evolution_training": 0.0001474254137929787,
+      "random_training": 0.12225908821116976,
+      "evolution_held_out": 0.15940355006686752,
+      "random_held_out": 0.11127184324366185
+    },
+    {
+      "target": {
+        "trend_strength": 0.5
+      },
+      "seed": 34,
+      "candidate_budget": 60,
+      "evolution_training": 0.0004954739431020649,
+      "random_training": 0.07783654183667832,
+      "evolution_held_out": 0.09651607646749522,
+      "random_held_out": 0.15017698604536378
+    },
+    {
+      "target": {
+        "trend_strength": 0.5
+      },
+      "seed": 35,
+      "candidate_budget": 60,
+      "evolution_training": 0.001701331762844982,
+      "random_training": 0.00871458259607616,
+      "evolution_held_out": 0.06701438316508995,
+      "random_held_out": 0.026361537598988738
+    },
+    {
+      "target": {
+        "seasonal_strength": 0.5
+      },
+      "seed": 31,
+      "candidate_budget": 60,
+      "evolution_training": 0.0024368625498820684,
+      "random_training": 0.00034307906689357015,
+      "evolution_held_out": 0.04425609824821419,
+      "random_held_out": 0.07240549521406336
+    },
+    {
+      "target": {
+        "seasonal_strength": 0.5
+      },
+      "seed": 32,
+      "candidate_budget": 60,
+      "evolution_training": 0.03511749023823113,
+      "random_training": 0.006228361357767498,
+      "evolution_held_out": 0.11165756433387736,
+      "random_held_out": 0.07986337141803102
+    },
+    {
+      "target": {
+        "seasonal_strength": 0.5
+      },
+      "seed": 33,
+      "candidate_budget": 60,
+      "evolution_training": 0.010388021819051907,
+      "random_training": 0.0067218571488645296,
+      "evolution_held_out": 0.16633322333769424,
+      "random_held_out": 0.05869068746078654
+    },
+    {
+      "target": {
+        "seasonal_strength": 0.5
+      },
+      "seed": 34,
+      "candidate_budget": 60,
+      "evolution_training": 0.009646080821958947,
+      "random_training": 0.01770604973574097,
+      "evolution_held_out": 0.09515048624697625,
+      "random_held_out": 0.16823887793261544
+    },
+    {
+      "target": {
+        "seasonal_strength": 0.5
+      },
+      "seed": 35,
+      "candidate_budget": 60,
+      "evolution_training": 0.000697225315216432,
+      "random_training": 0.007826522377719525,
+      "evolution_held_out": 0.02474643898880463,
+      "random_held_out": 0.03680388519987998
+    }
+  ]
+}

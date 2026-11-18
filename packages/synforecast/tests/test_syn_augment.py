@@ -1,0 +1,1620 @@
+"""Tests for SynAugment class."""
+
+import logging
+from typing import get_args
+
+import numpy as np
+import pandas as pd
+import polars as pl
+import pytest
+
+from synforecast import SynAugment, augment
+from synforecast.augment import FittableGenerator
+from tests.helpers import series_values
+
+
+class TestAugmentationInputPolicy:
+    @pytest.mark.parametrize("method", ["mbb", "dba"])
+    @pytest.mark.parametrize("value", [np.inf, -np.inf])
+    def test_infinity_rejects_panel_and_names_source(self, method, value):
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["good"] * 4 + ["bad-sensor"] * 4,
+                "ds": list(range(4)) * 2,
+                "y": [0.0, 1.0, 2.0, 3.0, 0.0, value, 2.0, 3.0],
+            }
+        )
+        with pytest.raises(ValueError, match="source series 'bad-sensor'.*infinite"):
+            getattr(SynAugment(seed=1), method)(frame)
+
+    def test_explicit_mbb_period_warns_only_for_short_sources(self, caplog):
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["short-a"] * 40 + ["short-b"] * 47 + ["two-cycles"] * 48,
+                "ds": list(range(40)) + list(range(47)) + list(range(48)),
+                "y": np.random.default_rng(1).normal(size=135),
+            }
+        )
+        output = SynAugment(seed=1).mbb(
+            frame, seasonal_period=24, include_original=False
+        )
+        assert output.height == frame.height
+        warnings = [
+            r.message
+            for r in caplog.records
+            if "nonseasonal decomposition" in r.message
+        ]
+        assert len(warnings) == 1
+        assert "for 2 series" in warnings[0]
+        assert "short-a" in warnings[0] and "short-b" in warnings[0]
+        assert "two-cycles" not in warnings[0]
+
+    @pytest.mark.parametrize("scale", ["reference", "none"])
+    def test_near_constant_dba_warning_depends_on_reference_scaling(
+        self, caplog, scale
+    ):
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["tiny"] * 8 + ["wave"] * 8,
+                "ds": list(range(8)) * 2,
+                "y": np.r_[10.0 + np.arange(8) * 1e-10, np.sin(np.arange(8))],
+            }
+        )
+        output = SynAugment(seed=1).dba(frame, scale=scale, include_original=False)
+        assert output.height == frame.height
+        assert ("near-zero scale" in caplog.text) == (scale == "reference")
+
+
+class TestSynAugment:
+    """Tests for SynAugment class."""
+
+    def test_basic_augmentation(self) -> None:
+        """Test basic augmentation workflow."""
+        # Create sample data
+        n = 100
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.cumsum(np.random.randn(n)),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        augmented_df = augmenter.augment(df, n_augment=2)
+
+        # Should have original + 2 augmented series
+        assert augmented_df["unique_id"].n_unique() == 3
+
+        # Check that augmented IDs follow the naming convention
+        unique_ids = augmented_df["unique_id"].unique().sort().to_list()
+        assert "series_0" in unique_ids
+        assert "series_0_aug_0" in unique_ids
+        assert "series_0_aug_1" in unique_ids
+
+    def test_n_augment_parameter(self) -> None:
+        """Test that n_augment controls number of synthetic series."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+
+        # Test with different n_augment values
+        for n_aug in [1, 3, 5]:
+            augmented_df = augmenter.augment(df, n_augment=n_aug)
+            # Should have 1 original + n_aug synthetic
+            assert augmented_df["unique_id"].n_unique() == 1 + n_aug
+
+    def test_synthetic_ids_format(self) -> None:
+        """Test that synthetic series IDs follow the correct format."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["my_series"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        augmented_df = augmenter.augment(df, n_augment=2)
+
+        unique_ids = augmented_df["unique_id"].unique().sort().to_list()
+        assert "my_series" in unique_ids
+        assert "my_series_aug_0" in unique_ids
+        assert "my_series_aug_1" in unique_ids
+
+    def test_timestamps_preserved(self) -> None:
+        """Test that timestamps are preserved in augmented series."""
+        n = 50
+        timestamps = pl.datetime_range(
+            pl.datetime(2020, 1, 1),
+            pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+            interval="1h",
+            eager=True,
+        )
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": timestamps,
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        augmented_df = augmenter.augment(df, n_augment=1, preserve_timestamps=True)
+
+        # Get timestamps for original and augmented series
+        original_ts = (
+            augmented_df.filter(pl.col("unique_id") == "series_0")
+            .sort("ds")["ds"]
+            .to_list()
+        )
+        augmented_ts = (
+            augmented_df.filter(pl.col("unique_id") == "series_0_aug_0")
+            .sort("ds")["ds"]
+            .to_list()
+        )
+
+        assert original_ts == augmented_ts
+
+    def test_generator_auto_selection_seasonal(self) -> None:
+        """Test that seasonal data gets SeasonalGenerator."""
+        n = 200
+        t = np.arange(n)
+        # Create strongly seasonal data
+        seasonal_values = (
+            50 + 10 * np.sin(2 * np.pi * t / 24) + np.random.randn(n) * 0.5
+        )
+
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": seasonal_values,
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        analysis = augmenter.analyze(df)
+
+        # Should detect seasonal pattern
+        assert "series_0" in analysis
+        assert analysis["series_0"]["properties"]["seasonality"]["has_seasonality"]
+
+    def test_generator_auto_selection_random_walk(self) -> None:
+        """Test that random walk data gets an appropriate generator."""
+        n = 100
+        # Create random walk
+        np.random.seed(123)  # Fixed seed for reproducibility
+        random_walk = np.cumsum(np.random.randn(n))
+
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": random_walk,
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        analysis = augmenter.analyze(df)
+
+        # Random walk should not be stationary
+        assert "series_0" in analysis
+        # The generator should be something that handles non-stationary data
+        # Random walks can be detected as various types depending on the specific realization
+        generator = analysis["series_0"]["recommended_generator"]
+        assert (
+            generator
+            in [
+                "RandomWalkGenerator",
+                "SARIMAGenerator",
+                "FractionalBrownianMotionGenerator",
+                "RegimeSwitchingGenerator",  # Can be detected if there are apparent regime changes
+                "SeasonalGenerator",  # Can be detected if autocorrelation creates apparent periodicity
+            ]
+        )
+
+    def test_generator_override(self) -> None:
+        """Test that user can override generator selection."""
+        n = 100
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+
+        # Override to use SARIMA
+        augmented_df = augmenter.augment(
+            df, n_augment=1, generator_override={"series_0": "SARIMAGenerator"}
+        )
+
+        # Should still produce valid output
+        assert augmented_df["unique_id"].n_unique() == 2
+
+    def test_statistical_similarity(self) -> None:
+        """Test that synthetic series match original stats approximately."""
+        n = 200
+        mean = 50.0
+        std = 10.0
+        np.random.seed(42)
+        original_values = np.random.randn(n) * std + mean
+
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": original_values,
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        augmented_df = augmenter.augment(df, n_augment=5)
+
+        # Get stats for original
+        original_mean = df["y"].mean()
+        original_std = df["y"].std()
+
+        # Get stats for augmented series - at least some should be reasonable
+        reasonable_count = 0
+        for i in range(5):
+            aug_values = augmented_df.filter(
+                pl.col("unique_id") == f"series_0_aug_{i}"
+            )["y"]
+            aug_mean = aug_values.mean()
+            aug_std = aug_values.std()
+
+            # Check if stats are reasonable (wider tolerance since generators vary)
+            mean_ok = abs(aug_mean - original_mean) < 5 * original_std
+            # Std check with wider tolerance - generators may produce different variability
+            std_ok = aug_std > 0.1 * original_std and aug_std < 10 * original_std
+
+            if mean_ok and std_ok:
+                reasonable_count += 1
+
+        # At least some synthetic series should have reasonable statistics
+        assert reasonable_count >= 1, (
+            "At least one synthetic series should have reasonable stats"
+        )
+
+    def test_reproducibility_with_seed(self) -> None:
+        """Test that same seed produces same output."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.cumsum(np.random.randn(n)),
+            }
+        )
+
+        # Generate twice with same seed
+        augmenter1 = SynAugment(seed=42)
+        augmenter2 = SynAugment(seed=42)
+
+        result1 = augmenter1.augment(df, n_augment=1)
+        result2 = augmenter2.augment(df, n_augment=1)
+
+        # Get augmented values
+        aug1 = result1.filter(pl.col("unique_id") == "series_0_aug_0")["y"].to_numpy()
+        aug2 = result2.filter(pl.col("unique_id") == "series_0_aug_0")["y"].to_numpy()
+
+        np.testing.assert_array_almost_equal(aug1, aug2)
+
+    def test_analyze_method(self) -> None:
+        """Test that analyze returns expected structure."""
+        n = 100
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n + ["series_1"] * n,
+                "ds": list(
+                    pl.datetime_range(
+                        pl.datetime(2020, 1, 1),
+                        pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                        interval="1h",
+                        eager=True,
+                    )
+                )
+                * 2,
+                "y": list(np.random.randn(n)) + list(np.cumsum(np.random.randn(n))),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        analysis = augmenter.analyze(df)
+
+        # Should have analysis for both series
+        assert "series_0" in analysis
+        assert "series_1" in analysis
+
+        # Each should have expected keys
+        for series_id in ["series_0", "series_1"]:
+            assert "recommended_generator" in analysis[series_id]
+            assert "properties" in analysis[series_id]
+            assert "fitted_params" in analysis[series_id]
+
+            # Properties should have expected sub-keys
+            props = analysis[series_id]["properties"]
+            assert "basic_stats" in props
+            assert "seasonality" in props
+            assert "trend" in props
+            assert "stationarity" in props
+
+    def test_empty_dataframe(self) -> None:
+        """Test handling of empty DataFrame."""
+        df = pl.DataFrame(
+            {"unique_id": [], "ds": [], "y": []},
+            schema={
+                "unique_id": pl.Utf8,
+                "ds": pl.Datetime,
+                "y": pl.Float64,
+            },
+        )
+
+        augmenter = SynAugment(seed=42)
+        analysis = augmenter.analyze(df)
+
+        # Should return empty analysis
+        assert len(analysis) == 0
+
+    def test_single_series(self) -> None:
+        """Test augmentation with a single short series."""
+        n = 30
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        augmented_df = augmenter.augment(df, n_augment=1)
+
+        assert augmented_df["unique_id"].n_unique() == 2
+
+    def test_multiple_series_different_generators(self) -> None:
+        """Test that multiple series can use different generators."""
+        n = 100
+
+        # Series 0: Seasonal
+        t = np.arange(n)
+        seasonal = 50 + 10 * np.sin(2 * np.pi * t / 24) + np.random.randn(n) * 0.5
+
+        # Series 1: Random walk
+        random_walk = np.cumsum(np.random.randn(n))
+
+        df = pl.DataFrame(
+            {
+                "unique_id": ["seasonal"] * n + ["random_walk"] * n,
+                "ds": list(
+                    pl.datetime_range(
+                        pl.datetime(2020, 1, 1),
+                        pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                        interval="1h",
+                        eager=True,
+                    )
+                )
+                * 2,
+                "y": list(seasonal) + list(random_walk),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+        analysis = augmenter.analyze(df)
+
+        # Different series should potentially get different generators
+        # (though this isn't guaranteed - depends on actual data)
+        assert analysis["seasonal"]["recommended_generator"] is not None
+        assert analysis["random_walk"]["recommended_generator"] is not None
+
+    def test_backend_polars(self) -> None:
+        """Test that polars backend works correctly."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42, engine="polars")
+        augmented_df = augmenter.augment(df, n_augment=1)
+
+        assert isinstance(augmented_df, pl.DataFrame)
+
+    def test_backend_pandas(self) -> None:
+        """Test that pandas backend works correctly."""
+        n = 50
+        df = pd.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pd.date_range("2020-01-01", periods=n, freq="h"),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42, engine="pandas")
+        augmented_df = augmenter.augment(df, n_augment=1)
+
+        assert isinstance(augmented_df, pd.DataFrame)
+
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        """An explicit engine controls output even when it differs from input."""
+        n = 50
+        data = {
+            "unique_id": ["series_0"] * n,
+            "ds": pd.date_range("2020-01-01", periods=n, freq="h"),
+            "y": np.cumsum(np.random.default_rng(7).normal(size=n)),
+        }
+        df = pl.DataFrame(data) if input_engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=42, engine=output_engine).augment(df, n_augment=1)
+
+        assert isinstance(out, expected_type)
+
+    def test_missing_columns_error(self) -> None:
+        """Test that missing columns raise ValueError."""
+        df = pl.DataFrame(
+            {
+                "wrong_id": ["series_0"] * 10,
+                "wrong_time": range(10),
+                "wrong_value": np.random.randn(10),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+
+        with pytest.raises(ValueError, match="missing required columns"):
+            augmenter.augment(df, n_augment=1)
+
+    def test_invalid_n_augment(self) -> None:
+        """Test that n_augment < 1 raises ValueError."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be greater than or equal to 1"
+        ):
+            augmenter.augment(df, n_augment=0)
+
+    def test_custom_column_names(self) -> None:
+        """Test augmentation with custom column names."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "series_id": ["s0"] * n,
+                "timestamp": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "value": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(
+            id_col="series_id",
+            time_col="timestamp",
+            target_col="value",
+            seed=42,
+        )
+        augmented_df = augmenter.augment(df, n_augment=1)
+
+        assert set(augmented_df.columns) == {"series_id", "timestamp", "value"}
+        assert augmented_df["series_id"].n_unique() == 2
+
+
+class TestAnalysisFunctions:
+    """Tests for analysis functions used by SynAugment."""
+
+    def test_classify_series_seasonal(self) -> None:
+        """Test that strongly seasonal series is classified correctly."""
+        from synforecast._analysis import classify_series
+
+        n = 200
+        t = np.arange(n)
+        seasonal = 10 * np.sin(2 * np.pi * t / 24) + np.random.randn(n) * 0.5
+
+        result = classify_series(seasonal)
+
+        assert result["properties"]["seasonality"]["has_seasonality"]
+        assert result["recommended_generator"] in [
+            "SeasonalGenerator",
+            "SARIMAGenerator",
+        ]
+
+    def test_classify_series_intermittent(self) -> None:
+        """Test that intermittent series is classified correctly."""
+        from synforecast._analysis import classify_series
+
+        n = 100
+        # Create intermittent demand
+        intermittent = np.zeros(n)
+        intermittent[np.random.choice(n, size=20, replace=False)] = np.random.randint(
+            1, 10, 20
+        )
+
+        result = classify_series(intermittent)
+
+        assert result["properties"]["intermittency"]["is_intermittent"]
+        assert result["recommended_generator"] == "IntermittentDemandGenerator"
+
+    def test_detect_trend(self) -> None:
+        """Test trend detection."""
+        from synforecast._analysis import detect_trend
+
+        n = 100
+        # Create series with clear trend
+        t = np.arange(n)
+        trending = 0.5 * t + np.random.randn(n) * 2
+
+        result = detect_trend(trending)
+
+        assert result["has_trend"]
+        assert result["slope"] > 0
+        assert result["r_squared"] > 0.5
+
+
+class TestFittingFunctions:
+    """Tests for fitting functions used by SynAugment."""
+
+    def test_fit_random_walk(self) -> None:
+        """Test random walk parameter fitting."""
+        from synforecast._fitting import fit_random_walk
+
+        n = 100
+        drift = 0.1
+        vol = 2.0
+        steps = np.random.randn(n) * vol + drift
+        random_walk = np.cumsum(steps)
+
+        params = fit_random_walk(random_walk)
+
+        assert "drift" in params
+        assert "volatility" in params
+        assert "start_value" in params
+        # Drift and volatility should be in the right ballpark
+        assert abs(params["drift"] - drift) < 1.0
+        assert abs(params["volatility"] - vol) < 1.0
+
+    def test_fit_seasonal(self) -> None:
+        """Test seasonal parameter fitting."""
+        from synforecast._fitting import fit_seasonal
+
+        n = 200
+        period = 24
+        amplitude = 10.0
+        t = np.arange(n)
+        seasonal = amplitude * np.sin(2 * np.pi * t / period) + np.random.randn(n)
+
+        params = fit_seasonal(seasonal, period=period)
+
+        assert "seasonality_period" in params
+        assert "seasonality_amplitude" in params
+        assert params["seasonality_period"] == period
+        # Amplitude should be approximately correct
+        assert abs(params["seasonality_amplitude"] - amplitude) < amplitude * 0.5
+
+    def test_fit_garch(self) -> None:
+        """Test GARCH parameter fitting."""
+        from synforecast._fitting import fit_garch
+
+        n = 500
+        # Create series with volatility clustering
+        returns = np.random.randn(n)
+        for i in range(1, n):
+            returns[i] *= 1 + 0.3 * abs(returns[i - 1])
+
+        params = fit_garch(returns)
+
+        assert "omega" in params
+        assert "alpha" in params
+        assert "beta" in params
+        assert params["omega"] > 0
+        # alpha and beta should be lists for GARCH(p,q)
+        assert isinstance(params["alpha"], list)
+        assert isinstance(params["beta"], list)
+        assert len(params["alpha"]) == 1
+        assert len(params["beta"]) == 1
+        assert 0 <= params["alpha"][0] <= 1
+        assert 0 <= params["beta"][0] <= 1
+
+    def test_fit_ornstein_uhlenbeck(self) -> None:
+        """Test Ornstein-Uhlenbeck parameter fitting."""
+        from synforecast._fitting import fit_ornstein_uhlenbeck
+
+        n = 200
+        # Create mean-reverting series
+        mu = 5.0
+        theta = 0.5
+        sigma = 1.0
+        series = np.zeros(n)
+        series[0] = mu
+        for i in range(1, n):
+            series[i] = (
+                series[i - 1] + theta * (mu - series[i - 1]) + sigma * np.random.randn()
+            )
+
+        params = fit_ornstein_uhlenbeck(series)
+
+        assert "theta" in params
+        assert "mu" in params
+        assert "sigma" in params
+        assert "initial_value" in params
+        assert params["theta"] > 0
+        assert params["sigma"] > 0
+        # Mean should be close to actual mean
+        assert abs(params["mu"] - mu) < 3.0
+
+    def test_fit_ornstein_uhlenbeck_round_trip(self) -> None:
+        """Fit -> generate reproduces theta, acf1 and the stationary std.
+
+        The generator is an Euler-Maruyama AR(1) with phi = 1 - theta*dt,
+        so the fitted theta must be 1 - acf1 (dt = 1) and the fitted sigma
+        must satisfy Var(X) = sigma^2 / (theta * (2 - theta)).
+        """
+        from synforecast._fitting import fit_ornstein_uhlenbeck
+        from synforecast.generators import OrnsteinUhlenbeckGenerator
+        from tests.helpers import assert_acf, assert_std, sample_acf, series_values
+
+        n = 20000
+        theta, mu, sigma = 0.5, 2.0, 1.0
+        gen = OrnsteinUhlenbeckGenerator(
+            min_length=n,
+            max_length=n,
+            freq="D",
+            theta=theta,
+            mu=mu,
+            sigma=sigma,
+            initial_value=mu,
+            seed=11,
+        )
+        original = next(iter(series_values(gen.generate(n_series=1)).values()))
+
+        params = fit_ornstein_uhlenbeck(original)
+
+        # Euler-consistent estimator recovers theta and always respects the
+        # generator's stability bound theta * dt < 2 (dt defaults to 1).
+        assert abs(params["theta"] - theta) < 0.05
+        assert params["theta"] < 2.0
+        assert abs(params["mu"] - mu) < 0.2
+
+        regen = OrnsteinUhlenbeckGenerator(
+            min_length=n, max_length=n, freq="D", seed=13, **params
+        )
+        values = next(iter(series_values(regen.generate(n_series=1)).values()))
+
+        # Regenerated series reproduces the source's lag-1 autocorrelation
+        # and stationary std; thin the std samples to near-independence
+        # (phi^10 ~ 1e-3) so the i.i.d. z-bound in assert_std applies.
+        assert_acf(values, lag=1, expected=sample_acf(original, 1))
+        assert_std(values[::10], expected=float(np.std(original)))
+
+    def test_fit_ornstein_uhlenbeck_stays_within_stability_bound(self) -> None:
+        """Even for near-white-noise input (acf1 ~ 0 or < 0), the fitted
+        theta must instantiate the generator without tripping its
+        theta * dt < 2 validator (the old -log(acf1) fit could return 4.6)."""
+        from synforecast._fitting import fit_ornstein_uhlenbeck
+        from synforecast.generators import OrnsteinUhlenbeckGenerator
+
+        rng = np.random.default_rng(7)
+        # Anti-persistent series: acf1 ~ -0.5, worst case for the estimator.
+        noise = rng.normal(size=2000)
+        series = noise[1:] - noise[:-1]
+
+        params = fit_ornstein_uhlenbeck(series)
+        gen = OrnsteinUhlenbeckGenerator(
+            min_length=50, max_length=50, freq="D", **params
+        )
+        assert gen.theta * gen.dt < 2.0
+
+    def test_fit_fbm(self) -> None:
+        """Test Fractional Brownian Motion parameter fitting."""
+        from synforecast._fitting import fit_fbm
+
+        n = 100
+        # Create series that looks like fBm (using cumsum as approximation)
+        np.random.seed(42)
+        series = np.cumsum(np.random.randn(n))
+
+        params = fit_fbm(series)
+
+        assert "hurst" in params
+        assert "sigma" in params
+        assert "initial_value" in params
+        # Hurst exponent should be in valid range
+        assert 0.0 < params["hurst"] < 1.0
+        assert params["sigma"] > 0
+
+    def test_fit_regime_switching(self) -> None:
+        """Test regime switching parameter fitting."""
+        from synforecast._fitting import fit_regime_switching
+
+        # Create series with two regimes
+        regime1 = np.random.randn(100) * 1.0 + 0.0  # Low mean, low variance
+        regime2 = np.random.randn(100) * 3.0 + 5.0  # High mean, high variance
+        series = np.concatenate([regime1, regime2])
+
+        params = fit_regime_switching(series, n_regimes=2)
+
+        assert "n_regimes" in params
+        assert "regime_means" in params
+        assert "regime_variances" in params
+        assert params["n_regimes"] == 2
+        assert len(params["regime_means"]) == 2
+        assert len(params["regime_variances"]) == 2
+        # Variances should be positive
+        assert all(v > 0 for v in params["regime_variances"])
+
+    def test_fit_intermittent(self) -> None:
+        """Test intermittent demand parameter fitting."""
+        from synforecast._fitting import fit_intermittent
+
+        n = 100
+        # Create intermittent demand
+        demand_prob = 0.3
+        demand_mean = 5.0
+        series = np.zeros(n)
+        demand_mask = np.random.rand(n) < demand_prob
+        series[demand_mask] = np.abs(
+            np.random.randn(demand_mask.sum()) * 2 + demand_mean
+        )
+
+        params = fit_intermittent(series)
+
+        assert "demand_probability" in params
+        assert "demand_mean" in params
+        assert "demand_std" in params
+        assert 0 < params["demand_probability"] < 1
+        assert params["demand_mean"] > 0
+        assert params["demand_std"] > 0
+
+    def test_fit_gbm(self) -> None:
+        """Test Geometric Brownian Motion parameter fitting."""
+        from synforecast._fitting import fit_gbm
+
+        n = 200
+        # Create GBM-like series (positive values with log-normal increments)
+        mu = 0.05
+        sigma = 0.2
+        series = np.zeros(n)
+        series[0] = 100.0
+        for i in range(1, n):
+            series[i] = series[i - 1] * np.exp(
+                (mu - 0.5 * sigma**2) + sigma * np.random.randn()
+            )
+
+        params = fit_gbm(series)
+
+        # Should use correct parameter names (mu/sigma, not drift/volatility)
+        assert "mu" in params
+        assert "sigma" in params
+        assert "initial_value" in params
+        assert params["sigma"] > 0
+        assert params["initial_value"] > 0
+
+
+class TestSynAugmentValidation:
+    """Tests for SynAugment input validation."""
+
+    def test_n_augment_upper_bound(self) -> None:
+        """Test that n_augment > 1000 raises ValueError."""
+        n = 50
+        df = pl.DataFrame(
+            {
+                "unique_id": ["series_0"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2020, 1, 1),
+                    pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.random.randn(n),
+            }
+        )
+
+        augmenter = SynAugment(seed=42)
+
+        with pytest.raises(
+            ValueError, match=r"n_augment\s+Input should be less than or equal to 1000"
+        ):
+            augmenter.augment(df, n_augment=1001)
+
+
+def _panel(engine: str, n_series: int = 4, base_len: int = 60):
+    """Build a small multi-series panel for mixup tests."""
+    rng = np.random.default_rng(0)
+    ids, ds, y = [], [], []
+    for s in range(n_series):
+        length = base_len + s * 10
+        ids += [f"s{s}"] * length
+        ds += list(pd.date_range("2020-01-01", periods=length, freq="D"))
+        y += list(rng.normal(100 * (s + 1), 5, length))
+    data = {"unique_id": ids, "ds": ds, "y": y}
+    return pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+
+class TestTSMixup:
+    """Tests for SynAugment.mixup (TSMixup augmentation)."""
+
+    def test_creates_requested_number_of_series(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=42).mixup(df, n_series=20)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        ids = out_pl["unique_id"].unique().to_list()
+        assert sum(str(u).startswith("mixup_") for u in ids) == 20
+        # Originals preserved by default.
+        assert all(f"s{s}" in [str(u) for u in ids] for s in range(4))
+
+    def test_default_n_series_matches_input(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=0).mixup(df, include_original=False)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        assert out_pl["unique_id"].n_unique() == 4
+
+    def test_seed_determinism(self) -> None:
+        df = _panel("polars")
+        o1 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        o2 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        assert o1.equals(o2)
+
+    def test_different_seeds_differ(self) -> None:
+        df = _panel("polars")
+        o1 = SynAugment(seed=1).mixup(df, n_series=10, include_original=False)
+        o2 = SynAugment(seed=2).mixup(df, n_series=10, include_original=False)
+        assert not o1.equals(o2)
+
+    def test_output_is_finite(self, engine: str) -> None:
+        df = _panel(engine)
+        out = SynAugment(seed=3).mixup(df, n_series=15, include_original=False)
+        values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
+        assert np.all(np.isfinite(values.to_numpy()))
+
+    @pytest.mark.parametrize(
+        ("input_engine", "output_engine", "expected_type"),
+        [
+            ("pandas", "polars", pl.DataFrame),
+            ("polars", "pandas", pd.DataFrame),
+        ],
+    )
+    def test_explicit_backend_converts_input(
+        self, input_engine: str, output_engine: str, expected_type: type
+    ) -> None:
+        df = _panel(input_engine)
+        out = SynAugment(seed=3, engine=output_engine).mixup(df, n_series=3)
+        assert isinstance(out, expected_type)
+
+    def test_generated_ids_do_not_collide(self, engine: str) -> None:
+        df = _panel(engine, n_series=2, base_len=10)
+        if engine == "polars":
+            df = df.with_columns(
+                pl.when(pl.col("unique_id") == "s0")
+                .then(pl.lit("mixup_0"))
+                .otherwise(pl.col("unique_id"))
+                .alias("unique_id")
+            )
+        else:
+            df["unique_id"] = df["unique_id"].replace({"s0": "mixup_0"})
+
+        out = SynAugment(seed=4).mixup(df, n_series=2)
+        out_pl = pl.from_pandas(out) if engine == "pandas" else out
+        ids = set(out_pl["unique_id"].cast(pl.String).to_list())
+
+        assert ids == {"mixup_0", "mixup_1", "mixup_2", "s1"}
+        assert out_pl.filter(pl.col("unique_id") == "mixup_0").height == 10
+
+    def test_missing_values_are_interpolated(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 5 + ["b"] * 5,
+            "ds": list(pd.date_range("2020-01-01", periods=5, freq="D")) * 2,
+            "y": [np.nan, 1.0, np.nan, 3.0, np.nan, 2.0, 4.0, 6.0, 8.0, 10.0],
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        out = SynAugment(seed=5).mixup(df, n_series=5, include_original=False)
+        values = pl.from_pandas(out)["y"] if engine == "pandas" else out["y"]
+
+        assert np.all(np.isfinite(values.to_numpy()))
+
+    def test_entirely_missing_panel_is_rejected(self, engine: str) -> None:
+        data = {
+            "unique_id": ["a"] * 3,
+            "ds": pd.date_range("2020-01-01", periods=3, freq="D"),
+            "y": [np.nan] * 3,
+        }
+        df = pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+        with pytest.raises(ValueError, match="no usable series"):
+            SynAugment(seed=6).mixup(df)
+
+    def test_entirely_missing_series_is_skipped_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        good = _panel("polars", n_series=1, base_len=5)
+        missing = pl.DataFrame(
+            {
+                "unique_id": ["missing"] * 5,
+                "ds": pd.date_range("2020-01-01", periods=5, freq="D"),
+                "y": [np.nan] * 5,
+            }
+        ).with_columns(pl.col("ds").cast(good.schema["ds"]))
+        frame = pl.concat([good, missing])
+
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
+            result = SynAugment(seed=6).mixup(frame, n_series=1, include_original=False)
+
+        assert result["unique_id"].n_unique() == 1
+        assert "mixup skipped 1 unusable series" in caplog.text
+
+    def test_scaling_modes(self, engine: str) -> None:
+        df = _panel(engine)
+        for scaling in ("mean", "std", "none"):
+            out = SynAugment(seed=0).mixup(df, n_series=5, scaling=scaling)
+            assert out is not None
+
+    def test_single_series_panel(self) -> None:
+        df = _panel("polars", n_series=1)
+        out = SynAugment(seed=0).mixup(df, n_series=3, include_original=False)
+        assert out["unique_id"].n_unique() == 3
+
+    def test_invalid_arguments(self) -> None:
+        df = _panel("polars")
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, max_mix=0)
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, alpha=0.0)
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, scaling="bogus")
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).mixup(df, n_series=0)
+
+
+def _smooth_panel(engine: str, unequal: bool = False):
+    """Build a phase-shifted smooth panel for MBB and DBA tests."""
+    rng = np.random.default_rng(123)
+    ids: list[str] = []
+    timestamps: list[pd.Timestamp] = []
+    values: list[float] = []
+    for index, length in enumerate((72, 65, 80) if unequal else (72, 72, 72)):
+        time = np.arange(length)
+        signal = (
+            10.0
+            + 0.08 * time
+            + 2.0 * np.sin(2 * np.pi * (time + index) / 12)
+            + rng.normal(0.0, 0.15, length)
+        )
+        ids.extend([f"s{index}"] * length)
+        timestamps.extend(pd.date_range("2022-01-01", periods=length, freq="D"))
+        values.extend(signal)
+    data = {"unique_id": ids, "ds": timestamps, "y": values}
+    return pl.DataFrame(data) if engine == "polars" else pd.DataFrame(data)
+
+
+class TestMBB:
+    """Tests for decomposition-remainder moving block bootstrap."""
+
+    def test_ids_counts_timestamps_and_engine(self, engine: str) -> None:
+        frame = _smooth_panel(engine)
+        output = SynAugment(seed=1).mbb(frame, n_augment=2, seasonal_period=12)
+        split = series_values(output)
+        assert len(split) == 9
+        for series_id in ("s0", "s1", "s2"):
+            assert f"{series_id}_mbb_0" in split
+            assert f"{series_id}_mbb_1" in split
+        output_pd = output.to_pandas() if engine == "polars" else output
+        input_pd = frame.to_pandas() if engine == "polars" else frame
+        source_time = input_pd.loc[input_pd["unique_id"] == "s0", "ds"].tolist()
+        generated_time = output_pd.loc[
+            output_pd["unique_id"].astype(str) == "s0_mbb_0", "ds"
+        ].tolist()
+        assert generated_time == source_time
+
+    def test_seed_determinism_and_variation(self) -> None:
+        frame = _smooth_panel("polars")
+        first = SynAugment(seed=2).mbb(frame, include_original=False)
+        repeated = SynAugment(seed=2).mbb(frame, include_original=False)
+        different = SynAugment(seed=3).mbb(frame, include_original=False)
+        assert first.equals(repeated)
+        assert not first.equals(different)
+
+    def test_include_original_false_and_finite_output(self) -> None:
+        output = SynAugment(seed=4).mbb(_smooth_panel("polars"), include_original=False)
+        ids = set(output["unique_id"].cast(pl.String).to_list())
+        assert ids == {"s0_mbb_0", "s1_mbb_0", "s2_mbb_0"}
+        assert np.all(np.isfinite(output["y"].to_numpy()))
+
+    def test_copies_additional_source_columns(self, engine: str) -> None:
+        frame = _smooth_panel(engine)
+        if engine == "polars":
+            frame = frame.with_columns(pl.int_range(pl.len()).alias("covariate"))
+        else:
+            frame = frame.assign(covariate=np.arange(len(frame)))
+
+        output = SynAugment(seed=4).mbb(frame)
+        output_pd = output.to_pandas() if engine == "polars" else output
+        frame_pd = frame.to_pandas() if engine == "polars" else frame
+        source = frame_pd.loc[frame_pd["unique_id"] == "s0", "covariate"].to_numpy()
+        generated = output_pd.loc[
+            output_pd["unique_id"].astype(str) == "s0_mbb_0", "covariate"
+        ].to_numpy()
+
+        assert list(output_pd.columns) == list(frame_pd.columns)
+        np.testing.assert_array_equal(generated, source)
+
+    def test_generated_ids_do_not_collide_with_source_ids(self) -> None:
+        frame = _smooth_panel("polars").with_columns(
+            pl.when(pl.col("unique_id") == "s1")
+            .then(pl.lit("s0_mbb_0"))
+            .otherwise(pl.col("unique_id"))
+            .alias("unique_id")
+        )
+        output = SynAugment(seed=4).mbb(frame)
+        ids = output["unique_id"].cast(pl.String)
+
+        assert ids.n_unique() == 6
+        assert "s0_mbb_0_1" in ids.to_list()
+        assert output.filter(ids == "s0_mbb_0").height == 72
+
+    def test_preserves_trend_and_seasonal_shape_without_pinning(self) -> None:
+        frame = _smooth_panel("polars")
+        output = SynAugment(seed=5).mbb(
+            frame, seasonal_period=12, block_size=5, include_original=False
+        )
+        source = frame.filter(pl.col("unique_id") == "s0")["y"].to_numpy()
+        generated = output.filter(pl.col("unique_id") == "s0_mbb_0")["y"].to_numpy()
+        assert np.corrcoef(source, generated)[0, 1] > 0.9
+        source_phases = np.array([source[phase::12].mean() for phase in range(12)])
+        generated_phases = np.array(
+            [generated[phase::12].mean() for phase in range(12)]
+        )
+        assert np.max(np.abs(source_phases - generated_phases)) < 0.5
+        assert generated.std() != pytest.approx(source.std(), abs=1e-12)
+        assert not np.array_equal(source, generated)
+
+    @pytest.mark.parametrize(
+        ("arguments", "message"),
+        [
+            ({"n_augment": 0}, "n_augment"),
+            ({"n_augment": 1001}, "n_augment"),
+            ({"block_size": 1}, "block_size"),
+            ({"seasonal_period": 1}, "seasonal_period"),
+        ],
+    )
+    def test_invalid_arguments(self, arguments: dict, message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            SynAugment(seed=0).mbb(_smooth_panel("polars"), **arguments)
+
+    def test_entirely_missing_series_rejected(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["missing"] * 4,
+                "ds": pd.date_range("2020-01-01", periods=4),
+                "y": [np.nan] * 4,
+            }
+        )
+        with pytest.raises(ValueError, match="at least 1 usable"):
+            SynAugment(seed=0).mbb(frame)
+
+    def test_too_short_series_rejected(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["short"] * 3,
+                "ds": pd.date_range("2020-01-01", periods=3),
+                "y": [1.0, 2.0, 3.0],
+            }
+        )
+        with pytest.raises(ValueError, match="at least 1 usable"):
+            SynAugment(seed=0).mbb(frame)
+
+    def test_unusable_series_are_skipped_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        good = _smooth_panel("polars")
+        bad = pl.DataFrame(
+            {
+                "unique_id": ["missing"] * 4 + ["short"] * 3,
+                "ds": list(pd.date_range("2020-01-01", periods=4))
+                + list(pd.date_range("2020-01-01", periods=3)),
+                "y": [np.nan] * 4 + [1.0, 2.0, 3.0],
+            }
+        ).with_columns(pl.col("ds").cast(good.schema["ds"]))
+        frame = pl.concat([good, bad.select(good.columns)])
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
+            result = SynAugment(seed=0).mbb(frame, include_original=False)
+        ids = set(result["unique_id"].unique().to_list())
+        assert ids == {f"{sid}_mbb_0" for sid in good["unique_id"].unique()}
+        assert "mbb skipped 2 unusable series" in caplog.text
+
+    def test_empty_panel_rejected(self) -> None:
+        frame = pl.DataFrame(
+            schema={"unique_id": pl.String, "ds": pl.Datetime, "y": pl.Float64}
+        )
+        with pytest.raises(ValueError, match="at least 1"):
+            SynAugment(seed=0).mbb(frame, include_original=False)
+
+
+class TestDBA:
+    """Tests for nearest-neighbor DTW barycenter augmentation."""
+
+    def test_ids_timestamps_engine_and_finite_output(self, engine: str) -> None:
+        frame = _smooth_panel(engine)
+        output = SynAugment(seed=10).dba(frame, n_augment=2, n_iterations=2)
+        split = series_values(output)
+        assert len(split) == 9
+        assert np.all(np.isfinite(np.concatenate(list(split.values()))))
+        for series_id in ("s0", "s1", "s2"):
+            assert f"{series_id}_dba_0" in split
+            assert f"{series_id}_dba_1" in split
+        output_pd = output.to_pandas() if engine == "polars" else output
+        input_pd = frame.to_pandas() if engine == "polars" else frame
+        source_time = input_pd.loc[input_pd["unique_id"] == "s1", "ds"].tolist()
+        generated_time = output_pd.loc[
+            output_pd["unique_id"].astype(str) == "s1_dba_0", "ds"
+        ].tolist()
+        assert generated_time == source_time
+
+    def test_seed_determinism_variation_and_distinct_copies(self) -> None:
+        frame = _smooth_panel("polars")
+        first = SynAugment(seed=11).dba(
+            frame, n_augment=2, n_iterations=2, include_original=False
+        )
+        repeated = SynAugment(seed=11).dba(
+            frame, n_augment=2, n_iterations=2, include_original=False
+        )
+        different = SynAugment(seed=12).dba(
+            frame, n_augment=2, n_iterations=2, include_original=False
+        )
+        assert first.equals(repeated)
+        assert not first.equals(different)
+        split = series_values(first)
+        assert not np.array_equal(split["s0_dba_0"], split["s0_dba_1"])
+
+    def test_reference_scaling_and_shape(self) -> None:
+        frame = _smooth_panel("polars")
+        output = SynAugment(seed=13).dba(frame, n_iterations=3, include_original=False)
+        source = frame.filter(pl.col("unique_id") == "s0")["y"].to_numpy()
+        generated = output.filter(pl.col("unique_id") == "s0_dba_0")["y"].to_numpy()
+        assert abs(generated.mean() - source.mean()) < 0.25 * source.std()
+        assert 0.5 < generated.std() / source.std() < 1.2
+        assert np.corrcoef(source, generated)[0, 1] > 0.7
+
+    def test_scale_none_and_unequal_lengths(self, engine: str) -> None:
+        output = SynAugment(seed=14).dba(
+            _smooth_panel(engine, unequal=True),
+            scale="none",
+            n_iterations=2,
+            include_original=False,
+        )
+        assert len(series_values(output)["s1_dba_0"]) == 65
+
+    def test_copies_additional_reference_columns(self, engine: str) -> None:
+        frame = _smooth_panel(engine)
+        if engine == "polars":
+            frame = frame.with_columns(pl.int_range(pl.len()).alias("covariate"))
+        else:
+            frame = frame.assign(covariate=np.arange(len(frame)))
+
+        output = SynAugment(seed=14).dba(frame, n_iterations=2)
+        output_pd = output.to_pandas() if engine == "polars" else output
+        frame_pd = frame.to_pandas() if engine == "polars" else frame
+        source = frame_pd.loc[frame_pd["unique_id"] == "s0", "covariate"].to_numpy()
+        generated = output_pd.loc[
+            output_pd["unique_id"].astype(str) == "s0_dba_0", "covariate"
+        ].to_numpy()
+
+        assert list(output_pd.columns) == list(frame_pd.columns)
+        np.testing.assert_array_equal(generated, source)
+
+    def test_generated_ids_do_not_collide_with_source_ids(self) -> None:
+        frame = _smooth_panel("polars").with_columns(
+            pl.when(pl.col("unique_id") == "s1")
+            .then(pl.lit("s0_dba_0"))
+            .otherwise(pl.col("unique_id"))
+            .alias("unique_id")
+        )
+        output = SynAugment(seed=14).dba(frame, n_iterations=2)
+        ids = output["unique_id"].cast(pl.String)
+
+        assert ids.n_unique() == 6
+        assert "s0_dba_0_1" in ids.to_list()
+        assert output.filter(ids == "s0_dba_0").height == 72
+
+    def test_constant_reference_keeps_zero_scale(self, caplog) -> None:
+        length = 48
+        time = np.arange(length)
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["constant"] * length + ["wave"] * length,
+                "ds": list(pd.date_range("2020-01-01", periods=length)) * 2,
+                "y": np.concatenate(
+                    (np.full(length, 10.0), np.sin(2 * np.pi * time / 12))
+                ),
+            }
+        )
+        output = SynAugment(seed=15).dba(frame, n_iterations=2, include_original=False)
+        generated = output.filter(pl.col("unique_id") == "constant_dba_0")[
+            "y"
+        ].to_numpy()
+
+        np.testing.assert_array_equal(generated, np.full(length, 10.0))
+        assert "preserves near-zero scale for 1 series" in caplog.text
+        assert "constant" in caplog.text
+
+    def test_requires_two_usable_series(self) -> None:
+        frame = _smooth_panel("polars").filter(pl.col("unique_id") == "s0")
+        with pytest.raises(ValueError, match="at least 2"):
+            SynAugment(seed=0).dba(frame)
+
+    def test_entirely_missing_panel_rejected(self) -> None:
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["a"] * 4 + ["b"] * 4,
+                "ds": list(pd.date_range("2020-01-01", periods=4)) * 2,
+                "y": [np.nan] * 8,
+            }
+        )
+        with pytest.raises(ValueError, match="at least 2 usable"):
+            SynAugment(seed=0).dba(frame)
+
+    def test_missing_series_is_skipped_with_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        good = _smooth_panel("polars")
+        bad = pl.DataFrame(
+            {
+                "unique_id": ["missing"] * 4,
+                "ds": pd.date_range("2020-01-01", periods=4),
+                "y": [np.nan] * 4,
+            }
+        ).with_columns(pl.col("ds").cast(good.schema["ds"]))
+        frame = pl.concat([good, bad.select(good.columns)])
+        with caplog.at_level("WARNING", logger="synforecast.augment"):
+            result = SynAugment(seed=0).dba(frame, include_original=False)
+        ids = set(result["unique_id"].unique().to_list())
+        assert ids == {f"{sid}_dba_0" for sid in good["unique_id"].unique()}
+        assert "dba skipped 1 unusable series" in caplog.text
+
+    def test_nearest_neighbour_is_preferred(self) -> None:
+        length = 64
+        t = np.arange(length, dtype=float)
+        base = np.sin(2 * np.pi * t / 16)
+        frame = pl.DataFrame(
+            {
+                "unique_id": ["ref"] * length + ["near"] * length + ["far"] * length,
+                "ds": list(pd.date_range("2020-01-01", periods=length)) * 3,
+                "y": np.concatenate([base, np.roll(base, 1), 8.0 + 3.0 * t / length]),
+            }
+        )
+        result = SynAugment(seed=0).dba(
+            frame, n_neighbors=1, include_original=False, scale="none"
+        )
+        generated = result.filter(pl.col("unique_id") == "ref_dba_0")["y"].to_numpy()
+        assert np.abs(generated - base).max() < 0.5
+
+    @pytest.mark.parametrize(
+        "arguments",
+        [
+            {"window_fraction": 0.0},
+            {"window_fraction": 1.5},
+            {"n_neighbors": 0},
+            {"n_iterations": 0},
+            {"n_augment": 0},
+            {"n_augment": 1001},
+        ],
+    )
+    def test_invalid_arguments(self, arguments: dict) -> None:
+        with pytest.raises(ValueError):
+            SynAugment(seed=0).dba(_smooth_panel("polars"), **arguments)
+
+
+# Every generator SynAugment can select, paired with its fitter through
+# fit_generator_params. Kept in sync with augment._generator_map() by
+# test_contract_covers_all_supported_generators.
+AUGMENT_GENERATOR_NAMES = [
+    "FractionalBrownianMotionGenerator",
+    "GARCHGenerator",
+    "GeometricBrownianMotionGenerator",
+    "IntermittentDemandGenerator",
+    "OrnsteinUhlenbeckGenerator",
+    "RandomWalkGenerator",
+    "RegimeSwitchingGenerator",
+    "SARIMAGenerator",
+    "SeasonalGenerator",
+]
+
+
+class TestGeneratorParamConversion:
+    """Every fitter's output must be valid parameters for its generator.
+
+    Regressions caught by this contract: GBM conversion once renamed
+    initial_value -> 'S0' (an unknown field) and fit_garch once returned
+    'mean' where GARCHGenerator's field is 'mu'; both made every affected
+    series silently fall back to AR(1).
+    """
+
+    def test_contract_covers_all_supported_generators(self) -> None:
+        assert sorted(augment._generator_map()) == AUGMENT_GENERATOR_NAMES
+        assert sorted(get_args(FittableGenerator)) == AUGMENT_GENERATOR_NAMES
+
+    @pytest.mark.parametrize("length", [10, 300])
+    @pytest.mark.parametrize("generator_name", AUGMENT_GENERATOR_NAMES)
+    def test_fitted_params_match_model_fields(
+        self, generator_name: str, length: int
+    ) -> None:
+        """Fit, convert, and instantiate; length=10 hits the short-series
+        default branches of the fitters."""
+        from synforecast._fitting import fit_generator_params
+
+        rng = np.random.default_rng(0)
+        series = np.cumsum(rng.normal(0.05, 1.0, length)) + 50.0
+        fitted = fit_generator_params(series, generator_name)
+
+        converted = augment._convert_params_for_generator(
+            generator_name, fitted, series
+        )
+        generator_class = augment._generator_map()[generator_name]
+        valid_fields = set(generator_class.model_fields)
+        assert set(converted) <= valid_fields, (
+            f"unknown {generator_name} params: {sorted(set(converted) - valid_fields)}"
+        )
+        generator = generator_class(
+            min_length=length, max_length=length, freq="D", seed=0, **converted
+        )
+        values = generator.generate_single_series(length)
+        assert np.all(np.isfinite(values))
+
+    def test_gbm_override_augmentation_runs(self) -> None:
+        """Augmenting with a GBM override yields finite series, no fallback."""
+        rng = np.random.default_rng(1)
+        n = 200
+        df = pl.DataFrame(
+            {
+                "unique_id": ["g"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2000, 1, 1),
+                    pl.datetime(2000, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": 100 * np.exp(np.cumsum(rng.normal(0.01, 0.02, n))),
+            }
+        )
+        out = SynAugment(seed=1).augment(
+            df,
+            n_augment=3,
+            generator_override={"g": "GeometricBrownianMotionGenerator"},
+        )
+        assert out["unique_id"].n_unique() == 4
+        aug = out.filter(pl.col("unique_id") == "g_aug_0")["y"].to_numpy()
+        assert np.all(np.isfinite(aug))
+
+    def test_garch_override_augmentation_runs(self) -> None:
+        """Regression: fit_garch returned 'mean' instead of 'mu', so GARCH
+        augmentation always fell back to AR(1). With on_error='raise' (the
+        default) this now surfaces as an error instead of passing silently."""
+        rng = np.random.default_rng(2)
+        n = 300
+        df = pl.DataFrame(
+            {
+                "unique_id": ["v"] * n,
+                "ds": pl.datetime_range(
+                    pl.datetime(2000, 1, 1),
+                    pl.datetime(2000, 1, 1) + pl.duration(hours=n - 1),
+                    interval="1h",
+                    eager=True,
+                ),
+                "y": np.cumsum(rng.standard_t(df=5, size=n)),
+            }
+        )
+        out = SynAugment(seed=2).augment(
+            df, n_augment=2, generator_override={"v": "GARCHGenerator"}
+        )
+        assert out["unique_id"].n_unique() == 3
+        aug = out.filter(pl.col("unique_id") == "v_aug_0")["y"].to_numpy()
+        assert np.all(np.isfinite(aug))
+
+
+class TestOnErrorPolicy:
+    """Failure handling: raise by default, opt-in AR(1) with one summary."""
+
+    @staticmethod
+    def _panel(n_series: int = 2, n: int = 120) -> pl.DataFrame:
+        rng = np.random.default_rng(7)
+        frames = []
+        for i in range(n_series):
+            frames.append(
+                pl.DataFrame(
+                    {
+                        "unique_id": [f"series_{i}"] * n,
+                        "ds": pl.datetime_range(
+                            pl.datetime(2020, 1, 1),
+                            pl.datetime(2020, 1, 1) + pl.duration(hours=n - 1),
+                            interval="1h",
+                            eager=True,
+                        ),
+                        "y": np.cumsum(rng.normal(0, 1, n)) + 10.0 * i,
+                    }
+                )
+            )
+        return pl.concat(frames)
+
+    def test_invalid_on_error_rejected(self) -> None:
+        with pytest.raises(ValueError, match="on_error"):
+            SynAugment(on_error="ignore")
+
+    def test_raise_is_default(self) -> None:
+        assert SynAugment().on_error == "raise"
+
+    def test_generator_failure_raises_by_default(self, monkeypatch) -> None:
+        augmenter = SynAugment(seed=0)
+        # Force every conversion to emit a parameter no generator accepts.
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
+        )
+        with pytest.raises(RuntimeError, match="Pass on_error='ar1'"):
+            augmenter.augment(self._panel(), n_augment=1)
+
+    @pytest.mark.allow_ar1_fallback
+    def test_ar1_mode_substitutes_with_single_summary_warning(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch
+    ) -> None:
+        augmenter = SynAugment(seed=0, on_error="ar1")
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
+        )
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
+            out = augmenter.augment(self._panel(n_series=2), n_augment=2)
+
+        warnings_ = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings_) == 1
+        assert "substituted AR(1) for 4 of 4" in warnings_[0].message
+        # All series present and finite despite the substitutions.
+        assert out["unique_id"].n_unique() == 6
+        aug_values = out.filter(
+            pl.col("unique_id").cast(pl.String).str.contains("_aug_")
+        )["y"].to_numpy()
+        assert np.all(np.isfinite(aug_values))
+
+    def test_no_warning_when_nothing_falls_back(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
+            SynAugment(seed=0, on_error="ar1").augment(self._panel(), n_augment=1)
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    @pytest.mark.allow_ar1_fallback
+    def test_single_series_api_reports_ar1_fallback(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch
+    ) -> None:
+        augmenter = SynAugment(seed=0, on_error="ar1")
+        monkeypatch.setattr(
+            augment,
+            "_convert_params_for_generator",
+            lambda *_args, **_kwargs: {"bogus_param": 1.0},
+        )
+        panel = self._panel(n_series=1)
+
+        with caplog.at_level(logging.WARNING, logger="synforecast.augment"):
+            result = augmenter.augment_single_series(
+                series_id="series_0",
+                values=panel["y"].to_numpy(),
+                timestamps=panel["ds"].to_numpy(),
+                n_augment=2,
+                generator_name="RandomWalkGenerator",
+            )
+
+        warnings_ = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings_) == 1
+        assert "substituted AR(1) for 2 of 2" in warnings_[0].message
+        assert len(result) == 2
+        assert all(np.all(np.isfinite(values)) for _, values, _ in result)
+
+    def test_unknown_override_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="NopeGenerator"):
+            SynAugment(seed=0).augment(
+                self._panel(n_series=1),
+                n_augment=1,
+                generator_override={"series_0": "NopeGenerator"},
+            )
+
+
+@pytest.mark.parametrize("method", ["analyze", "augment", "mixup", "mbb", "dba"])
+def test_augmentation_does_not_scan_panel_per_series(monkeypatch, method):
+    import narwhals.stable.v2 as nw
+
+    def scan(*_args, **_kwargs):
+        pytest.fail("per-series full-panel filtering")
+
+    frame = _smooth_panel("polars")
+    monkeypatch.setattr(nw.DataFrame, "filter", scan)
+    getattr(SynAugment(seed=42), method)(frame)

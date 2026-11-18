@@ -1,0 +1,391 @@
+{
+  "benchmark": "calendar_prior",
+  "scripts": "benchmarks/overlay_restructure/calendar_*.py",
+  "recipe": "tsfm tmp/subdaily_diag/subdaily_seasonality.py: tsfm v3/v4 SynForecast streams (65 members x 25 draws, length 2273) and real /timenet train buckets",
+  "builds": {
+    "pr98": "5f26ef0 (pinned in tsfm)",
+    "new": "9a21d38",
+    "adjusted": "e942b06"
+  },
+  "environment": {
+    "run_date": "2026-11-02",
+    "tsfm": "a022a1f6 with local changes",
+    "python": "3.11.10",
+    "numpy": "2.4.6",
+    "pandas": "2.3.3",
+    "note": "recorded by hand; these runs did not use benchmarks/_env.py"
+  },
+  "recheck": {
+    "draw_seed": 7,
+    "replay_gate_passed": true,
+    "criteria": "new v4 within +/-0.05 of #98 v4 on median daily strength and share with a daily cycle at all four frequencies",
+    "verdict": "fail",
+    "by_frequency": {
+      "Hourly": {
+        "real": {
+          "median_strength": 0.7704,
+          "share_daily_cycle": 0.8351
+        },
+        "v3_pr98": {
+          "median_strength": 0.0106,
+          "share_daily_cycle": 0.1268
+        },
+        "v3_new": {
+          "median_strength": 0.0106,
+          "share_daily_cycle": 0.1268
+        },
+        "v4_pr98": {
+          "median_strength": 0.6882,
+          "share_daily_cycle": 0.5409
+        },
+        "v4_new": {
+          "median_strength": 0.6255,
+          "share_daily_cycle": 0.4898
+        }
+      },
+      "30Minutely": {
+        "real": {
+          "median_strength": 0.2959,
+          "share_daily_cycle": 0.1
+        },
+        "v3_pr98": {
+          "median_strength": 0.0214,
+          "share_daily_cycle": 0.1115
+        },
+        "v3_new": {
+          "median_strength": 0.0214,
+          "share_daily_cycle": 0.1115
+        },
+        "v4_pr98": {
+          "median_strength": 0.6669,
+          "share_daily_cycle": 0.3655
+        },
+        "v4_new": {
+          "median_strength": 0.5981,
+          "share_daily_cycle": 0.3342
+        }
+      },
+      "15Minutely": {
+        "real": {
+          "median_strength": 0.4864,
+          "share_daily_cycle": 0.25
+        },
+        "v3_pr98": {
+          "median_strength": 0.0446,
+          "share_daily_cycle": 0.093
+        },
+        "v3_new": {
+          "median_strength": 0.0446,
+          "share_daily_cycle": 0.093
+        },
+        "v4_pr98": {
+          "median_strength": 0.6513,
+          "share_daily_cycle": 0.2486
+        },
+        "v4_new": {
+          "median_strength": 0.5754,
+          "share_daily_cycle": 0.2351
+        }
+      },
+      "10Minutely": {
+        "real": {
+          "median_strength": 0.6914,
+          "share_daily_cycle": 0.6809
+        },
+        "v3_pr98": {
+          "median_strength": 0.067,
+          "share_daily_cycle": 0.0764
+        },
+        "v3_new": {
+          "median_strength": 0.067,
+          "share_daily_cycle": 0.0764
+        },
+        "v4_pr98": {
+          "median_strength": 0.6429,
+          "share_daily_cycle": 0.1902
+        },
+        "v4_new": {
+          "median_strength": 0.5703,
+          "share_daily_cycle": 0.1834
+        }
+      }
+    }
+  },
+  "diagnosis_post_hoc": {
+    "frequency": "Hourly",
+    "draw_seed": 7,
+    "median_daily_strength_by_group": {
+      "no calendar": {
+        "n": 314,
+        "pr98": 0.0107,
+        "new": 0.0107
+      },
+      "calendar, additive, no changepoints/anomalies": {
+        "n": 331,
+        "pr98": 0.8058,
+        "new": 0.7969
+      },
+      "calendar, additive, with changepoints/anomalies": {
+        "n": 327,
+        "pr98": 0.786,
+        "new": 0.6958
+      },
+      "calendar, multiplicative, no changepoints/anomalies": {
+        "n": 338,
+        "pr98": 0.7719,
+        "new": 0.7632
+      },
+      "calendar, multiplicative, with changepoints/anomalies": {
+        "n": 315,
+        "pr98": 0.7812,
+        "new": 0.6636
+      }
+    }
+  },
+  "selection": {
+    "draw_seed": 7,
+    "rule": "eligible if within +/-0.03 strength and +/-0.05 share of #98 at all four frequencies; smallest change wins",
+    "candidates": [
+      {
+        "k": 1.0,
+        "swing": [
+          0.2,
+          0.9
+        ],
+        "max_dev_strength": 0.0759,
+        "max_dev_share": 0.0511,
+        "eligible": false
+      },
+      {
+        "k": 1.0,
+        "swing": [
+          0.3,
+          0.95
+        ],
+        "max_dev_strength": 0.0683,
+        "max_dev_share": 0.0474,
+        "eligible": false
+      },
+      {
+        "k": 1.0,
+        "swing": [
+          0.4,
+          0.95
+        ],
+        "max_dev_strength": 0.066,
+        "max_dev_share": 0.0468,
+        "eligible": false
+      },
+      {
+        "k": 1.25,
+        "swing": [
+          0.2,
+          0.9
+        ],
+        "max_dev_strength": 0.0167,
+        "max_dev_share": 0.0086,
+        "eligible": true
+      },
+      {
+        "k": 1.25,
+        "swing": [
+          0.3,
+          0.95
+        ],
+        "max_dev_strength": 0.0134,
+        "max_dev_share": 0.0062,
+        "eligible": true
+      },
+      {
+        "k": 1.25,
+        "swing": [
+          0.4,
+          0.95
+        ],
+        "max_dev_strength": 0.0077,
+        "max_dev_share": 0.0086,
+        "eligible": true
+      },
+      {
+        "k": 1.5,
+        "swing": [
+          0.2,
+          0.9
+        ],
+        "max_dev_strength": 0.0385,
+        "max_dev_share": 0.0314,
+        "eligible": false
+      },
+      {
+        "k": 1.5,
+        "swing": [
+          0.3,
+          0.95
+        ],
+        "max_dev_strength": 0.0427,
+        "max_dev_share": 0.0338,
+        "eligible": false
+      },
+      {
+        "k": 1.5,
+        "swing": [
+          0.4,
+          0.95
+        ],
+        "max_dev_strength": 0.0472,
+        "max_dev_share": 0.0363,
+        "eligible": false
+      },
+      {
+        "k": 2.0,
+        "swing": [
+          0.2,
+          0.9
+        ],
+        "max_dev_strength": 0.0928,
+        "max_dev_share": 0.0751,
+        "eligible": false
+      },
+      {
+        "k": 2.0,
+        "swing": [
+          0.3,
+          0.95
+        ],
+        "max_dev_strength": 0.1003,
+        "max_dev_share": 0.0775,
+        "eligible": false
+      },
+      {
+        "k": 2.0,
+        "swing": [
+          0.4,
+          0.95
+        ],
+        "max_dev_strength": 0.1005,
+        "max_dev_share": 0.08,
+        "eligible": false
+      },
+      {
+        "k": 2.5,
+        "swing": [
+          0.2,
+          0.9
+        ],
+        "max_dev_strength": 0.1377,
+        "max_dev_share": 0.1126,
+        "eligible": false
+      },
+      {
+        "k": 2.5,
+        "swing": [
+          0.3,
+          0.95
+        ],
+        "max_dev_strength": 0.1391,
+        "max_dev_share": 0.1151,
+        "eligible": false
+      },
+      {
+        "k": 2.5,
+        "swing": [
+          0.4,
+          0.95
+        ],
+        "max_dev_strength": 0.1428,
+        "max_dev_share": 0.1175,
+        "eligible": false
+      }
+    ],
+    "chosen": {
+      "k": 1.25,
+      "swing": [
+        0.2,
+        0.9
+      ],
+      "additive_amplitude": [
+        1.25,
+        10.0
+      ]
+    }
+  },
+  "validation": {
+    "draw_seed": 8,
+    "criteria": "adjusted v4 within +/-0.05 of #98 v4 on both measures at all four frequencies",
+    "verdict": "pass",
+    "by_frequency": {
+      "Hourly": {
+        "v3_pr98": {
+          "median_strength": 0.0104,
+          "share_daily_cycle": 0.1274
+        },
+        "v3_adjusted": {
+          "median_strength": 0.0104,
+          "share_daily_cycle": 0.1274
+        },
+        "v4_pr98": {
+          "median_strength": 0.6578,
+          "share_daily_cycle": 0.5182
+        },
+        "v4_adjusted": {
+          "median_strength": 0.6364,
+          "share_daily_cycle": 0.5169
+        }
+      },
+      "30Minutely": {
+        "v3_pr98": {
+          "median_strength": 0.0213,
+          "share_daily_cycle": 0.1249
+        },
+        "v3_adjusted": {
+          "median_strength": 0.0213,
+          "share_daily_cycle": 0.1249
+        },
+        "v4_pr98": {
+          "median_strength": 0.6301,
+          "share_daily_cycle": 0.3557
+        },
+        "v4_adjusted": {
+          "median_strength": 0.607,
+          "share_daily_cycle": 0.3643
+        }
+      },
+      "15Minutely": {
+        "v3_pr98": {
+          "median_strength": 0.0446,
+          "share_daily_cycle": 0.1108
+        },
+        "v3_adjusted": {
+          "median_strength": 0.0446,
+          "share_daily_cycle": 0.1108
+        },
+        "v4_pr98": {
+          "median_strength": 0.6046,
+          "share_daily_cycle": 0.2542
+        },
+        "v4_adjusted": {
+          "median_strength": 0.5926,
+          "share_daily_cycle": 0.2486
+        }
+      },
+      "10Minutely": {
+        "v3_pr98": {
+          "median_strength": 0.0685,
+          "share_daily_cycle": 0.1004
+        },
+        "v3_adjusted": {
+          "median_strength": 0.0685,
+          "share_daily_cycle": 0.1004
+        },
+        "v4_pr98": {
+          "median_strength": 0.5978,
+          "share_daily_cycle": 0.2075
+        },
+        "v4_adjusted": {
+          "median_strength": 0.5782,
+          "share_daily_cycle": 0.2038
+        }
+      }
+    }
+  }
+}

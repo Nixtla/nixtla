@@ -1,0 +1,100 @@
+name: CI (statsforecast)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/statsforecast/**"
+      - ".github/workflows/statsforecast-*.yml"
+      - "packages/coreforecast/python/**"
+      - "packages/coreforecast/src/**"
+      - "packages/coreforecast/include/**"
+      - "packages/coreforecast/external_libs/**"
+      - "packages/coreforecast/CMakeLists.txt"
+      - "packages/coreforecast/pyproject.toml"
+      - "packages/utilsforecast/utilsforecast/**"
+      - "packages/utilsforecast/pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/statsforecast/**"
+      - ".github/workflows/statsforecast-*.yml"
+      - "packages/coreforecast/python/**"
+      - "packages/coreforecast/src/**"
+      - "packages/coreforecast/include/**"
+      - "packages/coreforecast/external_libs/**"
+      - "packages/coreforecast/CMakeLists.txt"
+      - "packages/coreforecast/pyproject.toml"
+      - "packages/utilsforecast/utilsforecast/**"
+      - "packages/utilsforecast/pyproject.toml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MPLBACKEND: Agg
+
+defaults:
+  run:
+    working-directory: packages/statsforecast
+
+jobs:
+  test-m3-performance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - name: Set up environment
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/statsforecast/uv.lock"
+
+      - name: Install the library
+        run: uv sync --group dev
+
+      - name: Run M3 experiment
+        run: |
+          uv run python -m src.experiment
+          uv run python -m src.evaluation --test
+        working-directory: packages/statsforecast/experiments/m3
+
+  efficiency-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "packages/statsforecast/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync && uv pip install pytest-codspeed pytest-xdist
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        with:
+          working-directory: packages/statsforecast
+          mode: simulation
+          token: ${{ secrets.CODESPEED_TOKEN }}
+          run: uv run pytest action_files/test_efficiency.py --codspeed -n 2 --no-cov

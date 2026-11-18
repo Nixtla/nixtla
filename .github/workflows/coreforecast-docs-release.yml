@@ -1,0 +1,20 @@
+# Production docs deploy, driven by this package's release tag.
+# The pre-monorepo workflows used `release: published`, which in one repo would
+# fire for every package's release, so the tag glob is the gate now.
+name: docs coreforecast (release)
+
+on:
+  push:
+    tags: ['coreforecast/v*']
+
+jobs:
+  docs:
+    uses: ./.github/workflows/_docs.yml
+    with:
+      package: coreforecast
+      python-version: '3.11'
+      sync-args: --group dev
+      environment: production
+    secrets: inherit
+    permissions:
+      contents: write

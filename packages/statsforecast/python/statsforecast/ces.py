@@ -1,0 +1,583 @@
+__all__ = ["auto_ces", "simulate_ces"]
+
+
+import numpy as np
+from statsmodels.tsa.seasonal import seasonal_decompose
+
+from ._lib import ces as _ces
+from .utils import results
+from .distributions import (
+    switch_distribution,
+    dist_init_params,
+    dist_tail_bounds,
+    extract_dist_params,
+    aic_bic_aicc,
+)
+
+# Global variables
+NONE = 0
+SIMPLE = 1
+PARTIAL = 2
+FULL = 3
+TOL = 1.0e-10
+HUGEN = 1.0e10
+NA = -99999.0
+smalno = np.finfo(float).eps
+
+
+def initstate(y, m, seasontype):
+    n = len(y)
+    components = 2 + (seasontype == "P") + 2 * (seasontype == "F")
+    lags = 1 if seasontype == "N" else m
+    states = np.zeros((lags, components), dtype=np.float64)
+    if seasontype == "N":
+        idx = min(max(10, m), n)
+        mean_ = np.mean(y[:idx])
+        states[0, 0] = mean_
+        states[0, 1] = mean_ / 1.1
+    elif seasontype == "S":
+        states[:lags, 0] = y[:lags]
+        states[:lags, 1] = y[:lags] / 1.1
+    elif seasontype == "P":
+        states[:lags, 0] = np.mean(y[:lags])
+        states[:lags, 1] = states[:lags, 0] / 1.1
+        states[:lags, 2] = seasonal_decompose(y, period=lags).seasonal[:lags]
+    elif seasontype == "F":
+        states[:lags, 0] = np.mean(y[:lags])
+        states[:lags, 1] = states[:lags, 0] / 1.1
+        states[:lags, 2] = seasonal_decompose(y, period=lags).seasonal[:lags]
+        states[:lags, 3] = states[:lags, 2] / 1.1
+    else:
+        raise Exception(f"Unknown seasontype: {seasontype}")
+
+    return states
+
+
+def switch_ces(x: str):
+    return _ces.switch_ces(x)
+
+
+def initparamces(
+    alpha_0: float, alpha_1: float, beta_0: float, beta_1: float, seasontype: str
+):
+    if np.isnan(alpha_0):
+        alpha_0 = 1.3
+        optimize_alpha_0 = 1
+    else:
+        optimize_alpha_0 = 0
+    if np.isnan(alpha_1):
+        alpha_1 = 1.0
+        optimize_alpha_1 = 1
+    else:
+        optimize_alpha_1 = 0
+    if seasontype == "P":
+        if np.isnan(beta_0):
+            beta_0 = 0.1
+            optimize_beta_0 = 1
+        else:
+            optimize_beta_0 = 0
+        beta_1 = np.nan  # no optimize
+        optimize_beta_1 = 0
+    elif seasontype == "F":
+        if np.isnan(beta_0):
+            beta_0 = 1.3
+            optimize_beta_0 = 1
+        else:
+            optimize_beta_0 = 0
+        if np.isnan(beta_1):
+            beta_1 = 1.0
+            optimize_beta_1 = 1
+        else:
+            optimize_beta_1 = 0
+    else:
+        # no optimize
+        optimize_beta_0 = 0
+        optimize_beta_1 = 0
+        beta_0 = np.nan
+        beta_1 = np.nan
+    return {
+        "alpha_0": alpha_0,
+        "optimize_alpha_0": optimize_alpha_0,
+        "alpha_1": alpha_1,
+        "optimize_alpha_1": optimize_alpha_1,
+        "beta_0": beta_0,
+        "optimize_beta_0": optimize_beta_0,
+        "beta_1": beta_1,
+        "optimize_beta_1": optimize_beta_1,
+    }
+
+
+def cescalc(y, states, m, season, alpha_0, alpha_1, beta_0, beta_1,
+            e, amse, nmse, backfit):
+    return _ces.cescalc(
+        np.asarray(y, dtype=np.float64),
+        states,
+        m, season,
+        float(alpha_0), float(alpha_1), float(beta_0), float(beta_1),
+        e, amse, nmse, backfit,
+    )
+
+
+def pegelsresid_ces(
+    y: np.ndarray,
+    m: int,
+    init_states: np.ndarray,
+    n_components: int,
+    seasontype: str,
+    alpha_0: float,
+    alpha_1: float,
+    beta_0: float,
+    beta_1: float,
+    nmse: int,
+):
+    return _ces.pegelsresid(
+        np.asarray(y, dtype=np.float64),
+        m,
+        np.asarray(init_states, dtype=np.float64),
+        n_components,
+        seasontype,
+        float(alpha_0),
+        float(alpha_1),
+        float(beta_0),
+        float(beta_1),
+        nmse,
+    )
+
+
+def cesforecast(states, n, m, season, f, h, alpha_0, alpha_1, beta_0, beta_1):
+    seasontype_map = {0: "N", 1: "S", 2: "P", 3: "F"}
+    seasontype_str = seasontype_map[season]
+    f_f64 = np.zeros(h, dtype=np.float64)
+    _ces.forecast(
+        np.asarray(states, dtype=np.float64),
+        n, m, seasontype_str, f_f64, h,
+        float(alpha_0), float(alpha_1), float(beta_0), float(beta_1),
+    )
+    f[:] = f_f64.astype(f.dtype)
+
+
+def optimize_ces_target_fn(
+    init_par, optimize_params, y, m, init_states, n_components, seasontype, nmse
+):
+    x0 = [init_par[key] for key, val in optimize_params.items() if val]
+    x0 = np.array(x0, dtype=np.float64)
+    if not len(x0):
+        return
+
+    init_alpha_0 = float(init_par["alpha_0"])
+    init_alpha_1 = float(init_par["alpha_1"])
+    init_beta_0 = float(init_par["beta_0"])
+    init_beta_1 = float(init_par["beta_1"])
+
+    opt_alpha_0 = bool(optimize_params["alpha_0"])
+    opt_alpha_1 = bool(optimize_params["alpha_1"])
+    opt_beta_0 = bool(optimize_params["beta_0"])
+    opt_beta_1 = bool(optimize_params["beta_1"])
+
+    all_lower = np.array([0.01, 0.01, 0.01, 0.01], dtype=np.float64)
+    all_upper = np.array([1.8, 1.9, 1.5, 1.5], dtype=np.float64)
+    lower = all_lower[:len(x0)]
+    upper = all_upper[:len(x0)]
+
+    opt_result = _ces.optimize(
+        x0, lower, upper,
+        init_alpha_0, init_alpha_1, init_beta_0, init_beta_1,
+        opt_alpha_0, opt_alpha_1, opt_beta_0, opt_beta_1,
+        np.asarray(y, dtype=np.float64), m,
+        np.asarray(init_states, dtype=np.float64),
+        n_components, seasontype, nmse,
+    )
+    # opt_result is (x, fn, nit, simplex) tuple from C++ Nelder-Mead
+    return results(opt_result[0], opt_result[1], opt_result[2], opt_result[3])
+
+
+def cesmodel(
+    y: np.ndarray,
+    m: int,
+    seasontype: str,
+    alpha_0: float,
+    alpha_1: float,
+    beta_0: float,
+    beta_1: float,
+    nmse: int,
+    distribution: str = "normal",
+):
+    if seasontype == "N":
+        m = 1
+    # Normalize None -> np.nan for initparamces
+    if alpha_0 is None:
+        alpha_0 = np.nan
+    if alpha_1 is None:
+        alpha_1 = np.nan
+    if beta_0 is None:
+        beta_0 = np.nan
+    if beta_1 is None:
+        beta_1 = np.nan
+    # initial parameters
+    par = initparamces(
+        alpha_0=alpha_0,
+        alpha_1=alpha_1,
+        beta_1=beta_1,
+        beta_0=beta_0,
+        seasontype=seasontype,
+    )
+    optimize_params = {
+        key.replace("optimize_", ""): val for key, val in par.items() if "optim" in key
+    }
+    par = {key: val for key, val in par.items() if "optim" not in key}
+    # initial states
+    init_state = initstate(y, m, seasontype)
+    n_components = init_state.shape[1]
+
+    # parameter optimization — one-pass for non-normal, existing path for normal
+    if distribution == "normal":
+        fred = optimize_ces_target_fn(
+            init_par=par,
+            optimize_params=optimize_params,
+            y=y,
+            m=m,
+            init_states=init_state,
+            n_components=n_components,
+            seasontype=seasontype,
+            nmse=nmse,
+        )
+        if fred is not None:
+            fit_par = fred.x
+            j = 0
+            if optimize_params["alpha_0"]:
+                par["alpha_0"] = fit_par[j]
+                j += 1
+            if optimize_params["alpha_1"]:
+                par["alpha_1"] = fit_par[j]
+                j += 1
+            if optimize_params["beta_0"]:
+                par["beta_0"] = fit_par[j]
+                j += 1
+            if optimize_params["beta_1"]:
+                par["beta_1"] = fit_par[j]
+                j += 1
+        fit_par_dist = np.array([])
+    else:
+        # One-pass joint fit: [free smoothing params..., dist params...]
+        # Seed from the SAME initial par values (no normal warm-start)
+        smooth_x0 = np.array(
+            [par[k] for k in ("alpha_0", "alpha_1", "beta_0", "beta_1")
+             if optimize_params[k]],
+            dtype=np.float64,
+        )
+        var_init = max(float(np.nanvar(y)), 1e-10)
+        n_dist, dist_init = dist_init_params(distribution, var_init)
+        x0_ext = np.concatenate([smooth_x0, dist_init])
+        all_lower = np.array([0.01, 0.01, 0.01, 0.01])
+        all_upper = np.array([1.8, 1.9, 1.5, 1.5])
+        n_smooth = len(smooth_x0)
+        dist_lower, dist_upper = dist_tail_bounds(distribution, n_dist)
+        lower_ext = np.concatenate([all_lower[:n_smooth], dist_lower])
+        upper_ext = np.concatenate([all_upper[:n_smooth], dist_upper])
+        opt_res = _ces.optimize_dist(
+            x0_ext, lower_ext, upper_ext,
+            float(par["alpha_0"]), float(par["alpha_1"]),
+            float(par["beta_0"]), float(par["beta_1"]),
+            bool(optimize_params["alpha_0"]), bool(optimize_params["alpha_1"]),
+            bool(optimize_params["beta_0"]), bool(optimize_params["beta_1"]),
+            np.asarray(y, dtype=np.float64), m,
+            np.asarray(init_state, dtype=np.float64),
+            n_components, seasontype, nmse,
+            switch_distribution(distribution, _ces),
+        )
+        fred = results(*opt_res)
+        fit_par = fred.x[:n_smooth] if n_smooth > 0 else fred.x
+        fit_par_dist = fred.x[-n_dist:] if n_dist > 0 else np.array([])
+        # Write the optimized smoothing params back into par
+        jj = 0
+        for key in ("alpha_0", "alpha_1", "beta_0", "beta_1"):
+            if optimize_params[key]:
+                par[key] = fit_par[jj]
+                jj += 1
+
+    amse, e, states, lik = pegelsresid_ces(
+        y=y,
+        m=m,
+        init_states=init_state,
+        n_components=n_components,
+        seasontype=seasontype,
+        nmse=nmse,
+        **par,
+    )
+    ny = len(y)
+
+    if distribution == "normal":
+        np_ = n_components + 1
+        aic = lik + 2 * np_
+        bic = lik + np.log(ny) * np_
+        if ny - np_ - 1 != 0.0:
+            aicc = aic + 2 * np_ * (np_ + 1) / (ny - np_ - 1)
+        else:
+            aicc = np.inf
+        loglik = -0.5 * lik
+        sigma2 = np.sum(e ** 2) / (ny - np_ - 1)
+        dist_extra = {}
+    else:
+        n_dist_count = 1 if distribution == "laplace" else 2
+        np_ = n_components + n_dist_count
+        if distribution == "laplace":
+            neg2logL = 2 * ny * fred.fn + ny * (2 + np.log(4))
+        else:
+            neg2logL = 2 * ny * fred.fn
+        aic, bic, aicc = aic_bic_aicc(neg2logL, np_, ny)
+        loglik = -0.5 * neg2logL
+        dist_extra = extract_dist_params(distribution, fit_par_dist, residuals=e)
+        sigma2 = dist_extra.pop("sigma2")
+
+    mse = amse[0]
+    amse = np.mean(amse)
+
+    fitted = y - e
+
+    return dict(
+        loglik=loglik,
+        aic=aic,
+        bic=bic,
+        aicc=aicc,
+        mse=mse,
+        amse=amse,
+        fit=fred,
+        fitted=fitted,
+        residuals=e,
+        m=m,
+        states=states,
+        par=par,
+        n=len(y),
+        seasontype=seasontype,
+        sigma2=sigma2,
+        distribution=distribution,
+        **dist_extra,
+    )
+
+
+def pegelsfcast_C(h, obj, npaths=None, level=None, bootstrap=None):
+    forecast = np.full(h, fill_value=np.nan)
+    m = obj["m"]
+    n = obj["n"]
+    states = obj["states"]
+    season = switch_ces(obj["seasontype"])
+    cesforecast(
+        states=states,
+        n=n,
+        m=m,
+        season=season,
+        h=h,
+        f=forecast,
+        **obj["par"],
+    )
+    return forecast
+
+
+def _simulate_pred_intervals(model, h, level):
+    from statsforecast.simulation import sample_errors
+    from statsforecast.distributions import error_params_from_model
+    rng = np.random.default_rng(1)
+    nsim = 5000
+    dist = model.get("distribution", "normal")
+    sigma = np.sqrt(model["sigma2"])
+    params = error_params_from_model(model)
+    residuals = model.get("residuals", None)
+    y_path = np.zeros([nsim, h])
+
+    season = switch_ces(model["seasontype"])
+    for k in range(nsim):
+        e = sample_errors(
+            size=model["states"].shape,
+            sigma=sigma,
+            distribution=dist,
+            params=params,
+            residuals=residuals,
+            rng=rng,
+        )
+        states = model["states"]
+        fcsts = np.zeros(h, dtype=np.float64)
+        cesforecast(
+            states=states + e,
+            n=model["n"],
+            m=model["m"],
+            season=season,
+            h=h,
+            f=fcsts,
+            **model["par"],
+        )
+        y_path[k,] = fcsts
+
+    lower = np.quantile(y_path, 0.5 - np.array(level) / 200, axis=0)
+    upper = np.quantile(y_path, 0.5 + np.array(level) / 200, axis=0)
+    return {
+        **{f"lo-{lv}": lower[i] for i, lv in enumerate(level)},
+        **{f"hi-{lv}": upper[i] for i, lv in enumerate(level)},
+    }
+
+
+def forecast_ces(obj, h, level=None):
+    fcst = pegelsfcast_C(h, obj)
+    out = {"mean": fcst}
+    out["fitted"] = obj["fitted"]
+    if level is not None:
+        pi = _simulate_pred_intervals(model=obj, h=h, level=level)
+        out = {**out, **pi}
+    return out
+
+
+def auto_ces(
+    y,
+    m,
+    model="Z",
+    alpha_0=None,
+    alpha_1=None,
+    beta_0=None,
+    beta_1=None,
+    opt_crit="lik",
+    nmse=3,
+    ic="aicc",
+    distribution="normal",
+):
+    # converting params to floats
+    if alpha_0 is None:
+        alpha_0 = np.nan
+    if alpha_1 is None:
+        alpha_1 = np.nan
+    if beta_0 is None:
+        beta_0 = np.nan
+    if beta_1 is None:
+        beta_1 = np.nan
+    if nmse < 1 or nmse > 30:
+        raise ValueError("nmse out of range")
+    # refit model not implement yet
+    if model not in ["Z", "N", "S", "P", "F"]:
+        raise ValueError("Invalid model type")
+
+    seasontype = model
+    if m < 1 or len(y) < 2 * m or m == 1:
+        seasontype = "N"
+    n = len(y)
+    npars = 2
+    if seasontype == "P":
+        npars += 1
+    if seasontype in ["F", "Z"]:
+        npars += 2
+    # ses for non-optimized tiny datasets
+    if n <= npars:
+        # we need HoltWintersZZ function
+        raise NotImplementedError("tiny datasets")
+    if seasontype == "Z":
+        seasontype = ["N", "S", "P", "F"]
+    best_ic = np.inf
+    for stype in seasontype:
+        fit = cesmodel(
+            y=y,
+            m=m,
+            seasontype=stype,
+            alpha_0=alpha_0,
+            alpha_1=alpha_1,
+            beta_0=beta_0,
+            beta_1=beta_1,
+            nmse=nmse,
+            distribution=distribution,
+        )
+        fit_ic = fit[ic]
+        if not np.isnan(fit_ic):
+            if fit_ic < best_ic:
+                model = fit
+                best_ic = fit_ic
+    if np.isinf(best_ic):
+        raise Exception("no model able to be fitted")
+    return model
+
+
+def forward_ces(fitted_model, y):
+    m = fitted_model["m"]
+    model = fitted_model["seasontype"]
+    alpha_0 = fitted_model["par"]["alpha_0"]
+    alpha_1 = fitted_model["par"]["alpha_1"]
+    beta_0 = fitted_model["par"]["beta_0"]
+    beta_1 = fitted_model["par"]["beta_1"]
+    return auto_ces(
+        y=y,
+        m=m,
+        model=model,
+        alpha_0=alpha_0,
+        alpha_1=alpha_1,
+        beta_0=beta_0,
+        beta_1=beta_1,
+        distribution=fitted_model.get("distribution", "normal"),
+    )
+
+
+def simulate_ces(
+    model,
+    h,
+    n_paths,
+    seed=None,
+    error_distribution="normal",
+    error_params=None,
+):
+    """
+    Simulate future paths from a fitted CES model.
+
+    Parameters
+    ----------
+    model : dict
+        Fitted CES model dictionary.
+    h : int
+        Forecast horizon.
+    n_paths : int
+        Number of simulation paths to generate.
+    seed : int, optional
+        Random seed for reproducibility.
+    error_distribution : str, default='normal'
+        Distribution for error terms. Options: 'normal', 't', 'bootstrap',
+        'laplace', 'skew-normal', 'ged'.
+    error_params : dict, optional
+        Distribution-specific parameters. E.g., {'df': 5} for t-distribution.
+
+    Returns
+    -------
+    np.ndarray
+        Simulated paths of shape (n_paths, h).
+    """
+    from statsforecast.simulation import sample_errors
+
+    # Set up random generator
+    rng = np.random.default_rng(seed)
+
+    y_path = np.zeros([n_paths, h])
+
+    sigma = np.sqrt(model["sigma2"])
+    states_shape = model["states"].shape
+
+    # Get residuals for bootstrap if needed
+    residuals = model.get("residuals", None)
+
+    season = switch_ces(model["seasontype"])
+    for k in range(n_paths):
+        # Sample state noise from specified distribution
+        e = sample_errors(
+            size=states_shape,
+            sigma=sigma,
+            distribution=error_distribution,
+            params=error_params,
+            residuals=residuals,
+            rng=rng,
+        )
+        states = model["states"]
+        fcsts = np.zeros(h, dtype=np.float64)
+        cesforecast(
+            states=states + e,
+            n=model["n"],
+            m=model["m"],
+            season=season,
+            h=h,
+            f=fcsts,
+            **model["par"],
+        )
+        y_path[k,] = fcsts
+
+    return y_path
+

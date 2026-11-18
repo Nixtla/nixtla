@@ -1,0 +1,16 @@
+format:
+  mintlify-md:
+    code-fold: true
+project:
+  type: mintlify
+website:
+  navbar:
+    left:
+    - href: docs/getting-started/quickstart.ipynb
+      text: Get Started
+    - href: docs/capabilities/augmentation.ipynb
+      text: Capabilities
+    - href: docs/integrations/nixtlaverse.qmd
+      text: Nixtlaverse
+  sidebar:
+    style: floating

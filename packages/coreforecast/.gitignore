@@ -1,0 +1,56 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+*.exp
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Python
+__pycache__
+
+# CMake
+build
+
+# jupyter
+.ipynb_checkpoints
+
+
+# ignore files created in the docs folder
+docs/*.md
+docs/**/*.mdx
+
+docs-scripts
+docs/mintlify/examples
+
+nbs/_extensions
+.quarto
+
+*.png
+.DS_Store
