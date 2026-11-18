@@ -1,0 +1,177 @@
+---
+title: Expanding
+description: Compute expanding mean, std, min, max, and quantile
+---
+
+##
+
+### `expanding_mean`
+
+```python
+expanding_mean(x, skipna=False)
+```
+
+Compute the expanding_mean of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`skipna` | <code>bool</code> | If True, exclude NaN values from calculations. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, NaN values are ignored (matching pandas default behavior). | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the expanding statistic
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> expanding_mean(x)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: NaN values are excluded
+>>> expanding_mean(x, skipna=True)
+array([1., 1.5, 1.5, 2.33..., 3.0])
+```
+
+### `expanding_std`
+
+```python
+expanding_std(x, skipna=False)
+```
+
+Compute the expanding_std of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`skipna` | <code>bool</code> | If True, exclude NaN values from calculations. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, NaN values are ignored (matching pandas default behavior). | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the expanding statistic
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> expanding_std(x)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: NaN values are excluded
+>>> expanding_std(x, skipna=True)
+array([1., 1.5, 1.5, 2.33..., 3.0])
+```
+
+### `expanding_min`
+
+```python
+expanding_min(x, skipna=False)
+```
+
+Compute the expanding_min of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`skipna` | <code>bool</code> | If True, exclude NaN values from calculations. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, NaN values are ignored (matching pandas default behavior). | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the expanding statistic
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> expanding_min(x)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: NaN values are excluded
+>>> expanding_min(x, skipna=True)
+array([1., 1.5, 1.5, 2.33..., 3.0])
+```
+
+### `expanding_max`
+
+```python
+expanding_max(x, skipna=False)
+```
+
+Compute the expanding_max of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`skipna` | <code>bool</code> | If True, exclude NaN values from calculations. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, NaN values are ignored (matching pandas default behavior). | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the expanding statistic
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> expanding_max(x)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: NaN values are excluded
+>>> expanding_max(x, skipna=True)
+array([1., 1.5, 1.5, 2.33..., 3.0])
+```
+
+### `expanding_quantile`
+
+```python
+expanding_quantile(x, p, skipna=False)
+```
+
+Compute the expanding_quantile of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Input array. | *required*
+`p` | <code>[float](#float)</code> | Quantile to compute. | *required*
+`skipna` | <code>[bool](#bool)</code> | If True, exclude NaN values from calculations. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, NaN values are ignored (matching pandas default behavior). | <code>False</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the expanding statistic
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> expanding_quantile(x, 0.5)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: NaN values are excluded
+>>> expanding_quantile(x, 0.5, skipna=True)
+array([1., 1.5, 1.5, 2., 2.5])
+```

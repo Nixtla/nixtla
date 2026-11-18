@@ -1,0 +1,27 @@
+---
+title: Seasonal
+description: Find the seasonal period
+---
+
+##
+
+### `find_season_length`
+
+```python
+find_season_length(x, max_season_length)
+```
+
+Find the length of the seasonal period of the time series.
+Returns 0 if no seasonality is found.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with the time series. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`int` | <code>[int](#int)</code> | Season period.

@@ -1,0 +1,574 @@
+---
+title: Scalers
+description: Scale arrays
+---
+
+##
+
+### `boxcox_lambda`
+
+```python
+boxcox_lambda(x, method, season_length=None, lower=-0.9, upper=2.0)
+```
+
+Find optimum lambda for the Box-Cox transformation
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with data to transform. | *required*
+`method` | <code>[str](#str)</code> | Method to use. Valid options are 'guerrero' and 'loglik'. 'guerrero' minimizes the coefficient of variation for subseries of `x` and supports negative values. 'loglik' maximizes the log-likelihood function. | *required*
+`season_length` | <code>[int](#int)</code> | Length of the seasonal period. Only required if method='guerrero'. | <code>None</code>
+`lower` | <code>[float](#float)</code> | Lower bound for the lambda. | <code>-0.9</code>
+`upper` | <code>[float](#float)</code> | Upper bound for the lambda. | <code>2.0</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`float` | <code>[float](#float)</code> | Optimum lambda.
+
+### `boxcox`
+
+```python
+boxcox(x, lmbda)
+```
+
+Apply the Box-Cox transformation
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with data to transform. | *required*
+`lmbda` | <code>[float](#float)</code> | Lambda value to use. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+### `inv_boxcox`
+
+```python
+inv_boxcox(x, lmbda)
+```
+
+Invert the Box-Cox transformation
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with data to transform. | *required*
+`lmbda` | <code>[float](#float)</code> | Lambda value to use. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+### `LocalMinMaxScaler`
+
+```python
+LocalMinMaxScaler(skipna=False)
+```
+
+Bases: <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code>
+
+Scale each group to the [0, 1] interval
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`skipna` | <code>[bool](#bool)</code> | If True, exclude NaN values when computing statistics. When False (default), only a leading run of NaNs is supported; an interior one leaves the statistics unspecified, so pass True for that. | <code>False</code>
+
+#### `LocalMinMaxScaler.fit`
+
+```python
+fit(ga)
+```
+
+Compute the statistics for each group.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` | <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code> | The fitted scaler object.
+
+#### `LocalMinMaxScaler.fit_transform`
+
+```python
+fit_transform(ga)
+```
+
+"Compute the statistics for each group and apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+#### `LocalMinMaxScaler.inverse_transform`
+
+```python
+inverse_transform(ga)
+```
+
+Use the computed statistics to invert the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+#### `LocalMinMaxScaler.stack`
+
+```python
+stack(scalers)
+```
+
+#### `LocalMinMaxScaler.take`
+
+```python
+take(idxs)
+```
+
+#### `LocalMinMaxScaler.transform`
+
+```python
+transform(ga)
+```
+
+Use the computed statistics to apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+### `LocalStandardScaler`
+
+```python
+LocalStandardScaler(skipna=False)
+```
+
+Bases: <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code>
+
+Scale each group to have zero mean and unit variance
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`skipna` | <code>[bool](#bool)</code> | If True, exclude NaN values when computing statistics. When False (default), only a leading run of NaNs is supported; an interior one leaves the statistics unspecified, so pass True for that. | <code>False</code>
+
+#### `LocalStandardScaler.fit`
+
+```python
+fit(ga)
+```
+
+Compute the statistics for each group.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` | <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code> | The fitted scaler object.
+
+#### `LocalStandardScaler.fit_transform`
+
+```python
+fit_transform(ga)
+```
+
+"Compute the statistics for each group and apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+#### `LocalStandardScaler.inverse_transform`
+
+```python
+inverse_transform(ga)
+```
+
+Use the computed statistics to invert the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+#### `LocalStandardScaler.stack`
+
+```python
+stack(scalers)
+```
+
+#### `LocalStandardScaler.take`
+
+```python
+take(idxs)
+```
+
+#### `LocalStandardScaler.transform`
+
+```python
+transform(ga)
+```
+
+Use the computed statistics to apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+### `LocalRobustScaler`
+
+```python
+LocalRobustScaler(scale, skipna=False)
+```
+
+Bases: <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code>
+
+Scale each group using robust statistics
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`scale` | <code>[str](#str)</code> | Type of robust scaling to use. Valid options are 'iqr' and 'mad'. If 'iqr' will use the inter quartile range as the scale. If 'mad' will use median absolute deviation as the scale. | *required*
+`skipna` | <code>[bool](#bool)</code> | If True, exclude NaN values when computing statistics. When False (default), only a leading run of NaNs is supported; an interior one leaves the statistics unspecified, so pass True for that. | <code>False</code>
+
+#### `LocalRobustScaler.fit`
+
+```python
+fit(ga)
+```
+
+Compute the statistics for each group.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` | <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code> | The fitted scaler object.
+
+#### `LocalRobustScaler.fit_transform`
+
+```python
+fit_transform(ga)
+```
+
+"Compute the statistics for each group and apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+#### `LocalRobustScaler.inverse_transform`
+
+```python
+inverse_transform(ga)
+```
+
+Use the computed statistics to invert the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+#### `LocalRobustScaler.stack`
+
+```python
+stack(scalers)
+```
+
+#### `LocalRobustScaler.take`
+
+```python
+take(idxs)
+```
+
+#### `LocalRobustScaler.transform`
+
+```python
+transform(ga)
+```
+
+Use the computed statistics to apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+### `LocalBoxCoxScaler`
+
+```python
+LocalBoxCoxScaler(method, season_length=None, lower=-0.9, upper=2.0)
+```
+
+Bases: <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code>
+
+Find the optimum lambda for the Box-Cox transformation by group and apply it
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`season_length` | <code>[int](#int)</code> | Length of the seasonal period. Only required if method='guerrero'. | <code>None</code>
+`lower` | <code>[float](#float)</code> | Lower bound for the lambda. | <code>-0.9</code>
+`upper` | <code>[float](#float)</code> | Upper bound for the lambda. | <code>2.0</code>
+`method` | <code>[str](#str)</code> | Method to use. Valid options are 'guerrero' and 'loglik'. 'guerrero' minimizes the coefficient of variation for subseries of `x` and supports negative values. 'loglik' maximizes the log-likelihood function. | *required*
+
+#### `LocalBoxCoxScaler.fit`
+
+```python
+fit(ga)
+```
+
+Compute the statistics for each group.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`self` | <code>[\_BaseLocalScaler](#coreforecast.scalers._BaseLocalScaler)</code> | The fitted scaler object.
+
+#### `LocalBoxCoxScaler.fit_transform`
+
+```python
+fit_transform(ga)
+```
+
+"Compute the statistics for each group and apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+#### `LocalBoxCoxScaler.inverse_transform`
+
+```python
+inverse_transform(ga)
+```
+
+Use the computed lambdas to invert the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+#### `LocalBoxCoxScaler.stack`
+
+```python
+stack(scalers)
+```
+
+#### `LocalBoxCoxScaler.take`
+
+```python
+take(idxs)
+```
+
+#### `LocalBoxCoxScaler.transform`
+
+```python
+transform(ga)
+```
+
+Use the computed lambdas to apply the transformation.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+### `Difference`
+
+```python
+Difference(d)
+```
+
+Subtract a lag to each group
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`d` | <code>[int](#int)</code> | Lag to subtract. | *required*
+
+#### `Difference.fit_transform`
+
+```python
+fit_transform(ga)
+```
+
+Apply the transformation
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the transformed data.
+
+#### `Difference.inverse_transform`
+
+```python
+inverse_transform(ga)
+```
+
+Invert the transformation
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`ga` | <code>[GroupedArray](#coreforecast._lib.grouped_array.GroupedArray)</code> | Array with grouped data. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the inverted transformation.
+
+#### `Difference.stack`
+
+```python
+stack(scalers)
+```
+
+#### `Difference.take`
+
+```python
+take(idxs)
+```

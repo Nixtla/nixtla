@@ -1,0 +1,243 @@
+---
+title: Rolling
+description: Compute rolling mean, std, min, max, and quantile
+---
+
+##
+
+### `rolling_mean`
+
+```python
+rolling_mean(x, window_size, min_samples=None, skipna=False)
+```
+
+Compute the rolling_mean of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one NaN. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the rolling statistic
+
+### `rolling_std`
+
+```python
+rolling_std(x, window_size, min_samples=None, skipna=False)
+```
+
+Compute the rolling_std of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one NaN. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the rolling statistic
+
+### `rolling_min`
+
+```python
+rolling_min(x, window_size, min_samples=None, skipna=False)
+```
+
+Compute the rolling_min of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one NaN. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the rolling statistic
+
+### `rolling_max`
+
+```python
+rolling_max(x, window_size, min_samples=None, skipna=False)
+```
+
+Compute the rolling_max of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one NaN. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the rolling statistic
+
+### `rolling_quantile`
+
+```python
+rolling_quantile(x, p, window_size, min_samples=None, skipna=False)
+```
+
+Compute the rolling_quantile of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Input array. | *required*
+`p` | <code>[float](#float)</code> | Quantile to compute. | *required*
+`window_size` | <code>[int](#int)</code> | The size of the rolling window. | *required*
+`min_samples` | <code>[int](#int)</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | <code>None</code>
+`skipna` | <code>[bool](#bool)</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one NaN. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | <code>False</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with rolling statistic
+
+### `seasonal_rolling_mean`
+
+```python
+seasonal_rolling_mean(x, season_length, window_size, min_samples=None, skipna=False)
+```
+
+Compute the seasonal_rolling_mean of the input array
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`season_length` | <code>int</code> | The length of the seasonal period. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one in the same season NaN; the other seasons are unaffected. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the seasonal rolling statistic
+
+### `seasonal_rolling_std`
+
+```python
+seasonal_rolling_std(x, season_length, window_size, min_samples=None, skipna=False)
+```
+
+Compute the seasonal_rolling_std of the input array
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`season_length` | <code>int</code> | The length of the seasonal period. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one in the same season NaN; the other seasons are unaffected. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the seasonal rolling statistic
+
+### `seasonal_rolling_min`
+
+```python
+seasonal_rolling_min(x, season_length, window_size, min_samples=None, skipna=False)
+```
+
+Compute the seasonal_rolling_min of the input array
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`season_length` | <code>int</code> | The length of the seasonal period. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one in the same season NaN; the other seasons are unaffected. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the seasonal rolling statistic
+
+### `seasonal_rolling_max`
+
+```python
+seasonal_rolling_max(x, season_length, window_size, min_samples=None, skipna=False)
+```
+
+Compute the seasonal_rolling_max of the input array
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>np.ndarray</code> | Input array. | *required*
+`season_length` | <code>int</code> | The length of the seasonal period. | *required*
+`window_size` | <code>int</code> | The size of the rolling window. | *required*
+`min_samples` | <code>int</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | *required*
+`skipna` | <code>bool</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one in the same season NaN; the other seasons are unaffected. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+| np.ndarray: Array with the seasonal rolling statistic
+
+### `seasonal_rolling_quantile`
+
+```python
+seasonal_rolling_quantile(x, p, season_length, window_size, min_samples=None, skipna=False)
+```
+
+Compute the seasonal_rolling_quantile of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Input array. | *required*
+`p` | <code>[float](#float)</code> | Quantile to compute. | *required*
+`season_length` | <code>[int](#int)</code> | The length of the seasonal period. | *required*
+`window_size` | <code>[int](#int)</code> | The size of the rolling window. | *required*
+`min_samples` | <code>[int](#int)</code> | The minimum number of samples required to compute the statistic. If None, it is set to `window_size`. | <code>None</code>
+`skipna` | <code>[bool](#bool)</code> | Exclude NaN values from calculations. When False (default), NaNs are assumed to occur only as a leading run: that prefix is preserved in the output and the statistic is computed over the values that follow it. A NaN anywhere else makes that result and every later one in the same season NaN; the other seasons are unaffected. When True, NaN values are ignored and statistics are computed on remaining valid values in the window, which is what you want for data with gaps in the middle. Defaults to False for backwards compatibility. | <code>False</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with rolling statistic

@@ -1,0 +1,80 @@
+---
+title: Differences
+description: Find the optimal number of differences
+---
+
+##
+
+### `num_seas_diffs`
+
+```python
+num_seas_diffs(x, season_length, max_d=1)
+```
+
+Determine the optimal number of seasonal differences for stationarity.
+
+Uses a seasonal strength heuristic based on STL decomposition to determine
+if seasonal differencing is needed. The function applies seasonal differencing
+iteratively until the seasonal strength falls below the threshold or the
+maximum number of differences is reached.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with the time series. | *required*
+`season_length` | <code>[int](#int)</code> | Length of the seasonal pattern. | *required*
+`max_d` | <code>[int](#int)</code> | Maximum number of differences to consider. Defaults to 1. | <code>1</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`int` | <code>[int](#int)</code> | Optimal number of seasonal differences.
+
+### `num_diffs`
+
+```python
+num_diffs(x, max_d=1)
+```
+
+Determine the optimal number of non-seasonal differences for stationarity.
+
+Uses the KPSS (Kwiatkowski-Phillips-Schmidt-Shin) test to determine how many
+times the series needs to be differenced to achieve stationarity. The function
+applies differencing iteratively until the KPSS statistic falls below the
+threshold or the maximum number of differences is reached.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with the time series. | *required*
+`max_d` | <code>[int](#int)</code> | Maximum number of differences to consider. Defaults to 1. | <code>1</code>
+
+**Returns:**
+
+Name | Type | Description
+---- | ---- | -----------
+`int` | <code>[int](#int)</code> | Optimal number of differences.
+
+### `diff`
+
+```python
+diff(x, d)
+```
+
+Subtract previous values of the series
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Array with the time series. | *required*
+`d` | <code>[int](#int)</code> | Lag to subtract | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Differenced time series.

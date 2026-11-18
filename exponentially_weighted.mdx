@@ -1,0 +1,41 @@
+---
+title: Exponentially weighted
+description: Compute exponentially weighted mean
+---
+
+##
+
+### `exponentially_weighted_mean`
+
+```python
+exponentially_weighted_mean(x, alpha, skipna=False)
+```
+
+Compute the exponentially weighted mean of the input array.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`x` | <code>[ndarray](#numpy.ndarray)</code> | Input array. | *required*
+`alpha` | <code>[float](#float)</code> | Weight parameter. | *required*
+`skipna` | <code>[bool](#bool)</code> | If True, exclude NaN values from calculations using forward-fill behavior. When False (default), any NaN value causes the result to be NaN, maintaining backwards compatibility. When True, the last valid value is forward-filled through NaN values (matching pandas default behavior). | <code>False</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | np.ndarray: Array with the exponentially weighted mean.
+
+**Examples:**
+
+```pycon
+>>> import numpy as np
+>>> x = np.array([1.0, 2.0, np.nan, 4.0, 5.0])
+>>> # Default behavior: NaN propagates
+>>> exponentially_weighted_mean(x, alpha=0.5)
+array([1., 1.5, nan, nan, nan])
+>>> # With skipna=True: forward-fill through NaN
+>>> exponentially_weighted_mean(x, alpha=0.5, skipna=True)
+array([1., 1.5, 1.5, 2.75, 3.875])
+```
