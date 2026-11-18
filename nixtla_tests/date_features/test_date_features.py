@@ -38,3 +38,9 @@ def test_special_dates_shape_and_sum(special_dates, dates, periods):
     holidays_df = special_dates(dates)
     assert len(holidays_df) == periods
     assert holidays_df.sum().sum() == 5
+
+
+def test_country_holidays_invalid_country(dates):
+    invalid_holidays = CountryHolidays(countries=["INVALID_COUNTRY"])
+    with pytest.raises(ValueError, match="not available"):
+        invalid_holidays(dates)
