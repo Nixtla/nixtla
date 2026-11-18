@@ -1,0 +1,130 @@
+---
+title: Exogenous Variables
+description: Exogenous variable configuration and generation
+---
+
+### `ExogenousConfig`
+
+Bases: <code>[BaseModel](#pydantic.BaseModel)</code>
+
+Configuration for exogenous variable generation.
+
+Controls which exogenous columns are added to the output DataFrame.
+All options are off by default for backward compatibility.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`datetime_features` |  | Add calendar features (year, month, day_of_week, etc.) | *required*
+`datetime_cyclical` |  | Add sin/cos cyclical encodings of datetime features | *required*
+`anomaly_flags` |  | Add binary column indicating anomaly positions | *required*
+`changepoint_flags` |  | Add binary column indicating changepoint positions | *required*
+`missing_flags` |  | Add binary column indicating missing data positions | *required*
+`correlated` |  | List of correlated exogenous variables to generate | *required*
+
+#### `ExogenousConfig.anomaly_flags`
+
+```python
+anomaly_flags: bool = Field(default=False, description='Add anomaly indicator column')
+```
+
+#### `ExogenousConfig.changepoint_flags`
+
+```python
+changepoint_flags: bool = Field(default=False, description='Add changepoint indicator column')
+```
+
+#### `ExogenousConfig.correlated`
+
+```python
+correlated: list[CorrelatedExogConfig] = Field(default_factory=list, description='Correlated exogenous variables to generate')
+```
+
+#### `ExogenousConfig.datetime_cyclical`
+
+```python
+datetime_cyclical: bool = Field(default=False, description='Add sin/cos cyclical encodings')
+```
+
+#### `ExogenousConfig.datetime_features`
+
+```python
+datetime_features: bool = Field(default=False, description='Add calendar features')
+```
+
+#### `ExogenousConfig.missing_flags`
+
+```python
+missing_flags: bool = Field(default=False, description='Add missing data indicator column')
+```
+
+#### `ExogenousConfig.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid')
+```
+
+#### `ExogenousConfig.validate_unique_names`
+
+```python
+validate_unique_names()
+```
+
+Reject duplicate output columns before dataframe construction.
+
+
+### `CorrelatedExogConfig`
+
+Bases: <code>[BaseModel](#pydantic.BaseModel)</code>
+
+Configuration for a single correlated exogenous variable.
+
+#### `CorrelatedExogConfig.correlation`
+
+```python
+correlation: float = Field(default=0.7, ge=(-1), le=1, description='Target correlation with the series')
+```
+
+#### `CorrelatedExogConfig.lag`
+
+```python
+lag: int = Field(default=1, ge=1, description='Lag for lagged_copy method')
+```
+
+#### `CorrelatedExogConfig.method`
+
+```python
+method: Literal['correlated_noise', 'lagged_copy', 'trend_following'] = Field(default='correlated_noise', description='Method for generating correlated exogenous')
+```
+
+#### `CorrelatedExogConfig.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid')
+```
+
+#### `CorrelatedExogConfig.name`
+
+```python
+name: str = Field(..., description='Column name for this exogenous variable')
+```
+
+#### `CorrelatedExogConfig.noise_std`
+
+```python
+noise_std: float = Field(default=0.1, ge=0, description='Noise std for lagged_copy method')
+```
+
+#### `CorrelatedExogConfig.smoothing_window`
+
+```python
+smoothing_window: int = Field(default=10, ge=1, description='Window size for trend_following method')
+```
+
+#### `CorrelatedExogConfig.trend_noise_std`
+
+```python
+trend_noise_std: float = Field(default=0.1, ge=0, description='Noise std for trend_following method')
+```
+

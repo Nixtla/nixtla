@@ -1,0 +1,86 @@
+---
+title: Levy process (heavy tails)
+---
+
+A Levy (alpha-stable) process generalizes Brownian motion to allow
+*heavy tails* and jumps: increments are independent but drawn from a
+stable distribution whose tail weight is tunable. It models series with
+occasional extreme moves that a Gaussian model badly underestimates.
+
+> **The model**
+>
+> $$y_t = y_{t-1} + \text{scale}\cdot X_t + \text{location}, \qquad X_t \sim S(\alpha, \beta; 1)$$
+>
+> The stability index `alpha` ∈ (0, 2\] sets the tail heaviness:
+> `alpha = 2` recovers Gaussian increments, while smaller values give
+> progressively heavier tails and larger jumps (`alpha = 1` is
+> Cauchy-like, with undefined variance).
+
+```python
+import polars as pl
+import matplotlib.pyplot as plt
+
+from synforecast.generators import LevyProcessGenerator
+```
+
+## 1. Tail heaviness
+
+Lower alpha = heavier tails = more extreme jumps.
+
+```python
+fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
+
+for ax, alpha, label in zip(
+    axes,
+    [2.0, 1.5, 1.0],
+    ["alpha=2.0 (Gaussian)", "alpha=1.5 (heavy-tailed)", "alpha=1.0 (Cauchy-like)"],
+):
+    gen = LevyProcessGenerator(engine="polars", 
+        min_length=500, max_length=500, freq="D",
+        alpha=alpha, cumulative=False, seed=42,
+    )
+    df = gen.generate(n_series=1)
+    ax.plot(df["ds"].to_list(), df["y"].to_list(), alpha=0.8, linewidth=0.8)
+    ax.set_ylabel("Increment")
+    ax.set_title(label)
+
+axes[-1].set_xlabel("Timestamp")
+plt.tight_layout()
+plt.show()
+```
+
+![](./levy_process_files/figure-markdown_strict/cell-3-output-1.png)
+
+## 2. Multiple series
+
+```python
+multi_gen = LevyProcessGenerator(engine="polars", 
+    min_length=200, max_length=200, freq="D",
+    alpha=1.8, cumulative=True, seed=42,
+)
+multi_df = multi_gen.generate(n_series=3)
+
+fig, ax = plt.subplots(figsize=(12, 4))
+for uid in multi_df["unique_id"].unique().to_list():
+    series = multi_df.filter(pl.col("unique_id") == uid)
+    ax.plot(series["ds"].to_list(), series["y"].to_list(), label=uid, alpha=0.8)
+ax.set_xlabel("Timestamp")
+ax.set_ylabel("Value")
+ax.set_title("Multiple Levy process series (alpha=1.8)")
+ax.legend()
+plt.tight_layout()
+plt.show()
+```
+
+![](./levy_process_files/figure-markdown_strict/cell-4-output-1.png)
+
+> **Related generators**
+>
+> -   [Jump diffusion](./jump_diffusion.html) — a smooth diffusion with
+>     separate discrete jumps.
+> -   [GARCH](./garch.html) — heavy-tailed *conditional* behavior via
+>     volatility clustering.
+>
+> The stability parameter is documented in the [generator
+> reference](https://github.com/Nixtla/synforecast/blob/main/GENERATORS.md).
+

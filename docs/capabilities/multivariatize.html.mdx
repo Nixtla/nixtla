@@ -1,0 +1,109 @@
+---
+title: Multivariatize a univariate generator
+---
+
+`Multivariatizer` turns any univariate generator into a set of
+*cross-dependent* channels — the realistic case where series move
+together (a store’s product lines, correlated sensors, coupled macro
+indicators) rather than in isolation. It draws independent series from
+the wrapped generator, couples them, and preserves the wrapped
+generator’s per-series diversity.
+
+> **Two couplings**
+>
+> -   **`mixing`** (contemporaneous): each output channel becomes a
+>     linear blend of the base series through a well-conditioned mixing
+>     matrix — instantaneous correlation.
+> -   **`leadlag`** (temporal): a channel becomes a lagged, scaled,
+>     noise-perturbed copy of another — one series leads, the other
+>     follows.
+>
+> Both are sampled per call and can compose. For processes that are
+> multivariate *by construction*, see the [multivariate
+> generators](../generators/multivariate/var.html) instead.
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+from synforecast import Multivariatizer
+from synforecast.generators import TSIGenerator
+```
+
+
+```python
+base = TSIGenerator(
+    min_length=256,
+    max_length=256,
+    freq="h",
+    engine="polars",
+    seed=7,
+)
+coupled = Multivariatizer(base=base, seed=42)
+df = coupled.generate(n_series=4)
+df.head()
+```
+
+| unique_id | ds                  | y           |
+|-----------|---------------------|-------------|
+| cat       | datetime\[ns\]      | f64         |
+| "0"       | 2000-01-01 00:00:00 | -73.483746  |
+| "0"       | 2000-01-01 01:00:00 | -250.816501 |
+| "0"       | 2000-01-01 02:00:00 | -158.711667 |
+| "0"       | 2000-01-01 03:00:00 | 26.946948   |
+| "0"       | 2000-01-01 04:00:00 | -250.057768 |
+
+## Inspect the recipe
+
+Every panel records exactly how it was built — the mixing matrix and
+each lead-lag edge — so a generated dataset is reproducible from its
+seed and auditable after the fact.
+
+```python
+coupled.last_recipe
+```
+
+```shell
+{'couplings': ['mixing', 'leadlag'],
+ 'length': 256,
+ 'mixing': {'strength': 0.5072149078264366,
+  'matrix': array([[ 1.        ,  0.        ,  0.        ,  0.        ],
+         [ 0.19725864,  0.98035148,  0.        ,  0.        ],
+         [-0.02423582, -0.37406155,  0.92708715,  0.        ],
+         [ 0.00973988,  0.45183168, -0.12849622,  0.88274684]])},
+ 'leadlag': [{'src': 2,
+   'dst': 3,
+   'lag': 9,
+   'sign': -1.0,
+   'noise': 0.1807618018379956}]}
+```
+
+```python
+fig, ax = plt.subplots(figsize=(10, 4))
+for series_id in df["unique_id"].unique().sort().to_list():
+    series = df.filter(df["unique_id"] == series_id).sort("ds")
+    ax.plot(series["ds"].to_list(), series["y"].to_list(), label=series_id)
+ax.set(title="Coupled synthetic series", xlabel="Time", ylabel="y")
+ax.legend()
+plt.show()
+```
+
+![](./multivariatize_files/figure-markdown_strict/cell-5-output-1.png)
+
+```python
+wide = df.pivot(on="unique_id", index="ds", values="y").sort("ds")
+np.corrcoef(wide.drop("ds").to_numpy().T)
+```
+
+```shell
+array([[ 1.        ,  0.13490276, -0.03079865,  0.01106283],
+       [ 0.13490276,  1.        , -0.39781199, -0.1085008 ],
+       [-0.03079865, -0.39781199,  1.        , -0.15540655],
+       [ 0.01106283, -0.1085008 , -0.15540655,  1.        ]])
+```
+
+The off-diagonal terms are non-zero and asymmetric: the couplings
+induced genuine cross-series dependence, including the negative lead-lag
+link between channels 2 and 3 recorded in the recipe above. Because the
+whole panel derives from one seed, this structure regenerates exactly.
+

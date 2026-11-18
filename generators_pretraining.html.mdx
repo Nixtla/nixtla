@@ -1,0 +1,434 @@
+---
+title: Pretraining Generators
+description: TSI, TCM, KernelSynth, and MAR generators for foundation-model pretraining
+---
+
+### `TSIGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate series by composing randomized Trend, Seasonality and
+Irregularity components.
+
+The component-based construction is based on Bahrpeyma et al. (2021),
+"A Methodology for Validating Diversity in Synthetic Time Series
+Generation," https://doi.org/10.1016/j.mex.2021.101459. SynForecast's
+component families, sampling distributions, and stability guards are its
+own extensions rather than a reproduction of that paper's generator.
+
+Every series draws a fresh random configuration: a trend type from
+`trend_types`, 0-3 seasonal harmonics with periods from
+`seasonal_periods` (integer and non-integer, so multiple harmonics are
+incommensurate), and an irregular (noise) process from
+`irregular_types`. The components are combined additively, or
+multiplicatively with probability `multiplicative_prob` when the trend
+base can be kept positive:
+
+```
+additive:        y_t = T_t + S_t + e_t
+multiplicative:  y_t = T_t · (1 + S_t / c) + e_t,  min_t T_t > 0
+```
+
+where c caps the relative seasonal swing so the factor stays positive.
+Trend shapes are normalized so their total movement over the series is
+drawn from `trend_slope_range` regardless of length; harmonic
+amplitudes are log-uniform; the noise scale is a log-uniform fraction
+of the structural signal's standard deviation, so the pool spans
+signal-dominated through noise-dominated series. A per-series level
+and log-uniform scale spread series across magnitudes. Degenerate or
+exploding draws (non-finite, |y| >= 1e8, or constant) are redrawn a
+bounded number of times.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Pandas offset alias (e.g. 'D', 'h', '5min') or an integer time step. | *required*
+`trend_types` | <code>[list](#list)[[str](#str)]</code> | Trend shapes sampled per series. Options: 'none', 'linear', 'exponential', 'logistic', 'piecewise_linear', 'damped' (default: all six). | *required*
+`trend_slope_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Range of the signed total trend movement over the whole series (default: (-8.0, 8.0)). | *required*
+`trend_growth_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Range of the exponential trend's total log-curvature (default: (1.0, 4.0)). | *required*
+`n_breakpoints_range` | <code>[tuple](#tuple)[[int](#int), [int](#int)]</code> | Breakpoint count for piecewise-linear trends (default: (1, 3)). | *required*
+`level_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Per-series base level draw (default: (-10.0, 10.0)). | *required*
+`n_seasonal_range` | <code>[tuple](#tuple)[[int](#int), [int](#int)]</code> | Number of seasonal harmonics per series (default: (0, 3)). | *required*
+`seasonal_periods` | <code>[list](#list)[[float](#float)]</code> | Period pool, in time steps; mixes integer and non-integer/co-prime periods (default includes 7, 12, 24, ..., 365.25 and 5.5, 11.3, 19.7, 29.53). | *required*
+`seasonal_amplitude_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Log-uniform harmonic amplitude range (default: (0.2, 3.0)). | *required*
+`amplitude_modulation_prob` | <code>[float](#float)</code> | Probability a harmonic gets a slowly varying amplitude envelope (default: 0.4). | *required*
+`harmonics_prob` | <code>[float](#float)</code> | Probability a harmonic gets phase-locked 2f/3f overtones at decaying amplitude (default: 0.4). | *required*
+`irregular_types` | <code>[list](#list)[[str](#str)]</code> | Noise processes sampled per series. Options: 'gaussian', 'ar1', 'garch_like', 'student_t', 'laplace' (default: all five). | *required*
+`noise_scale_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Log-uniform noise std as a fraction of the structural signal's std (default: (0.5, 12.0)). | *required*
+`ar1_phi_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | AR(1) coefficient range for 'ar1' noise, |phi| &lt; 1 (default: (0.3, 0.95)). | *required*
+`tail_df_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Student-t degrees of freedom range for 'student_t' noise, > 2 (default: (2.5, 12.0)). | *required*
+`multiplicative_prob` | <code>[float](#float)</code> | Probability of multiplicative trend-season composition (default: 0.3). | *required*
+`scale_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Log-uniform overall output scale (default: (0.1, 100.0)). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+#### `TSIGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single TSI-composed time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+
+### `TCMGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate series from a random temporal structural causal model (SCM).
+
+Each series gets a freshly sampled SCM over ``n_vars`` latent variables:
+a sparse dependency graph over the (variable x lag) space is drawn, each
+edge is assigned a random edge function, and the system is rolled out
+autoregressively. Node ``i`` evolves as
+
+```
+x_i[t] = sum_{e in pa(i)} f_e(x_{j_e}[t - l_e]) + eps_i[t]
+```
+
+with per-edge functions ``f_e(x)`` in
+
+```
+c*x, c*tanh(x), c*relu(x), c*tanh(x)*tanh(x'), c*1[x > tau]
+```
+
+The temporal-SCM framing follows the overview in Runge et al. (2023),
+"Causal inference for time series,"
+https://doi.org/10.1038/s43017-023-00431-y. The particular graph sampler,
+edge-function mixture, stability rescaling, and guards here are original
+SynForecast design choices; this is not a reproduction of a named TCM
+generator from that paper or from Chronos-2.
+
+where ``x'`` is a second randomly-paired parent (product interaction) and
+``tau`` a random threshold. Saturating kinds carry a log-uniform softness
+scale ``s`` and contribute ``c*s*tanh(x/s)`` (slope c near 0, bounded
+output). The returned univariate series is node 0 (nodes are exchangeable
+by construction); the remaining nodes act as latent parents, i.e.
+realistic exogenous-looking drivers. This produces genuine causal
+temporal structure — autocorrelation at sampled lags, lead-lag effects,
+nonlinear/regime-like dynamics — that component mixing cannot.
+
+Diversity is shaped per series: edge kinds follow a random Dirichlet
+mixture over ``edge_kinds`` (some series linear-dominated, others
+nonlinearity-dominated), coefficient magnitudes decay geometrically with
+lag (short-lag dominance), and, when 'linear' is in the pool, every node
+gets a positive linear self lag-1 edge so the observed node carries its
+own persistence.
+
+Stability: the linear-gain part (linear/tanh/relu edges) is assembled
+into VAR companion form and its coefficients are rescaled toward a
+per-series spectral-radius target below ``stability_margin`` — drawn
+near the margin with probability 0.22 (persistent, spectrally peaked
+series) and well below it otherwise (noise-like series); bounded-output
+edges cannot destabilize the core and keep their coefficients. During
+rollout every state is additionally soft-clamped via
+``clamp * tanh(x / clamp)`` so nonlinear feedback cannot diverge. If a
+trajectory still fails the finiteness/scale guard, the SCM is redrawn
+(up to 5 times), then a guaranteed-stable linear AR(1) is used. The
+counters ``_redraw_total`` / ``_fallback_total`` and the last accepted
+SCM ``_last_scm`` are exposed for introspection on direct
+``generate_single_series`` calls.
+
+Multivariate mode: with ``multivariate=True``, ``generate(n_series)``
+samples a single SCM (with at least ``n_series`` variables — the lower
+bound of ``n_vars_range`` is clamped up as needed) and one shared length,
+rolls the system out once, and returns the first ``n_series`` nodes as
+separate series in the long-format output (one ``unique_id`` per node,
+following ``VARGenerator``). Because the nodes share one causal graph,
+they are genuinely cross-dependent at the sampled lags. The default
+``multivariate=False`` keeps the univariate behavior: ``n_series``
+independent SCMs, one observed node each.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data. A pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time index step. | *required*
+`multivariate` | <code>[bool](#bool)</code> | When True, generate(n_series) returns n_series nodes of one shared SCM as correlated series sharing one length (default: False). | *required*
+`n_vars_range` | <code>[tuple](#tuple)[[int](#int), [int](#int)]</code> | Inclusive range for the number of latent variables per SCM (default: (1, 5)). | *required*
+`max_lag_range` | <code>[tuple](#tuple)[[int](#int), [int](#int)]</code> | Inclusive range for the maximum lag L of the dependency graph (default: (1, 24)). | *required*
+`edge_probability_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Range for the per-slot edge probability over the (variable x lag) space (default: (0.05, 0.3)). | *required*
+`edge_kinds` | <code>[list](#list)[[str](#str)]</code> | Pool of edge function kinds, sampled per edge. Subset of ['linear', 'tanh', 'relu', 'product', 'threshold'] (default: all). | *required*
+`coef_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Range for edge coefficient magnitudes before stability rescaling; signs are random (default: (0.1, 0.8)). | *required*
+`stability_margin` | <code>[float](#float)</code> | Upper bound (&lt; 1) on the spectral radius of the linear-part companion matrix (default: 0.95). | *required*
+`clamp_threshold` | <code>[float](#float)</code> | Soft-clamp scale for states during rollout; generous relative to typical noise scales so it only engages on runaway feedback (default: 1e6). | *required*
+`noise_types` | <code>[list](#list)[[str](#str)]</code> | Pool of per-node innovation distributions. Subset of ['gaussian', 'student_t', 'laplace'] (default: all). | *required*
+`noise_scale_range` | <code>[tuple](#tuple)[[float](#float), [float](#float)]</code> | Range for per-node noise standard deviation (default: (0.5, 2.0)). | *required*
+`heteroscedastic_prob` | <code>[float](#float)</code> | Probability that a node's noise scale follows a slow random sinusoidal envelope (default: 0.2). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp (default: '2000-01-01'). | *required*
+
+<details class="example" open markdown="1">
+<summary>Example</summary>
+
+>>> gen = TCMGenerator(
+...     min_length=256,
+...     max_length=512,
+...     freq="h",
+...     seed=42,
+... )
+>>> df = gen.generate(n_series=10)
+
+</details>
+
+#### `TCMGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single TCM series.
+
+Samples a fresh random SCM, rolls it out (with burn-in), and returns
+the target node. Redraws the SCM on guard failure, falling back to a
+stable linear AR(1) after ``_MAX_REDRAWS`` redraws.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values.
+
+#### `TCMGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate n_series time series from temporal causal models.
+
+With ``multivariate=False`` (default) this is the base behavior:
+n_series independent SCMs, one observed node each. With
+``multivariate=True`` the n_series series are the first n_series
+nodes of one shared SCM, sharing a single length (following
+VARGenerator); generation is inherently joint, so n_jobs has no
+effect in that mode.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of series to generate. In multivariate mode, the number of observed nodes of one shared SCM. | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for series numbering (default: 0). | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Parallel workers for the univariate path; unused in multivariate mode. | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col].
+
+
+### `KernelSynthGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate series by sampling from randomly composed Gaussian-process kernels.
+
+This adapts the KernelSynth recipe introduced for pretraining the Chronos
+forecasting models (Ansari et al. 2024,
+"Chronos: Learning the Language of Time Series",
+https://arxiv.org/abs/2403.07815) and its Apache-2.0-licensed reference
+implementation (https://github.com/amazon-science/chronos-forecasting/blob/main/scripts/kernel-synth.py).
+For each series the
+generator draws ``1..max_kernels`` base kernels (with replacement) from a
+fixed bank, folds them together with randomly chosen binary operators
+(``+`` or ``*``), and samples one path from the resulting GP prior on the
+normalized grid ``x = linspace(0, 1, length)``. Kernel addition mixes
+behaviors (e.g. trend + seasonality); kernel multiplication modulates them
+(e.g. locally periodic, amplitude-varying seasonality). SynForecast makes
+the bank configurable, expresses seasonal periods in time steps on a
+normalized grid, and adds bounded retries, divergence guards, and optional
+standardization. It also replaces the reference's dense Cholesky sampler
+with the exact O(n^2) polynomial decomposition described below, which
+adds ``jitter`` to each term and escalates it on a numerical breakdown.
+
+Base kernels (r = |x_i - x_j|, all on the normalized grid):
+    - rbf: ``exp(-r^2 / (2 l^2))`` — smooth, length-scale ``l``
+    - rational_quadratic: ``(1 + r^2 / (2 a))^(-a)`` — scale mixture of
+      RBFs, shape ``a``
+    - periodic (ExpSineSquared): ``exp(-2 sin^2(pi r / p_norm))`` with
+      ``p_norm = period / length`` so ``period`` is expressed in time
+      steps
+    - linear (DotProduct): ``s^2 + x_i x_j`` — trend / drift
+    - white: ``w`` on the diagonal — independent noise
+    - constant: a constant offset
+
+Each composition is a polynomial ``K = sum_d (x x')^d T_d(x - x')`` with
+stationary PSD ``T_d`` (only the linear kernel is non-stationary), sampled
+exactly as ``sum_d x^d * f_d`` with independent O(n^2) Durbin-Levinson
+draws ``f_d ~ GP(0, T_d)``. Both bulk ``generate()`` and
+``generate_single_series`` run this sampler in Rust.
+
+Because a composed kernel can be near-degenerate or produce an exploding
+scale, non-finite, near-constant, or ``|y| >= 1e8`` draws are redrawn a
+bounded number of times before falling back to Gaussian noise.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`max_kernels` | <code>[int](#int)</code> | Maximum number of base kernels composed per series; the count is drawn uniformly from ``1..max_kernels`` (default: 5, at most 64). | *required*
+`seasonal_periods` | <code>[list](#list)[[float](#float)]</code> | Periodic-kernel periods, in time steps, forming the periodic entries of the bank (default: a broad set from 4 up to 730 covering common hourly/daily/weekly/quarterly/yearly seasonalities). | *required*
+`rbf_length_scales` | <code>[list](#list)[[float](#float)]</code> | RBF length scales on the normalized grid (default: [0.1, 1.0, 10.0]). | *required*
+`rational_quadratic_alphas` | <code>[list](#list)[[float](#float)]</code> | Rational-quadratic shape parameters (default: [0.1, 1.0, 10.0]). | *required*
+`linear_sigmas` | <code>[list](#list)[[float](#float)]</code> | ``sigma_0`` offsets for the linear (DotProduct) kernel (default: [0.0, 1.0, 10.0]). | *required*
+`white_noise_levels` | <code>[list](#list)[[float](#float)]</code> | Diagonal noise levels for the white kernel (default: [0.1, 1.0]). | *required*
+`include_constant` | <code>[bool](#bool)</code> | Include a constant kernel in the bank (default: True). | *required*
+`jitter` | <code>[float](#float)</code> | Diagonal jitter added to each term ``T_d``. On a numerical breakdown it is escalated tenfold up to three times, to at least ``1e-6`` times the term's variance even when ``jitter`` is 0 (default: 1e-6). | *required*
+`standardize` | <code>[bool](#bool)</code> | Standardize each sampled series to zero mean and unit variance. Kernel compositions span extreme scales, so standardization keeps the pool comparable for pretraining (default: True). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+#### `KernelSynthGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate one KernelSynth series.
+
+Runs the same Rust sampler as the batch path, seeded from ``self.rng``.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+
+### `MARGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate GRATIS-style mixtures of autoregressive components.
+
+The mixture autoregressive model is due to Wong and Li (2000, "On a
+mixture autoregressive model", Journal of the Royal Statistical Society
+Series B 62(1), https://doi.org/10.1111/1467-9868.00222). This generator
+adapts the MAR simulation used for diverse series by GRATIS (Kang,
+Hyndman, and Li, 2020, "GRATIS: GeneRAting TIme Series with diverse and
+controllable characteristics", https://arxiv.org/abs/1903.02787). At each
+step a component ``k`` is drawn from the mixture weights, then
+``y_t = c_k + sum_i phi[k, i] y[t-i] + sigma_k eps_t``. The parameter
+sampling, partial-autocorrelation reparameterization via Durbin-Levinson,
+defaults, and stability guards are SynForecast's own design rather than a
+reproduction of the reference ``gratis`` R package.
+
+Random mode samples one to ``max_components`` components for every series;
+``seasonal_period`` only affects random mode, where it enables a seasonal
+AR factor for a random subset of components. Fixed mode supplies all four
+of ``weights``, ``ar_coefficients``, ``intercepts``, and ``noise_scales``
+and is used by feature targeting. Every fixed component must be
+stationary, and the mixture must be second-order stationary (Wong and Li
+2000). The numerical mixture check handles effective AR orders through 32,
+using covariance contraction certificates and a NumPy dense eigenvalue
+fallback. Solver failures are rejected. Validation results are cached.
+Larger mixtures are accepted when all components are identical and stable,
+or every component's sum of absolute AR coefficients is below one.
+Other large mixtures raise an error because stationarity could not be
+verified; this conservative policy can reject valid mixtures. Trailing
+zero coefficients do not count toward effective order. A fixed model
+that fails the finite, bounded, non-constant output guards raises a
+``ValueError`` at generation time instead of silently substituting noise.
+Moment handling is explicit: ``standardize=True`` (the default) maps every
+accepted multi-observation draw to zero mean and unit standard deviation,
+rather than retaining the MAR model's component-implied level and scale.
+Set ``standardize=False`` to preserve those raw simulated moments. This
+output normalization is SynForecast's own design and is not source-series
+moment matching. Bulk :meth:`generate` calls use the native Rust batch
+path; :meth:`generate_single_series` remains the Python reference path, so
+their seeded RNG streams are not bit-for-bit equivalent.
+
+#### `MARGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate one finite MAR series of exactly ``length`` observations.
+
+Random mode falls back to standard normal noise after ``_MAX_RETRIES``
+rejected draws. Fixed mode raises ``ValueError`` instead.
+
+#### `MARGenerator.tune_to_features`
+
+```python
+tune_to_features(target_features, min_length, max_length, freq, seasonal_period=None, n_generations=15, population_size=30, n_draws_per_candidate=3, tolerance=0.05, seed=None, *, n_jobs=-1, **generator_kwargs)
+```
+
+Tune fixed MAR parameters toward requested GRATIS-style features.
+
+Supported names are ``spectral_entropy``, ``trend_strength``,
+``seasonal_strength``, and ``acf1``, as defined by
+:func:`synforecast._features.compute_targeting_features`. This implements
+GRATIS feature-targeted generation (Kang et al. 2020,
+https://arxiv.org/abs/1903.02787) as a seeded evolutionary search over
+MAR parameters. The elitism, PACF-space Gaussian mutation, and minimal
+feature set are SynForecast's own design rather than a reproduction of
+the GRATIS genetic algorithm. Candidate draw lengths are spaced evenly
+across ``min_length..max_length`` so the result targets the configured
+length range rather than one endpoint. The default budget evaluates at
+most ``15 * 30 * 3`` series; the search stops early once the best L2
+feature distance is at or below ``tolerance``. Infeasible targets
+return the best candidate after the fixed budget. Candidates whose
+mixture is not second-order stationary, or whose simulation fails the
+output guards, receive infinite fitness.
+The returned generator's ``tuning_diagnostics`` records the best observed
+distance, whether tolerance was reached, generations run, and candidates
+evaluated.
+
+Each generation scores its valid candidates together in native Rust,
+parallelized across candidates. Failed simulations affect only their
+own candidate. ``n_jobs=-1`` uses the default Rayon pool; a positive
+value selects the worker count. Results are independent of worker count.
+This native search uses a different seeded stream from the former
+Python simulation loop. Lengths are limited to 1,000,000 observations.
+
+Additional generator options are forwarded to candidate evaluation and
+the returned generator: ``standardize``, ``burn_in``,
+``innovation_distribution``, ``innovation_params``, ``engine``, ``alias``,
+``id_col``, ``time_col``, ``target_col``, and ``start_datetime``.
+Search-owned model parameters and pattern injection options are rejected.
+
+#### `MARGenerator.tuning_diagnostics`
+
+```python
+tuning_diagnostics: dict[str, float | int | bool] | None
+```
+
+Search distance, convergence, and budget used, or None if untuned.
+
+``best_distance`` is the selected candidate's observed training fitness,
+not a guarantee about new draws. The returned dictionary is a copy.
+

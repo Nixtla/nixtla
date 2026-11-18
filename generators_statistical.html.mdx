@@ -1,0 +1,361 @@
+---
+title: Statistical Generators
+description: RandomWalk, Seasonal, SARIMA, ETS, and INAR generators
+---
+
+### `RandomWalkGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate random walk time series.
+
+y_t = y_&#123;t-1&#125; + drift + ε_t, where ε_t has standard deviation
+`volatility` and is drawn from `innovation_distribution`. The first
+output value already includes one step: y_1 = start_value + drift + ε_1.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency, a pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time step. | *required*
+`drift` | <code>[float](#float)</code> | Mean of the random steps (default: 0.0). | *required*
+`volatility` | <code>[float](#float)</code> | Standard deviation of random steps (default: 1.0). | *required*
+`start_value` | <code>[float](#float)</code> | Initial value for all series (default: 0.0). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp of every series (default: '2000-01-01'). | *required*
+
+#### `RandomWalkGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single random walk time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+
+### `SeasonalGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate time series with seasonal patterns.
+
+y_t = base_level + amplitude · sin(2π t / period) + trend · t + ε_t,
+where ε_t has standard deviation `noise_level`.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency, a pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time step. | *required*
+`seasonality_period` | <code>[int](#int)</code> | Period of seasonality in time steps (default: 24). | *required*
+`seasonality_amplitude` | <code>[float](#float)</code> | Amplitude of seasonal component (default: 10.0). | *required*
+`trend` | <code>[float](#float)</code> | Linear trend coefficient per time step (default: 0.0). | *required*
+`noise_level` | <code>[float](#float)</code> | Standard deviation of noise (default: 1.0). | *required*
+`base_level` | <code>[float](#float)</code> | Base level of the series (default: 50.0). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp of every series (default: '2000-01-01'). | *required*
+
+#### `SeasonalGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single seasonal time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+
+### `SARIMAGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate time series based on Seasonal ARIMA (SARIMAX) processes.
+
+Creates time series using a Seasonal AutoRegressive Integrated Moving Average
+model with optional eXogenous regressors. The model is defined by (p,d,q)x(P,D,Q,s).
+
+The SARIMA model uses multiplicative seasonal structure:
+- AR polynomial: φ(B)Φ(B^s) where B is the backshift operator
+- MA polynomial: θ(B)Θ(B^s)
+- Differencing: (1-B)^d (1-B^s)^D
+
+For SARIMA(1,1,1)(1,1,1)_12, this creates dependencies at lags:
+- AR: 1, 12, 13 (from φ₁, Φ₁, φ₁Φ₁)
+- MA: 1, 12, 13 (from θ₁, Θ₁, θ₁Θ₁)
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency, a pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time step. | *required*
+`p` | <code>[int](#int)</code> | AR order (default: 1). | *required*
+`d` | <code>[int](#int)</code> | Differencing order, 0-2 (default: 0). | *required*
+`q` | <code>[int](#int)</code> | MA order (default: 1). | *required*
+`P` | <code>[int](#int)</code> | Seasonal AR order (default: 1). | *required*
+`D` | <code>[int](#int)</code> | Seasonal differencing order, 0-2 (default: 0). | *required*
+`Q` | <code>[int](#int)</code> | Seasonal MA order (default: 1). | *required*
+`seasonal_period` | <code>[int](#int)</code> | Seasonal period s (default: 12). | *required*
+`ar_params` | <code>[list](#list)[[float](#float)] \| None</code> | AR coefficients φ₁,...,φ_p (default: random stable). | *required*
+`ma_params` | <code>[list](#list)[[float](#float)] \| None</code> | MA coefficients θ₁,...,θ_q (default: random in (-0.5, 0.5)). | *required*
+`seasonal_ar_params` | <code>[list](#list)[[float](#float)] \| None</code> | Seasonal AR coefficients Φ₁,...,Φ_P (default: random stable). | *required*
+`seasonal_ma_params` | <code>[list](#list)[[float](#float)] \| None</code> | Seasonal MA coefficients Θ₁,...,Θ_Q (default: random in (-0.5, 0.5)). | *required*
+`mean` | <code>[float](#float)</code> | Process mean for stationary models (d=0, D=0) (default: 0.0). | *required*
+`drift` | <code>[float](#float)</code> | Constant added to the differenced series for integrated models (d>0 or D>0); yields slope `drift` per step when d=1 (default: 0.0). | *required*
+`noise_std` | <code>[float](#float)</code> | Standard deviation of innovation noise (default: 1.0). | *required*
+`burn_in` | <code>[int](#int) \| None</code> | Burn-in period; None computes it from model order and AR persistence (default: None). | *required*
+`validate_stationarity` | <code>[bool](#bool)</code> | Validate AR parameters for stationarity (default: True). | *required*
+`exog_coefficients` | <code>[list](#list)[[float](#float)] \| None</code> | Coefficients for exogenous regressors (default: None). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp of every series (default: '2000-01-01'). | *required*
+
+#### `SARIMAGenerator.generate_single_series`
+
+```python
+generate_single_series(length, exog=None)
+```
+
+Generate values for a single SARIMA time series.
+
+The generation process:
+1. Generate white noise innovations
+2. Apply MA filtering to get MA component
+3. Apply AR filtering recursively
+4. Apply inverse differencing to get integrated process
+5. Add mean/drift and exogenous effects
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+`exog` | <code>[ndarray](#numpy.ndarray) \| None</code> | Exogenous regressors of shape (length, n_exog) | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+#### `SARIMAGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Get information about the SARIMA model configuration.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)[[str](#str), [Any](#typing.Any)]</code> | Model information including orders, parameters, and polynomial structure
+
+
+### `ETSGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate time series based on ETS (Error, Trend, Seasonal) models.
+
+Creates time series from the innovations state space form of exponential
+smoothing (Hyndman, Koehler, Ord & Snyder, 2008). Each component is
+additive (A), multiplicative (M), or absent (N):
+
+- y_t = μ_t + ε_t (additive error) or y_t = μ_t (1 + ε_t) (multiplicative)
+- μ_t combines level l, trend b (optionally damped by φ), and seasonal s,
+  e.g. ETS(A,A,A): μ_t = l_&#123;t-1&#125; + φ b_&#123;t-1&#125; + s_&#123;t-m&#125;
+- States update per the standard taxonomy, e.g. ETS(A,A,A):
+  l_t = l_&#123;t-1&#125; + φ b_&#123;t-1&#125; + α ε_t; b_t = φ b_&#123;t-1&#125; + β ε_t;
+  s_t = s_&#123;t-m&#125; + γ ε_t
+
+Common models: ETS(A,N,N) simple exponential smoothing, ETS(A,A,N) Holt,
+ETS(A,A,A) additive Holt-Winters, ETS(M,A,M) multiplicative Holt-Winters,
+ETS(A,Ad,A) damped Holt-Winters.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency, a pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time step. | *required*
+`error_type` | <code>[str](#str)</code> | Error component, 'add' or 'mul' (default: 'add'). | *required*
+`trend_type` | <code>[str](#str) \| None</code> | Trend component, 'add', 'mul', or None (default: 'add'). | *required*
+`seasonal_type` | <code>[str](#str) \| None</code> | Seasonal component, 'add', 'mul', or None (default: 'add'). | *required*
+`seasonal_period` | <code>[int](#int)</code> | Seasonal period m (default: 12). | *required*
+`level` | <code>[float](#float)</code> | Initial level l_0 (default: 100.0). | *required*
+`trend` | <code>[float](#float)</code> | Initial trend b_0 (default: 0.0; reset to 1.0 for multiplicative trend when &lt;= 0). | *required*
+`seasonal` | <code>[list](#list)[[float](#float)] \| None</code> | Initial seasonal states, one per season (default: random, zero-sum for additive / unit-mean for multiplicative). | *required*
+`alpha` | <code>[float](#float)</code> | Level smoothing parameter in [0, 1] (default: 0.3). | *required*
+`beta` | <code>[float](#float)</code> | Trend smoothing parameter in [0, 1] (default: 0.1). | *required*
+`gamma` | <code>[float](#float)</code> | Seasonal smoothing parameter in [0, 1] (default: 0.1). | *required*
+`phi` | <code>[float](#float)</code> | Damping parameter in [0, 1], used when damped=True (default: 0.98). | *required*
+`damped` | <code>[bool](#bool)</code> | Whether to damp the trend (default: False). | *required*
+`noise_std` | <code>[float](#float)</code> | Standard deviation of the innovations ε (default: 1.0). | *required*
+`box_cox_lambda` | <code>[float](#float) \| None</code> | If set, apply the inverse Box-Cox transform with this λ to the generated series (default: None). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp of every series (default: '2000-01-01'). | *required*
+
+#### `ETSGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single ETS time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+#### `ETSGenerator.generate_with_states`
+
+```python
+generate_with_states(n_series=1, start_id=0)
+```
+
+Generate series and return both observations and hidden states.
+
+This is useful for analyzing the underlying ETS state evolution.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of series to generate (default: 1) | <code>1</code>
+`start_id` | <code>[int](#int)</code> | Starting ID for series naming (default: 0) | <code>0</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[tuple](#tuple)[[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT), [IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)]</code> | tuple[DataFrame, DataFrame]: - DataFrame with observations (id_col, time_col, target_col) - DataFrame with states (id_col, time_col, level, trend, seasonal_*)
+
+#### `ETSGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Get information about the ETS model configuration.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)[[str](#str), [Any](#typing.Any)]</code> | Model information including type, parameters, and state
+
+
+### `INARGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate integer-valued time series with autoregressive structure.
+
+INAR(p) models use binomial thinning to maintain integer values while
+preserving autoregressive dynamics:
+
+```
+X_t = alpha_1 o X_{t-1} + ... + alpha_p o X_{t-p} + epsilon_t
+```
+
+where 'o' is binomial thinning, alpha o X = sum_&#123;i=1&#125;^&#123;X&#125; Bernoulli(alpha),
+and epsilon_t are i.i.d. count innovations (Poisson or negative binomial).
+
+Stationarity requires sum(alpha) &lt; 1, giving unconditional mean
+E[X] = E[epsilon] / (1 - sum(alpha)). The autocorrelation function
+follows the same Yule-Walker recursions as a Gaussian AR(p); for
+INAR(1), acf(k) = alpha^k. With Poisson innovations the INAR(1)
+stationary marginal is Poisson(innovation_mean / (1 - alpha)).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data (e.g. 'D', 'h', '5min') or int | *required*
+`p` | <code>[int](#int)</code> | Autoregressive order (default: 1) | *required*
+`alpha` | <code>[list](#list)[[float](#float)] \| None</code> | Thinning probabilities, each in [0, 1] with sum &lt; 1 (default: random with sum &lt; 0.8) | *required*
+`innovation_type` | <code>[str](#str)</code> | 'poisson' or 'negative_binomial' (default: 'poisson') | *required*
+`innovation_mean` | <code>[float](#float)</code> | Mean of innovations (default: 5.0) | *required*
+`innovation_dispersion` | <code>[float](#float)</code> | Dispersion r for the negative binomial; innovation variance is mean + mean^2 / r (default: 2.0) | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None) | *required*
+
+#### `INARGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate a single INAR time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of non-negative integer time series values
+
+#### `INARGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Return information about the INAR configuration.
+

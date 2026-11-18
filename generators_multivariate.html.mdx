@@ -1,0 +1,255 @@
+---
+title: Multivariate Generators
+description: Copula, VAR, and Gaussian Process generators for correlated time series
+---
+
+### `CopulaGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate correlated time series using Gaussian or t copulas.
+
+Copulas model the dependence structure between variables independently
+of their marginal distributions. Sampling proceeds in two steps:
+
+1. Draw correlated uniforms from the copula. Gaussian copula:
+   ``z ~ N(0, R)``, ``u_i = Phi(z_i)``. t copula: ``z ~ N(0, R)``,
+   ``w ~ chi2(df)``, ``u_i = T_df(z_i * sqrt(df / w))`` (the chi-square
+   mixing is shared across variables, which creates tail dependence).
+2. Map each uniform through the inverse CDF of its marginal:
+   ``x_i = F_i^{-1}(u_i)``.
+
+For the Gaussian copula the rank correlations satisfy
+``spearman = (6 / pi) * arcsin(rho / 2)`` and for both copulas
+``kendall_tau = (2 / pi) * arcsin(rho)``.
+
+``generate(n_series)`` creates ``n_series`` correlated variables sharing
+one length; each variable is one ``unique_id`` in the long-format output.
+Samples are i.i.d. over time (no serial dependence).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data. A pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time index step. | *required*
+`copula_type` | <code>[str](#str)</code> | 'gaussian' or 't' (default: 'gaussian'). | *required*
+`correlation_matrix` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | Correlation matrix. Must be symmetric positive definite with unit diagonal. When None, a random correlation matrix is generated. When smaller than n_series, it is padded with an identity block (extra variables are independent); when larger, the leading principal submatrix is used. | *required*
+`df` | <code>[float](#float)</code> | Degrees of freedom for the t copula (default: 5.0). | *required*
+`marginal_distributions` | <code>[list](#list)[[dict](#dict)]</code> | Marginal specs, cycled over variables. Types: 'normal' (loc, scale), 'lognormal' (mean, sigma), 'exponential' (scale), 'uniform' (low, high), 'gamma' (shape, scale). Default: standard normal. | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp (default: '2000-01-01'). | *required*
+
+#### `CopulaGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single univariate series.
+
+Provided for compatibility with BaseGenerator; use generate(n_series)
+for multivariate output.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values.
+
+#### `CopulaGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate n_series correlated series with copula dependence.
+
+Overrides the base generate() for multivariate output: n_series is
+the number of correlated variables, all sharing a single length.
+Generation is inherently joint, so n_jobs has no effect.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of correlated series (variables). | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for series numbering (default: 0). | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Unused (accepted for API compatibility). | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col]; each unique_id is one correlated variable.
+
+
+### `VARGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate correlated time series using a Vector Autoregression model.
+
+A VAR(p) process models each variable as a linear function of past
+values of all variables:
+
+```
+y[t] = c + A_1 y[t-1] + ... + A_p y[t-p] + e[t],  e[t] ~ (0, Sigma)
+```
+
+The process is stable (stationary) iff the companion matrix
+
+```
+[[A_1 ... A_p], [I 0 ... 0], ..., [0 ... I 0]]
+```
+
+has spectral radius &lt; 1, in which case the stationary mean is
+``(I - A_1 - ... - A_p)^{-1} c``. Innovations are drawn from the
+configured innovation distribution and correlated via the Cholesky
+factor of Sigma. A burn-in of 100 steps is discarded.
+
+``generate(n_series)`` creates ``n_series`` correlated variables sharing
+one length; each variable is one ``unique_id`` in the long-format output.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data. A pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time index step. | *required*
+`lag_order` | <code>[int](#int)</code> | VAR lag order p (default: 1). | *required*
+`coef_matrices` | <code>[list](#list)[[list](#list)[[list](#list)[[float](#float)]]] \| None</code> | One square coefficient matrix per lag, all the same size. Must define a stable VAR. When None, random stable coefficients are generated. When sized differently from n_series, the leading principal submatrices are used (or zero-padded). | *required*
+`intercept` | <code>[list](#list)[[float](#float)] \| None</code> | Intercept vector c (default: zeros). | *required*
+`innovation_covariance` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | Innovation covariance Sigma; symmetric positive definite (default: identity). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp (default: '2000-01-01'). | *required*
+
+#### `VARGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single (univariate) VAR series.
+
+Provided for compatibility with BaseGenerator; use generate(n_series)
+for multivariate output.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values (univariate).
+
+#### `VARGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate n_series correlated time series using the VAR model.
+
+Overrides the base generate() for multivariate output: n_series is
+the number of correlated variables, all sharing a single length.
+Generation is inherently joint, so n_jobs has no effect.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of correlated series (variables). | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for series numbering (default: 0). | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Unused (accepted for API compatibility). | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col]; each unique_id is one correlated variable.
+
+
+### `GaussianProcessGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate time series by sampling from a Gaussian Process.
+
+Samples ``f ~ GP(mean, k)`` on the integer grid t = 0..length-1, so the
+marginal distribution is ``N(mean, amplitude^2 + noise_variance)`` and
+the correlation at lag r is ``k(r) / k(0)``.
+
+Kernels (r = |t - t'|, l = length_scale, a = amplitude):
+    - rbf: ``a^2 exp(-r^2 / (2 l^2))`` — infinitely differentiable,
+      very smooth paths
+    - matern_0.5: ``a^2 exp(-r/l)`` — rough, Ornstein-Uhlenbeck-like
+    - matern_1.5: ``a^2 (1+s) exp(-s)``, s = sqrt(3) r / l —
+      once-differentiable
+    - matern_2.5: ``a^2 (1+s+s^2/3) exp(-s)``, s = sqrt(5) r / l —
+      twice-differentiable
+    - periodic: ``a^2 exp(-2 sin^2(pi r / period) / l^2)`` — exact
+      periodicity
+
+The periodic kernel is sampled exactly: one period by circulant FFT for an
+integer period up to ``4 * max(length, 1024)``, otherwise its cosine
+series, or Durbin-Levinson for very short length scales. The other kernels
+use FFT circulant embedding.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`kernel` | <code>[str](#str)</code> | Kernel type (default: 'rbf'). | *required*
+`length_scale` | <code>[float](#float)</code> | Kernel length scale (default: 20.0). | *required*
+`amplitude` | <code>[float](#float)</code> | Signal amplitude / output scale (default: 1.0). | *required*
+`period` | <code>[float](#float)</code> | Period for the periodic kernel (default: 50.0). | *required*
+`mean` | <code>[float](#float)</code> | Mean function value (default: 0.0). | *required*
+`noise_variance` | <code>[float](#float)</code> | Variance of independent observation noise added to each point (default: 1e-6). | *required*
+
+#### `GaussianProcessGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate a single GP sample path.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+
+#### `GaussianProcessGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Return information about the GP configuration.
+

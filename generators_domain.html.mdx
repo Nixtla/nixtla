@@ -1,0 +1,666 @@
+---
+title: Domain-Specific Generators
+description: IntermittentDemand, IoTSensor, EnergyLoad, StateSpace, DailyActiveUsers, VitalSigns, and Clickstream generators
+---
+
+### `IntermittentDemandGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate intermittent demand time series with sparse patterns.
+
+Demand is a two-part process: a binary occurrence process decides at
+which periods demand happens, and a size distribution draws the demand
+quantity for those periods (all other periods are zero). Common in
+retail, spare parts, and inventory contexts (Croston-style demand).
+
+<details class="occurrence-patterns" open markdown="1">
+<summary>Occurrence patterns</summary>
+
+- 'random': i.i.d. Bernoulli(demand_probability) per period, so the
+  long-run fraction of non-zero periods equals demand_probability.
+- 'clustered': runs of `cluster_size` consecutive demand periods
+  separated by Geometric(demand_probability) gaps. The overall
+  demand fraction is cluster_size / (1/demand_probability +
+  cluster_size), not demand_probability. demand_probability == 0
+  means infinite gaps, i.e. an all-zero series.
+- 'seasonal': per-period Bernoulli with probability
+  p(t) = demand_probability + (seasonal_peak_prob -
+  demand_probability) * (cos(2*pi*(t mod P)/P) + 1) / 2,
+  which peaks at seasonal_peak_prob at the start of each cycle
+  (t mod P == 0) and falls to demand_probability mid-cycle.
+
+</details>
+
+Size distributions are moment-matched to (demand_mean, demand_std):
+    - 'poisson': Poisson(demand_mean); demand_std is ignored.
+    - 'negative_binomial': p = mean/var, n = mean*p/(1-p); falls back
+      to Poisson when demand_std**2 &lt;= demand_mean.
+    - 'lognormal': mu = ln(mean^2 / sqrt(var + mean^2)),
+      sigma^2 = ln(1 + var/mean^2).
+    - 'gamma': shape = (mean/std)^2, scale = var/mean.
+Sizes are clipped from below at min_demand.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data (e.g. 'D', 'h', '5min') or int | *required*
+`demand_probability` | <code>[float](#float)</code> | Probability of non-zero demand per period (occurrence-pattern dependent, see above) (default: 0.2) | *required*
+`demand_distribution` | <code>[str](#str)</code> | Distribution for non-zero demand sizes (default: 'poisson') | *required*
+`demand_mean` | <code>[float](#float)</code> | Mean of demand when non-zero (default: 5.0) | *required*
+`demand_std` | <code>[float](#float)</code> | Std of demand when non-zero (default: 2.0) | *required*
+`intermittent_pattern` | <code>[str](#str)</code> | Occurrence pattern: 'random', 'clustered' or 'seasonal' (default: 'random') | *required*
+`cluster_size` | <code>[int](#int)</code> | Size of demand clusters (default: 3) | *required*
+`seasonal_period` | <code>[int](#int)</code> | Period for seasonal intermittency (default: 12) | *required*
+`seasonal_peak_prob` | <code>[float](#float)</code> | Peak occurrence probability at the start of each seasonal cycle (default: 0.4) | *required*
+`min_demand` | <code>[int](#int)</code> | Minimum non-zero demand value (default: 1) | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None) | *required*
+
+#### `IntermittentDemandGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single intermittent demand time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of values (mostly zeros with intermittent demand)
+
+
+### `IoTSensorGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate IoT sensor readings with realistic degradation patterns.
+
+The signal is ``base_value + trend * t`` plus optional sinusoidal
+seasonality, a calibration offset, a cumulative drift random walk
+(``drift_rate`` per step with ``drift_noise`` variation), and Gaussian
+measurement noise. After ``battery_life`` steps, noise grows and the
+signal is attenuated at ``battery_degradation_rate``. Failures can be
+injected as NaN gaps ('intermittent'), a permanent NaN tail ('complete'),
+or frozen readings ('stuck').
+
+With ``n_sensors > 1``, each generated "series" is a network of sensors
+whose measurement noise is spatially correlated
+(``corr[i, j] = spatial_correlation ** |i - j|``); each sensor becomes a
+separate output series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data, e.g. 's', 'min', 'h'. | *required*
+`n_sensors` | <code>[int](#int)</code> | Sensors per network (default: 1). | *required*
+`sensor_type` | <code>[str](#str)</code> | 'temperature', 'humidity', 'pressure', 'light', 'motion' or 'generic' (default: 'temperature'). | *required*
+`base_value` | <code>[float](#float) \| None</code> | Base sensor reading (default: typical value for sensor_type). | *required*
+`trend` | <code>[float](#float)</code> | Linear trend per time step (default: 0.0). | *required*
+`seasonal_period` | <code>[int](#int)</code> | Seasonal cycle length in steps, 0 disables (default: 0). | *required*
+`seasonal_amplitude` | <code>[float](#float)</code> | Amplitude of seasonal variation (default: 0.0). | *required*
+`measurement_noise` | <code>[float](#float)</code> | Std of measurement noise (default: 0.1). | *required*
+`drift_rate` | <code>[float](#float)</code> | Deterministic sensor drift per step (default: 0.0). | *required*
+`drift_noise` | <code>[float](#float)</code> | Std of the random drift component (default: 0.01). | *required*
+`calibration_error` | <code>[float](#float)</code> | Constant calibration offset (default: 0.0). | *required*
+`battery_life` | <code>[int](#int) \| None</code> | Steps until battery degradation starts, None disables (default: None). | *required*
+`battery_degradation_rate` | <code>[float](#float)</code> | Rate of quality loss per step after battery_life (default: 0.001). | *required*
+`failure_probability` | <code>[float](#float)</code> | Probability of sensor failure (default: 0.0). For 'complete': probability the series fails at all; for 'intermittent'/'stuck': per-step probability of starting a failure episode. | *required*
+`failure_type` | <code>[str](#str)</code> | 'intermittent', 'complete' or 'stuck' (default: 'intermittent'). | *required*
+`failure_duration` | <code>[int](#int)</code> | Length of intermittent/stuck episodes (default: 10). | *required*
+`stuck_value` | <code>[float](#float) \| None</code> | Reading during 'stuck' failures (default: the reading at episode start). | *required*
+`spatial_correlation` | <code>[float](#float)</code> | Noise correlation between adjacent sensors in a network (default: 0.5). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+#### `IoTSensorGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single sensor.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of sensor readings (NaN during failures).
+
+#### `IoTSensorGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate IoT sensor data.
+
+With ``n_sensors == 1``, generates ``n_series`` independent sensors.
+With ``n_sensors > 1``, generates ``n_series`` sensor networks, each
+contributing ``n_sensors`` correlated series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of series/networks to generate. | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for the series numbering (default: 0). | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Ignored; generation is sequential. | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col].
+
+
+### `EnergyLoadGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate electricity demand with nested daily/weekly/yearly cycles.
+
+The load is a base level plus:
+
+- A daily profile depending on ``load_type``: residential has Gaussian
+  morning/evening peaks, commercial a broad midday peak, industrial a
+  near-constant profile with a night dip.
+- A weekly cycle: weekend reduction for residential/commercial, a
+  sinusoidal pattern for industrial.
+- A yearly cosine cycle peaking around the series start (winter).
+- Temperature-driven load: both heating (cold) and cooling (hot) increase
+  demand proportionally to ``|temperature - base_temperature|``.
+- Holiday reductions, random extreme-weather multipliers, and Gaussian
+  noise. The result is clipped at zero.
+
+Hour of day, day of week and day of year are derived from the step
+position relative to the series start using the step size implied by
+``freq`` (an integer ``freq`` is treated as hourly).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data, e.g. 'h', '15min', 'D'. | *required*
+`base_load` | <code>[float](#float)</code> | Base load in kW or MW (default: 100.0). | *required*
+`load_type` | <code>[str](#str)</code> | 'residential', 'commercial' or 'industrial' (default: 'residential'). | *required*
+`daily_pattern` | <code>[bool](#bool)</code> | Enable the daily cycle (default: True). | *required*
+`daily_amplitude` | <code>[float](#float)</code> | Amplitude of the daily variation (default: 30.0). | *required*
+`weekly_pattern` | <code>[bool](#bool)</code> | Enable the weekly cycle (default: True). | *required*
+`weekly_amplitude` | <code>[float](#float)</code> | Amplitude of the weekly variation (default: 15.0). | *required*
+`yearly_pattern` | <code>[bool](#bool)</code> | Enable the yearly cycle (default: True). | *required*
+`yearly_amplitude` | <code>[float](#float)</code> | Amplitude of the yearly variation (default: 20.0). | *required*
+`temperature_sensitive` | <code>[bool](#bool)</code> | Enable temperature effects (default: True). | *required*
+`temperature_sensitivity` | <code>[float](#float)</code> | Load change per degree of deviation from base_temperature (default: 2.0). | *required*
+`base_temperature` | <code>[float](#float)</code> | Reference temperature in Celsius (default: 20.0). | *required*
+`morning_peak_hour` | <code>[int](#int)</code> | Hour of the residential morning peak (default: 8). | *required*
+`evening_peak_hour` | <code>[int](#int)</code> | Hour of the residential evening peak (default: 19). | *required*
+`peak_amplitude` | <code>[float](#float)</code> | Additional load at the residential peaks (default: 40.0). | *required*
+`holiday_effect` | <code>[float](#float)</code> | Fractional load reduction on holidays (default: 0.3). | *required*
+`holiday_days` | <code>[list](#list)[[int](#int)]</code> | Day-of-year indices (0-364) that are holidays (default: []). | *required*
+`extreme_weather_prob` | <code>[float](#float)</code> | Per-step probability of extreme weather (default: 0.0). | *required*
+`extreme_weather_impact` | <code>[float](#float)</code> | Load multiplier during extreme weather (default: 1.5). | *required*
+`noise_std` | <code>[float](#float)</code> | Standard deviation of additive noise (default: 5.0). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+#### `EnergyLoadGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single energy load series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of energy load values.
+
+
+### `StateSpaceGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate time series from a (linear-Gaussian or custom) state space model.
+
+The linear model is:
+
+```
+x[t] = F x[t-1] + w[t],  w[t] ~ (0, Q)   (state equation)
+y[t] = H x[t] + v[t],    v[t] ~ N(0, R)  (observation equation)
+```
+
+with ``x[0] ~ N(initial_state, initial_state_covariance)``. State noise
+``w`` follows the configured innovation distribution (scaled by the
+Cholesky/PSD factor of Q); observation noise ``v`` is Gaussian. The
+univariate output is the first observation dimension ``y[t][0]``, with
+y[0] observing the initial state. Custom nonlinear dynamics can be
+supplied via ``transition_fn`` / ``observation_fn``, each called as
+``fn(x, t, rng)``.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data. A pandas offset alias (e.g. 'D', 'h', '5min', 'MS') or an integer time index step. | *required*
+`state_dim` | <code>[int](#int)</code> | Dimension of the hidden state vector (default: 1). | *required*
+`obs_dim` | <code>[int](#int)</code> | Dimension of the observation vector (default: 1). | *required*
+`transition_matrix` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | State transition matrix F, shape (state_dim, state_dim). When None (and no transition_fn), a random stable matrix is generated. | *required*
+`observation_matrix` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | Observation matrix H, shape (obs_dim, state_dim). Default observes the first state. | *required*
+`state_covariance` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | State noise covariance Q, symmetric PSD (default: 0.1 * I). | *required*
+`obs_covariance` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | Observation noise covariance R, symmetric PSD (default: 0.1 * I). | *required*
+`transition_fn` | <code>[Callable](#collections.abc.Callable) \| None</code> | Custom state transition function. | *required*
+`observation_fn` | <code>[Callable](#collections.abc.Callable) \| None</code> | Custom observation function. | *required*
+`initial_state` | <code>[list](#list)[[float](#float)] \| None</code> | Initial state mean (default: zeros). | *required*
+`initial_state_covariance` | <code>[list](#list)[[list](#list)[[float](#float)]] \| None</code> | Initial state covariance, symmetric PSD (default: identity). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id'). | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds'). | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y'). | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp (default: '2000-01-01'). | *required*
+
+#### `StateSpaceGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single state space series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Observed values (first observation dimension).
+
+#### `StateSpaceGenerator.generate_with_states`
+
+```python
+generate_with_states(n_series=1, start_id=0)
+```
+
+Generate series and return both observations and hidden states.
+
+Only missingness is applied to the observations (changepoints and
+anomalies would desynchronize them from the returned states).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of series to generate (default: 1). | <code>1</code>
+`start_id` | <code>[int](#int)</code> | Starting ID for series numbering (default: 0). | <code>0</code>
+
+Returns:
+    (observations DataFrame in long format, states DataFrame
+        with one ``state_j`` column per state dimension).
+
+
+### `DailyActiveUsersGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate Daily Active Users time series with event-driven jumps.
+
+The DAU level is ``base_users * (1 + growth_rate)^day`` with a weekend
+multiplier, plus a decaying boost from random events: with probability
+``event_probability`` per step an event adds ``(impact - 1) * base`` to a
+boost that decays geometrically at rate ``event_decay_rate``. Proportional
+Gaussian noise is added and the result is clipped at zero.
+
+The day index is derived from the step position relative to the series
+start using the step size implied by ``freq`` (an integer ``freq`` is
+treated as daily). Weekends are day indices 5 and 6 of each 7-day block.
+
+Also outputs an exogenous column marking the steps where events occur,
+usable as a feature for forecasting models.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data, e.g. 'D', 'h'. | *required*
+`base_users` | <code>[float](#float)</code> | Base number of daily active users (default: 10000.0). | *required*
+`growth_rate` | <code>[float](#float)</code> | Daily organic growth rate (default: 0.0005). | *required*
+`growth_rate_std` | <code>[float](#float)</code> | Std dev of a per-series perturbation of growth_rate (default: 0.0). | *required*
+`app_type` | <code>[str](#str)</code> | 'consumer', 'business' or 'gaming' (default: 'consumer'). | *required*
+`weekly_pattern` | <code>[bool](#bool)</code> | Enable weekly seasonality (default: True). | *required*
+`weekend_factor` | <code>[float](#float) \| None</code> | Multiplier for weekend activity (default: 1.2 for gaming, 0.8 otherwise). | *required*
+`event_probability` | <code>[float](#float)</code> | Per-step probability of an event (default: 0.02). | *required*
+`event_impact_min` | <code>[float](#float)</code> | Minimum event impact multiplier (default: 1.2). | *required*
+`event_impact_max` | <code>[float](#float)</code> | Maximum event impact multiplier (default: 2.0). | *required*
+`event_decay_rate` | <code>[float](#float)</code> | Per-step decay rate of the event boost (default: 0.1). | *required*
+`noise_std` | <code>[float](#float)</code> | Std of noise relative to the current level (default: 0.05). | *required*
+`event_col` | <code>[str](#str)</code> | Name of the event indicator column (default: 'event'). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+#### `DailyActiveUsersGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single DAU time series.
+
+Also populates ``self._current_events`` with event indicators.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of DAU values.
+
+#### `DailyActiveUsersGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate synthetic DAU time series data with event indicators.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of time series to generate. | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for the series numbering (default: 0). | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Ignored; generation is sequential. | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col, event_col], where event_col is 1 at steps where an event occurred.
+
+
+### `VitalSignsGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate realistic vital signs time series for healthcare applications.
+
+Simulates one of six vital signs (heart rate, systolic/diastolic blood
+pressure, respiratory rate, SpO2, temperature) as a per-series baseline
+plus a slow random-walk drift, a circadian rhythm, heart rate variability
+(for HR and BP), random physiological events (activity bursts, rest
+periods, spikes), measurement noise, and cross-vital correlations with
+heart rate. Values are clipped to physiological bounds that depend on the
+patient archetype.
+
+<details class="note" open markdown="1">
+<summary>Note</summary>
+
+Circadian and HRV components assume one time step = 1 minute
+(freq='min'); other frequencies distort those cycle periods.
+
+</details>
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data; use 'min' for correct circadian/HRV periods. | *required*
+`patient_type` | <code>[str](#str)</code> | 'healthy', 'cardiac', 'sepsis', 'respiratory' or 'hypertensive' (default: 'healthy'). | *required*
+`vital_sign` | <code>[str](#str)</code> | Which vital sign to output (default: 'heart_rate'). | *required*
+`include_circadian` | <code>[bool](#bool)</code> | Include circadian rhythm effects (default: True). | *required*
+`include_hrv` | <code>[bool](#bool)</code> | Include heart rate variability (default: True). | *required*
+`include_events` | <code>[bool](#bool)</code> | Include random physiological events (default: True). | *required*
+`event_probability` | <code>[float](#float)</code> | Per-step probability of an event (default: 0.01). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+<details class="example" open markdown="1">
+<summary>Example</summary>
+
+>>> gen = VitalSignsGenerator(
+...     min_length=1440,  # 24 hours of per-minute data
+...     max_length=1440,
+...     freq="min",
+...     patient_type="healthy",
+...     vital_sign="heart_rate",
+...     seed=42,
+... )
+>>> df = gen.generate(n_series=10)
+
+</details>
+
+#### `VitalSignsGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single vital signs time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of vital sign values.
+
+#### `VitalSignsGenerator.generate_all_vitals`
+
+```python
+generate_all_vitals(n_series=1, start_id=0)
+```
+
+Generate all six vital signs for complete patient monitoring.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of patients/series to generate. | <code>1</code>
+`start_id` | <code>[int](#int)</code> | Starting ID for the series numbering. | <code>0</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame with columns [id_col, time_col] plus one column per vital sign, aligned on the same timestamps per patient.
+
+#### `VitalSignsGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Get information about the vital signs model.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)</code> | Model parameters and patient characteristics.
+
+
+### `ClickstreamGenerator`
+
+Bases: <code>[BaseGenerator](#synforecast.base.BaseGenerator)</code>
+
+Generate web clickstream/session time series for analytics applications.
+
+Human sessions per time bin are Poisson-distributed around
+``base_sessions`` modulated by hour-of-day/day-of-week seasonality and a
+slow log-random-walk trend. Bot traffic (flatter profile plus occasional
+crawl spikes) can be added on top. Bounces, pageviews (geometric page
+depth for engaged sessions) and conversions are derived per bin from the
+human sessions, with multipliers depending on ``traffic_source``.
+
+Output types:
+- 'sessions': total session counts (human + bot) per time bin
+- 'pageviews': total pageviews per time bin
+- 'conversions': conversion counts per time bin
+- 'bounce_rate': bounced fraction of total sessions per time bin
+
+<details class="note" open markdown="1">
+<summary>Note</summary>
+
+Seasonality assumes hourly frequency (freq='h'). Other frequencies
+produce incorrect day/night and weekday patterns.
+
+</details>
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series. | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series. | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data; use 'h' for correct seasonality patterns. | *required*
+`base_sessions` | <code>[float](#float)</code> | Baseline sessions per time bin (default: 100). | *required*
+`traffic_source` | <code>[str](#str)</code> | 'organic', 'paid', 'direct', 'referral' or 'mixed' (default: 'mixed'). | *required*
+`conversion_rate` | <code>[float](#float)</code> | Base conversion rate for engaged sessions (default: 0.03). | *required*
+`bounce_rate` | <code>[float](#float)</code> | Base rate of single-page sessions (default: 0.40). | *required*
+`avg_session_depth` | <code>[float](#float)</code> | Average pages per engaged session (default: 3.5). | *required*
+`include_seasonality` | <code>[bool](#bool)</code> | Include time-of-day and day-of-week patterns (default: True). | *required*
+`include_bots` | <code>[bool](#bool)</code> | Include bot traffic (default: True). | *required*
+`bot_fraction` | <code>[float](#float)</code> | Fraction of traffic from bots, &lt; 1.0 (default: 0.15). | *required*
+`output_type` | <code>[str](#str)</code> | Metric to output (default: 'sessions'). | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None). | *required*
+
+<details class="example" open markdown="1">
+<summary>Example</summary>
+
+>>> gen = ClickstreamGenerator(
+...     min_length=168,  # 1 week of hourly data
+...     max_length=168,
+...     freq="h",
+...     base_sessions=500,
+...     output_type="sessions",
+...     seed=42,
+... )
+>>> df = gen.generate(n_series=10)
+
+</details>
+
+#### `ClickstreamGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single clickstream time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate. | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of metric values.
+
+#### `ClickstreamGenerator.generate_full_metrics`
+
+```python
+generate_full_metrics(n_series=1, start_id=0)
+```
+
+Generate all clickstream metrics for complete analytics.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of series to generate. | <code>1</code>
+`start_id` | <code>[int](#int)</code> | Starting ID for series naming. | <code>0</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)[[str](#str), [ndarray](#numpy.ndarray)]</code> | All metrics as flat arrays, keyed by metric name plus 'series_id'.
+
+#### `ClickstreamGenerator.generate_funnel`
+
+```python
+generate_funnel(n_sessions=1000, stages=None)
+```
+
+Generate a conversion funnel with stage-by-stage drop-off.
+
+Retention between stages rises from ~0.4 to ~0.7 (committed users
+drop off less), adjusted by the traffic source's conversion
+multiplier.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_sessions` | <code>[int](#int)</code> | Number of sessions entering the funnel. | <code>1000</code>
+`stages` | <code>[list](#list)[[str](#str)] \| None</code> | Funnel stage names (default: standard e-commerce funnel). | <code>None</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)[[str](#str), [int](#int)]</code> | Stage name -> session count at that stage.
+
+#### `ClickstreamGenerator.get_model_info`
+
+```python
+get_model_info()
+```
+
+Get information about the clickstream model.
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[dict](#dict)</code> | Model parameters and traffic characteristics.
+

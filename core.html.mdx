@@ -1,0 +1,100 @@
+---
+title: BaseGenerator
+description: Base class for all time series generators
+---
+
+### `BaseGenerator`
+
+Bases: <code>[BaseModel](#pydantic.BaseModel)</code>, <code>[ABC](#abc.ABC)</code>
+
+Base class for all time series generators.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`min_length` | <code>[int](#int)</code> | Minimum length of each series | *required*
+`max_length` | <code>[int](#int)</code> | Maximum length of each series | *required*
+`freq` | <code>[str](#str) \| [int](#int)</code> | Frequency of the data. Either a pandas offset alias (e.g. 'D', 'h', '5min', 'MS', 'W-MON') or an integer for an integer time index | *required*
+`engine` | <code>[str](#str)</code> | Output dataframe library (default: 'pandas'). Options are 'pandas', 'polars', 'cudf', 'modin', 'pyarrow' | *required*
+`alias` | <code>[str](#str) \| None</code> | Name of the generator (default: class name) | *required*
+`id_col` | <code>[str](#str)</code> | Name of the ID column (default: 'unique_id') | *required*
+`time_col` | <code>[str](#str)</code> | Name of the timestamp column (default: 'ds') | *required*
+`target_col` | <code>[str](#str)</code> | Name of the value column (default: 'y') | *required*
+`start_datetime` | <code>[str](#str)</code> | First timestamp of every series, in any format accepted by pandas.Timestamp (default: '2000-01-01'). Ignored when freq is an integer | *required*
+`seed` | <code>[int](#int) \| None</code> | Random seed for reproducibility (default: None) | *required*
+`Exogenous parameters` |  |  | *required*
+`exogenous` | <code>[ExogenousConfig](#synforecast.exogenous.ExogenousConfig) \| None</code> | Configuration for exogenous variable generation. None = no exogenous columns (default: None) | *required*
+`Overlay parameters` |  |  | *required*
+`overlays` | <code>[OverlayConfig](#synforecast.overlays.OverlayConfig)</code> | Calendar cycles, waveforms, changepoints, anomalies, observation effects and missing data drawn on every series, in that order (default: none). The flat missing_*, anomaly_*, changepoint_* and overlay_scale arguments still work but are deprecated. | *required*
+
+#### `BaseGenerator.generate`
+
+```python
+generate(n_series, start_id=0, n_jobs=-1)
+```
+
+Generate synthetic time series data.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of time series to generate | *required*
+`start_id` | <code>[int](#int)</code> | Starting ID for the series numbering (default: 0) Series will be numbered from start_id to start_id + n_series - 1 | <code>0</code>
+`n_jobs` | <code>[int](#int)</code> | Number of parallel workers. -1 (default) uses ``RAYON_NUM_THREADS`` if set, otherwise all logical cores. Results are seed-deterministic and do not depend on n_jobs. | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[IntoDataFrameT](#narwhals.stable.v2.typing.IntoDataFrameT)</code> | DataFrame in long format with columns [id_col, time_col, target_col] (default ['unique_id', 'ds', 'y']), plus any exogenous or flag columns.
+
+#### `BaseGenerator.generate_values`
+
+```python
+generate_values(n_series, n_jobs=-1)
+```
+
+Generate series as value arrays, without building a DataFrame.
+
+Draws exactly the series :meth:`generate` would, with the same overlays
+(missing points as NaN), and leaves the generator in the same state.
+No DataFrame, exogenous column, or calendar is built, so lengths beyond
+pandas' datetime range work. Generators with their own generation
+scheme override :meth:`_generate_metadata`, which both methods share.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`n_series` | <code>[int](#int)</code> | Number of time series to generate. | *required*
+`n_jobs` | <code>[int](#int)</code> | Number of parallel workers. -1 (default) uses ``RAYON_NUM_THREADS`` if set, otherwise all logical cores. Results are seed-deterministic and do not depend on n_jobs. | <code>-1</code>
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[list](#list)[[ndarray](#numpy.ndarray)]</code> | One 1-D float array per series in id order (``n_series * n_sensors``
+<code>[list](#list)[[ndarray](#numpy.ndarray)]</code> | for ``IoTSensorGenerator``).
+
+#### `BaseGenerator.generate_single_series`
+
+```python
+generate_single_series(length)
+```
+
+Generate values for a single time series.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`length` | <code>[int](#int)</code> | The length of the series to generate | *required*
+
+**Returns:**
+
+Type | Description
+---- | -----------
+<code>[ndarray](#numpy.ndarray)</code> | Array of time series values
+

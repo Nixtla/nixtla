@@ -1,0 +1,629 @@
+---
+title: Overlays
+description: Calendar cycles, waveforms, changepoints, anomalies, observation effects and missing data
+---
+
+### `OverlayConfig`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+Every overlay of a generator; ``None`` switches a stage off.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`base_weight` |  | Weight of the base series around its mean before any overlay; small values let a calendar or waveform dominate, 0 leaves them exact. | *required*
+`calendar` |  | Timestamp-aligned periodic profiles. | *required*
+`waveform` |  | A sharp-edged template with its period in steps. | *required*
+`changepoints` |  | Structural breaks. | *required*
+`anomalies` |  | Spikes, dips and level shifts. | *required*
+`observation` |  | Saturation, quantization, sample-and-hold, frozen readings. | *required*
+`missing` |  | Missing values. | *required*
+
+#### `OverlayConfig.active`
+
+```python
+active: bool
+```
+
+Whether any stage changes the series.
+
+#### `OverlayConfig.anomalies`
+
+```python
+anomalies: Anomalies | None = None
+```
+
+#### `OverlayConfig.base_weight`
+
+```python
+base_weight: float = Field(default=1.0, ge=0, le=1)
+```
+
+#### `OverlayConfig.calendar`
+
+```python
+calendar: Calendar | None = None
+```
+
+#### `OverlayConfig.changepoints`
+
+```python
+changepoints: Changepoints | None = None
+```
+
+#### `OverlayConfig.fill`
+
+```python
+fill(other)
+```
+
+A copy with every stage that is off here taken from ``other``.
+
+#### `OverlayConfig.missing`
+
+```python
+missing: Missing | None = None
+```
+
+#### `OverlayConfig.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `OverlayConfig.observation`
+
+```python
+observation: Observation | None = None
+```
+
+#### `OverlayConfig.waveform`
+
+```python
+waveform: Waveform | None = None
+```
+
+
+### `Calendar`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+Periodic profiles aligned to the series' timestamps.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`cycles` |  | One or more cycles, combined as their weighted mean. | *required*
+`mode` |  | 'additive' adds ``amplitude`` times the profile; 'multiplicative' scales a non-negative series by ``1 + swing * profile``. | *required*
+`amplitude` |  | Additive peak, in standard deviations of the base series with ``scale='relative'`` (the default), else in series units. | *required*
+`swing` |  | Multiplicative peak, as a fraction of the level, below 1. | *required*
+`scale` |  | Units of ``amplitude``. | *required*
+`fallback` |  | What a multiplicative calendar does on a series with negative values: 'additive' adds the additive profile instead, 'none' leaves the series unchanged. | *required*
+`on_unsupported` |  | What to do at construction when a cycle cannot show at the generator's frequency (a daily cycle on daily data, any date cycle on an integer freq): 'warn' or 'skip' drops it, 'raise' fails. | *required*
+
+Phases follow the timestamps the generator emits (UTC for an offset-aware
+start). A cycle needs at least two steps per period.
+
+#### `Calendar.amplitude`
+
+```python
+amplitude: float = Field(default=1.0, ge=0)
+```
+
+#### `Calendar.cycles`
+
+```python
+cycles: list[CalendarCycle] = Field(min_length=1)
+```
+
+#### `Calendar.fallback`
+
+```python
+fallback: Literal['additive', 'none'] = 'additive'
+```
+
+#### `Calendar.mode`
+
+```python
+mode: Literal['additive', 'multiplicative'] = 'additive'
+```
+
+#### `Calendar.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Calendar.on_unsupported`
+
+```python
+on_unsupported: Literal['warn', 'skip', 'raise'] = 'warn'
+```
+
+#### `Calendar.scale`
+
+```python
+scale: Scale = 'relative'
+```
+
+#### `Calendar.swing`
+
+```python
+swing: float = Field(default=0.3, ge=0, lt=1)
+```
+
+
+### `CalendarCycle`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+One periodic profile aligned to the timestamps (or to the step index).
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`phase` |  | What the cycle repeats over: 'day' (time of day), 'week' (day and time of week), 'year' (month and time of year, so monthly data lines up with calendar months) or 'step' (every ``period`` steps, independent of freq; works with integer frequencies). | *required*
+`profile` |  | 'fourier' for a smooth shape of ``harmonics`` harmonics, or 'levels' for a constant level per bin (hour of day, weekday, month, or step within the period). | *required*
+`harmonics` |  | Harmonics of a Fourier profile. | *required*
+`bins` |  | Bins of a levels profile; defaults to 24 (day), 7 (week), 12 (year) or ``period`` (step). | *required*
+`period` |  | Cycle length in steps, for ``phase='step'`` only. | *required*
+`values` |  | A fixed profile instead of a random one: ``2 * harmonics`` Fourier coefficients (cosines, then sines) or one value per bin. Random profiles draw coefficients N(0, 1/k) or levels N(0, 1). | *required*
+`jitter` |  | Standard deviation of per-series normal noise added to fixed ``values``, so series share a shape without being identical. | *required*
+`weight` |  | Weight of this cycle in the calendar's weighted mean. | *required*
+
+Each cycle is normalized to peak magnitude 1 before weighting.
+
+#### `CalendarCycle.bins`
+
+```python
+bins: int | None = Field(default=None, ge=2, le=10000)
+```
+
+#### `CalendarCycle.harmonics`
+
+```python
+harmonics: int = Field(default=3, ge=1, le=12)
+```
+
+#### `CalendarCycle.jitter`
+
+```python
+jitter: float = Field(default=0.0, ge=0)
+```
+
+#### `CalendarCycle.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `CalendarCycle.n_bins`
+
+```python
+n_bins: int
+```
+
+Bins of a levels profile.
+
+#### `CalendarCycle.n_values`
+
+```python
+n_values: int
+```
+
+Length of a fixed profile.
+
+#### `CalendarCycle.period`
+
+```python
+period: int | None = Field(default=None, ge=2)
+```
+
+#### `CalendarCycle.phase`
+
+```python
+phase: Literal['day', 'week', 'year', 'step']
+```
+
+#### `CalendarCycle.profile`
+
+```python
+profile: Literal['fourier', 'levels'] = 'fourier'
+```
+
+#### `CalendarCycle.values`
+
+```python
+values: list[float] | None = None
+```
+
+#### `CalendarCycle.weight`
+
+```python
+weight: float = Field(default=1.0, gt=0)
+```
+
+
+### `Waveform`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+A sharp-edged repeating template whose period is in steps.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`shape` |  | 'pulse' (a rectangle of duty ``duty``), 'spike' (a pulse ``width`` steps wide), 'sawtooth' (ramp and reset each cycle), 'trapezoid' (a pulse with linear ramps), 'levels' (a jump to a random other level each cycle) or 'staircase' (a one-level step in a persistent direction each cycle). | *required*
+`period` |  | Cycle length in steps; mean dwell for 'levels' and 'staircase'. | *required*
+`duty` |  | On-fraction of a cycle for 'pulse' and 'trapezoid'. | *required*
+`width` |  | Spike width in steps. | *required*
+`ramp` |  | Trapezoid ramp per side, as a fraction of the on-time. | *required*
+`levels` |  | Number of levels for 'levels' and 'staircase'. | *required*
+`timing` |  | 'periodic' repeats every ``period`` steps from a random phase; 'jitter' moves each cycle start by a normal offset of standard deviation ``jitter * period``; 'renewal' draws on and off durations (whole cycles for sawtooth and level shapes) from ``renewal`` with the nominal means. | *required*
+`jitter` |  | Cycle-start jitter, as a fraction of the period. | *required*
+`renewal` |  | 'gamma' or 'lognormal' renewal durations. | *required*
+`cv` |  | Coefficient of variation of renewal durations. | *required*
+`direction` |  | 'peak' rises, 'dip' falls. | *required*
+`mode` |  | 'additive' adds ``amplitude`` times the template; 'multiplicative' scales a non-negative series by ``1 +/- swing * template``. | *required*
+`amplitude` |  | Additive peak, in standard deviations of the base series with ``scale='relative'`` (the default). | *required*
+`swing` |  | Multiplicative peak, as a fraction of the level; at most 1 for dips. | *required*
+`scale` |  | Units of ``amplitude``. | *required*
+`fallback` |  | Multiplicative behaviour on a series with negative values, as for :class:`Calendar`. | *required*
+
+#### `Waveform.amplitude`
+
+```python
+amplitude: float = Field(default=3.0, ge=0)
+```
+
+#### `Waveform.cv`
+
+```python
+cv: float = Field(default=0.5, gt=0, le=10)
+```
+
+#### `Waveform.direction`
+
+```python
+direction: Literal['peak', 'dip'] = 'peak'
+```
+
+#### `Waveform.duty`
+
+```python
+duty: float = Field(default=0.1, gt=0, lt=1)
+```
+
+#### `Waveform.fallback`
+
+```python
+fallback: Literal['additive', 'none'] = 'additive'
+```
+
+#### `Waveform.jitter`
+
+```python
+jitter: float = Field(default=0.05, ge=0, le=0.5)
+```
+
+#### `Waveform.levels`
+
+```python
+levels: int = Field(default=4, ge=2, le=1000)
+```
+
+#### `Waveform.mode`
+
+```python
+mode: Literal['additive', 'multiplicative'] = 'additive'
+```
+
+#### `Waveform.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Waveform.on_steps`
+
+```python
+on_steps: int
+```
+
+Nominal on-time of one cycle in steps; the whole cycle for sawtooth and level shapes.
+
+#### `Waveform.period`
+
+```python
+period: int = Field(default=96, ge=2, le=10000000)
+```
+
+#### `Waveform.ramp`
+
+```python
+ramp: float = Field(default=0.25, gt=0, le=0.5)
+```
+
+#### `Waveform.renewal`
+
+```python
+renewal: Literal['gamma', 'lognormal'] = 'gamma'
+```
+
+#### `Waveform.scale`
+
+```python
+scale: Scale = 'relative'
+```
+
+#### `Waveform.shape`
+
+```python
+shape: WaveShape = 'pulse'
+```
+
+#### `Waveform.swing`
+
+```python
+swing: float = Field(default=0.5, ge=0)
+```
+
+#### `Waveform.timing`
+
+```python
+timing: WaveTiming = 'periodic'
+```
+
+#### `Waveform.width`
+
+```python
+width: int = Field(default=1, ge=1)
+```
+
+
+### `Changepoints`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+Structural breaks at random or given positions.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`count` |  | Number of breaks. | *required*
+`kind` |  | 'level', 'trend', 'variance' or 'mixed'. | *required*
+`locations` |  | Relative positions in [0, 1]; drawn from U(0.1, 0.9) where missing. | *required*
+`level_changes` |  | Level jumps; drawn where missing, from U(-20, 20), or U(-3, 3) standard deviations with ``scale='relative'``. | *required*
+`trend_changes` |  | Slope changes; drawn where missing, from U(-0.5, 0.5), or as a total drift of U(-3, 3) standard deviations over the rest of the series with ``scale='relative'``. | *required*
+`variance_changes` |  | Positive factors on the deviation from a rolling mean; drawn from U(0.5, 2) where missing. | *required*
+`scale` |  | 'absolute' adds the changes as given; 'relative' measures them in standard deviations of the base series. | *required*
+
+#### `Changepoints.count`
+
+```python
+count: int = Field(default=2, ge=0)
+```
+
+#### `Changepoints.kind`
+
+```python
+kind: Literal['level', 'trend', 'variance', 'mixed'] = 'level'
+```
+
+#### `Changepoints.level_changes`
+
+```python
+level_changes: list[float] | None = None
+```
+
+#### `Changepoints.locations`
+
+```python
+locations: list[float] | None = None
+```
+
+#### `Changepoints.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Changepoints.scale`
+
+```python
+scale: Scale = 'absolute'
+```
+
+#### `Changepoints.trend_changes`
+
+```python
+trend_changes: list[float] | None = None
+```
+
+#### `Changepoints.variance_changes`
+
+```python
+variance_changes: list[float] | None = None
+```
+
+
+### `Anomalies`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+Spikes, dips and temporary level shifts at random positions.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`types` |  | Non-empty subset of 'spike', 'dip' and 'level_shift'. | *required*
+`fraction` |  | Share of steps that start an anomaly. | *required*
+`spike_magnitude` |  | Size of a spike. | *required*
+`dip_magnitude` |  | Size of a dip (negative for a drop). | *required*
+`level_shift_magnitude` |  | Size of a level shift. | *required*
+`level_shift_duration` |  | Steps a level shift lasts. | *required*
+`scale` |  | 'absolute' adds the magnitudes as given; 'relative' measures them in standard deviations of the base series. | *required*
+
+#### `Anomalies.dip_magnitude`
+
+```python
+dip_magnitude: float = -10.0
+```
+
+#### `Anomalies.fraction`
+
+```python
+fraction: float = Field(default=0.05, ge=0, le=1)
+```
+
+#### `Anomalies.level_shift_duration`
+
+```python
+level_shift_duration: int = Field(default=10, ge=1)
+```
+
+#### `Anomalies.level_shift_magnitude`
+
+```python
+level_shift_magnitude: float = 20.0
+```
+
+#### `Anomalies.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Anomalies.scale`
+
+```python
+scale: Scale = 'absolute'
+```
+
+#### `Anomalies.spike_magnitude`
+
+```python
+spike_magnitude: float = 10.0
+```
+
+#### `Anomalies.types`
+
+```python
+types: list[AnomalyType] = Field(default_factory=(lambda: list[AnomalyType](['spike', 'dip'])), min_length=1)
+```
+
+
+### `Observation`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+An observation process between the signal and the recorded readings.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`floor` |  | Saturation floor, as a fraction of the way from the series' minimum (0) to its maximum (1). | *required*
+`cap` |  | Saturation cap, on the same scale; above ``floor``. | *required*
+`quantum` |  | Value-grid step, in standard deviations of the series entering this stage; 0 disables quantization. | *required*
+`hold` |  | Sample-and-hold block in steps (each block repeats its first reading); 1 disables it. | *required*
+`stuck_fraction` |  | Share of steps inside windows where the reading freezes. | *required*
+`stuck_length` |  | Mean length of a frozen window in steps. | *required*
+
+Missing values stay missing and never spread.
+
+#### `Observation.cap`
+
+```python
+cap: float | None = Field(default=None, gt=0, le=1)
+```
+
+#### `Observation.floor`
+
+```python
+floor: float | None = Field(default=None, ge=0, lt=1)
+```
+
+#### `Observation.hold`
+
+```python
+hold: int = Field(default=1, ge=1, le=1000000)
+```
+
+#### `Observation.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Observation.quantum`
+
+```python
+quantum: float = Field(default=0.0, ge=0)
+```
+
+#### `Observation.stuck_fraction`
+
+```python
+stuck_fraction: float = Field(default=0.0, ge=0, lt=1)
+```
+
+#### `Observation.stuck_length`
+
+```python
+stuck_length: int = Field(default=20, ge=2)
+```
+
+
+### `Missing`
+
+Bases: <code>[_Spec](#synforecast.overlays._Spec)</code>
+
+Missing values, as NaN.
+
+**Parameters:**
+
+Name | Type | Description | Default
+---- | ---- | ----------- | -------
+`pattern` |  | 'random' points, 'block' runs, or 'seasonal' (more likely in part of each period). | *required*
+`rate` |  | Share of missing steps. | *required*
+`block_size` |  | Run length for 'block'. | *required*
+`seasonal_period` |  | Period for 'seasonal'. | *required*
+
+#### `Missing.block_size`
+
+```python
+block_size: int = Field(default=3, ge=1)
+```
+
+#### `Missing.model_config`
+
+```python
+model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+```
+
+#### `Missing.pattern`
+
+```python
+pattern: Literal['random', 'block', 'seasonal'] = 'random'
+```
+
+#### `Missing.rate`
+
+```python
+rate: float = Field(default=0.1, ge=0, le=1)
+```
+
+#### `Missing.seasonal_period`
+
+```python
+seasonal_period: int = Field(default=7, ge=1)
+```
+
