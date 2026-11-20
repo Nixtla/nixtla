@@ -5,20 +5,18 @@ icon: "key"
 ---
 
 <Info>
-  This tutorial explains how to set up your API key when using the Nixtla SDK. It covers both quick and secure methods to configure your API key directly in code or using environment variables. If you haven't done so yet, create an API Key in your [Nixtla Dashboard](https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/setup/setting_up_your_api_key).
+  This tutorial explains how to set up your API key when using the Nixtla SDK. It covers both quick and secure methods to configure your API key directly in code or using environment variables. If you don't have an API key yet, see [Ways to get access](/introduction/ways_to_get_access).
 </Info>
 
-<Frame caption="Diagram of the API Key configuration process">
-
-
-  ![Diagram of the API Key configuration process](https://github.com/Nixtla/nixtla/blob/main/nbs/img/dashboard.png?raw=true)
+<Frame caption="The API Keys page in the Nixtla dashboard">
+  <img src="/images/forecasting/quickstart-api-keys.png" alt="API Keys page in the Nixtla dashboard" style={{ border: "1px solid var(--border)" }} />
 </Frame>
 
 ## Overview
 
 <CardGroup cols={2}>
   <Card title="Why secure your API key?">
-    Your API key grants access to your Nixtla account and should be treated like a password. By securing it, you prevent unauthorized usage and protect your usage credits.
+    Your API key grants access to your Nixtla account and should be treated like a password. By securing it, you prevent unauthorized usage and protect your API calls.
   </Card>
   <Card title="Where to find your key">
     Your API key can be generated from your Nixtla Dashboard under the **API Keys** section. Make sure you copy the entire key with no extra spaces.
@@ -32,7 +30,7 @@ icon: "key"
     <Warning>
       This approach is simple but not secure. Your API key will be stored in your source code, visible to anyone with access to it.
     </Warning>
-    **Step 1:** Copy your key from the [Nixtla Dashboard](https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/setup/setting_up_your_api_key).
+    **Step 1:** Copy your key from the Nixtla Dashboard.
     **Step 2:** Paste the key into your Python code, for example:
 
     ```python NixtlaClient Initialization with API Key
@@ -106,7 +104,7 @@ nixtla_client.validate_api_key()
 ```
 
 <Info>
-  You do not need to validate your API key before every request. This method is a convenience function. To fully access **TimeGPT** functionality, ensure you have adequate credits by checking your [Nixtla Dashboard](https://www.nixtla.io/book-a-free-trial?utm_source=nixtla.io&utm_campaign=/docs/setup/setting_up_your_api_key).
+  You do not need to validate your API key before every request. This method is a convenience function. To fully access **TimeGPT** functionality, ensure you have API calls left by checking your Nixtla Dashboard.
 </Info>
 
 <Card title="Summary">

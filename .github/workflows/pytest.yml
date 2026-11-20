@@ -25,8 +25,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11"]
+        os: [macos-15, ubuntu-latest, windows-latest]
+        python-version: ["3.11"]
         # windows python 3.13 can't install pyreadr
         # TODO: in 3.12, it doesn't support ray<=2.20
     steps:
@@ -34,11 +34,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
           python-version: ${{ matrix.python-version }}
+
+      # Spark/Hadoop calls Subject.getSubject, which JDK 24+ removed; ubuntu-latest ships a newer JDK
+      - name: Set up java
+        if: runner.os == 'Linux'
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup devenv
         run: >
@@ -73,7 +81,7 @@ jobs:
         run: uv run pytest --cov=nixtla --reruns 3 --reruns-delay 10 --only-rerun ConnectError --only-rerun "Too Many Requests" --only-rerun "Internal server error" nixtla_tests
 
       # Live-API tests run on the Linux / 3.11 cell only: they cost API quota
-      # and the other five cells add no coverage of the API itself, only of the
+      # and the other two cells add no coverage of the API itself, only of the
       # platform. Anything taking a live-client fixture is marked `integration`
       # automatically -- see `pytest_collection_modifyitems` in the conftest.
       # `smoke` is the exception: a few one-call integration tests that run
