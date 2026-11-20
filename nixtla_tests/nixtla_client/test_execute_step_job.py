@@ -622,6 +622,10 @@ class TestResult:
         # 409 predates this and still serves other endpoints.
         assert _is_retriable_error(ApiError(status_code=409, body={}))
 
+    def test_httpx_connect_errors_are_retriable(self):
+        # httpx wraps httpcore transport errors, so the httpcore class alone never matches.
+        assert _is_retriable_error(httpx.ConnectError("name resolution failed"))
+
     @pytest.mark.parametrize("not_ready_status", [202, 409])
     def test_not_ready_from_the_result_endpoint_is_waited_out(
         self, monkeypatch, not_ready_status
