@@ -43,6 +43,19 @@ icon: "circle-question-mark"
       No, TimeGPT is not based on any large language model. While it follows the principle of training a large transformer model on a vast dataset, its architecture specifically handles time series data and minimizes forecasting errors.
     </Accordion>
 
+    <Accordion title="Where can I find documentation for StatsForecast, MLForecast, and NeuralForecast?">
+      StatsForecast, MLForecast, NeuralForecast, and HierarchicalForecast are Nixtla's open-source forecasting libraries. This site covers TimeGPT and only uses those libraries in examples, such as the baselines in [Why TimeGPT?](/introduction/why_timegpt) and [Forecasting Intermittent Demand](/use_cases/forecasting_intermittent_demand).
+
+      The full documentation for the open-source libraries lives at [nixtlaverse.nixtla.io](https://nixtlaverse.nixtla.io/):
+
+      - [StatsForecast](https://nixtlaverse.nixtla.io/statsforecast/index.html) for statistical models such as AutoARIMA, AutoETS, TBATS, and Croston
+      - [MLForecast](https://nixtlaverse.nixtla.io/mlforecast/index.html) for machine learning models such as LightGBM
+      - [NeuralForecast](https://nixtlaverse.nixtla.io/neuralforecast/docs/getting-started/introduction.html) for deep learning models
+      - [HierarchicalForecast](https://nixtlaverse.nixtla.io/hierarchicalforecast/index.html) for hierarchical reconciliation
+
+      These libraries use the same long data format as TimeGPT, with `unique_id`, `ds`, and `y` columns. You can pass the same DataFrame to TimeGPT and to these libraries, as the [Why TimeGPT?](/introduction/why_timegpt) comparison does. See [Data requirements](/data_requirements/data_requirements) for details on the format.
+    </Accordion>
+
     <Accordion title="How do I get started with TimeGPT?">
       To get started with TimeGPT, see [Ways to get access](/introduction/ways_to_get_access) and pick the option that fits you. After confirming your signup via email, you can access your dashboard with account details.
 
