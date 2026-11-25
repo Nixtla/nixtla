@@ -151,6 +151,19 @@ icon: "circle-question-mark"
       ```
     </Accordion>
 
+    <Accordion title="How can I check how many API calls I have used?">
+      Call the [`usage` method](/reference/sdk_reference#nixtlaclient-usage) of the `NixtlaClient` class. It returns the requests your API key has consumed and the limits that apply to it.
+
+      ```python Check API Usage Example
+      from nixtla import NixtlaClient
+
+      nixtla_client = NixtlaClient(api_key='my_api_key_provided_by_nixtla')
+      nixtla_client.usage()
+      ```
+
+      If you use all of your free API calls, the API returns a `429` "Too many requests" error. The **Troubleshooting** tab on this page explains how to continue with a paid plan.
+    </Accordion>
+
     <Accordion title="What if my API key isn't validating?">
       When you validate your API key and it returns `False`:
       * If you are targeting an Azure endpoint, getting `False` from the `NixtlaClient.validate_api_key` method is expected. You can skip this step when targeting an Azure endpoint and proceed directly to forecasting instead.
